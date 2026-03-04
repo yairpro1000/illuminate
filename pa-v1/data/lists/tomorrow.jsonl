@@ -1,2 +1,2 @@
-{"id":"9a576e17-65e5-4fc8-8170-52d0aa6d0a32","createdAt":"2026-03-04T00:18:44.135Z","text":"deploy step by step with gpt","priority":3,"color":null,"order":0,"topic":"website"}
-{"id":"bcaf3429-48d0-41c1-ad13-d19cf0a6451a","createdAt":"2026-03-04T01:03:48.480Z","text":"upload app code to git","priority":1,"color":"#ff3b30","order":0,"topic":null}
+{"id":"9a576e17-65e5-4fc8-8170-52d0aa6d0a32","createdAt":"2026-03-04T00:18:44.135Z","text":"deploy step by step with gpt","priority":3,"color":null,"order":0,"topic":"website","status":"todo","archivedAt":null}
+{"id":"bcaf3429-48d0-41c1-ad13-d19cf0a6451a","createdAt":"2026-03-04T01:03:48.480Z","text":"upload app code to git","priority":1,"color":"#ff3b30","order":0,"topic":null,"status":"done","archivedAt":"2026-03-04T18:33:50.834Z"}

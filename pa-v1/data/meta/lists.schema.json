@@ -126,6 +126,17 @@
         "topic": {
           "type": "string",
           "nullable": true
+        },
+        "status": {
+          "type": "string",
+          "default": "todo",
+          "description": "Workflow status"
+        },
+        "archivedAt": {
+          "type": "date",
+          "default": null,
+          "nullable": true,
+          "description": "Archived timestamp (hidden by default)"
         }
       }
     },

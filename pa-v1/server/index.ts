@@ -18,6 +18,14 @@ loadEnvFromFile();
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
+if (["1", "true", "yes"].includes(String(process.env.PA_TRUST_PROXY ?? "").toLowerCase())) {
+  app.set("trust proxy", 1);
+}
+
+const cookieSecure =
+  ["1", "true", "yes"].includes(String(process.env.PA_COOKIE_SECURE ?? "").toLowerCase()) ||
+  String(process.env.NODE_ENV ?? "").toLowerCase() === "production";
+
 app.use((req, res, next) => {
   (req as any).requestId = makeRequestId();
   res.setHeader("X-Request-Id", (req as any).requestId);
@@ -37,9 +45,24 @@ app.use(
     secret: process.env.PA_SESSION_SECRET ?? "dev-secret-change-me",
     resave: false,
     saveUninitialized: false,
-    cookie: { httpOnly: true, sameSite: "lax" },
+    cookie: {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: cookieSecure,
+    },
   }),
 );
+
+const publicApiPaths = new Set(["/health", "/config", "/auth/login", "/me"]);
+app.use("/api", (req, res, next) => {
+  if (publicApiPaths.has(req.path)) return next();
+  return requireAuth(req, res, next);
+});
+
+const loginAttempts = new Map<string, { count: number; windowStartMs: number; lockedUntilMs: number }>();
+const maxLoginAttempts = Number(process.env.PA_LOGIN_MAX_ATTEMPTS ?? 10);
+const loginWindowMs = Number(process.env.PA_LOGIN_WINDOW_MS ?? 15 * 60 * 1000);
+const loginLockMs = Number(process.env.PA_LOGIN_LOCK_MS ?? 15 * 60 * 1000);
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
@@ -57,10 +80,26 @@ app.get("/api/config", (_req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   const BodyZ = z.object({ username: z.string(), password: z.string() }).strict();
   const body = BodyZ.parse(req.body);
+  const key = `${req.ip}|${body.username}`;
+  const now = Date.now();
+  const attempt = loginAttempts.get(key);
+  if (attempt?.lockedUntilMs && attempt.lockedUntilMs > now) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((attempt.lockedUntilMs - now) / 1000));
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    return res.status(429).json({ error: "rate_limited", retryAfterSeconds });
+  }
   try {
     const ok = await verifyLogin(body.username, body.password);
-    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
+    if (!ok) {
+      const prev = loginAttempts.get(key);
+      const windowStartMs = prev && now - prev.windowStartMs <= loginWindowMs ? prev.windowStartMs : now;
+      const count = (prev && now - prev.windowStartMs <= loginWindowMs ? prev.count : 0) + 1;
+      const lockedUntilMs = count >= maxLoginAttempts ? now + loginLockMs : 0;
+      loginAttempts.set(key, { count, windowStartMs, lockedUntilMs });
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
     req.session.user = { username: body.username };
+    loginAttempts.delete(key);
     return res.json({ ok: true, username: body.username });
   } catch (e: any) {
     return res.status(500).json({ error: "auth_not_configured", details: String(e?.message ?? e) });
