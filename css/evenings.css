@@ -1,0 +1,80 @@
+/* ============================================================
+   ILLUMINATE Evenings — Page-specific styles
+   Extends main.css without modifying it.
+   ============================================================ */
+
+/* ── Evenings page hero: no opening screen, content starts immediately ── */
+
+/* hero__content normally has padding-block: 5rem 5rem from main.css.
+   We add top padding here to clear the fixed nav bar (~5rem). */
+.evenings-hero .hero__content {
+  padding-top: 9rem;
+}
+
+/* In light mode, main.css sets hero::after to start at top: 100svh
+   (below the opening screen). Since there is no opening screen here,
+   override it to cover the section from the very top. */
+body.theme-light .evenings-hero::after {
+  top: 0;
+}
+
+/* ── Hero body text block ───────────────────────────────────── */
+.evenings-body {
+  max-width: 38rem;
+  width: 100%;
+  text-align: left;
+}
+
+.evenings-intro {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+}
+
+/* em-dash bullet list */
+.evenings-practices {
+  list-style: none;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.evenings-practices li {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: 1.65;
+  color: var(--color-text);
+  padding-left: 1.75rem;
+  position: relative;
+}
+
+.evenings-practices li::before {
+  content: '–';
+  position: absolute;
+  left: 0;
+  color: var(--color-lake-light);
+  font-weight: 400;
+}
+
+/* "Structured. Imaginative. Human." closing */
+.evenings-closing {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ── Upcoming placeholder section ───────────────────────────── */
+.upcoming__inner {
+  max-width: 40rem;
+  margin-inline: auto;
+  text-align: center;
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 48rem) {
+  .break-md {
+    display: none;
+  }
+}

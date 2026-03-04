@@ -1,0 +1,7 @@
+node_modules
+dist
+web/dist
+.env
+.env.*
+env/
+data/meta/auth.json

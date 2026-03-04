@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "lists": {
+    "inbox": {
+      "title": "Inbox",
+      "description": "Default capture list",
+      "aliases": [
+        "tasks",
+        "todo",
+        "notes"
+      ],
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        },
+        "status": {
+          "type": "string",
+          "default": "todo",
+          "description": "Workflow status"
+        }
+      },
+      "ui": {
+        "defaultSort": "priority,order,createdAt"
+      }
+    },
+    "groceries": {
+      "title": "groceries",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        },
+        "status": {
+          "type": "string",
+          "default": "todo",
+          "description": "Workflow status"
+        },
+        "archivedAt": {
+          "type": "date",
+          "default": null,
+          "nullable": true,
+          "description": "Archived timestamp (hidden by default)"
+        }
+      }
+    },
+    "reminders": {
+      "title": "reminders",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        },
+        "topic": {
+          "type": "string",
+          "nullable": true
+        },
+        "status": {
+          "type": "string",
+          "default": "todo",
+          "description": "Workflow status"
+        },
+        "archivedAt": {
+          "type": "date",
+          "default": null,
+          "nullable": true,
+          "description": "Archived timestamp (hidden by default)"
+        }
+      }
+    },
+    "tomorrow": {
+      "title": "tomorrow",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        },
+        "topic": {
+          "type": "string",
+          "nullable": true
+        }
+      }
+    },
+    "website": {
+      "title": "website",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        }
+      }
+    },
+    "home": {
+      "title": "home",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        }
+      }
+    },
+    "app": {
+      "title": "app",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        }
+      }
+    },
+    "bureaucracy": {
+      "title": "bureaucracy",
+      "fields": {
+        "text": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "int",
+          "default": 3
+        },
+        "color": {
+          "type": "string",
+          "default": null,
+          "nullable": true
+        },
+        "order": {
+          "type": "int",
+          "default": 0
+        }
+      }
+    }
+  }
+}

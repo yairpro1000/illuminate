@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="ILLUMINATE Evenings — A guided social space to listen deeply, speak authentically, and rediscover how fascinating people can be." />
+  <title>ILLUMINATE Evenings — A Different Way of Being Together</title>
+
+  <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
+
+  <!-- Preconnect for Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/evenings.css" />
+</head>
+
+<body>
+  <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
+  <script>
+    (function () {
+      var t = localStorage.getItem('yb-theme') || 'light';
+      if (t === 'light') document.body.classList.add('theme-light');
+    })();
+  </script>
+
+  <!-- Skip link -->
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- ── Fixed background image layer (light mode) ── -->
+  <div id="bg-layer" aria-hidden="true"></div>
+
+  <!-- ── Canvas wave background ── -->
+  <canvas id="background-waves" aria-hidden="true"></canvas>
+
+
+  <!-- ══════════════════════════════════════════════════════
+       NAVIGATION
+  ══════════════════════════════════════════════════════ -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav__inner">
+
+      <a href="index.html" class="nav__logo">
+        ILLUMINATE <span>by Yair Benharroch</span>
+      </a>
+
+      <!-- Desktop links -->
+      <ul class="nav__links" role="list">
+        <li><a href="index.html#how-we-work">How We Work</a></li>
+        <li><a href="index.html#investment">Investment</a></li>
+        <li><a href="index.html#about">About</a></li>
+        <li><a href="evenings.html" aria-current="page">Evenings</a></li>
+      </ul>
+
+      <a href="index.html#final" class="nav__cta">Book a Session</a>
+
+      <!-- Mobile hamburger -->
+      <button class="nav__hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+    </div>
+
+    <!-- Mobile menu -->
+    <div id="mobile-menu" class="nav__mobile" role="menu">
+      <a href="index.html#how-we-work" role="menuitem">How We Work</a>
+      <a href="index.html#investment" role="menuitem">Investment</a>
+      <a href="index.html#about" role="menuitem">About</a>
+      <a href="evenings.html" role="menuitem" aria-current="page">Evenings</a>
+      <a href="index.html#final" role="menuitem">Book a Session</a>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════════════════════ -->
+  <main id="main">
+
+    <!-- ── HERO ─────────────────────────────────────────── -->
+    <section class="hero section evenings-hero" id="hero" aria-labelledby="hero-heading">
+
+      <!-- No opening viewport — page opens directly on content -->
+      <div class="hero__content">
+
+        <h1 class="heading-display hero__headline fade-up" id="hero-heading">
+          <span class="gradient-text">ILLUMINATE Evenings</span>
+        </h1>
+
+        <p class="hero__subtext fade-up fade-up--delay-1">
+          A Different Way of Being Together
+        </p>
+
+        <div class="evenings-body fade-up fade-up--delay-2">
+          <p class="evenings-intro">
+            In a world of performance, distraction, and polarization,<br class="break-md" />
+            ILLUMINATE offers a guided social space where you can practice:
+          </p>
+
+          <ul class="evenings-practices">
+            <li>listening deeply</li>
+            <li>speaking authentically</li>
+            <li>connecting while staying rooted in yourself</li>
+            <li>rediscovering how fascinating people can be</li>
+          </ul>
+
+          <p class="evenings-closing">
+            Structured. Imaginative. Human.<br />
+            A microcosm of the world we want to live in.
+          </p>
+        </div>
+
+      </div>
+
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── UPCOMING — placeholder for dates & registration ── -->
+    <section class="section section--alt" id="upcoming" aria-labelledby="upcoming-heading">
+      <div class="container">
+        <div class="upcoming__inner">
+
+          <span class="label fade-up">Upcoming Evenings</span>
+
+          <h2 class="heading-xl mt-md fade-up fade-up--delay-1" id="upcoming-heading">
+            Dates &amp; Details
+          </h2>
+
+          <p class="body-lg mt-md fade-up fade-up--delay-2">
+            Upcoming dates and registration will be announced here.<br />
+            If you'd like to be notified, reach out.
+          </p>
+
+          <div class="fade-up fade-up--delay-3" style="margin-top: 3rem;">
+            <a href="mailto:yaireurope@gmail.com" class="btn-arrow">Express your interest</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="footer__inner">
+
+      <span class="footer__logo">ILLUMINATE <span>by Yair Benharroch</span></span>
+
+      <nav class="footer__links" aria-label="Footer navigation">
+        <a href="index.html#how-we-work">How We Work</a>
+        <a href="index.html#investment">Investment</a>
+        <a href="index.html#about">About</a>
+        <a href="evenings.html">Evenings</a>
+        <a href="mailto:yaireurope@gmail.com">Contact</a>
+      </nav>
+
+      <span class="footer__copy">© 2026 ILLUMINATE · Yair Benharroch</span>
+
+    </div>
+  </footer>
+
+  <!-- ── Theme toggle button ── -->
+  <button id="theme-toggle" class="theme-toggle" aria-label="Switch to light mode" title="Toggle theme">
+    <!-- Moon icon (shown in dark mode) -->
+    <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+    <!-- Sun icon (shown in light mode) -->
+    <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  </button>
+
+  <script src="js/main.js"></script>
+</body>
+
+</html>

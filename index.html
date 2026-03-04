@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="A calm, focused space where intuition and strength meet, and your inner truth can safely land." />
+  <title>ILLUMINATE by Yair Benharroch: Clarity. Courage. Love.</title>
+
+  <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
+
+  <!-- Preconnect for Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <link rel="stylesheet" href="css/main.css" />
+
+</head>
+
+<body>
+  <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
+  <script>
+    (function () {
+      var t = localStorage.getItem('yb-theme') || 'light';
+      if (t === 'light') document.body.classList.add('theme-light');
+    })();
+  </script>
+
+  <!-- Skip link -->
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- ── Fixed background image layer (light mode) ── -->
+  <div id="bg-layer" aria-hidden="true"></div>
+
+  <!-- ── Canvas wave background ── -->
+  <canvas id="background-waves" aria-hidden="true"></canvas>
+
+
+  <!-- ══════════════════════════════════════════════════════
+       NAVIGATION
+  ══════════════════════════════════════════════════════ -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav__inner">
+
+      <a href="#hero" class="nav__logo">
+        ILLUMINATE <span>by Yair Benharroch</span>
+      </a>
+
+      <!-- Desktop links -->
+      <ul class="nav__links" role="list">
+        <li><a href="#how-we-work">How We Work</a></li>
+        <li><a href="#investment">Investment</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="evenings.html">Evenings</a></li>
+        <!-- <li><a href="worldview.html">My Worldview</a></li> -->
+      </ul>
+
+      <a href="#final" class="nav__cta">Book a Session</a>
+
+      <!-- Mobile hamburger -->
+      <button class="nav__hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+    </div>
+
+    <!-- Mobile menu -->
+    <div id="mobile-menu" class="nav__mobile" role="menu">
+      <a href="#how-we-work" role="menuitem">How We Work</a>
+      <a href="#investment" role="menuitem">Investment</a>
+      <a href="#about" role="menuitem">About</a>
+      <a href="evenings.html" role="menuitem">Evenings</a>
+      <!-- <a href="worldview.html" role="menuitem">My Worldview</a> -->
+      <a href="#final" role="menuitem">Book a Session</a>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════════════════════ -->
+  <main id="main">
+
+    <!-- ── HERO ─────────────────────────────────────────── -->
+    <section class="hero section" id="hero" aria-labelledby="hero-heading">
+
+      <!-- Opening viewport: "it's your time to" + ILLUMINATE + scroll -->
+      <div class="hero__intro">
+
+        <p class="hero__prelude fade-up" aria-hidden="true">it's your time to</p>
+
+        <div class="hero__brand-wrap fade-up fade-up--delay-1" aria-hidden="true">
+          <span class="hero__brand">ILLUMINATE</span>
+        </div>
+
+        <!-- Scroll indicator -->
+        <div class="hero__scroll" aria-hidden="true">
+          <span class="hero__scroll-label">Scroll</span>
+          <div class="hero__scroll-arrows">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Below-fold: headline, subtext, CTAs -->
+      <div class="hero__content">
+
+        <h1 class="heading-display hero__headline fade-up" id="hero-heading">
+          <span class="gradient-text">Courage. Kindness.</span><br />
+          Presence.
+        </h1>
+
+        <p class="hero__subtext fade-up fade-up--delay-1">
+          A calm, focused space where <em>intuition and strength meet</em><br />
+          and your inner truth can safely land.
+        </p>
+
+        <div class="hero__actions fade-up fade-up--delay-2">
+          <a href="#final" class="btn btn-primary">
+            Schedule Your Introductory<br />Clarity Session
+          </a>
+          <a href="#how-we-work" class="btn btn-secondary">
+            Explore How We Work
+          </a>
+        </div>
+
+      </div>
+
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── WHO IS THIS FOR? ──────────────────────────────── -->
+    <section class="section" id="who-is-this" aria-labelledby="who-heading">
+      <div class="container">
+        <div class="who__inner">
+
+          <h2 class="who__title fade-up" id="who-heading">Who Is This For?</h2>
+
+          <div class="who__cards">
+
+            <article class="who__card fade-up fade-up--delay-1">
+              <svg class="who__check" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="who__card-content">
+                <p class="who__lead">If you are a <strong>high achiever</strong> who knows how to build, move, and succeed, yet sense that in the rush of achievement, something essential risks being overlooked: intimacy, integrity, and the people who matter most.</p>
+              </div>
+            </article>
+
+            <article class="who__card fade-up fade-up--delay-2">
+              <svg class="who__check" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="who__card-content">
+                <p class="who__lead">If you are used to being <strong>the strong one</strong>, and long to experience what it feels like to be guided with the same strength and care you offer others.</p>
+              </div>
+            </article>
+
+            <article class="who__card fade-up fade-up--delay-3">
+              <svg class="who__check" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="who__card-content">
+                <p class="who__lead">If you are <strong>highly sensitive</strong>, feeling deeply, caring deeply, but grown used to shrinking your own truth to protect others' comfort, at a quiet cost to yourself.</p>
+              </div>
+            </article>
+
+            <article class="who__card fade-up fade-up--delay-4">
+              <svg class="who__check" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="who__card-content">
+                <p class="who__lead">If you are standing <strong>at a crossroads</strong>, facing a real decision, and wanting not just to choose correctly this time, but to reconnect with an inner compass you can trust for life.</p>
+              </div>
+            </article>
+
+          </div>
+
+          <div class="who__closing fade-up fade-up--delay-5">
+            <p>If any of this strikes a chord,<br/> this is where we begin.</p>
+            <a href="#final" class="btn btn-primary" style="margin-top: 1.25rem;">
+              Schedule Your Introductory Clarity Session
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── CALM MIRROR ───────────────────────────────────── -->
+    <section class="section calm-mirror" id="calm-mirror" aria-labelledby="calm-heading">
+      <div class="container">
+        <div class="calm-mirror__inner">
+
+          <span class="label fade-up">The Space We Work In</span>
+          <h2 class="heading-xl mt-md mb-md fade-up fade-up--delay-1" id="calm-heading">
+            A Calm Mirror
+          </h2>
+
+          <p class="calm-mirror__sublabel fade-up fade-up--delay-2">Have you ever wondered:</p>
+          <p class="calm-mirror__question fade-up fade-up--delay-2">"If there were a part of me that already knew…<br />what would it say right now?"</p>
+
+          <blockquote class="calm-mirror__quote fade-up fade-up--delay-3">
+            <div class="calm-mirror__text">
+              <p>Clarity requires a compassionate mirror.</p>
+              <p>A space where looking inward does not feel like danger, but like coming back to yourself.</p>
+              <p>This is where the nervous system softens. Where what was suppressed can be spoken. Where inner conflict begins to resolve.</p>
+              <p><strong class="about-accent">ILLUMINATE</strong> is where your heart and mind go back to being whole.</p>
+            </div>
+          </blockquote>
+
+          <div class="fade-up fade-up--delay-4">
+            <a href="#final" class="btn-arrow">Begin Your Clarity Session</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+	    <!-- ── ABOUT ─────────────────────────────────────────── -->
+	    <section class="section section--alt" id="about" aria-labelledby="about-heading">
+	      <div class="container">
+	        <h2 class="sr-only" id="about-heading">About</h2>
+	        <div class="about-strip fade-up">
+
+	          <div class="about-strip__photo-wrap">
+	            <img src="img/Me_at_rosenlaui.jpeg" alt="Yair Benharroch at Rosenlaui" class="about-strip__photo"
+	              loading="lazy" />
+	          </div>
+
+	          <div class="about-strip__content">
+	            <span class="label">Who am I?</span>
+	            <p class="about-strip__text">
+	              My name is <strong class=”about-accent”>Yair (יָאִיר)</strong>, Hebrew for “<strong
+	                class="about-accent">will illuminate</strong>.”
+	            </p>
+	
+	            <p class="about-strip__text">
+	              For more than 25 years, I have been drawn to questions of truth, alignment, and inner coherence. What I
+	              share here is not only something I studied; it is something I have lived, tested, and refined through
+	              experience.
+	            </p>
+	
+	            <p class="about-strip__text">
+	              Over the past 16 years, I have worked with individuals navigating transition and the deeper questions
+	              that arise when life begins to ask for alignment.
+	            </p>
+	
+	            <p class="about-strip__text">
+	              My path has taken me through very different worlds: performance and discipline, spiritual exploration,
+	              technology and efficiency. In each space, I found something valuable. And in each, something essential
+	              was missing.
+	            </p>
+	
+	            <p class="about-strip__text">What I was looking for did not fully exist outside.<br/>
+	            So I committed to cultivating it from the inside.</p>
+	
+	            <p class="about-strip__text">My work is grounded in a simple belief:</p>
+	
+	            <p class="about-strip__text">
+	              intuition without courage remains unrealized,<br />
+	              and courage without compassion becomes force.
+	            </p>
+	
+	            <p class="about-strip__text">
+	              Over time, these values converged into what I call <strong class="about-accent">competent kindness</strong>.
+	            </p>
+	
+	            <p class="about-strip__text">
+	              Kindness that does not collapse boundaries.<br />
+	              Kindness that is not afraid of clarity.<br />
+	              Kindness that can look truth in the eye and name it.<br />
+	              And strength that remains guided by the heart.
+	            </p>
+	
+		            <p class="about-strip__text">This is the space I have been crafting, and how <strong class="about-accent">ILLUMINATE</strong> was born.
+		            </p>
+		
+		            <!-- <a href="worldview.html" class="btn-arrow about-strip__worldview-link">More about my worldview</a> -->
+		
+		            <div class="about-strip__location">
+	              <p class="about-strip__text">
+	                Based in Lugano, Switzerland, whose alpine landscapes bring me quiet happiness and reflect the clarity and calm I value in this work.
+	              </p>
+	            </div>
+	          </div>
+	
+	        </div>
+        <div style="text-align: center; margin-top: 2.5rem;">
+          <a href="#final" class="btn btn-primary">
+            Schedule Your Introductory<br /> Clarity Session
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── REVIEWS ───────────────────────────────────────── -->
+    <section class="section section--alt" id="reviews">
+      <div class="container">
+        <span class="label fade-up">In their own words</span>
+        <div class="reviews-bubbles fade-up fade-up--delay-1">
+
+          <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">With huge love<br>You helped me understand what made me lose the joy of life I had
+                and why I wanted to only sleep all day.</div>
+            </div>
+          </div>
+
+          <!-- <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">Oh my, what a chill! 🤯</div>
+            </div>
+          </div> -->
+
+          <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">Wow, what precision. Thank you Yair for the stunning message, for the the time
+                you invest, for the giving, and for the attitude 💙💙💙</div>
+            </div>
+          </div>
+
+          <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">🙏 Wow, you got me right, thank you.<br>I would be happy if I could be of help to
+                you sometime.</div>
+            </div>
+          </div>
+
+          <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">Oh, how bright the messages that come through you are!<br>They really move
+                me<br>Thank you very much 😍</div>
+            </div>
+          </div>
+
+          <div class="bubble-card">
+            <div class="chat-messages">
+              <div class="bubble-msg">You have rare abilities in terms of channeling and healing. I would suggest that
+                no matter what you do, don't neglect it.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── WHAT THIS IS NOT ───────────────────────────────── -->
+    <section class="section section--alt manifesto" id="not-this">
+
+      <div class="container manifesto__box">
+
+        <div class="manifesto__nots fade-up">
+          <span class="label">What this is not</span>
+          <p>Not motivational hype.</p>
+          <p>Not spiritual bypassing.</p>
+          <p>Not endless therapy.</p>
+        </div>
+
+        <p class="manifesto__body fade-up fade-up--delay-1">
+          This is about setting you free to be your authentic self.
+        </p>
+
+        <p class="manifesto__close fade-up fade-up--delay-2">
+          When you make choices that respect who you really are,<br />
+          what you get is&ensp;<span class="manifesto__selflove">self-love</span>.
+        </p>
+
+        <p class="manifesto__close fade-up fade-up--delay-3">
+          In practice.
+        </p>
+
+        <div class="fade-up fade-up--delay-4">
+          <a href="#final" class="btn-arrow">Step Into Clarity</a>
+        </div>
+
+      </div>
+
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── HOW WE WORK ───────────────────────────────────── -->
+    <section class="section" id="how-we-work" aria-labelledby="how-heading">
+      <div class="container">
+
+        <div class="steps__header fade-up">
+          <span class="label">How We Work</span>
+          <h2 class="heading-xl mt-md" id="how-heading">
+            A clear structure<br />for real work.
+          </h2>
+          <p class="body-lg mt-md">
+            We use conversation, energy work, and somatic awareness to illuminate the inner landscape where clarity lives.
+          </p>
+             <p class="body-lg mt-md">
+              But clarity is not only inner.<br />
+            This is why we integrate modern tools to help translate it into real-world action: concrete decisions, aligned priorities, and practical next steps in your day-to-day life.
+          </p>
+          <!-- <p class="body-lg mt-md">
+            When useful, we integrate modern tools — even AI — to help translate inner clarity into real-world action.
+          </p> -->
+          <p class="body-lg mt-md">We begin with a free introductory conversation.<br />
+            If aligned, we begin a Clarity Cycle.
+          </p>
+        </div>
+
+        <div class="steps__track">
+
+          <div class="step fade-up fade-up--delay-1">
+            <div class="step__number" aria-hidden="true">01</div>
+            <span class="step__amount">Free</span>
+            <h3 class="step__title">Introductory Clarity Conversation</h3>
+            <p class="step__body">
+              We meet to assess alignment. No commitment required.
+              A space to explore whether this is the right fit for you.
+            </p>
+          </div>
+
+          <div class="step fade-up fade-up--delay-2">
+            <div class="step__number" aria-hidden="true">02</div>
+            <span class="step__amount">CHF 150</span>
+            <h3 class="step__title">Extended First Session</h3>
+            <p class="step__body">
+              We map your story, values, patterns, and current conflict.
+              This becomes the foundation everything else is built on.
+            </p>
+          </div>
+
+          <div class="step fade-up fade-up--delay-3">
+            <div class="step__number" aria-hidden="true">03</div>
+            <span class="step__amount">CHF 120 × 7</span>
+            <h3 class="step__title">The Clarity Cycle</h3>
+            <p class="step__body">
+              Seven focused sessions to unpack what's stuck and practice the new you.
+              On the last session, we reassess whether to pause here for now or choose a goal for a new cycle.
+            </p>
+          </div>
+
+        </div>
+
+        <div class="steps__footer fade-up">
+          <a href="#final" class="btn-arrow">Start here</a>
+          <p class="steps__location">Sessions offered online worldwide, or in person in Lugano.</p>
+        </div>
+
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── INVESTMENT ────────────────────────────────────── -->
+    <section class="section section--alt" id="investment" aria-labelledby="investment-heading">
+      <div class="container">
+
+        <div class="investment__header fade-up">
+          <span class="label">Investment</span>
+          <h2 class="heading-xl mt-md" id="investment-heading">
+            Clear pricing.<br />No surprises.
+          </h2>
+          <p class="body-lg mt-md" style="color: oklch(100% 0 0);">
+            The cycle may be paid in full or in up to 3 installments.
+          </p>
+        </div>
+
+        <div class="investment__grid">
+
+          <div class="pricing-card fade-up fade-up--delay-1">
+            <p class="pricing-card__label">Extended First Session</p>
+            <p class="pricing-card__amount">CHF 150</p>
+            <p class="pricing-card__desc">
+              One extended session to map your story, values, patterns, and current conflict.
+            </p>
+            <div class="pricing-card__divider"></div>
+            <ul class="pricing-card__features">
+              <li class="pricing-card__feature">90-minute deep-dive session</li>
+              <li class="pricing-card__feature">Mapping of story, values & patterns</li>
+              <li class="pricing-card__feature">Foundation for the full cycle</li>
+            </ul>
+            <a href="#final" class="btn btn-secondary" style="width:100%; text-align:center;">
+              Begin Here
+            </a>
+          </div>
+
+          <div class="pricing-card pricing-card--featured fade-up fade-up--delay-2">
+            <p class="pricing-card__label">Full Clarity Cycle</p>
+            <p class="pricing-card__amount">CHF 990 <span>/ cycle</span></p>
+            <p class="pricing-card__desc">
+              Extended first session + 7 focused sessions. Payable in full or 3 installments of CHF 330.
+            </p>
+            <div class="pricing-card__divider"></div>
+            <ul class="pricing-card__features">
+              <li class="pricing-card__feature">Extended first session (CHF 150)</li>
+              <li class="pricing-card__feature">7 focused sessions (CHF 120 each)</li>
+              <li class="pricing-card__feature">Structured map & ongoing guidance</li>
+              <li class="pricing-card__feature">Installment option available</li>
+            </ul>
+            <a href="#final" class="btn btn-primary" style="width:100%; text-align:center;">
+              Schedule Your Introductory Session
+            </a>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── ACTING BEFORE REGRET ──────────────────────────── -->
+    <section class="section" id="regret" aria-labelledby="regret-heading">
+      <div class="container">
+        <div class="regret__inner fade-up">
+
+          <h2 class="heading-xl mb-md" id="regret-heading">
+            This is not just about you.
+          </h2>
+
+          <div class="regret__grid">
+
+            <div class="regret__left">
+              <blockquote class="regret__quote">
+                <div class="regret__text">
+                  <p>The years we spend avoiding ourselves<br />
+                    don't just cost us.<br />
+                    They cost the people we love most.</p>
+                  <p class="regret__teal">The version of you that never got to show up fully.<br />
+                    The conversations that never happened.<br />
+                    The closeness that stayed just out of reach.</p>
+                </div>
+              </blockquote>
+            </div>
+
+            <div class="regret__right">
+              <p class="regret__glow">When you choose to illuminate —<br />
+                the world around you gets brighter too.</p>
+              <a href="#final" class="btn-arrow">Take The First Step</a>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── REVIEW CLOSE ──────────────────────────────────── -->
+    <section class="section" id="review-close">
+      <div class="container">
+        <div class="reviews__wrap fade-up">
+          <img src="img/reviews2.jpg" alt="A message from a client after a session"
+            class="reviews__img reviews__img--single" loading="lazy" />
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ── FINAL CLOSE ───────────────────────────────────── -->
+    <section class="section final" id="final" aria-labelledby="final-heading">
+      <div class="container">
+        <div class="final__inner">
+
+          <h2 class="heading-xl final__headline fade-up" id="final-heading">
+            You don't have to keep<br />
+            <span style="color: oklch(100% 0 0);">carrying this alone.</span>
+          </h2>
+
+          <div class="final__body fade-up fade-up--delay-1">
+            <p>Clarity is possible.</p>
+            <p>Harmony is possible.</p>
+          </div>
+
+          <p class="final__step fade-up fade-up--delay-1">It begins with one step.</p>
+
+          <div class="final__actions fade-up fade-up--delay-2">
+            <a href="mailto:yaireurope@gmail.com" class="btn btn-primary">
+              Schedule Your Introductory Clarity Session
+            </a>
+            <a href="#how-we-work" class="btn-arrow" style="font-size: 0.9375rem; color: var(--color-text-muted);">
+              Explore How We Work
+            </a>
+            <!-- <a href="worldview.html" class="btn-arrow" style="font-size: 0.9375rem; color: var(--color-text-muted);">
+              More about my worldview
+            </a> -->
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="footer__inner">
+
+      <span class="footer__logo">ILLUMINATE <span>by Yair Benharroch</span></span>
+
+      <nav class="footer__links" aria-label="Footer navigation">
+        <a href="#how-we-work">How We Work</a>
+        <a href="#investment">Investment</a>
+        <a href="#about">About</a>
+        <a href="evenings.html">Evenings</a>
+        <!-- <a href="worldview.html">My Worldview</a> -->
+        <a href="mailto:hello@yairbendavid.com">Contact</a>
+      </nav>
+
+      <span class="footer__copy">© 2026 ILLUMINATE · Yair Benharroch</span>
+
+    </div>
+  </footer>
+
+  <!-- ── Theme toggle button ── -->
+  <button id="theme-toggle" class="theme-toggle" aria-label="Switch to light mode" title="Toggle theme">
+    <!-- Moon icon (shown in dark mode) -->
+    <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+    <!-- Sun icon (shown in light mode) -->
+    <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  </button>
+
+  <script src="js/main.js"></script>
+</body>
+
+</html>

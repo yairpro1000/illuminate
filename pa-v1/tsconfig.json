@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["shared/*"]
+    },
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["server", "shared", "web/src", "web/vite.config.ts"]
+}

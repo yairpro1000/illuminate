@@ -1,0 +1,2204 @@
+/* ============================================================
+   YAIR BEN-DAVID — Main Stylesheet
+   Lake Lugano palette · OKLCH · 2026
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Nunito:wght@800&family=Poppins:wght@400;500;600;700;800&display=swap');
+
+/* ── Registered CSS Properties (enables animation of custom props) ── */
+@property --gradient-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 135deg;
+}
+@property --glow-opacity {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0.3;
+}
+
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+  /* Lake Lugano Palette — OKLCH */
+  --color-bg:           oklch(11%  0.022 210);
+  --color-bg-alt:       oklch(14%  0.025 208);
+  --color-bg-card:      oklch(17%  0.030 207);
+
+  --color-lake-deep:    oklch(44%  0.155 204);
+  --color-lake:         oklch(59%  0.160 200);
+  --color-lake-light:   oklch(73%  0.130 195);
+  --color-lake-mist:    oklch(59%  0.160 200 / 0.14);
+  --color-lake-glow:    oklch(59%  0.160 200 / 0.35);
+
+  --color-stone:        oklch(78%  0.030 75);
+  --color-stone-muted:  oklch(58%  0.025 78);
+
+  --color-text:         oklch(91%  0.015 200);
+  --color-text-muted:   oklch(65%  0.020 207);
+  --color-text-subtle:  oklch(48%  0.018 210);
+
+  --color-border:       oklch(59%  0.160 200 / 0.18);
+  --color-border-hover: oklch(59%  0.160 200 / 0.42);
+  --color-white:        oklch(99%  0.005 200);
+
+  /* Typography */
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --section-py: clamp(5rem, 10vw, 8rem);
+  --container:  min(64rem, 100% - 3rem);
+
+  /* Radius */
+  --radius-sm:  0.375rem;
+  --radius-md:  0.75rem;
+  --radius-lg:  1.25rem;
+  --radius-xl:  1.75rem;
+
+  /* Easing */
+  --ease:        cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out:    cubic-bezier(0, 0, 0.2, 1);
+
+  /* Shadows */
+  --shadow-glow: 0 0 25px var(--color-lake-glow);
+  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.4);
+}
+
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 6rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+section[id] {
+  scroll-margin-top: 6rem;
+}
+
+body {
+  font-family: var(--font);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+img:not(.about-strip__photo), video { display: block; max-width: 100%; height: auto; }
+a { color: inherit; text-decoration: none; }
+ul, ol { list-style: none; }
+
+/* ============================================================
+   LAYOUT UTILITIES
+   ============================================================ */
+.container {
+  width: var(--container);
+  margin-inline: auto;
+}
+
+.section {
+  padding-block: var(--section-py);
+  position: relative;
+  transition: background-color 0.8s ease;
+}
+
+.section--alt.section-in-view {
+  background-color: var(--color-bg-alt);
+}
+
+.section-divider {
+  display: none;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-border) 20%,
+    var(--color-border) 80%,
+    transparent
+  );
+  margin-inline: auto;
+  max-width: var(--container);
+}
+
+/* ============================================================
+   BACKGROUND CANVAS
+   ============================================================ */
+#background-waves {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -10;
+  pointer-events: none;
+}
+
+/* ============================================================
+   TYPOGRAPHY SCALE
+   ============================================================ */
+.label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-lake-light);
+}
+
+.label-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-lake-light);
+  background: var(--color-lake-mist);
+  border: 1px solid var(--color-border);
+  border-radius: 99px;
+  padding: 0.35rem 1rem;
+}
+
+.label-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-lake-light);
+  flex-shrink: 0;
+}
+
+.heading-display {
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.heading-xl {
+  font-size: clamp(2rem, 4.5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.heading-lg {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
+.heading-md {
+  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.body-lg {
+  font-size: clamp(1.0625rem, 1.5vw, 1.1875rem);
+  line-height: 1.75;
+  color: var(--color-text-muted);
+}
+
+.body-md {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(
+    var(--gradient-angle, 135deg),
+    var(--color-lake-light),
+    var(--color-lake),
+    var(--color-lake-light)
+  );
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 8s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  letter-spacing: 0.01em;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  border: none;
+  transition:
+    transform 0.3s var(--ease),
+    box-shadow 0.3s var(--ease),
+    background 0.3s var(--ease);
+}
+
+.btn-primary {
+  background: linear-gradient(
+    135deg,
+    var(--color-lake-deep),
+    var(--color-lake)
+  );
+  color: var(--color-white);
+  padding: 0.875rem 2.25rem;
+  box-shadow: 0 0 20px var(--color-lake-glow);
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 38px var(--color-lake-glow), 0 8px 24px oklch(0% 0 0 / 0.35);
+}
+
+.btn-primary:active {
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-lake-light);
+  border: 1.5px solid var(--color-border);
+  padding: 0.8125rem 2.125rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+  transform: translateY(-2px);
+}
+
+.btn-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-lake-light);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  transition: gap 0.25s var(--ease), color 0.2s;
+}
+
+.btn-arrow:hover {
+  gap: 0.85rem;
+  color: var(--color-lake);
+}
+
+.btn-arrow::after {
+  content: '→';
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 1.25rem 0;
+  transition: background 0.4s var(--ease), padding 0.3s var(--ease), border-color 0.4s;
+  border-bottom: 1px solid transparent;
+}
+
+.nav.scrolled {
+  background: oklch(11% 0.022 210 / 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 0.875rem 0;
+  border-bottom-color: var(--color-border);
+}
+
+.nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: var(--container);
+  margin-inline: auto;
+}
+
+.nav__logo {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: 0.015em;
+  color: var(--color-text);
+}
+
+.nav__logo span {
+  color: var(--color-lake-light);
+}
+
+.nav__links {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+.nav__links a {
+  font-size: 0.9375rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  transition: color 0.2s;
+}
+
+.nav__links a:hover {
+  color: var(--color-text);
+}
+
+.nav__cta {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-lake-light);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1.25rem;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.nav__cta:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+  color: var(--color-lake);
+}
+
+/* Mobile nav */
+.nav__hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  padding: 4px;
+  background: none;
+  border: none;
+}
+
+.nav__hamburger span {
+  display: block;
+  width: 22px;
+  height: 1.5px;
+  background: var(--color-text);
+  transition: transform 0.3s var(--ease), opacity 0.3s;
+  transform-origin: center;
+}
+
+.nav__hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+.nav__hamburger.open span:nth-child(2) { opacity: 0; }
+.nav__hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+.nav__mobile {
+  display: flex;          /* always flex — hidden via max-height, not display:none */
+  flex-direction: column;
+  gap: 0;
+  background: oklch(13% 0.025 209 / 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--color-border);
+  padding-inline: 1.5rem; /* fixed side padding — not var(--container) which is a width */
+  padding-block: 0;       /* collapsed by default */
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.4s var(--ease), padding-block 0.3s;
+}
+
+.nav__mobile.open {
+  max-height: 400px;
+  padding-block: 1.5rem;
+}
+
+.nav__mobile a {
+  font-size: 1.0625rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: color 0.2s;
+}
+
+.nav__mobile a:last-child { border-bottom: none; }
+.nav__mobile a:hover { color: var(--color-lake-light); }
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  padding-block: 0; /* override .section — hero__intro handles its own spacing */
+}
+
+/* Full-viewport opening pane.
+   padding-top pushes the block so the prelude lands just above the lake
+   horizon (~50svh) and ILLUMINATE sits 5–10% below it. */
+.hero__intro {
+  min-height: 100svh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: calc(50svh - 0.75rem);
+  padding-bottom: 5rem;
+  position: relative;
+}
+
+/* "it's your time to" — small italic prelude above ILLUMINATE */
+.hero__prelude {
+  font-size: clamp(1.0625rem, 2.2vw, 1.375rem);
+  font-style: italic;
+  font-weight: 300;
+  color: oklch(100% 0 0);
+  letter-spacing: 0.04em;
+  margin-top: 5vh;
+  margin-bottom: 1.25rem;
+  text-shadow: 0 1px 10px oklch(0% 0 0 / 0.30);
+}
+
+/* Content pane — revealed on scroll */
+.hero__content {
+  max-width: 50rem;
+  width: 100%;
+  padding-block: 5rem 5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ILLUMINATE hero brand — large glowing wordmark above the headline */
+.hero__brand-wrap {
+  margin-bottom: 1.75rem;
+}
+
+.hero__brand {
+  display: block;
+  font-family: 'Nunito', var(--font);   /* round letterforms */
+  font-size: clamp(2.6rem, 9vw, 6.5rem);
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  padding-right: 0.22em;               /* prevent last char clipping from trailing letter-spacing */
+  /* pure white — glow animation provides all the iridescence */
+  color: #ffffff;
+  /* glow layers: sun-yellow (hue ~95), not orange */
+  text-shadow:
+    0 0 12px oklch(94% 0.14 95 / 0.90),
+    0 0 36px oklch(90% 0.18 95 / 0.55),
+    0 0 80px oklch(86% 0.20 95 / 0.30);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+@keyframes brand-glow {
+  0%, 100% {
+    text-shadow:
+      0 0 10px oklch(94% 0.14 95 / 0.80),
+      0 0 28px oklch(90% 0.18 95 / 0.45),
+      0 0 65px oklch(86% 0.20 95 / 0.22);
+  }
+  50% {
+    text-shadow:
+      0 0 18px oklch(96% 0.12 95 / 0.95),
+      0 0 52px oklch(92% 0.17 95 / 0.65),
+      0 0 110px oklch(88% 0.19 95 / 0.40);
+  }
+}
+
+/* Light mode: ice-white text stays, glow shifts to teal color-mix */
+body.theme-light .hero__brand {
+  text-shadow:
+    0 0 12px color-mix(in oklab, var(--color-lake) 75%, transparent),
+    0 0 36px color-mix(in oklab, var(--color-lake) 45%, transparent),
+    0 0 80px color-mix(in oklab, var(--color-lake) 25%, transparent);
+  animation: brand-glow-light 5s ease-in-out infinite;
+}
+
+@keyframes brand-glow-light {
+  0%, 100% {
+    text-shadow:
+      0 0 10px color-mix(in oklab, var(--color-lake) 65%, transparent),
+      0 0 28px color-mix(in oklab, var(--color-lake) 38%, transparent),
+      0 0 65px color-mix(in oklab, var(--color-lake) 20%, transparent);
+  }
+  50% {
+    text-shadow:
+      0 0 18px color-mix(in oklab, var(--color-lake) 85%, transparent),
+      0 0 52px color-mix(in oklab, var(--color-lake) 55%, transparent),
+      0 0 110px color-mix(in oklab, var(--color-lake) 32%, transparent);
+  }
+}
+
+.hero__label {
+  margin-bottom: 2rem;
+}
+
+.hero__headline {
+  margin-bottom: 1.5rem;
+}
+
+.hero__subtext {
+  max-width: 38rem;
+  margin-inline: auto;
+  margin-bottom: 3rem;
+  font-size: clamp(1.125rem, 2vw, 1.35rem);
+  font-weight: 500;
+  line-height: 1.8;
+  color: var(--color-text-muted);
+}
+
+.hero__subtext em {
+  font-style: normal;
+  color: var(--color-text);
+}
+
+.hero__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+/* Scroll indicator */
+.hero__scroll {
+  position: absolute;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hero__scroll-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-white);
+  text-shadow: 0 1px 8px oklch(0% 0 0 / 0.30);
+}
+
+.hero__scroll-arrows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.hero__scroll-arrows span {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-right: 1.5px solid var(--color-white);
+  border-bottom: 1.5px solid var(--color-white);
+  transform: rotate(45deg);
+  filter: drop-shadow(0 0 4px oklch(0% 0 0 / 0.30));
+}
+
+.hero__scroll-arrows span:nth-child(1) { animation: 2.4s ease-in-out 0s   infinite arrow-pulse; }
+.hero__scroll-arrows span:nth-child(2) { animation: 2.4s ease-in-out 0.4s infinite arrow-pulse; }
+.hero__scroll-arrows span:nth-child(3) { animation: 2.4s ease-in-out 0.8s infinite arrow-pulse; }
+
+@keyframes arrow-pulse {
+  0%, 100% { opacity: 0.1; }
+  40%       { opacity: 0.7; }
+}
+
+/* ============================================================
+   WHO IS THIS FOR? SECTION
+   ============================================================ */
+#who-is-this {
+  overflow-x: clip;
+  text-align: center;
+}
+
+.who__inner {
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.who__title {
+  font-size: clamp(1.875rem, 3.5vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--color-lake-light);
+  margin-bottom: 2.75rem;
+}
+
+.who__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.who__card {
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  gap: 1.25rem;
+  padding: 1.625rem 1.875rem;
+  background: oklch(17% 0.030 207 / 0.55);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-lake-light);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s, border-left-color 0.18s, background 0.18s;
+}
+
+/* Re-establish 3D base after .fade-up.is-visible resets transform to none.
+   Also clear the fade-up transition-delay so it doesn't stall hover transitions. */
+.who__card.is-visible {
+  transform: perspective(800px) translateZ(0) translateY(0);
+  transition-delay: 0s;
+}
+
+.who__card.is-visible:hover {
+  transform: perspective(800px) translateZ(28px) translateY(-4px);
+  background: oklch(22% 0.072 200 / 0.78);
+  border-left-color: oklch(80% 0.125 193);
+  box-shadow:
+    0 24px 64px oklch(0% 0 0 / 0.50),
+    0 6px 20px oklch(59% 0.160 200 / 0.22);
+}
+
+.who__check {
+  color: var(--color-lake-light);
+  flex-shrink: 0;
+  margin-top: 0.3rem;
+}
+
+.who__card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.who__lead {
+  font-size: clamp(0.9375rem, 1.4vw, 1.0625rem);
+  line-height: 1.75;
+  color: var(--color-text);
+  text-align: justify;
+}
+
+.who__lead strong {
+  color: var(--color-lake-light);
+  font-weight: 600;
+}
+
+.who__sublines {
+  margin-top: 1rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.who__sublines p {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.who__sublines p + p {
+  margin-top: 0.3rem;
+}
+
+.who__closing {
+  margin-top: 2.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.who__closing p {
+  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-weight: 500;
+  font-style: italic;
+  color: var(--color-lake-light);
+  line-height: 1.65;
+}
+
+/* ============================================================
+   GLASS CARD
+   ============================================================ */
+.glass-card {
+  background: oklch(17% 0.030 207 / 0.7);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 2.25rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    border-color 0.3s var(--ease),
+    transform 0.35s var(--ease),
+    box-shadow 0.35s var(--ease);
+}
+
+.glass-card:hover {
+  border-color: var(--color-border-hover);
+  transform: translateY(-5px) scale(1.01);
+  box-shadow: var(--shadow-card), 0 0 30px var(--color-lake-mist);
+}
+
+.glass-card__icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-lake-mist);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  color: var(--color-lake-light);
+  font-size: 1.125rem;
+}
+
+.glass-card__title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-bottom: 0.625rem;
+  color: var(--color-text);
+}
+
+.glass-card__body {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+/* ============================================================
+   PRESENCE SECTION (large text block)
+   ============================================================ */
+.manifesto {
+  text-align: center;
+}
+
+/* "Not motivational hype." etc — italic, muted, stacked */
+.manifesto__nots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 2rem;
+}
+
+.manifesto__nots p {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-style: italic;
+  color: var(--color-text-muted);
+  letter-spacing: 0.01em;
+}
+
+/* "This is about setting you free…" */
+.manifesto__body {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 700;
+  color: var(--color-lake-light);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+/* "When you make choices…" and "In practice." */
+.manifesto__close {
+  font-size: clamp(1.0625rem, 1.8vw, 1.25rem);
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+/* "When you make choices…" — teal of "Clarity. Courage." */
+.manifesto__body + .manifesto__close {
+  color: var(--color-lake-light);
+}
+
+/* Gap before the CTA button */
+.manifesto__box .fade-up:last-child {
+  margin-top: clamp(2.5rem, 5vw, 4rem);
+}
+
+/* ============================================================
+   HOW WE WORK — Steps
+   ============================================================ */
+.steps__header {
+  max-width: 36rem;
+  margin-bottom: 4rem;
+}
+
+.steps__track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 0;
+  position: relative;
+}
+
+/* Connecting line on desktop */
+@media (min-width: 48rem) {
+  .steps__track::before {
+    content: '';
+    position: absolute;
+    top: 2.75rem;
+    left: calc(100% / 6);
+    right: calc(100% / 6);
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-border) 15%,
+      var(--color-border) 85%,
+      transparent
+    );
+    z-index: 0;
+  }
+}
+
+.step {
+  padding: 2rem 1.75rem;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.3s var(--ease);
+}
+
+.step:hover { transform: translateY(-4px); }
+
+.step__number {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-lake-light);
+  margin-bottom: 1.5rem;
+  letter-spacing: 0.02em;
+  transition: border-color 0.3s, background 0.3s, box-shadow 0.3s;
+}
+
+.step:hover .step__number {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+  box-shadow: 0 0 16px var(--color-lake-glow);
+}
+
+.step__amount {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--color-lake-light);
+  background: var(--color-lake-mist);
+  border: 1px solid var(--color-border);
+  border-radius: 99px;
+  padding: 0.2rem 0.7rem;
+  margin-bottom: 0.75rem;
+}
+
+.step__title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-bottom: 0.625rem;
+  color: var(--color-text);
+}
+
+.step__body {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.steps__footer {
+  margin-top: 3rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.steps__location {
+  width: 100%;
+  margin-top: 1.75rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* ============================================================
+   INVESTMENT — Pricing
+   ============================================================ */
+.investment__header {
+  max-width: 36rem;
+  margin-bottom: 3.5rem;
+}
+
+.investment__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 1.5rem;
+  max-width: 50rem;
+}
+
+.pricing-card {
+  padding: 2.5rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: oklch(17% 0.030 207 / 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.3s, transform 0.35s var(--ease), box-shadow 0.35s;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    var(--color-lake-mist) 0%,
+    transparent 60%
+  );
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+
+.pricing-card:hover {
+  border-color: var(--color-border-hover);
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-card);
+}
+
+.pricing-card:hover::before { opacity: 1; }
+
+.pricing-card__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+  margin-bottom: 1.5rem;
+}
+
+.pricing-card__amount {
+  font-size: clamp(2.25rem, 4vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+  line-height: 1;
+  margin-bottom: 0.375rem;
+}
+
+.pricing-card__amount span {
+  font-size: 1.125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--color-text-muted);
+}
+
+.pricing-card__desc {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.pricing-card__divider {
+  height: 1px;
+  background: var(--color-border);
+  margin-bottom: 2rem;
+}
+
+.pricing-card .btn {
+  min-height: 4.875rem;
+}
+
+.pricing-card__features {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 0.75rem;
+  margin-bottom: 2.25rem;
+}
+
+.pricing-card__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+}
+
+.pricing-card__feature::before {
+  content: '✓';
+  color: var(--color-lake-light);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 0.05em;
+}
+
+.pricing-card--featured {
+  border-color: var(--color-border-hover);
+  background: oklch(20% 0.035 207 / 0.75);
+}
+
+.pricing-card--featured:hover {
+  box-shadow: var(--shadow-card), 0 0 40px var(--color-lake-mist);
+}
+
+/* ============================================================
+   CALM MIRROR — Quote section
+   ============================================================ */
+.calm-mirror {
+  text-align: center;
+}
+
+.calm-mirror__inner {
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.calm-mirror__quote {
+  position: relative;
+  padding: 3rem 3rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: oklch(17% 0.030 207 / 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 2.5rem;
+}
+
+.calm-mirror__quote::before {
+  content: '"';
+  position: absolute;
+  top: -0.25rem;
+  left: 2rem;
+  font-size: 5rem;
+  line-height: 1;
+  color: var(--color-lake-mist);
+  font-family: Georgia, serif;
+}
+
+.calm-mirror__text {
+  font-size: clamp(1.0625rem, 2vw, 1.25rem);
+  line-height: 1.8;
+  color: var(--color-text);
+  font-weight: 300;
+  text-align: left;
+}
+
+.calm-mirror__text p + p {
+  margin-top: 1rem;
+}
+
+.calm-mirror__sublabel {
+  font-size: 0.875rem;
+  color: var(--color-lake-light);
+  letter-spacing: 0.04em;
+  margin-bottom: 0.625rem;
+}
+
+.calm-mirror__question {
+  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-weight: 300;
+  font-style: italic;
+  color: var(--color-lake-light);
+  line-height: 1.65;
+  margin-bottom: 2.5rem;
+}
+
+/* ============================================================
+   ACTING BEFORE REGRET
+   ============================================================ */
+#regret {
+  padding-top: calc(45vh - 5rem);
+}
+
+.regret__inner {
+  max-width: 100%;
+}
+
+.regret__grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 3rem;
+  align-items: start;
+}
+
+.regret__right {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding-top: 2rem;
+}
+
+@media (max-width: 48rem) {
+  .regret__grid { grid-template-columns: 1fr; }
+}
+
+.regret__quote {
+  position: relative;
+  padding: 2rem 1.5rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: oklch(17% 0.030 207 / 0.20);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 2.5rem;
+}
+
+.regret__quote::before {
+  content: '"';
+  position: absolute;
+  top: -0.25rem;
+  left: 2rem;
+  font-size: 5rem;
+  line-height: 1;
+  color: var(--color-lake-mist);
+  font-family: Georgia, serif;
+}
+
+.regret__text {
+  font-size: clamp(1.0625rem, 1.875vw, 1.3125rem);
+  font-weight: 300;
+  line-height: 1.65;
+  color: var(--color-text);
+}
+
+.regret__text p + p { margin-top: 1rem; }
+
+.regret__right .btn-arrow {
+  font-size: var(--step-1);
+  color: var(--color-lake-light);
+}
+
+.regret__teal {
+  color: var(--color-lake-light);
+}
+
+.regret__glow {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.65;
+  color: oklch(100% 0 0);
+  text-shadow:
+    0 0 12px oklch(42% 0.160 200 / 0.90),
+    0 0 36px oklch(42% 0.160 200 / 0.55),
+    0 0 80px oklch(42% 0.160 200 / 0.30);
+}
+
+/* ============================================================
+   FINAL CLOSE
+   ============================================================ */
+.final {
+  text-align: center;
+  background: transparent;
+  min-height: 100svh;
+}
+
+.final::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-bg-alt);
+  opacity: 1;
+  transition: opacity 2s ease;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.final.section-in-view::before {
+  opacity: 0;
+}
+
+.final__inner {
+  max-width: 100rem;
+  margin-inline: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.final__headline {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 400;
+  margin-bottom: 1.25rem;
+}
+
+.final__body {
+  max-width: 100rem;
+  margin-inline: auto;
+  margin-bottom: 3rem;
+}
+
+.final__body p {
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  line-height: 1.75;
+  color: var(--color-text-muted);
+}
+
+.final__body p + p { margin-top: 0.5rem; }
+
+.final__step {
+  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-weight: 500;
+  font-style: italic;
+  color: oklch(73% 0.130 195);
+  line-height: 1.65;
+  margin-bottom: 2.5rem;
+}
+
+body.theme-light .final__step {
+  color: oklch(38% 0.148 200);
+}
+
+.final__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* ============================================================
+   ABOUT STRIP
+   ============================================================ */
+.about-strip {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+  align-items: start;
+}
+
+@media (min-width: 48rem) {
+  .about-strip {
+    grid-template-columns: auto 1fr;
+    gap: 4rem;
+  }
+}
+
+.about-strip__photo {
+  width: clamp(10rem, 20vw, 14rem);
+  aspect-ratio: 1 / 1.7;
+  border-radius: var(--radius-xl);
+  object-fit: cover;
+  object-position: center top;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+  display: block;
+}
+
+.about-strip__photo-wrap {
+  position: relative;
+  display: inline-block;
+  align-self: start;
+}
+
+@media (max-width: 48rem) {
+  .about-strip__photo-wrap {
+    display: block;
+    width: fit-content;
+    margin-inline: auto;
+  }
+}
+
+.about-strip__photo-wrap::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: calc(var(--radius-xl) + 6px);
+  border: 1px solid var(--color-border);
+  pointer-events: none;
+}
+
+.about-strip__name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-lake-light);
+  margin-bottom: 0.75rem;
+}
+
+.about-strip__content {
+  max-width: 60ch;
+}
+
+.about-strip__content .label {
+  display: block;
+  margin-bottom: 1.5rem;
+}
+
+.about-accent {
+  font-weight: 700;
+  color: var(--color-lake-light);
+}
+
+.about-strip__text {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--color-text-muted);
+  margin-bottom: 1.75rem;
+  /* text-align: justify; */
+}
+
+/* ============================================================
+   REVIEWS
+   ============================================================ */
+#reviews .label {
+  display: block;
+  margin-bottom: 2rem;
+}
+
+.reviews-bubbles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(1rem, 2vw, 1.5rem);
+  align-items: start;
+}
+
+.bubble-card {
+  margin-bottom: 0;
+}
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.bubble-msg {
+  background: oklch(20% 0.030 210);
+  border: 1px solid oklch(59% 0.160 200 / 0.22);
+  border-radius: 1.25rem;
+  padding: 0.8125rem 1.125rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  max-width: 100%;
+  box-shadow: 0 2px 14px oklch(0% 0 0 / 0.20);
+  position: relative;
+}
+
+/* Last bubble in a group — pointed tail */
+.bubble-card .bubble-msg:last-child {
+  border-bottom-left-radius: 0.25rem;
+}
+
+.bubble-card .bubble-msg:last-child::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -9px;
+  width: 0;
+  height: 0;
+  border-right: 10px solid oklch(20% 0.030 210);
+  border-top: 12px solid transparent;
+}
+
+/* Light mode bubbles */
+body.theme-light .bubble-msg {
+  background: oklch(99% 0.006 200);
+  color: oklch(14% 0.025 210);
+  border-color: oklch(44% 0.152 200 / 0.18);
+  box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
+}
+
+body.theme-light .bubble-card .bubble-msg:last-child::after {
+  border-right-color: oklch(99% 0.006 200);
+}
+
+/* Alternating bubble colour */
+.bubble-card:nth-child(even) .bubble-msg {
+  background: oklch(19% 0.055 200);
+  border-color: oklch(59% 0.160 200 / 0.32);
+}
+
+.bubble-card:nth-child(even) .bubble-msg:last-child::after {
+  border-right-color: oklch(19% 0.055 200);
+}
+
+body.theme-light .bubble-card:nth-child(even) .bubble-msg {
+  background: oklch(95% 0.022 200);
+  border-color: oklch(44% 0.152 200 / 0.22);
+}
+
+body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
+  border-right-color: oklch(95% 0.022 200);
+}
+
+/* Keeps the later review-close section image styling unchanged. */
+.reviews__wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.reviews__img {
+  width: 100%;
+  max-width: clamp(28rem, 72vw, 54rem);
+  border-radius: var(--radius-xl);
+  display: block;
+}
+
+.reviews__img--single {
+  max-width: clamp(20rem, 55vw, 36rem);
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.footer {
+  border-top: 1px solid var(--color-border);
+  padding-block: 2.5rem;
+}
+
+.footer__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  width: var(--container);
+  margin-inline: auto;
+}
+
+.footer__logo {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.footer__logo span { color: var(--color-lake-light); }
+
+.footer__links {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.footer__links a {
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  transition: color 0.2s;
+}
+
+.footer__links a:hover { color: var(--color-text-muted); }
+
+.footer__copy {
+  font-size: 0.8125rem;
+  color: var(--color-text-subtle);
+}
+
+/* ============================================================
+   SCROLL REVEAL ANIMATIONS
+   ============================================================ */
+.fade-up {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.75s var(--ease),
+    transform 0.75s var(--ease);
+}
+
+.fade-up.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.fade-up--delay-1 { transition-delay: 0.1s; }
+.fade-up--delay-2 { transition-delay: 0.2s; }
+.fade-up--delay-3 { transition-delay: 0.3s; }
+.fade-up--delay-4 { transition-delay: 0.4s; }
+.fade-up--delay-5 { transition-delay: 0.5s; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 47.9375rem) {
+  .nav__links,
+  .nav__cta { display: none; }
+  .nav__hamburger { display: flex; }
+
+  .hero__content { padding-block: 4rem 3rem; }
+  .hero__actions { flex-direction: column; align-items: stretch; }
+  .hero__actions .btn { width: 100%; }
+
+  .steps__track::before { display: none; }
+  .step { padding: 1.5rem 0; border-bottom: 1px solid var(--color-border); }
+  .step:last-child { border-bottom: none; }
+
+  .calm-mirror__quote { padding: 2.25rem 1.75rem; }
+  .calm-mirror__quote::before { left: 1.25rem; }
+
+  .reviews-bubbles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 2-column only: reset even→A, then re-apply checkerboard via 4n pattern */
+@media (min-width: 32.0625rem) and (max-width: 47.9375rem) {
+  /* Reset cards that were B globally but should be A in 2-col (cards 4, 8…) */
+  .bubble-card:nth-child(even) .bubble-msg {
+    background: oklch(20% 0.030 210);
+    border-color: oklch(59% 0.160 200 / 0.22);
+    box-shadow: 0 2px 14px oklch(0% 0 0 / 0.20);
+  }
+  .bubble-card:nth-child(even) .bubble-msg:last-child::after {
+    border-right-color: oklch(20% 0.030 210);
+  }
+
+  /* Apply B to 2-col checkerboard positions (cards 2, 3, 6, 7…) */
+  .bubble-card:nth-child(4n+2) .bubble-msg,
+  .bubble-card:nth-child(4n+3) .bubble-msg {
+    background: oklch(19% 0.055 200);
+    border-color: oklch(59% 0.160 200 / 0.32);
+  }
+  .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
+  .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
+    border-right-color: oklch(19% 0.055 200);
+  }
+
+  /* Light mode */
+  body.theme-light .bubble-card:nth-child(even) .bubble-msg {
+    background: oklch(99% 0.006 200);
+    border-color: oklch(44% 0.152 200 / 0.18);
+    box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
+  }
+  body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
+    border-right-color: oklch(99% 0.006 200);
+  }
+  body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg,
+  body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg {
+    background: oklch(95% 0.022 200);
+    border-color: oklch(44% 0.152 200 / 0.22);
+  }
+  body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
+  body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
+    border-right-color: oklch(95% 0.022 200);
+  }
+}
+
+@media (max-width: 32rem) {
+  .pricing-card { padding: 1.875rem 1.5rem; }
+  .reviews-bubbles {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ============================================================
+   FOCUS / ACCESSIBILITY
+   ============================================================ */
+:focus-visible {
+  outline: 2px solid var(--color-lake-light);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 0.5rem 1rem;
+  background: var(--color-bg);
+  color: var(--color-lake-light);
+  z-index: 999;
+  transform: translateY(-120%);
+  transition: transform 0.2s;
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.skip-link:focus { transform: translateY(0); }
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+.text-center  { text-align: center; }
+.text-muted   { color: var(--color-text-muted); }
+.text-lake    { color: var(--color-lake-light); }
+.mt-sm        { margin-top: 1rem; }
+.mt-md        { margin-top: 1.75rem; }
+.mt-lg        { margin-top: 2.5rem; }
+.mt-xl        { margin-top: 3.5rem; }
+.mb-sm        { margin-top: 1rem; }
+.mb-md        { margin-bottom: 1.75rem; }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ============================================================
+   THEME TRANSITION
+   Applied on body so color changes animate smoothly
+   ============================================================ */
+body {
+  transition:
+    background-color 0.5s var(--ease),
+    color 0.3s var(--ease);
+}
+
+/* ============================================================
+   THEME TOGGLE BUTTON
+   ============================================================ */
+.theme-toggle {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  z-index: 200;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--color-lake-light);
+  box-shadow: var(--shadow-card);
+  transition:
+    background 0.3s var(--ease),
+    border-color 0.3s var(--ease),
+    transform 0.3s var(--ease-spring),
+    box-shadow 0.3s var(--ease),
+    color 0.3s var(--ease);
+  overflow: hidden;
+}
+
+.theme-toggle:hover {
+  border-color: var(--color-border-hover);
+  transform: scale(1.1);
+  box-shadow: 0 0 22px var(--color-lake-glow), var(--shadow-card);
+}
+
+.theme-toggle:active { transform: scale(0.95); }
+
+/* Icons inside the toggle */
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  position: absolute;
+  transition:
+    opacity 0.35s var(--ease),
+    transform 0.4s var(--ease-spring);
+}
+
+/* Dark mode: show moon, hide sun */
+.theme-toggle .icon-moon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+.theme-toggle .icon-sun {
+  opacity: 0;
+  transform: scale(0.4) rotate(90deg);
+}
+
+/* Light mode: show sun, hide moon */
+body.theme-light .theme-toggle .icon-moon {
+  opacity: 0;
+  transform: scale(0.4) rotate(-90deg);
+}
+body.theme-light .theme-toggle .icon-sun {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+/* ============================================================
+   LIGHT THEME — Token overrides
+   All components inherit from these via CSS custom properties
+   ============================================================ */
+body.theme-light {
+  /* Backgrounds */
+  --color-bg:           oklch(96.5% 0.007 195);
+  --color-bg-alt:       oklch(93%   0.010 193);
+  --color-bg-card:      oklch(99%   0.005 195);
+
+  /* Lake — darker for readability on light bg */
+  --color-lake-deep:    oklch(36%   0.160 204);
+  --color-lake:         oklch(44%   0.152 200);
+  --color-lake-light:   oklch(38%   0.148 200);
+  --color-lake-mist:    oklch(44%   0.152 200 / 0.09);
+  --color-lake-glow:    oklch(44%   0.152 200 / 0.22);
+
+  /* Text — dark on light */
+  --color-text:         oklch(14%   0.025 210);
+  --color-text-muted:   oklch(36%   0.022 208);
+  --color-text-subtle:  oklch(55%   0.018 210);
+
+  /* Borders */
+  --color-border:       oklch(44%   0.152 200 / 0.14);
+  --color-border-hover: oklch(44%   0.152 200 / 0.34);
+
+  /* Shadows */
+  --shadow-glow: 0 0 22px oklch(44% 0.152 200 / 0.18);
+  --shadow-card: 0 4px 24px oklch(14% 0.025 210 / 0.08), 0 1px 4px oklch(14% 0.025 210 / 0.06);
+}
+
+/* ── Light body background: raw alpine lake image —
+     each section controls its own overlay via background-color ── */
+body.theme-light {
+  background-color: oklch(96.5% 0.007 195);
+}
+
+/* Background image lives on its own fixed layer so we can
+   filter it independently (e.g. grayscale on recognition) */
+#bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: -20;
+  pointer-events: none;
+}
+
+body.theme-light #bg-layer {
+  background-image: url('../img/alpine_lake_horizontal.png');
+  background-size: cover;
+  background-position: center 38%;
+  background-attachment: fixed;
+  filter: grayscale(0);
+  transition: filter 1.2s ease;
+}
+
+body.theme-light #bg-layer.bg-grayscale {
+  filter: grayscale(1) brightness(0.72);
+}
+
+/* ── Light: Nav scrolled ── */
+body.theme-light .nav.scrolled {
+  background: oklch(96.5% 0.007 195 / 0.88);
+  border-bottom-color: var(--color-border);
+}
+
+/* ── Light: Glass cards ── */
+body.theme-light .glass-card {
+  background: oklch(99% 0.005 195 / 0.72);
+  box-shadow: 0 4px 20px oklch(14% 0.025 210 / 0.06);
+}
+
+body.theme-light .glass-card:hover {
+  box-shadow: var(--shadow-card), 0 0 24px var(--color-lake-mist);
+}
+
+/* ── Light: Who Is This For? cards — frosted glass, dark text ── */
+body.theme-light .who__card {
+  background: oklch(99% 0.008 195 / 0.58);
+  border-left-color: oklch(38% 0.148 200);
+  box-shadow: 0 2px 14px oklch(14% 0.025 210 / 0.06);
+  --color-text:        oklch(14%  0.025 210);
+  --color-text-muted:  oklch(36%  0.022 208);
+  --color-lake-light:  oklch(38%  0.148 200);
+  --color-border:      oklch(44%  0.152 200 / 0.14);
+}
+
+body.theme-light .who__card.is-visible:hover {
+  background: oklch(97% 0.014 195 / 0.76);
+  border-left-color: oklch(38% 0.160 200);
+  box-shadow:
+    0 24px 64px oklch(14% 0.025 210 / 0.20),
+    0 6px 20px oklch(38% 0.148 200 / 0.20);
+}
+
+/* ── Light: Pricing cards ── */
+body.theme-light .pricing-card {
+  background: oklch(99% 0.005 195 / 0.75);
+}
+
+body.theme-light .pricing-card--featured {
+  background: oklch(97% 0.012 200 / 0.85);
+  border-color: var(--color-border-hover);
+}
+
+body.theme-light .pricing-card:hover {
+  box-shadow: var(--shadow-card), 0 0 28px var(--color-lake-mist);
+}
+
+/* ── Light: Regret quote ── */
+body.theme-light .regret__quote {
+  background: oklch(99% 0.005 195 / 0.45);
+  --color-text:        oklch(14%  0.025 210);
+  --color-text-muted:  oklch(36%  0.022 208);
+  --color-lake-light:  oklch(38%  0.148 200);
+}
+
+body.theme-light .regret__quote::before {
+  color: oklch(59% 0.160 200 / 0.35);
+  opacity: 1;
+}
+
+/* ── Light: Calm mirror quote ── */
+body.theme-light .calm-mirror__quote {
+  background: oklch(99% 0.005 195 / 0.65);
+}
+
+body.theme-light .calm-mirror__quote::before {
+  color: var(--color-lake-mist);
+  opacity: 0.6;
+}
+
+/* ── Light: Section alt ── */
+body.theme-light .section--alt.section-in-view {
+  background-color: oklch(93% 0.012 193 / 0.7);
+}
+
+/* ── Light: Step numbers ── */
+body.theme-light .step__number {
+  background: oklch(99% 0.005 195);
+}
+
+body.theme-light .step:hover .step__number {
+  background: var(--color-lake-mist);
+}
+
+/* ── Light: BTN primary stays the same (dark teal on light is fine) ── */
+body.theme-light .btn-secondary {
+  background: oklch(99% 0.005 195 / 0.6);
+}
+
+body.theme-light .btn-secondary:hover {
+  background: var(--color-lake-mist);
+}
+
+/* ── Light: Section dividers ── */
+body.theme-light .section-divider {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(44% 0.152 200 / 0.15) 20%,
+    oklch(44% 0.152 200 / 0.15) 80%,
+    transparent
+  );
+}
+
+/* ── Light: About strip photo border ── */
+body.theme-light .about-strip__photo-wrap::after {
+  border-color: var(--color-border);
+}
+
+/* ── Light: Footer ── */
+body.theme-light .footer {
+  background-color: oklch(93% 0.010 193 / 0.8);
+}
+
+body.theme-light .nav__mobile {
+  background: oklch(96.5% 0.007 195 / 0.95);
+}
+
+/* ============================================================
+   ALTERNATING OPACITY — Breathing sections
+   Full sections: solid overlay  ·  Light sections: lake shines through
+   Final section echoes the opening screen (near-transparent)
+   ============================================================ */
+
+/* ── Dark mode: make section--alt "light" sections semi-transparent
+     so canvas waves breathe through them ── */
+body:not(.theme-light) #not-this.section-in-view,
+body:not(.theme-light) #investment.section-in-view,
+body:not(.theme-light) #who-is-this.section-in-view {
+  background-color: oklch(14% 0.025 208 / 0.22);
+}
+
+/* ── Light mode: hero::after provides full-width bg for hero__content
+     (leaves hero__intro fully transparent so the lake shines through) ── */
+body.theme-light .hero::after {
+  content: '';
+  position: absolute;
+  top: 100svh;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: oklch(96.5% 0.007 195 / 0.82);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* ── Light mode: full-opacity sections ── */
+body.theme-light #how-we-work.section-in-view {
+  background-color: oklch(96.5% 0.007 195 / 0.82);
+}
+
+/* ── Light mode: calm mirror + review close — fully opaque, no lake showing through ── */
+body.theme-light #calm-mirror.section-in-view,
+body.theme-light #review-close.section-in-view {
+  background-color: oklch(96.5% 0.007 195 / 1.0);
+}
+
+/* review-close appears instantly — no fade, so #final's reveal is the dramatic moment ── */
+#review-close,
+#about {
+  transition: none;
+}
+
+/* ── Light mode: transparent "lake" sections — let the alpine image breathe ── */
+body.theme-light #not-this.section-in-view,
+body.theme-light #investment.section-in-view,
+body.theme-light #who-is-this.section-in-view,
+body.theme-light #regret.section-in-view,
+body.theme-light #about.section-in-view,
+body.theme-light #reviews.section-in-view {
+  background-color: oklch(96.5% 0.007 195 / 0.35);
+  /* Override text tokens so everything in these sections reads white on the lake */
+  --color-text:        oklch(97%  0.008 200);
+  --color-text-muted:  oklch(90%  0.012 200);
+  --color-text-subtle: oklch(80%  0.010 200);
+  --color-border:      oklch(100% 0    0   / 0.20);
+  /* --color-lake-light / --color-lake: intentionally NOT overridden here —
+     they inherit from body.theme-light (dark navy = same as "Clarity. Courage." gradient) */
+}
+
+/* ── About: fully transparent — lake shines through completely ── */
+body.theme-light #about.section-in-view {
+  background-color: oklch(96.5% 0.007 195 / 0);
+}
+
+/* ── Regret: near-opaque — building toward the final reveal ── */
+body.theme-light #regret.section-in-view {
+  background-color: oklch(96.5% 0.007 195 / 0.90);
+}
+
+/* Restore normal light-mode dark colors inside pricing cards
+   (they have their own opaque background so dark text stays readable) */
+body.theme-light #investment .pricing-card {
+  --color-text:        oklch(14%  0.025 210);
+  --color-text-muted:  oklch(36%  0.022 208);
+  --color-text-subtle: oklch(55%  0.018 210);
+  --color-lake-light:  oklch(38%  0.148 200);
+  --color-lake:        oklch(44%  0.152 200);
+  --color-border:      oklch(44%  0.152 200 / 0.14);
+}
+
+/* ── Light mode: final section — opaque overlay fades out on scroll ── */
+body.theme-light .final::before {
+  background: oklch(96.5% 0.007 195 / 1.0);
+}
+
+body.theme-light .final {
+  background-color: oklch(96.5% 0.007 195 / 0);
+  --color-text:        oklch(100% 0     0  );
+  --color-text-muted:  oklch(93%  0.008 200);
+  --color-text-subtle: oklch(88%  0.008 200);
+  --color-lake-light:  oklch(100% 0     0  );
+  --color-lake:        oklch(96%  0.010 200);
+}
+
+/* ── Light mode: about + reviews glass box — same pattern as manifesto__box ── */
+body.theme-light #about .about-strip__content,
+body.theme-light #reviews .container {
+  background: oklch(97% 0.012 200 / 0.65);
+  border-radius: 1.5rem;
+  padding: 3.5rem 2.5rem;
+  --color-text:        oklch(14%  0.025 210);
+  --color-text-muted:  oklch(36%  0.022 208);
+  --color-text-subtle: oklch(55%  0.018 210);
+  --color-lake-light:  oklch(38%  0.148 200);
+  --color-lake:        oklch(44%  0.152 200);
+  --color-border:      oklch(44%  0.152 200 / 0.14);
+}
+
+/* ── Light mode: manifesto glass box — dark text since bg is light ── */
+body.theme-light #not-this .manifesto__box {
+  background: oklch(97% 0.012 200 / 0.45);
+  border-radius: 1.5rem;
+  padding: 3.5rem 2.5rem;
+  --color-text:        oklch(14%  0.025 210);
+  --color-text-muted:  oklch(36%  0.022 208);
+  --color-text-subtle: oklch(55%  0.018 210);
+  --color-lake-light:  oklch(38%  0.148 200);
+  --color-lake:        oklch(44%  0.152 200);
+  --color-border:      oklch(44%  0.152 200 / 0.14);
+}
+
+/* ── Light mode: regret — fix unreadable teal/green accents + strengthen body text ── */
+body.theme-light #regret {
+  --color-lake-light: oklch(100% 0 0);
+  --color-lake:       oklch(95%  0.010 200);
+}
+
+body.theme-light #regret .regret__right .btn-arrow {
+  color: oklch(38% 0.148 200);
+}
+
+
+/* ── Light mode: "self-love" — bold greenish accent ── */
+body.theme-light #not-this .manifesto__selflove-line {
+  font-size: clamp(1.125rem, 1.8vw, 1.375rem);
+  margin-top: 0.75rem;
+}
+
+body.theme-light #not-this .manifesto__selflove {
+  font-weight: 700;
+  font-size: 1.35em;
+  color: oklch(100% 0 0);
+  text-shadow:
+    0 0 8px  oklch(28% 0.110 240 / 0.70),
+    0 0 22px oklch(28% 0.110 240 / 0.40);
+}
+
+/* ── "Clarity / Harmony is possible." — ILLUMINATE glow (dark mode) ── */
+.final__body p {
+  font-family: 'Poppins', var(--font);
+  font-weight: 400;
+  font-size: clamp(3.4rem, 4vw, 3.4rem);
+  /* font-style: italic; */
+  letter-spacing: 0.04em;
+  color: oklch(100% 0 0);
+  text-shadow:
+    0 0 12px oklch(94% 0.14 95 / 0.90),
+    0 0 36px oklch(90% 0.18 95 / 0.55),
+    0 0 80px oklch(86% 0.20 95 / 0.30);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+/* ── Light mode override: teal lake glow — mirrors brand-glow-light ── */
+@keyframes final-reveal-glow {
+  0%, 100% {
+    text-shadow:
+      0 0 10px oklch(44% 0.152 200 / 0.65),
+      0 0 28px oklch(44% 0.152 200 / 0.38),
+      0 0 65px oklch(44% 0.152 200 / 0.20);
+  }
+  50% {
+    text-shadow:
+      0 0 18px oklch(44% 0.152 200 / 0.85),
+      0 0 52px oklch(44% 0.152 200 / 0.55),
+      0 0 110px oklch(44% 0.152 200 / 0.35);
+  }
+}
+
+body.theme-light .final__body p {
+  text-shadow:
+    0 0 10px oklch(44% 0.152 200 / 0.65),
+    0 0 28px oklch(44% 0.152 200 / 0.38),
+    0 0 65px oklch(44% 0.152 200 / 0.20);
+  animation: final-reveal-glow 5s ease-in-out infinite;
+}
+
+/* ============================================================
+   WORLDVIEW PAGE
+   ============================================================ */
+
+/* Page header */
+.worldview-header {
+  padding-block: var(--section-py);
+  text-align: center;
+}
+
+/* Table of contents */
+.worldview-toc {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 2rem 2.5rem;
+  margin-block: 3rem;
+}
+
+.worldview-toc__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-lake-light);
+  margin-bottom: 1rem;
+}
+
+.worldview-toc__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.worldview-toc__list a {
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  transition: color 0.2s;
+}
+
+.worldview-toc__list a:hover {
+  color: var(--color-lake-light);
+}
+
+/* Article */
+.worldview-article {
+  padding: 3rem 3.5rem;
+}
+
+.worldview-article:hover {
+  transform: none;
+}
+
+.worldview-article + .worldview-article {
+  margin-top: 2rem;
+}
+
+@media (max-width: 47.9375rem) {
+  .worldview-article { padding: 2rem 1.5rem; }
+}
+
+/* Nav current page indicator */
+.nav__links a[aria-current="page"],
+.nav__mobile a[aria-current="page"] {
+  color: var(--color-lake-light);
+}
+
+/* About section worldview link spacing */
+.about-strip__worldview-link {
+  margin-top: 1.25rem;
+  display: inline-flex;
+}
+
+/* Switzerland location note */
+.about-strip__location {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.about-strip__location .about-strip__text {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
