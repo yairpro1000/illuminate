@@ -18,11 +18,15 @@ for f in _redirects _headers _routes.json CNAME; do
 done
 
 # Copy site asset folders (if present)
-for d in css js img pa-v1; do
+for d in css js img; do
   if [[ -d "${root_dir}/${d}" ]]; then
     cp -R "${root_dir}/${d}" "${dist_dir}/"
   fi
 done
 
-echo "Built ${dist_dir}"
+# Copy simple admin landing (static)
+if [[ -d "${root_dir}/admin" ]]; then
+  cp -R "${root_dir}/admin" "${dist_dir}/"
+fi
 
+echo "Built ${dist_dir}"
