@@ -7,7 +7,6 @@ compatibility_date = "2026-03-05"
 
 # Secrets (set via `wrangler secret put`):
 # - SUPABASE_URL
-# - SUPABASE_SERVICE_ROLE_KEY
+# - SUPABASE_SECRET_KEY
 # - OPENAI_API_KEY (optional)
 # - OPENAI_MODEL (optional)
-

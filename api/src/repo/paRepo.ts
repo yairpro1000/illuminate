@@ -39,6 +39,9 @@ type PaListRow = {
   title: string;
   description: string | null;
   ui_default_sort: string | null;
+  items_revision?: any;
+  items_updated_at?: string;
+  items_updated_by?: string | null;
 };
 
 type PaListAliasRow = {
@@ -46,14 +49,17 @@ type PaListAliasRow = {
   alias: string;
 };
 
-type PaListFieldRow = {
-  list_id: string;
+type PaBaseFieldRow = {
   name: string;
   type: string;
   default_value_json: any;
   nullable: boolean;
   description: string | null;
   ui_show_in_preview: boolean | null;
+};
+
+type PaListCustomFieldRow = PaBaseFieldRow & {
+  list_id: string;
 };
 
 type PaListItemRow = {
@@ -70,6 +76,20 @@ type PaListItemRow = {
   unarchived_at: string | null;
   extra_fields: Record<string, unknown>;
 };
+
+function conflict(details?: Record<string, unknown>) {
+  const err = new Error("conflict");
+  (err as any).status = 409;
+  if (details) (err as any).details = JSON.stringify(details);
+  return err;
+}
+
+function httpError(status: number, message: string, details?: string) {
+  const err = new Error(message);
+  (err as any).status = status;
+  if (typeof details === "string") (err as any).details = details;
+  return err;
+}
 
 const coreToDbColumn: Record<string, keyof PaListItemRow> = {
   text: "text",
@@ -93,17 +113,60 @@ function toIsoOrNull(v: unknown): string | null {
 function fromDbRow(row: PaListItemRow): ListItem {
   const out: Record<string, unknown> = {
     id: row.id,
-    createdAt: new Date(row.created_at).toISOString(),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     text: row.text,
     priority: row.priority,
     color: row.color,
     status: row.status,
     order: row.order,
-    archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : null,
-    unarchivedAt: row.unarchived_at ? new Date(row.unarchived_at).toISOString() : null,
+    archivedAt: row.archived_at,
+    unarchivedAt: row.unarchived_at,
     ...(row.extra_fields ?? {}),
   };
   return out as ListItem;
+}
+
+const baseFieldNames = new Set([
+  "text",
+  "priority",
+  "color",
+  "order",
+  "status",
+  "archivedAt",
+  "unarchivedAt",
+]);
+
+const fallbackBaseDefs: Record<string, FieldDef> = {
+  text: { type: "string" },
+  priority: { type: "int", default: 3 },
+  color: { type: "string", default: null, nullable: true },
+  order: { type: "int", default: 0 },
+  status: { type: "string", default: "todo" },
+  archivedAt: { type: "date", default: null, nullable: true },
+  unarchivedAt: { type: "date", default: null, nullable: true },
+};
+
+function fieldRowToDef(f: {
+  type: string;
+  default_value_json: any;
+  nullable: boolean;
+  description: string | null;
+  ui_show_in_preview: boolean | null;
+}): FieldDef {
+  return {
+    type: f.type as any,
+    ...(f.default_value_json !== null ? { default: f.default_value_json } : {}),
+    ...(typeof f.nullable === "boolean" ? { nullable: f.nullable } : {}),
+    ...(typeof f.description === "string" ? { description: f.description } : {}),
+    ...(typeof f.ui_show_in_preview === "boolean" ? { ui: { showInPreview: f.ui_show_in_preview } } : {}),
+  };
+}
+
+async function touchList(db: Db, listId: string, updatedBy: string) {
+  const { data, error } = await db.rpc("pa_touch_list", { p_list_id: listId, p_updated_by: updatedBy });
+  if (error) throw error;
+  return typeof data === "number" ? data : Number(data);
 }
 
 function splitFields(input: Record<string, unknown>) {
@@ -139,33 +202,50 @@ async function getMaxOrderInBucket(db: Db, listId: string, priority: number) {
 
 export type PaRepo = {
   loadSchemaRegistry(): Promise<SchemaRegistry>;
+  listListsForUi(): Promise<
+    Array<{
+      id: string;
+      title: string;
+      description: string;
+      aliases: string[];
+      fields: Record<string, FieldDef>;
+      ui: any;
+      meta: { revision: number; itemsUpdatedAt: string; itemsUpdatedBy: string | null };
+    }>
+  >;
   listLists(schema: SchemaRegistry): Promise<
     Array<{ id: string; title: string; description: string; aliases: string[]; fields: Record<string, FieldDef>; ui: any }>
   >;
   readListItems(schema: SchemaRegistry, listId: string): Promise<ListItem[]>;
-  appendItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, fields: Record<string, unknown>): Promise<{ listId: string; item: ListItem }>;
-  updateItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, patch: Record<string, unknown>): Promise<{ listId: string; item: ListItem }>;
-  deleteItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string): Promise<{ listId: string; deletedId: string }>;
-  moveItem(schema: SchemaRegistry, fromListIdInput: string, toListIdInput: string, itemId: string): Promise<{ fromListId: string; toListId: string; itemId: string; moved: boolean }>;
-  reorderWithinPriorityBucket(schema: SchemaRegistry, listIdInput: string, priority: number, orderedIds: string[]): Promise<{ listId: string; priority: number; orderedIds: string[] }>;
+  appendItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, fields: Record<string, unknown>, opts: { updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
+  updateItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, patch: Record<string, unknown>, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
+  deleteItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; deletedId: string }>;
+  moveItem(schema: SchemaRegistry, fromListIdInput: string, toListIdInput: string, itemId: string, opts: { updatedBy: string }): Promise<{ fromListId: string; toListId: string; itemId: string; moved: boolean }>;
+  reorderWithinPriorityBucket(schema: SchemaRegistry, listIdInput: string, priority: number, orderedIds: string[], opts: { expectedRevision: number; updatedBy: string }): Promise<{ listId: string; priority: number; orderedIds: string[]; revision: number }>;
   createList(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "create_list" }>): Promise<{ listId: string; created: boolean }>;
-  addFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "add_fields" }>): Promise<{ listId: string; added: string[]; migrated: number }>;
+  addFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "add_fields" }>, opts: { updatedBy: string }): Promise<{ listId: string; added: string[]; migrated: number }>;
 };
 
 export function makePaRepo(db: Db): PaRepo {
   return {
     async loadSchemaRegistry() {
-      const [{ data: lists, error: listErr }, { data: aliases, error: aliasErr }, { data: fields, error: fieldErr }] =
-        await Promise.all([
-          db.from("pa_lists").select("list_id,title,description,ui_default_sort"),
-          db.from("pa_list_aliases").select("list_id,alias"),
-          db.from("pa_list_fields").select(
-            "list_id,name,type,default_value_json,nullable,description,ui_show_in_preview",
-          ),
-        ]);
+      const [
+        { data: lists, error: listErr },
+        { data: aliases, error: aliasErr },
+        { data: baseFields, error: baseErr },
+        { data: customFields, error: customErr },
+      ] = await Promise.all([
+        db.from("pa_lists").select("list_id,title,description,ui_default_sort"),
+        db.from("pa_list_aliases").select("list_id,alias"),
+        db.from("pa_base_fields").select("name,type,default_value_json,nullable,description,ui_show_in_preview"),
+        db
+          .from("pa_list_custom_fields")
+          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview"),
+      ]);
       if (listErr) throw listErr;
       if (aliasErr) throw aliasErr;
-      if (fieldErr) throw fieldErr;
+      if (baseErr) throw baseErr;
+      if (customErr) throw customErr;
 
       const registry: SchemaRegistry = { version: 1, lists: {} };
 
@@ -176,8 +256,12 @@ export function makePaRepo(db: Db): PaRepo {
         aliasByList.set(a.list_id, prev);
       }
 
-      const fieldsByList = new Map<string, PaListFieldRow[]>();
-      for (const f of (fields ?? []) as PaListFieldRow[]) {
+      const baseDefs: Record<string, FieldDef> = {};
+      for (const f of (baseFields ?? []) as PaBaseFieldRow[]) baseDefs[f.name] = fieldRowToDef(f);
+      if (Object.keys(baseDefs).length === 0) Object.assign(baseDefs, fallbackBaseDefs);
+
+      const fieldsByList = new Map<string, PaListCustomFieldRow[]>();
+      for (const f of (customFields ?? []) as PaListCustomFieldRow[]) {
         const prev = fieldsByList.get(f.list_id) ?? [];
         prev.push(f);
         fieldsByList.set(f.list_id, prev);
@@ -185,17 +269,11 @@ export function makePaRepo(db: Db): PaRepo {
 
       for (const l of (lists ?? []) as PaListRow[]) {
         const listId = l.list_id;
-        const defs: Record<string, FieldDef> = {};
+        const defs: Record<string, FieldDef> = { ...baseDefs };
         for (const f of fieldsByList.get(listId) ?? []) {
-          defs[f.name] = {
-            type: f.type as any,
-            ...(f.default_value_json !== null ? { default: f.default_value_json } : {}),
-            ...(typeof f.nullable === "boolean" ? { nullable: f.nullable } : {}),
-            ...(typeof f.description === "string" ? { description: f.description } : {}),
-            ...(typeof f.ui_show_in_preview === "boolean"
-              ? { ui: { showInPreview: f.ui_show_in_preview } }
-              : {}),
-          };
+          // Be tolerant of older/bad imports that duplicated base fields into custom-fields table.
+          if (baseDefs[f.name]) continue;
+          defs[f.name] = fieldRowToDef(f);
         }
         registry.lists[listId] = {
           title: l.title,
@@ -209,6 +287,68 @@ export function makePaRepo(db: Db): PaRepo {
       const parsed = SchemaRegistryZ.safeParse(registry);
       if (!parsed.success) throw new Error(`Invalid schema registry in DB: ${parsed.error.message}`);
       return parsed.data;
+    },
+
+    async listListsForUi() {
+      const [
+        { data: lists, error: listErr },
+        { data: aliases, error: aliasErr },
+        { data: baseFields, error: baseErr },
+        { data: customFields, error: customErr },
+      ] = await Promise.all([
+        db.from("pa_lists").select("list_id,title,description,ui_default_sort,items_revision,items_updated_at,items_updated_by"),
+        db.from("pa_list_aliases").select("list_id,alias"),
+        db.from("pa_base_fields").select("name,type,default_value_json,nullable,description,ui_show_in_preview"),
+        db
+          .from("pa_list_custom_fields")
+          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview"),
+      ]);
+      if (listErr) throw listErr;
+      if (aliasErr) throw aliasErr;
+      if (baseErr) throw baseErr;
+      if (customErr) throw customErr;
+
+      const aliasByList = new Map<string, string[]>();
+      for (const a of (aliases ?? []) as PaListAliasRow[]) {
+        const prev = aliasByList.get(a.list_id) ?? [];
+        prev.push(a.alias);
+        aliasByList.set(a.list_id, prev);
+      }
+
+      const baseDefs: Record<string, FieldDef> = {};
+      for (const f of (baseFields ?? []) as PaBaseFieldRow[]) baseDefs[f.name] = fieldRowToDef(f);
+      if (Object.keys(baseDefs).length === 0) Object.assign(baseDefs, fallbackBaseDefs);
+
+      const fieldsByList = new Map<string, PaListCustomFieldRow[]>();
+      for (const f of (customFields ?? []) as PaListCustomFieldRow[]) {
+        const prev = fieldsByList.get(f.list_id) ?? [];
+        prev.push(f);
+        fieldsByList.set(f.list_id, prev);
+      }
+
+      return ((lists ?? []) as PaListRow[]).map((l) => {
+        const listId = l.list_id;
+        const defs: Record<string, FieldDef> = { ...baseDefs };
+        for (const f of fieldsByList.get(listId) ?? []) {
+          if (baseDefs[f.name]) continue;
+          defs[f.name] = fieldRowToDef(f);
+        }
+
+        const revisionRaw = (l as any).items_revision ?? 0;
+        const revision = typeof revisionRaw === "number" ? revisionRaw : Number(revisionRaw);
+        const itemsUpdatedAt = (l as any).items_updated_at ?? new Date(0).toISOString();
+        const itemsUpdatedBy = (l as any).items_updated_by ?? null;
+
+        return {
+          id: listId,
+          title: l.title,
+          description: l.description ?? "",
+          aliases: aliasByList.get(listId) ?? [],
+          fields: defs,
+          ui: l.ui_default_sort ? { defaultSort: l.ui_default_sort } : {},
+          meta: { revision, itemsUpdatedAt, itemsUpdatedBy },
+        };
+      });
     },
 
     async listLists(schema) {
@@ -237,7 +377,7 @@ export function makePaRepo(db: Db): PaRepo {
       return ((data ?? []) as PaListItemRow[]).map(fromDbRow);
     },
 
-    async appendItem(schema, target, fields) {
+    async appendItem(schema, target, fields, opts) {
       const listId = resolveListId(schema, target);
       const listDef = schema.lists[listId];
       if (!listDef) throw new Error(`List "${listId}" not found.`);
@@ -271,12 +411,13 @@ export function makePaRepo(db: Db): PaRepo {
 
       const { error } = await db.from("pa_list_items").insert(row);
       if (error) throw error;
+      await touchList(db, listId, opts.updatedBy);
 
       const item = fromDbRow(row as any);
       return { listId, item };
     },
 
-    async updateItem(schema, target, itemId, patch) {
+    async updateItem(schema, target, itemId, patch, opts) {
       const listId = resolveListId(schema, target);
       const listDef = schema.lists[listId];
       if (!listDef) throw new Error(`List "${listId}" not found.`);
@@ -294,6 +435,9 @@ export function makePaRepo(db: Db): PaRepo {
       if (prevErr) throw prevErr;
       const prev = (prevRows?.[0] as PaListItemRow | undefined) ?? null;
       if (!prev) throw new Error(`Item "${itemId}" not found.`);
+      if (opts.expectedUpdatedAt && String(prev.updated_at) !== String(opts.expectedUpdatedAt)) {
+        throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt, currentUpdatedAt: prev.updated_at });
+      }
 
       const { core, extra } = splitFields(validatedPatch);
       const nextPriority =
@@ -326,24 +470,48 @@ export function makePaRepo(db: Db): PaRepo {
         .update(updateRow)
         .eq("id", itemId)
         .eq("list_id", listId)
+        .eq("updated_at", opts.expectedUpdatedAt ?? prev.updated_at)
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
         .limit(1);
       if (updErr) throw updErr;
       const updated = updatedRows?.[0] as PaListItemRow | undefined;
-      if (!updated) throw new Error(`Item "${itemId}" not found after update.`);
+      if (!updated) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
+      await touchList(db, listId, opts.updatedBy);
       return { listId, item: fromDbRow(updated) };
     },
 
-    async deleteItem(schema, target, itemId) {
+    async deleteItem(schema, target, itemId, opts) {
       const listId = resolveListId(schema, target);
-      const { error } = await db.from("pa_list_items").delete().eq("id", itemId).eq("list_id", listId);
+      const { data: prevRows, error: prevErr } = await db
+        .from("pa_list_items")
+        .select("id,updated_at")
+        .eq("id", itemId)
+        .eq("list_id", listId)
+        .limit(1);
+      if (prevErr) throw prevErr;
+      const prev = (prevRows?.[0] as { id: string; updated_at: string } | undefined) ?? null;
+      if (!prev) throw new Error(`Item "${itemId}" not found.`);
+      if (opts.expectedUpdatedAt && String(prev.updated_at) !== String(opts.expectedUpdatedAt)) {
+        throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt, currentUpdatedAt: prev.updated_at });
+      }
+
+      const { data: deletedRows, error } = await db
+        .from("pa_list_items")
+        .delete()
+        .eq("id", itemId)
+        .eq("list_id", listId)
+        .eq("updated_at", opts.expectedUpdatedAt ?? prev.updated_at)
+        .select("id")
+        .limit(1);
       if (error) throw error;
+      if (!deletedRows?.[0]) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
+      await touchList(db, listId, opts.updatedBy);
       return { listId, deletedId: itemId };
     },
 
-    async moveItem(schema, fromListIdInput, toListIdInput, itemId) {
+    async moveItem(schema, fromListIdInput, toListIdInput, itemId, opts) {
       const fromListId = resolveListId(schema, { listId: fromListIdInput });
       const toListId = resolveListId(schema, { listId: toListIdInput });
       if (fromListId === toListId) return { fromListId, toListId, itemId, moved: false };
@@ -391,11 +559,12 @@ export function makePaRepo(db: Db): PaRepo {
 
       const { error: updErr } = await db.from("pa_list_items").update(updateRow).eq("id", itemId);
       if (updErr) throw updErr;
+      await Promise.all([touchList(db, fromListId, opts.updatedBy), touchList(db, toListId, opts.updatedBy)]);
 
       return { fromListId, toListId, itemId, moved: true };
     },
 
-    async reorderWithinPriorityBucket(schema, listIdInput, priority, orderedIds) {
+    async reorderWithinPriorityBucket(schema, listIdInput, priority, orderedIds, opts) {
       const listId = resolveListId(schema, { listId: listIdInput });
 
       const { data: rows, error } = await db
@@ -411,34 +580,48 @@ export function makePaRepo(db: Db): PaRepo {
         throw new Error(`Reorder contains unknown IDs: ${missing.join(", ")}`);
       }
 
-      const nowIso = new Date().toISOString();
-      for (let i = 0; i < orderedIds.length; i++) {
-        const id = orderedIds[i]!;
-        const { error: updErr } = await db
-          .from("pa_list_items")
-          .update({ order: i, updated_at: nowIso })
-          .eq("id", id)
-          .eq("list_id", listId)
-          .eq("priority", priority);
-        if (updErr) throw updErr;
+      const { data: nextRevision, error: rpcErr } = await db.rpc("pa_reorder_bucket", {
+        p_list_id: listId,
+        p_priority: priority,
+        p_ordered_ids: orderedIds,
+        p_expected_revision: opts.expectedRevision,
+        p_updated_by: opts.updatedBy,
+      });
+      if (rpcErr) {
+        const msg = String((rpcErr as any)?.message ?? "").trim();
+        const msgLower = msg.toLowerCase();
+        const details = String((rpcErr as any)?.details ?? "");
+        const isNamed = (name: string) => msgLower === name || msgLower.endsWith(`: ${name}`) || msgLower.endsWith(` ${name}`);
+
+        if (isNamed("conflict")) {
+          let current: number | null = null;
+          try {
+            const parsed = JSON.parse(details);
+            if (parsed && typeof parsed.current === "number") current = parsed.current;
+            if (parsed && typeof parsed.current === "string") current = Number(parsed.current);
+          } catch {
+            // ignore
+          }
+          throw conflict({ currentRevision: current });
+        }
+        if (isNamed("bad_request")) {
+          throw httpError(400, "bad_request", details || msg);
+        }
+        if (isNamed("not_found")) {
+          throw httpError(404, "not_found", details || msg);
+        }
+        throw rpcErr;
       }
 
-      return { listId, priority, orderedIds };
+      const revision = typeof nextRevision === "number" ? nextRevision : Number(nextRevision);
+      return { listId, priority, orderedIds, revision };
     },
 
     async createList(schema, action) {
       const listId = sanitizeListId(action.listId ?? slugify(action.title) ?? "new-list");
       if (schema.lists[listId]) throw new Error(`List "${listId}" already exists.`);
 
-      const fields = action.fields ?? {
-        text: { type: "string" },
-        priority: { type: "int", default: 3 },
-        color: { type: "string", default: null, nullable: true },
-        order: { type: "int", default: 0 },
-        status: { type: "string", default: "todo" },
-        archivedAt: { type: "date", default: null, nullable: true },
-        unarchivedAt: { type: "date", default: null, nullable: true },
-      };
+      const fields = action.fields ?? {};
 
       const { error: listErr } = await db
         .from("pa_lists")
@@ -458,6 +641,8 @@ export function makePaRepo(db: Db): PaRepo {
       }
 
       for (const [name, def] of Object.entries(fields)) {
+        if (baseFieldNames.has(name)) throw new Error(`Field "${name}" is a base field and cannot be customized per-list.`);
+        if (["id", "createdAt", "updatedAt"].includes(name)) throw new Error(`Field "${name}" is reserved.`);
         const row = {
           list_id: listId,
           name,
@@ -467,14 +652,14 @@ export function makePaRepo(db: Db): PaRepo {
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };
-        const { error } = await db.from("pa_list_fields").upsert(row, { onConflict: "list_id,name" });
+        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "list_id,name" });
         if (error) throw error;
       }
 
       return { listId, created: true };
     },
 
-    async addFields(schema, action) {
+    async addFields(schema, action, opts) {
       const listId = action.listId ? sanitizeListId(action.listId) : resolveListId(schema, action as any);
       const listDef = schema.lists[listId];
       if (!listDef) throw new Error(`List "${listId}" not found.`);
@@ -485,7 +670,8 @@ export function makePaRepo(db: Db): PaRepo {
         if (!/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(name)) {
           throw new Error(`Invalid field name "${name}". Use letters/numbers/_ starting with a letter.`);
         }
-        if (["id", "createdAt"].includes(name)) throw new Error(`Field "${name}" is reserved.`);
+        if (baseFieldNames.has(name)) throw new Error(`Field "${name}" is a base field and cannot be added as custom.`);
+        if (["id", "createdAt", "updatedAt"].includes(name)) throw new Error(`Field "${name}" is reserved.`);
         if (listDef.fields[name]) throw new Error(`Field "${name}" already exists on "${listId}".`);
         const def: FieldDef = {
           type: f.type,
@@ -507,7 +693,7 @@ export function makePaRepo(db: Db): PaRepo {
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };
-        const { error } = await db.from("pa_list_fields").upsert(row, { onConflict: "list_id,name" });
+        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "list_id,name" });
         if (error) throw error;
       }
 
@@ -533,6 +719,7 @@ export function makePaRepo(db: Db): PaRepo {
         migrated += 1;
       }
 
+      await touchList(db, listId, opts.updatedBy);
       return { listId, added: added.map((a) => a.name), migrated };
     },
   };

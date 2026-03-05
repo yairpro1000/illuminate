@@ -3,6 +3,40 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from "./constants";
 
+export function useDismissibleDetails(ref: React.RefObject<HTMLDetailsElement | null>) {
+  React.useEffect(() => {
+    function close() {
+      ref.current?.removeAttribute("open");
+    }
+
+    function onPointerDown(e: PointerEvent) {
+      const el = ref.current;
+      if (!el) return;
+      if (!el.open) return;
+      const target = e.target as Node | null;
+      if (target && el.contains(target)) return;
+      close();
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      const el = ref.current;
+      if (!el) return;
+      if (!el.open) return;
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
+    }
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [ref]);
+}
+
 export function ColorSwatch(props: { color: string; size?: number }) {
   const size = props.size ?? 14;
   return (
@@ -34,6 +68,8 @@ export function StatusBadge(props: { value: StatusValue }) {
 export function ColorPicker(props: { value: string | null | undefined; onChange: (v: string | null) => void }) {
   const current = typeof props.value === "string" && props.value ? props.value : null;
   const ref = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(ref);
+
   function choose(v: string | null) {
     props.onChange(v);
     ref.current?.removeAttribute("open");
@@ -130,8 +166,11 @@ export function StatusSelect(props: { value: StatusValue; onChange: (v: StatusVa
 }
 
 export function ColorSelect(props: { value: string | null; onChange: (v: string | null) => void }) {
+  const ref = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(ref);
+
   return (
-    <details className="menu">
+    <details className="menu" ref={ref}>
       <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
         <span className="muted small">{props.value ? "Color" : "No color"}</span>
         {props.value ? <ColorSwatch color={props.value} /> : <span className="muted small">—</span>}
@@ -142,14 +181,25 @@ export function ColorSelect(props: { value: string | null; onChange: (v: string 
             <button
               key={c}
               className="swatchBtn"
-              onClick={() => props.onChange(c)}
+              onClick={() => {
+                props.onChange(c);
+                ref.current?.removeAttribute("open");
+              }}
               title={c}
               aria-label={c}
             >
               <ColorSwatch color={c} size={18} />
             </button>
           ))}
-          <button className="swatchBtn" onClick={() => props.onChange(null)} title="Clear" aria-label="Clear">
+          <button
+            className="swatchBtn"
+            onClick={() => {
+              props.onChange(null);
+              ref.current?.removeAttribute("open");
+            }}
+            title="Clear"
+            aria-label="Clear"
+          >
             <span className="muted small">×</span>
           </button>
         </div>
@@ -209,4 +259,3 @@ export function SortableTr(props: {
     </tr>
   );
 }
-

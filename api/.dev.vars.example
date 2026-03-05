@@ -1,0 +1,14 @@
+## Wrangler local dev vars (copy to `api/.dev.vars`)
+##
+## Required
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SECRET_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
+##
+## Local dev auth bypass (localhost only)
+PA_DEV_EMAIL=you@example.com
+##
+## Optional LLM
+# PA_LLM_PROVIDER=heuristic
+# PA_LLM_PROVIDER=openai
+# OPENAI_API_KEY=...
+# OPENAI_MODEL=gpt-4.1-nano

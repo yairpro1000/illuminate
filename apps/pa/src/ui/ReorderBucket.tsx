@@ -1,32 +1,55 @@
 import React from "react";
-import { api } from "../api";
-import type { ListItem } from "@shared/model";
 import { DndContext, closestCenter } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { SortableRow } from "./listBrowser/components";
+import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import type { ListItem } from "@shared/model";
+
+function SortableRow(props: { id: string; label: string }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.id,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <div className="draggable" ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <span className="muted small">↕</span>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {props.label}
+        </span>
+      </div>
+      <span className="muted small">{props.id.slice(0, 8)}</span>
+    </div>
+  );
+}
 
 export function ReorderBucket(props: {
-  listId: string;
-  priority: number;
   items: ListItem[];
-  orderedIds: string[];
-  onSaved: () => void;
+  priority: number;
+  onSave: (orderedIds: string[]) => Promise<void>;
 }) {
-  const [ids, setIds] = React.useState<string[]>(props.orderedIds);
+  const [ids, setIds] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
 
-  React.useEffect(() => setIds(props.orderedIds), [props.orderedIds]);
+  React.useEffect(() => {
+    const next = props.items
+      .filter((it) => (it.priority ?? 3) === props.priority)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((it) => it.id);
+    setIds(next);
+  }, [props.items, props.priority]);
 
   async function save() {
     setBusy(true);
     setErr(null);
     try {
-      await api(`/pa/lists/${encodeURIComponent(props.listId)}/reorder`, {
-        method: "POST",
-        body: JSON.stringify({ priority: props.priority, orderedIds: ids }),
-      });
-      props.onSaved();
+      await props.onSave(ids);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -34,10 +57,9 @@ export function ReorderBucket(props: {
     }
   }
 
-  function onDragEnd(ev: any) {
-    const { active, over } = ev;
-    if (!over) return;
-    if (active.id === over.id) return;
+  function onDragEnd(event: any) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
     const oldIndex = ids.indexOf(active.id);
     const newIndex = ids.indexOf(over.id);
     if (oldIndex < 0 || newIndex < 0) return;
@@ -81,4 +103,3 @@ export function ReorderBucket(props: {
     </div>
   );
 }
-

@@ -8,6 +8,7 @@ This file specifies **endpoints, payloads, and rules** for Phase I.
 - Stripe webhook endpoint verifies signature header (Stripe signing secret).
 - “Manage” links use a signed token; server validates against stored `*_token_hash`.
 - All job endpoints are **idempotent** and protected via a secret header (e.g., `X-Job-Token`).
+- PA endpoints are protected by **Cloudflare Access** (no public auth/session endpoints).
 
 ---
 
@@ -265,6 +266,59 @@ Confirms email for a free event registration.
 
 ---
 
+# PA (Private Admin) API (V1)
+
+PA endpoints are served by the Worker under `/pa/*` and are expected to be accessible only behind Cloudflare Access.
+
+## Headers
+
+- `cf-access-authenticated-user-email`: provided by Cloudflare Access
+- `x-pa-device-id`: frontend-generated stable device id (used to populate `items_updated_by`)
+
+## `GET /pa/lists`
+
+**200**
+```json
+{
+  "lists": [
+    {
+      "id": "app",
+      "title": "App",
+      "description": "",
+      "aliases": [],
+      "fields": { "text": { "type": "string" } },
+      "ui": { "defaultSort": "createdAt" },
+      "meta": { "revision": 12, "itemsUpdatedAt": "2026-03-05T10:00:00Z", "itemsUpdatedBy": "me@example.com_device" }
+    }
+  ]
+}
+```
+
+## `POST /pa/lists/:listId/reorder` (atomic + conflict-safe)
+
+Reorders items within a priority bucket using **list-level optimistic concurrency**.
+
+**Body**
+```json
+{ "priority": 3, "orderedIds": ["uuid1", "uuid2"], "expectedRevision": 12 }
+```
+
+- If the DB revision changed since the UI loaded, returns **409** (conflict).
+
+## `POST /pa/commit` (optimistic concurrency for update/delete)
+
+**Body**
+```json
+{
+  "action": { "type": "update_item", "valid": true, "confidence": 1, "listId": "app", "itemId": "uuid", "patch": { "text": "..." } },
+  "expected": { "itemUpdatedAt": "2026-03-05T10:00:00Z" }
+}
+```
+
+- For update/delete, if `itemUpdatedAt` does not match the current DB value, returns **409** (conflict).
+
+---
+
 ## Stripe Webhook
 
 ### `POST /api/stripe/webhook`
@@ -304,4 +358,3 @@ All require a secret header (e.g., `X-Job-Token`).
 
 ### `POST /internal/jobs/cancel-overdue-unpaid-bookings`
 - Cancel bookings at `payment_due_at` when still `pending_payment` (unless `cash_ok`).
-

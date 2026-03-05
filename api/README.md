@@ -14,6 +14,7 @@ Target shape:
   - `POST /pa/parse`
   - `POST /pa/commit`
   - `GET /pa/export/:listId.csv`
+  - `GET /pa/export/:listId.xlsx`
 
 - Marketing-site ops (future):
   - `POST /booking/create`

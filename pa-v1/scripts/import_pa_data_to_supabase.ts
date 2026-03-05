@@ -46,8 +46,27 @@ const universalFields: Record<
 
 function mustEnv(name: string) {
   const v = process.env[name];
-  if (!v) throw new Error(`Missing env var ${name}`);
+  if (v === undefined) throw new Error(`Missing env var ${name}`);
+  if (v.trim() === "") throw new Error(`Env var ${name} is set but empty`);
   return v;
+}
+
+function loadDotEnv(filePath: string) {
+  if (!fs.existsSync(filePath)) return;
+  const text = fs.readFileSync(filePath, "utf8");
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!key) continue;
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
 }
 
 function readJson(filePath: string) {
@@ -71,6 +90,7 @@ function pickExtraFields(item: Record<string, any>) {
   const core = new Set([
     "id",
     "createdAt",
+    "updatedAt",
     "text",
     "priority",
     "color",
@@ -95,17 +115,45 @@ function isoOrNull(v: any): string | null {
   return d.toISOString();
 }
 
-async function main() {
-  const supabaseUrl = mustEnv("SUPABASE_URL");
-  const serviceKey = mustEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+function isUuidString(v: unknown): v is string {
+  if (typeof v !== "string") return false;
+  // Accept RFC 4122 variants (v1-v5) + any valid variant.
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
 
-  const repoRoot = path.resolve(__dirname, "..", "..");
-  const dataDir = path.join(repoRoot, "pa-v1", "data");
+async function main() {
+  const projectRoot = path.resolve(__dirname, ".."); // .../pa-v1
+  const repoRoot = path.resolve(__dirname, "..", ".."); // monorepo root
+
+  // Source of truth: repo-root `.env` (gitignored).
+  loadDotEnv(path.join(repoRoot, ".env"));
+
+  const supabaseUrl = mustEnv("SUPABASE_URL");
+  const secretKey = mustEnv("SUPABASE_SECRET_KEY");
+  const supabase = createClient(supabaseUrl, secretKey, { auth: { persistSession: false } });
+
+  const updatedBy = (process.env.PA_IMPORT_UPDATED_BY ?? process.env.PA_UPDATED_BY ?? "import").trim() || "import";
+
+  const dataDir = path.join(projectRoot, "data");
   const schemaPath = path.join(dataDir, "meta", "lists.schema.json");
   const listsDir = path.join(dataDir, "lists");
 
   const schema = readJson(schemaPath) as SchemaFile;
+
+  // Base fields are defined once (avoid duplicating on every list).
+  const baseFieldNames = new Set(Object.keys(universalFields));
+  for (const [name, f] of Object.entries(universalFields)) {
+    const row = {
+      name,
+      type: f.type,
+      default_value_json: Object.prototype.hasOwnProperty.call(f, "default") ? (f as any).default : null,
+      nullable: Boolean((f as any).nullable ?? false),
+      description: (f as any).description ?? null,
+      ui_show_in_preview: null,
+    };
+    const { error } = await supabase.from("pa_base_fields").upsert(row, { onConflict: "name" });
+    if (error) throw error;
+  }
 
   for (const [listId, def] of Object.entries(schema.lists)) {
     const listRow = {
@@ -124,8 +172,9 @@ async function main() {
       if (error) throw error;
     }
 
-    const mergedFields = { ...universalFields, ...def.fields };
-    for (const [name, f] of Object.entries(mergedFields)) {
+    // Only store list-specific fields (base fields are in `pa_base_fields`).
+    for (const [name, f] of Object.entries(def.fields)) {
+      if (baseFieldNames.has(name)) continue;
       const row = {
         list_id: listId,
         name,
@@ -135,18 +184,21 @@ async function main() {
         description: (f as any).description ?? null,
         ui_show_in_preview: (f as any).ui?.showInPreview ?? null,
       };
-      const { error } = await supabase.from("pa_list_fields").upsert(row, { onConflict: "list_id,name" });
+      const { error } = await supabase.from("pa_list_custom_fields").upsert(row, { onConflict: "list_id,name" });
       if (error) throw error;
     }
 
     const listJsonl = path.join(listsDir, `${listId}.jsonl`);
     const items = await iterJsonl(listJsonl);
     for (const it of items) {
+      if (!isUuidString(it.id)) throw new Error(`Missing/invalid uuid for item id in list ${listId}: ${String(it.id)}`);
+      const createdAtIso = isoOrNull(it.createdAt) ?? new Date().toISOString();
+      const updatedAtIso = isoOrNull(it.updatedAt) ?? createdAtIso;
       const row = {
         id: it.id,
         list_id: listId,
-        created_at: isoOrNull(it.createdAt) ?? new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: createdAtIso,
+        updated_at: updatedAtIso,
         text: String(it.text ?? ""),
         priority: typeof it.priority === "number" ? it.priority : 3,
         color: typeof it.color === "string" ? it.color : null,
@@ -157,6 +209,12 @@ async function main() {
         extra_fields: pickExtraFields(it),
       };
       const { error } = await supabase.from("pa_list_items").upsert(row);
+      if (error) throw error;
+    }
+
+    // Complement optimistic concurrency: bump list revision after writing items.
+    if (items.length > 0) {
+      const { error } = await supabase.rpc("pa_touch_list", { p_list_id: listId, p_updated_by: updatedBy });
       if (error) throw error;
     }
   }

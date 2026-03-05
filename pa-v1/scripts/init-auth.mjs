@@ -22,7 +22,7 @@ if (!username || !password) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, "..");
-const envPath = path.join(projectRoot, ".env");
+const envPath = path.join(projectRoot, "..", ".env");
 
 const passwordHash = await bcrypt.hash(password, 10);
 const sessionSecret = crypto.randomBytes(24).toString("hex");

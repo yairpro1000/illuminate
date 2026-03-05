@@ -163,7 +163,10 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     } catch (e: any) {
       if (e instanceof z.ZodError) {
         const msg = e.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
-        setErr(msg);
+        const hint = e.issues.some((i) => (i as any).keys?.includes?.("item"))
+          ? "\nHint: for append_item use `fields: { ... }` (not `item`)."
+          : "";
+        setErr(`Invalid action JSON:\n${msg}${hint}`);
       } else {
         setErr(String(e?.message ?? e));
       }
@@ -172,73 +175,88 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     }
   }
 
-  const speechOk = Boolean(SR);
+  function cancel() {
+    stop();
+    setTranscript("");
+    setAction(null);
+    setActionDraft("");
+    setEditJson(false);
+    setErr(null);
+  }
 
   return (
     <div className="card">
-      <div className="topbar" style={{ marginBottom: 8 }}>
+      <div className="topbar" style={{ marginBottom: 10 }}>
         <div>
-          <div className="title">Voice</div>
-          <div className="muted small">Transcript → action JSON → commit</div>
+          <div className="title">Voice → Action → Confirm</div>
+          <div className="muted small">Transcript → strict JSON action → validated commit</div>
         </div>
         <div className="btnrow">
           <button
-            className={listening ? "primary" : ""}
+            className="primary"
+            onClick={listening ? stop : start}
+            disabled={!SR || busy}
             data-mic="voice"
-            disabled={!speechOk}
-            onClick={() => (listening ? stop() : start())}
-            title={speechOk ? "" : "SpeechRecognition not supported in this browser"}
+            title={!SR ? "SpeechRecognition not supported in this browser" : ""}
           >
-            {listening ? "Mic on" : "Mic off"}
-          </button>
-          <button className="primary" disabled={busy || !transcript.trim()} onClick={parse}>
-            {busy ? "Parsing…" : "Parse"}
+            {listening ? "Stop 🎙" : "Mic 🎙"}
           </button>
         </div>
       </div>
 
-      <textarea
-        value={transcript}
-        onChange={(e) => setTranscript(e.target.value)}
-        rows={4}
-        placeholder="Say or type: “add oat milk to groceries”, “create new list called travel”, “update the eggs item to 12 eggs”…"
-      />
+      <label className="small muted">Transcript</label>
+      <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} />
+
+      <div style={{ marginTop: 10 }} className="btnrow">
+        <button onClick={parse} disabled={busy || !transcript.trim()}>
+          {busy ? "Working…" : "Parse"}
+        </button>
+        <button
+          className="primary"
+          onClick={commit}
+          disabled={busy || (editJson ? !actionDraft.trim() : !action || !(action as any).valid)}
+          title={!editJson && action && !(action as any).valid ? "Action.valid=false; edit/parse again" : ""}
+        >
+          Confirm & Commit
+        </button>
+        <button onClick={() => setEditJson((v) => !v)} disabled={!action || busy}>
+          {editJson ? "Hide JSON" : "Edit JSON"}
+        </button>
+        <button className="danger" onClick={cancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
 
       <div style={{ marginTop: 10 }} className="row">
         <div className="col">
-          <div className="muted small">Action summary</div>
-          <div className="small">{summarize(action)}</div>
+          <div className="pill small">
+            <span className="muted">Preview</span>
+            <span>{summarize(action)}</span>
+          </div>
         </div>
-        <div className="col" style={{ maxWidth: 180 }}>
-          <div className="muted small">JSON</div>
-          <label className="pill small" style={{ cursor: action ? "pointer" : "not-allowed" }}>
-            <input
-              type="checkbox"
-              checked={editJson}
-              onChange={(e) => setEditJson(e.target.checked)}
-              disabled={!action}
-            />{" "}
-            edit
-          </label>
+        <div className="col">
+          {action ? (
+            <div className="pill small">
+              <span className="muted">valid</span>
+              <span className={(action as any).valid ? "ok" : "error"}>{String((action as any).valid)}</span>
+              <span className="muted">confidence</span>
+              <span>{Number((action as any).confidence ?? 0).toFixed(2)}</span>
+            </div>
+          ) : (
+            <div className="pill small">
+              <span className="muted">Action</span>
+              <span>—</span>
+            </div>
+          )}
         </div>
       </div>
 
       {editJson ? (
-        <textarea
-          style={{ marginTop: 10, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}
-          value={actionDraft}
-          onChange={(e) => setActionDraft(e.target.value)}
-          rows={10}
-        />
-      ) : (
-        <pre style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>{actionDraft || "—"}</pre>
-      )}
-
-      <div style={{ marginTop: 10 }} className="btnrow">
-        <button className="primary" disabled={busy || !action} onClick={commit}>
-          {busy ? "Committing…" : "Commit"}
-        </button>
-      </div>
+        <div style={{ marginTop: 10 }}>
+          <label className="small muted">Action JSON (editable)</label>
+          <textarea value={actionDraft} onChange={(e) => setActionDraft(e.target.value)} />
+        </div>
+      ) : null}
 
       {err ? (
         <div style={{ marginTop: 10 }} className="error small">
@@ -248,4 +266,3 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     </div>
   );
 }
-

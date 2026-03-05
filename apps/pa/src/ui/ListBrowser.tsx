@@ -14,6 +14,7 @@ import {
   StatusPicker,
   StatusSelect,
   ToggleSwitch,
+  useDismissibleDetails,
 } from "./listBrowser/components";
 import { bySortKey, fieldLabel, hexToRgba, linkifyText, moveArrayItem } from "./listBrowser/utils";
 
@@ -23,6 +24,7 @@ type ListInfo = {
   description: string;
   aliases: string[];
   fields: Record<string, FieldDef>;
+  meta: { revision: number; itemsUpdatedAt: string; itemsUpdatedBy: string | null };
 };
 
 type ItemRow = ListItem & { __listId: string };
@@ -32,12 +34,17 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [lists, setLists] = React.useState<ListInfo[]>([]);
   const [listId, setListId] = React.useState<string>("");
   const [items, setItems] = React.useState<ListItem[]>([]);
+  const [stale, setStale] = React.useState<{ current: number; db: number } | null>(null);
   const [filterText, setFilterText] = React.useState("");
   const [searchAllLists, setSearchAllLists] = React.useState(false);
   const [filterPriority, setFilterPriority] = React.useState<number | "">("");
   const [filterColor, setFilterColor] = React.useState<string | "">("");
   const [filterTopic, setFilterTopic] = React.useState<string>("");
   const [showArchived, setShowArchived] = React.useState(false);
+
+  const filterColorMenuRef = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(filterColorMenuRef);
+
   const [sortKey, setSortKey] = React.useState("createdAt");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [reorderPriority, setReorderPriority] = React.useState<number>(3);
@@ -91,6 +98,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setErr(null);
     const data = await api<{ lists: ListInfo[] }>("/pa/lists", { method: "GET" });
     setLists(data.lists);
+    setStale(null);
     if (!listId) {
       const preferred = data.lists.find((l) => l.id === "app")?.id ?? data.lists[0]?.id ?? "";
       if (preferred) setListId(preferred);
@@ -170,6 +178,47 @@ export function ListBrowser(props: { refreshSignal: number }) {
   }, [lists]);
 
   const activeList = lists.find((l) => l.id === listId) ?? null;
+
+  function findItemUpdatedAt(targetListId: string, itemId: string): string | undefined {
+    if (!itemId) return undefined;
+    if (searchAllLists) {
+      const row = searchRows?.find((r) => r.__listId === targetListId && r.id === itemId) ?? null;
+      const v = (row as any)?.updatedAt;
+      return typeof v === "string" ? v : undefined;
+    }
+    if (targetListId !== listId) return undefined;
+    const row = items.find((it: any) => it.id === itemId) as any;
+    const v = row?.updatedAt;
+    return typeof v === "string" ? v : undefined;
+  }
+
+  React.useEffect(() => {
+    if (!listId) return;
+    if (!activeList) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const data = await api<{ lists: ListInfo[] }>("/pa/lists", { method: "GET" });
+        if (cancelled) return;
+        const dbRev = data.lists.find((l) => l.id === listId)?.meta?.revision;
+        const curRev = activeList.meta?.revision;
+        if (typeof dbRev === "number" && typeof curRev === "number" && dbRev !== curRev) {
+          setStale({ current: curRev, db: dbRev });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    poll();
+    const handle = window.setInterval(poll, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listId, activeList?.meta?.revision]);
   const visibleRows: ItemRow[] = (searchAllLists && searchRows
     ? searchRows
     : items.map((it) => ({ ...(it as any), __listId: listId }) as ItemRow)
@@ -217,8 +266,35 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setSortDir((d) => (d === "asc" ? "desc" : "asc"));
   }
 
-  async function commit(action: any, opts?: { refresh?: boolean }) {
-    await api("/pa/commit", { method: "POST", body: JSON.stringify({ action }) });
+  async function commit(action: any, opts?: { refresh?: boolean; expectedItemUpdatedAt?: string }) {
+    try {
+      await api("/pa/commit", {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          ...(opts?.expectedItemUpdatedAt ? { expected: { itemUpdatedAt: opts.expectedItemUpdatedAt } } : {}),
+        }),
+      });
+    } catch (e: any) {
+      const raw = String(e?.message ?? e);
+      let msg = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          msg = "Conflict: data changed elsewhere. Refresh and try again.";
+          const currentRevision = typeof (parsed as any).currentRevision === "number" ? (parsed as any).currentRevision : null;
+          if (currentRevision !== null && activeList?.meta?.revision !== undefined) {
+            setStale({ current: activeList.meta.revision, db: currentRevision });
+          }
+        }
+      } catch {
+        if (raw === "conflict") msg = "Conflict: data changed elsewhere. Refresh and try again.";
+      }
+      setErr(msg);
+      throw e;
+    }
+
+    await loadLists().catch(() => {});
     const refresh = opts?.refresh !== false;
     if (refresh) {
       if (searchAllLists) await loadAllRows();
@@ -237,7 +313,6 @@ export function ListBrowser(props: { refreshSignal: number }) {
       listId: targetListId,
       fieldsToAdd: [{ name: "status", type: "string", default: "todo", description: "Workflow status" }],
     });
-    await loadLists();
   }
 
   async function ensureArchivedField(targetListId: string) {
@@ -262,7 +337,6 @@ export function ListBrowser(props: { refreshSignal: number }) {
       },
       { refresh: false },
     );
-    await loadLists();
   }
 
   async function ensureStatusFieldIfUsed(targetListId: string) {
@@ -270,16 +344,25 @@ export function ListBrowser(props: { refreshSignal: number }) {
   }
 
   async function setPriority(targetListId: string, itemId: string, priority: number) {
-    await commit({ type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { priority } });
+    await commit(
+      { type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { priority } },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+    );
   }
 
   async function setColor(targetListId: string, itemId: string, color: string | null) {
-    await commit({ type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { color } });
+    await commit(
+      { type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { color } },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+    );
   }
 
   async function setStatusAny(targetListId: string, itemId: string, status: StatusValue) {
     await ensureStatusField(targetListId);
-    await commit({ type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { status } });
+    await commit(
+      { type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { status } },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+    );
   }
 
   async function archiveItem(targetListId: string, itemId: string) {
@@ -293,24 +376,31 @@ export function ListBrowser(props: { refreshSignal: number }) {
       itemId,
       patch: { archivedAt: new Date().toISOString() },
       },
-      { refresh: true },
+      { refresh: true, expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
     );
   }
 
   async function unarchiveItem(targetListId: string, itemId: string) {
     await ensureArchivedField(targetListId);
-    await commit({ type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { archivedAt: null } });
+    await commit(
+      { type: "update_item", valid: true, confidence: 1, listId: targetListId, itemId, patch: { archivedAt: null } },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+    );
   }
 
   async function del(targetListId: string, itemId: string) {
-    await commit({ type: "delete_item", valid: true, confidence: 1, listId: targetListId, itemId });
+    await commit(
+      { type: "delete_item", valid: true, confidence: 1, listId: targetListId, itemId },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+    );
   }
 
   async function saveReorder(orderedIds: string[]) {
     await api(`/pa/lists/${encodeURIComponent(listId)}/reorder`, {
       method: "POST",
-      body: JSON.stringify({ priority: reorderPriority, orderedIds }),
+      body: JSON.stringify({ priority: reorderPriority, orderedIds, expectedRevision: activeList?.meta?.revision ?? 0 }),
     });
+    await loadLists().catch(() => {});
     await loadItems(listId);
   }
 
@@ -361,6 +451,16 @@ export function ListBrowser(props: { refreshSignal: number }) {
   async function commitReorder() {
     try {
       await saveReorder(reorderIds);
+    } catch (e: any) {
+      const raw = String(e?.message ?? e);
+      let msg = raw;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") msg = "Conflict: list changed elsewhere. Refresh and try again.";
+      } catch {
+        if (raw === "conflict") msg = "Conflict: list changed elsewhere. Refresh and try again.";
+      }
+      setErr(msg);
     } finally {
       cancelReorder();
     }
@@ -385,19 +485,19 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setErr(null);
     try {
       const now = new Date().toISOString();
-      const byList = new Map<string, string[]>();
+      const byList = new Map<string, Array<{ id: string; updatedAt?: string }>>();
       for (const it of archiveDoneCandidates) {
         const lid = it.__listId;
         if (!byList.has(lid)) byList.set(lid, []);
-        byList.get(lid)!.push(it.id);
+        byList.get(lid)!.push({ id: it.id, updatedAt: (it as any).updatedAt });
       }
 
-      for (const [lid, ids] of byList.entries()) {
+      for (const [lid, rows] of byList.entries()) {
         await ensureArchivedField(lid);
-        for (const itemId of ids) {
+        for (const { id: itemId, updatedAt } of rows) {
           await commit(
             { type: "update_item", valid: true, confidence: 1, listId: lid, itemId, patch: { archivedAt: now } },
-            { refresh: false },
+            { refresh: false, expectedItemUpdatedAt: updatedAt ?? findItemUpdatedAt(lid, itemId) },
           );
         }
       }
@@ -417,19 +517,19 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setBusy(true);
     setErr(null);
     try {
-      const byList = new Map<string, string[]>();
+      const byList = new Map<string, Array<{ id: string; updatedAt?: string }>>();
       for (const it of unarchiveCandidates) {
         const lid = it.__listId;
         if (!byList.has(lid)) byList.set(lid, []);
-        byList.get(lid)!.push(it.id);
+        byList.get(lid)!.push({ id: it.id, updatedAt: (it as any).updatedAt });
       }
 
-      for (const [lid, ids] of byList.entries()) {
+      for (const [lid, rows] of byList.entries()) {
         await ensureArchivedField(lid);
-        for (const itemId of ids) {
+        for (const { id: itemId, updatedAt } of rows) {
           await commit(
             { type: "update_item", valid: true, confidence: 1, listId: lid, itemId, patch: { archivedAt: null } },
-            { refresh: false },
+            { refresh: false, expectedItemUpdatedAt: updatedAt ?? findItemUpdatedAt(lid, itemId) },
           );
         }
       }
@@ -472,14 +572,17 @@ export function ListBrowser(props: { refreshSignal: number }) {
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("Edit JSON must be an object of fields to set.");
       }
-      await commit({
-        type: "update_item",
-        valid: true,
-        confidence: 1,
-        listId: editRow.__listId,
-        itemId: editRow.id,
-        patch: parsed,
-      });
+      await commit(
+        {
+          type: "update_item",
+          valid: true,
+          confidence: 1,
+          listId: editRow.__listId,
+          itemId: editRow.id,
+          patch: parsed,
+        },
+        { expectedItemUpdatedAt: (editRow as any).updatedAt },
+      );
       setEditOpen(false);
       setEditRow(null);
       setEditDraft("");
@@ -748,6 +851,27 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </div>
       </div>
 
+      {stale ? (
+        <div className="error small" style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <div>
+            This view is stale (yours: v{stale.current}, db: v{stale.db}). Refresh to avoid overwriting newer changes.
+          </div>
+          <div className="btnrow">
+            <button
+              className="primary"
+              onClick={async () => {
+                setStale(null);
+                await loadLists().catch(() => {});
+                if (searchAllLists) await loadAllRows();
+                else await loadItems(listId);
+              }}
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {activeList ? (
         <div className="row" style={{ marginBottom: 10 }}>
           <div className="col">
@@ -762,6 +886,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
             <div className="btnrow" style={{ justifyContent: "flex-end" }}>
               <a href={`/pa/export/${encodeURIComponent(listId)}.csv`} className="pill small">
                 Download CSV
+              </a>
+              <a href={`/pa/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">
+                Download XLSX
               </a>
             </div>
           </div>
@@ -823,7 +950,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </div>
         <div style={{ width: 220 }}>
           <label className="small muted">Color</label>
-          <details className="menu" style={{ width: "100%" }}>
+          <details className="menu" style={{ width: "100%" }} ref={filterColorMenuRef}>
             <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
               <span className="muted small">Filter</span>
               {filterColor ? <ColorSwatch color={String(filterColor)} /> : <span className="muted small">All</span>}
@@ -834,7 +961,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                   <button
                     key={c}
                     className="swatchBtn"
-                    onClick={() => setFilterColor(c)}
+                    onClick={() => {
+                      setFilterColor(c);
+                      filterColorMenuRef.current?.removeAttribute("open");
+                    }}
                     title={c}
                     aria-label={c}
                     disabled={reorderMode}
@@ -844,7 +974,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                 ))}
                 <button
                   className="swatchBtn"
-                  onClick={() => setFilterColor("")}
+                  onClick={() => {
+                    setFilterColor("");
+                    filterColorMenuRef.current?.removeAttribute("open");
+                  }}
                   title="All"
                   aria-label="All"
                   disabled={reorderMode}

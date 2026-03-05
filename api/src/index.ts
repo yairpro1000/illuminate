@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import * as XLSX from "xlsx";
 import { ParsedActionZ, type ParsedAction } from "../../pa-v1/shared/model";
 import { makeSupabase } from "./repo/supabase";
 import { makePaRepo } from "./repo/paRepo";
@@ -21,6 +22,22 @@ function csvEscape(value: unknown) {
   return s;
 }
 
+function xlsxCell(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (value instanceof Date) return value.toISOString();
+  return JSON.stringify(value);
+}
+
+function xlsxSheetName(raw: string) {
+  const s = String(raw ?? "")
+    .trim()
+    .replace(/[\\/*?:\[\]]/g, " ")
+    .slice(0, 31)
+    .trim();
+  return s || "Sheet1";
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 app.use("/pa/*", async (c, next) => {
@@ -33,7 +50,10 @@ app.use("/pa/*", async (c, next) => {
     const status = typeof e?.status === "number" ? e.status : 500;
     const message = typeof e?.message === "string" ? e.message : String(e);
     console.log(JSON.stringify({ type: "error", requestId, status, message }));
-    return c.json({ error: status === 401 ? "unauthorized" : "internal_error", details: message }, status);
+    const error =
+      status === 401 ? "unauthorized" : status === 409 ? "conflict" : status === 400 ? "bad_request" : "internal_error";
+    const details = typeof e?.details === "string" ? e.details : message;
+    return c.json({ error, details }, status);
   }
 });
 
@@ -55,8 +75,7 @@ app.get("/pa/lists", async (c) => {
   requireAccess(c);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
-  const schema = await repo.loadSchemaRegistry();
-  return c.json({ lists: await repo.listLists(schema) });
+  return c.json({ lists: await repo.listListsForUi() });
 });
 
 app.get("/pa/lists/:listId/items", async (c) => {
@@ -69,13 +88,27 @@ app.get("/pa/lists/:listId/items", async (c) => {
 });
 
 app.post("/pa/lists/:listId/reorder", async (c) => {
-  requireAccess(c);
-  const BodyZ = z.object({ priority: z.number().int(), orderedIds: z.array(z.string().min(1)).min(1) }).strict();
+  const { email } = requireAccess(c);
+  const BodyZ = z
+    .object({
+      priority: z.number().int(),
+      orderedIds: z.array(z.string().min(1)).min(1),
+      expectedRevision: z.number().int().min(0),
+    })
+    .strict();
   const body = BodyZ.parse(await c.req.json());
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
-  const result = await repo.reorderWithinPriorityBucket(schema, c.req.param("listId"), body.priority, body.orderedIds);
+  const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
+  const updatedBy = `${email}_${deviceId}`;
+  const result = await repo.reorderWithinPriorityBucket(
+    schema,
+    c.req.param("listId"),
+    body.priority,
+    body.orderedIds,
+    { expectedRevision: body.expectedRevision, updatedBy },
+  );
   return c.json({ ok: true, result });
 });
 
@@ -113,8 +146,17 @@ app.post("/pa/parse", async (c) => {
 });
 
 app.post("/pa/commit", async (c) => {
-  requireAccess(c);
-  const BodyZ = z.object({ action: z.unknown() }).strict();
+  const { email } = requireAccess(c);
+  const BodyZ = z
+    .object({
+      action: z.unknown(),
+      expected: z
+        .object({
+          itemUpdatedAt: z.string().min(1).optional(),
+        })
+        .optional(),
+    })
+    .strict();
   const body = BodyZ.parse(await c.req.json());
   const action = ParsedActionZ.parse(body.action) as ParsedAction;
   if (!action.valid) return c.json({ error: "invalid_action", details: "Action is not valid; refusing to commit." }, 400);
@@ -123,26 +165,34 @@ app.post("/pa/commit", async (c) => {
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
   const canonical = canonicalizeActionTargets(schema, action as any) as ParsedAction;
+  const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
+  const updatedBy = `${email}_${deviceId}`;
 
   let result: any;
   switch (canonical.type) {
     case "append_item":
-      result = await repo.appendItem(schema, canonical as any, canonical.fields);
+      result = await repo.appendItem(schema, canonical as any, canonical.fields, { updatedBy });
       break;
     case "update_item":
-      result = await repo.updateItem(schema, canonical as any, canonical.itemId, canonical.patch);
+      result = await repo.updateItem(schema, canonical as any, canonical.itemId, canonical.patch, {
+        expectedUpdatedAt: body.expected?.itemUpdatedAt,
+        updatedBy,
+      });
       break;
     case "delete_item":
-      result = await repo.deleteItem(schema, canonical as any, canonical.itemId);
+      result = await repo.deleteItem(schema, canonical as any, canonical.itemId, {
+        expectedUpdatedAt: body.expected?.itemUpdatedAt,
+        updatedBy,
+      });
       break;
     case "move_item":
-      result = await repo.moveItem(schema, canonical.fromListId, canonical.toListId, canonical.itemId);
+      result = await repo.moveItem(schema, canonical.fromListId, canonical.toListId, canonical.itemId, { updatedBy });
       break;
     case "create_list":
       result = await repo.createList(schema, canonical as any);
       break;
     case "add_fields":
-      result = await repo.addFields(schema, canonical as any);
+      result = await repo.addFields(schema, canonical as any, { updatedBy });
       break;
     default:
       return c.json({ error: "unsupported_action" }, 400);
@@ -173,6 +223,37 @@ app.get("/pa/export/:listId.csv", async (c) => {
   c.header("Content-Type", "text/csv; charset=utf-8");
   c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(listId)}.csv"`);
   return c.body(csv);
+});
+
+app.get("/pa/export/:listId.xlsx", async (c) => {
+  requireAccess(c);
+  const db = makeSupabase(c.env);
+  const repo = makePaRepo(db);
+  const schema = await repo.loadSchemaRegistry();
+  const listId = c.req.param("listId");
+  const lists = await repo.listLists(schema);
+  const def = lists.find((l) => l.id === listId) ?? null;
+  if (!def) return c.json({ error: "not_found" }, 404);
+
+  const items = await repo.readListItems(schema, listId);
+  const fieldNames = Object.keys(def.fields);
+  const headers = ["id", "createdAt", ...fieldNames];
+  const rows: unknown[][] = [headers];
+  for (const it of items as any[]) {
+    rows.push(headers.map((h) => xlsxCell(it[h])));
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, xlsxSheetName(def.title || listId));
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+
+  c.header(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(listId)}.xlsx"`);
+  return c.body(new Uint8Array(out));
 });
 
 export default app;

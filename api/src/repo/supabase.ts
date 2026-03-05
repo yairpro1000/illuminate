@@ -4,8 +4,7 @@ import type { Env } from "../env";
 export type Db = SupabaseClient;
 
 export function makeSupabase(env: Env): Db {
-  return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }
-

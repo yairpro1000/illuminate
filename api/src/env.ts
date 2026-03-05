@@ -1,6 +1,8 @@
 export type Env = {
   SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+  SUPABASE_SECRET_KEY: string;
+  // Local dev helper: if set, allows bypassing Cloudflare Access on localhost only.
+  PA_DEV_EMAIL?: string;
   PA_LLM_PROVIDER?: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
@@ -11,4 +13,3 @@ export function mustEnv(env: Env, key: keyof Env): string {
   if (!v) throw new Error(`Missing env var ${String(key)}`);
   return String(v);
 }
-

@@ -46,3 +46,10 @@ Jobs → Scheduler → Internal API endpoints
 -   Stripe webhook signature verification.
 -   No secrets exposed client-side.
 -   Admin auth via Supabase.
+
+### PA (Personal Assistant) app security + data access
+
+-   PA UI is served from Cloudflare Pages and is protected by Cloudflare Access.
+-   PA API runs in a Cloudflare Worker and is protected by Cloudflare Access (same-origin `/pa/*` routes).
+-   Only the Worker talks to Supabase using `SUPABASE_SECRET_KEY` (server-only).
+-   The PA frontend does **not** use a Supabase publishable/browser key in this architecture.
