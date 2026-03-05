@@ -184,6 +184,9 @@ function initAddToCalendar(root) {
       btn.addEventListener('click', () => { _downloadIcs(d); closeDropdown(); });
     });
 
+    // The nearest card-like ancestor that might create a stacking context
+    const stackingParent = widget.closest('.event-card, .booking-card');
+
     // Toggle helpers
     function openDropdown() {
       // Close any other open dropdowns first
@@ -193,15 +196,18 @@ function initAddToCalendar(root) {
           other.closest('.atc-widget')
                ?.querySelector('.atc-trigger')
                ?.setAttribute('aria-expanded', 'false');
+          other.closest('.event-card, .booking-card')?.style.removeProperty('z-index');
         }
       });
       dropdown.hidden = false;
       trigger.setAttribute('aria-expanded', 'true');
+      if (stackingParent) stackingParent.style.zIndex = '10';
     }
 
     function closeDropdown() {
       dropdown.hidden = true;
       trigger.setAttribute('aria-expanded', 'false');
+      if (stackingParent) stackingParent.style.removeProperty('z-index');
     }
 
     trigger.addEventListener('click', e => {
