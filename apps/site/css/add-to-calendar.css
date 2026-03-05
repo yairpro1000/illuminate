@@ -1,0 +1,168 @@
+/* ============================================================
+   ILLUMINATE — Add to Calendar widget styles
+   Shared between evenings.html and book.html.
+   All tokens come from main.css :root.
+   ============================================================ */
+
+/* ── Trigger button ──────────────────────────────────────── */
+
+.atc-widget {
+  position: relative;
+  display: inline-block;
+}
+
+.atc-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: var(--font);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.atc-trigger:hover,
+.atc-trigger[aria-expanded="true"] {
+  border-color: var(--color-border-hover);
+  color: var(--color-lake-light);
+  background: var(--color-lake-mist);
+}
+
+.atc-trigger:focus-visible {
+  outline: 2px solid var(--color-lake);
+  outline-offset: 2px;
+}
+
+.atc-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* ── Dropdown ────────────────────────────────────────────── */
+
+.atc-dropdown {
+  position: absolute;
+  top: calc(100% + 0.375rem);
+  left: 0;
+  z-index: 300;
+  min-width: 11.5rem;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card), 0 0 20px oklch(0% 0 0 / 0.25);
+  overflow: hidden;
+  animation: atc-in 0.13s var(--ease-out) both;
+}
+
+.atc-dropdown[hidden] {
+  display: none;
+}
+
+@keyframes atc-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Options ─────────────────────────────────────────────── */
+
+.atc-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5625rem 0.875rem;
+  font-family: var(--font);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.atc-option:hover {
+  background: var(--color-lake-mist);
+  color: var(--color-text);
+}
+
+.atc-option:focus-visible {
+  outline: 2px solid var(--color-lake);
+  outline-offset: -2px;
+}
+
+.atc-option svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+  transition: color 0.12s;
+}
+
+.atc-option:hover svg {
+  color: var(--color-lake-light);
+}
+
+.atc-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 0.25rem 0;
+}
+
+/* ── Event card layout: CTA + widget side by side ────────── */
+
+.event-card__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: auto;
+  padding-top: 1.25rem;
+}
+
+/* ── Confirmation widget placement ───────────────────────── */
+
+.confirmation__calendar {
+  margin-top: 0.25rem;
+}
+
+/* ── Light mode ──────────────────────────────────────────── */
+
+body.theme-light .atc-trigger {
+  color: oklch(35% 0.020 210);
+  border-color: oklch(59% 0.160 200 / 0.2);
+}
+
+body.theme-light .atc-trigger:hover,
+body.theme-light .atc-trigger[aria-expanded="true"] {
+  background: oklch(96% 0.015 200 / 0.65);
+  color: oklch(25% 0.030 210);
+}
+
+body.theme-light .atc-dropdown {
+  background: oklch(99% 0.003 200 / 0.97);
+  border-color: oklch(59% 0.160 200 / 0.15);
+  box-shadow: 0 8px 28px oklch(14% 0.025 210 / 0.14);
+}
+
+body.theme-light .atc-option {
+  color: oklch(35% 0.020 210);
+}
+
+body.theme-light .atc-option:hover {
+  background: oklch(94% 0.015 200 / 0.6);
+  color: oklch(14% 0.025 210);
+}
+
+body.theme-light .atc-divider {
+  background: oklch(59% 0.160 200 / 0.15);
+}

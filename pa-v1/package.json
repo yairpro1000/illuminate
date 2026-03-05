@@ -10,9 +10,12 @@
     "build:web": "vite --config web/vite.config.ts build",
     "build:api": "tsup server/index.ts --format cjs --outDir dist/server --sourcemap",
     "start": "node dist/server/index.js",
-    "init-auth": "node scripts/init-auth.mjs"
+    "init-auth": "node scripts/init-auth.mjs",
+    "print-ddl": "tsx scripts/print_pa_ddl.ts",
+    "import-supabase": "tsx scripts/import_pa_data_to_supabase.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

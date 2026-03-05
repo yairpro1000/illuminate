@@ -81,7 +81,7 @@
 
 ---
 
-### **`database_schema.md`**
+### **`site_database_schema.md`**
 
 * Tables Overview  
 * bookings Table  
@@ -571,7 +571,7 @@ This document is now the canonical design reference.
 Next move options:
 
 1. Formalize state machines as explicit transition tables.  
-2. Generate `database_schema.md` in implementation-ready SQL.  
+2. Generate `site_database_schema.md` in implementation-ready SQL.  
 3. Draft `api_contracts.md` with exact endpoint signatures.  
 4. Or stress-test edge cases before freezing the spec.
 

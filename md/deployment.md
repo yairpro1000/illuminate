@@ -30,7 +30,7 @@ call: - `/internal/jobs/expire-checkout-holds` -
 ## 2. Supabase Setup Steps
 
 -   Create Supabase project (dev + prod recommended).
--   Run schema from `database_schema.md`.
+-   Run schema from `site_database_schema.md`.
 -   Configure Row Level Security (RLS) as needed:
     -   Public access via server only (recommended).
 -   Create admin user (Phase II).

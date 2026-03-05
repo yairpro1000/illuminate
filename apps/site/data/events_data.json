@@ -1,0 +1,60 @@
+{
+  "events": [
+    {
+      "id": "ev-01-body",
+      "title": "Listening to the Body",
+      "teaser": "Release what's been waiting for your attention.",
+      "description": "A guided evening of embodied presence: gentle pair connection, a deep body-listening meditation, and grounded sharing. You'll leave with more clarity, softness, and inner space—without forcing anything.",
+      "date_iso": "2026-03-20",
+      "date_display": "Fri, 20 Mar 2026",
+      "start_time": "19:00",
+      "duration_minutes": 115,
+      "format": "In-person + optional online",
+      "location": "Lugano (venue TBA) / Zoom",
+      "tags": ["Embodiment", "Somatic", "Presence"],
+      "cta_text": "Reserve a spot"
+    },
+    {
+      "id": "ev-02-guidance",
+      "title": "Inner Compass Night",
+      "teaser": "Hear the difference between mind, gut, and heart.",
+      "description": "We explore what becomes possible when conversation is structured with care. Through rotating pair questions and a simple inner-guidance practice, you'll reconnect with what you already know—then re-enter life with more steadiness.",
+      "date_iso": "2026-04-17",
+      "date_display": "Fri, 17 Apr 2026",
+      "start_time": "19:00",
+      "duration_minutes": 120,
+      "format": "In-person + optional online",
+      "location": "Lugano (venue TBA) / Zoom",
+      "tags": ["Clarity", "Values", "Connection"],
+      "cta_text": "Join this evening"
+    },
+    {
+      "id": "ev-03-mirror",
+      "title": "Mirrors & Gifts",
+      "teaser": "A night of seeing—and being seen—beautifully.",
+      "description": "A warm, imaginative evening where we practice affirming connection. After guided pair work, you'll offer and receive a gentle 'reading' of strengths, qualities, and gifts—held as playful intuition, not certainty.",
+      "date_iso": "2026-05-15",
+      "date_display": "Fri, 15 May 2026",
+      "start_time": "19:00",
+      "duration_minutes": 115,
+      "format": "In-person + optional online",
+      "location": "Lugano (venue TBA) / Zoom",
+      "tags": ["Intuition", "Mirroring", "Wonder"],
+      "cta_text": "Save my seat"
+    },
+    {
+      "id": "ev-04-new-earth",
+      "title": "New Earth Conversations",
+      "teaser": "Expand the frame. Keep it human.",
+      "description": "A guided dialogue evening using New Earth themes as inspiration. We explore paradigm shifts, meaning, and the world we're choosing to build—without pressure to agree and without losing our grounding.",
+      "date_iso": "2026-06-19",
+      "date_display": "Fri, 19 Jun 2026",
+      "start_time": "19:00",
+      "duration_minutes": 120,
+      "format": "In-person + optional online",
+      "location": "Lugano (venue TBA) / Zoom",
+      "tags": ["Paradigms", "Community", "Vision"],
+      "cta_text": "Attend the talk"
+    }
+  ]
+}

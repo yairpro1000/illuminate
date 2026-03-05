@@ -5,8 +5,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description"
-    content="ILLUMINATE Evenings — A guided social space to listen deeply, speak authentically, and rediscover how fascinating people can be." />
-  <title>ILLUMINATE Evenings — A Different Way of Being Together</title>
+    content="Book a 1:1 Clarity Session or register for an ILLUMINATE Evening with Yair Benharroch in Lugano." />
+  <title>Book — ILLUMINATE by Yair Benharroch</title>
 
   <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
 
@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
   <link rel="stylesheet" href="css/main.css" />
-  <link rel="stylesheet" href="css/evenings.css" />
+  <link rel="stylesheet" href="css/book.css" />
   <link rel="stylesheet" href="css/add-to-calendar.css" />
 </head>
 
@@ -53,10 +53,10 @@
         <li><a href="index.html#how-we-work">How We Work</a></li>
         <li><a href="index.html#investment">Investment</a></li>
         <li><a href="index.html#about">About</a></li>
-        <li><a href="evenings.html" aria-current="page">Evenings</a></li>
+        <li><a href="evenings.html">Evenings</a></li>
       </ul>
 
-      <a href="book.html" class="nav__cta">Book a Session</a>
+      <a href="book.html" class="nav__cta" aria-current="page">Book a Session</a>
 
       <!-- Mobile hamburger -->
       <button class="nav__hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
@@ -72,73 +72,20 @@
       <a href="index.html#how-we-work" role="menuitem">How We Work</a>
       <a href="index.html#investment" role="menuitem">Investment</a>
       <a href="index.html#about" role="menuitem">About</a>
-      <a href="evenings.html" role="menuitem" aria-current="page">Evenings</a>
-      <a href="book.html" role="menuitem">Book a Session</a>
+      <a href="evenings.html" role="menuitem">Evenings</a>
+      <a href="book.html" role="menuitem" aria-current="page">Book a Session</a>
     </div>
   </nav>
 
   <!-- ══════════════════════════════════════════════════════
        MAIN CONTENT
   ══════════════════════════════════════════════════════ -->
-  <main id="main">
-
-    <!-- ── HERO ─────────────────────────────────────────── -->
-    <section class="hero section evenings-hero" id="hero" aria-labelledby="hero-heading">
-
-      <!-- No opening viewport — page opens directly on content -->
-      <div class="hero__content">
-
-        <h1 class="heading-display hero__headline fade-up" id="hero-heading">
-          <span class="gradient-text">ILLUMINATE Evenings</span>
-        </h1>
-
-        <p class="hero__subtext fade-up fade-up--delay-1">
-          A Different Way of Being Together
-        </p>
-
-        <div class="evenings-body fade-up fade-up--delay-2">
-          <p class="evenings-intro">
-            In a world of performance, distraction, and polarization,<br class="break-md" />
-            ILLUMINATE offers a guided social space where you can practice:
-          </p>
-
-          <ul class="evenings-practices">
-            <li>listening deeply</li>
-            <li>speaking authentically</li>
-            <li>connecting while staying rooted in yourself</li>
-            <li>rediscovering how fascinating people can be</li>
-          </ul>
-
-          <p class="evenings-closing">
-            Structured. Imaginative. Human.<br />
-            A microcosm of the world we want to live in.
-          </p>
-        </div>
-
-      </div>
-
-    </section>
-
-    <div class="section-divider"></div>
-
-    <!-- ── UPCOMING EVENTS ──────────────────────────────────── -->
-    <section class="section section--alt" id="upcoming" aria-labelledby="upcoming-heading">
-      <div class="container">
-
-        <div class="upcoming__header fade-up">
-          <span class="label">Upcoming Evenings</span>
-          <h2 class="heading-xl mt-md fade-up fade-up--delay-1" id="upcoming-heading">
-            Dates &amp; Details
-          </h2>
-        </div>
-
-        <!-- Cards injected here by js/evenings.js -->
-        <div class="events-grid" id="events-grid" aria-live="polite"></div>
-
-      </div>
-    </section>
-
+  <main id="main" class="book-main">
+    <div class="book-container">
+      <div id="booking-app" aria-live="polite"></div>
+    </div>
   </main>
+
 
   <!-- ══════════════════════════════════════════════════════
        FOOTER
@@ -183,7 +130,8 @@
 
   <script src="js/main.js"></script>
   <script src="js/add-to-calendar.js"></script>
-  <script src="js/evenings.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/book.js"></script>
 </body>
 
 </html>
