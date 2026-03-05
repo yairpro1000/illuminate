@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import * as XLSX from "xlsx";
-import { ParsedActionZ, type ParsedAction } from "../../pa-v1/shared/model";
+import { ParsedActionZ, type ParsedAction } from "./shared/model";
 import { makeSupabase } from "./repo/supabase";
 import { makePaRepo } from "./repo/paRepo";
 import { requireAccess } from "./auth";
@@ -207,6 +207,7 @@ app.get("/pa/export/:listId.csv", async (c) => {
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
   const listId = c.req.param("listId");
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const lists = await repo.listLists(schema);
   const def = lists.find((l) => l.id === listId) ?? null;
   if (!def) return c.json({ error: "not_found" }, 404);
@@ -231,6 +232,7 @@ app.get("/pa/export/:listId.xlsx", async (c) => {
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
   const listId = c.req.param("listId");
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const lists = await repo.listLists(schema);
   const def = lists.find((l) => l.id === listId) ?? null;
   if (!def) return c.json({ error: "not_found" }, 404);

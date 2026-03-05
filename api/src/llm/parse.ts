@@ -1,6 +1,6 @@
-import type { ParsedAction, SchemaRegistry } from "../../../pa-v1/shared/model";
-import { ParsedActionZ } from "../../../pa-v1/shared/model";
-import { isUuidLike, itemExists } from "../../../pa-v1/server/domain/itemId";
+import type { ParsedAction, SchemaRegistry } from "../shared/model";
+import { ParsedActionZ } from "../shared/model";
+import { isUuidLike, itemExists } from "../domain/itemId";
 
 type Provider = "heuristic" | "openai";
 

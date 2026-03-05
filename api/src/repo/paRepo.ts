@@ -1,6 +1,6 @@
-import type { FieldDef, ListDef, ListItem, ParsedAction, SchemaRegistry } from "../../../pa-v1/shared/model";
-import { SchemaRegistryZ } from "../../../pa-v1/shared/model";
-import { applyDefaultsForCreate, migrateAddMissingFields, validatePatch } from "../../../pa-v1/server/domain/validate";
+import type { FieldDef, ListDef, ListItem, ParsedAction, SchemaRegistry } from "../shared/model";
+import { SchemaRegistryZ } from "../shared/model";
+import { applyDefaultsForCreate, migrateAddMissingFields, validatePatch } from "../domain/validate";
 import type { Db } from "./supabase";
 
 function sanitizeListId(listId: string) {

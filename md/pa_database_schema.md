@@ -2,16 +2,14 @@
 
 Goal: replace the current file-based PA storage with a **lean relational schema** in Supabase Postgres, while keeping PA V1 behavior:
 
-- Schema registry source (current): `pa-v1/data/meta/lists.schema.json`
-- Items source (current): `pa-v1/data/lists/<listId>.jsonl` (1 JSON object per line)
+- Schema registry source (current): `data/pa/meta/lists.schema.json`
+- Items source (current): `data/pa/lists/<listId>.jsonl` (1 JSON object per line)
 
 PA tables are prefixed `pa_`.
 
 ## DDL source of truth
 
-Generate the full DDL (copy/paste into Supabase SQL editor):
-
-- `cd pa-v1 && npm run print-ddl`
+The DDL is captured in this doc; copy/paste into Supabase SQL editor.
 
 ## Tables (current)
 

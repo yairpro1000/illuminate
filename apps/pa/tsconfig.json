@@ -2,7 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["../../pa-v1/shared/*"]
+      "@shared/*": ["src/shared/*"]
     },
     "target": "ES2022",
     "lib": ["ES2022", "DOM"],
@@ -18,4 +18,3 @@
   },
   "include": ["src", "vite.config.ts"]
 }
-

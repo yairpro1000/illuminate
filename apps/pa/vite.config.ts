@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     resolve: {
       alias: {
-        "@shared": path.resolve(repoRoot, "pa-v1/shared"),
+        "@shared": path.resolve(__dirname, "src/shared"),
       },
     },
     server: {
@@ -32,4 +32,3 @@ export default defineConfig(({ mode }) => {
     },
   };
 });
-
