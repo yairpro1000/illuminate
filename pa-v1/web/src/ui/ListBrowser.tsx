@@ -14,6 +14,7 @@ import {
   StatusPicker,
   StatusSelect,
   ToggleSwitch,
+  useDismissibleDetails,
 } from "./listBrowser/components";
 import { bySortKey, fieldLabel, hexToRgba, linkifyText, moveArrayItem } from "./listBrowser/utils";
 
@@ -38,6 +39,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [filterColor, setFilterColor] = React.useState<string | "">("");
   const [filterTopic, setFilterTopic] = React.useState<string>("");
   const [showArchived, setShowArchived] = React.useState(false);
+
+  const filterColorMenuRef = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(filterColorMenuRef);
   const [sortKey, setSortKey] = React.useState("createdAt");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [reorderPriority, setReorderPriority] = React.useState<number>(3);
@@ -826,7 +830,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </div>
         <div style={{ width: 220 }}>
           <label className="small muted">Color</label>
-          <details className="menu" style={{ width: "100%" }}>
+          <details className="menu" style={{ width: "100%" }} ref={filterColorMenuRef}>
             <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
               <span className="muted small">Filter</span>
               {filterColor ? <ColorSwatch color={String(filterColor)} /> : <span className="muted small">All</span>}
@@ -837,7 +841,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                   <button
                     key={c}
                     className="swatchBtn"
-                    onClick={() => setFilterColor(c)}
+                    onClick={() => {
+                      setFilterColor(c);
+                      filterColorMenuRef.current?.removeAttribute("open");
+                    }}
                     title={c}
                     aria-label={c}
                     disabled={reorderMode}
@@ -847,7 +854,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                 ))}
                 <button
                   className="swatchBtn"
-                  onClick={() => setFilterColor("")}
+                  onClick={() => {
+                    setFilterColor("");
+                    filterColorMenuRef.current?.removeAttribute("open");
+                  }}
                   title="All"
                   aria-label="All"
                   disabled={reorderMode}
