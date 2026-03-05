@@ -115,8 +115,12 @@ function validateFields(fields) {
     if (!S.email.trim())              errs.email = 'Please enter your email.';
     else if (!EMAIL_RE.test(S.email)) errs.email = 'Please enter a valid email address.';
   }
-  if (fields.phone && !S.phone.trim())
-    errs.phone = 'Phone number is required for this registration.';
+  if (fields.phone) {
+    if (!S.phone.trim())
+      errs.phone = 'Phone number is required for this registration.';
+    else if (S.phone.replace(/\D/g, '').length < 7)
+      errs.phone = 'Please enter a valid phone number.';
+  }
   if (fields.paymentMethod && !S.paymentMethod)
     errs.paymentMethod = 'Please choose a payment option.';
   return errs;
@@ -739,7 +743,22 @@ function attachListeners() {
   // Field inputs
   app.querySelectorAll('[data-field]').forEach(input => {
     input.addEventListener('input', e => {
-      S[e.target.dataset.field] = e.target.value;
+      let value = e.target.value;
+
+      // Phone: strip anything that isn't a digit, +, -, (, ), space, or #
+      if (e.target.dataset.field === 'phone') {
+        const clean = value.replace(/[^\d+\-(). #]/g, '');
+        if (clean !== value) {
+          const cursor = e.target.selectionStart;
+          // New cursor = number of valid chars before the original cursor position
+          const newCursor = value.slice(0, cursor).replace(/[^\d+\-(). #]/g, '').length;
+          e.target.value = clean;
+          e.target.setSelectionRange(newCursor, newCursor);
+          value = clean;
+        }
+      }
+
+      S[e.target.dataset.field] = value;
       delete S.errors[e.target.dataset.field];
     });
   });
