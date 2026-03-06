@@ -192,7 +192,10 @@ export function ListBrowser(props: {
     setLists(data.lists);
     setStale(null);
     if (!listId) {
-      const preferred = data.lists.find((l) => l.id === "app")?.id ?? data.lists[0]?.id ?? "";
+      const preferred = data.lists.find((l) => String(l.title).toLowerCase() === "translate")?.id
+        ?? data.lists.find((l) => l.id === "app")?.id
+        ?? data.lists[0]?.id
+        ?? "";
       if (preferred) setListId(preferred);
     }
   }
@@ -262,6 +265,10 @@ export function ListBrowser(props: {
   const sortedLists = React.useMemo(() => {
     const copy = [...lists];
     copy.sort((a, b) => {
+      const aIsTranslate = String(a.title ?? "").toLowerCase() === "translate";
+      const bIsTranslate = String(b.title ?? "").toLowerCase() === "translate";
+      if (aIsTranslate && !bIsTranslate) return -1;
+      if (bIsTranslate && !aIsTranslate) return 1;
       const byTitle = String(a.title ?? "").localeCompare(String(b.title ?? ""), undefined, { sensitivity: "base" });
       if (byTitle !== 0) return byTitle;
       return String(a.id ?? "").localeCompare(String(b.id ?? ""), undefined, { sensitivity: "base" });
