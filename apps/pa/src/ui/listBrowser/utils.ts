@@ -14,6 +14,30 @@ export function bySortKey(key: string, dir: "asc" | "desc") {
   };
 }
 
+export type SortLayer = { key: string; dir: "asc" | "desc" };
+
+export function byMultiSort(layers: SortLayer[]) {
+  return (a: any, b: any) => {
+    for (const { key, dir } of layers) {
+      const av = a?.[key];
+      const bv = b?.[key];
+      if (av === bv) continue;
+      if (av === undefined || av === null) return dir === "asc" ? 1 : -1;
+      if (bv === undefined || bv === null) return dir === "asc" ? -1 : 1;
+      if (typeof av === "number" && typeof bv === "number") {
+        const cmp = dir === "asc" ? av - bv : bv - av;
+        if (cmp !== 0) return cmp;
+        continue;
+      }
+      const cmp = dir === "asc"
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+      if (cmp !== 0) return cmp;
+    }
+    return 0;
+  };
+}
+
 export function fieldLabel(name: string) {
   if (name === "createdAt") return "Created";
   if (name === "listId") return "List";

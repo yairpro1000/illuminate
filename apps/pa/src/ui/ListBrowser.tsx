@@ -19,7 +19,7 @@ import {
 
 // Field types that need a click-to-edit modal (not natively interactive)
 const EDITABLE_FIELD_TYPES = new Set(["string", "int", "float", "date", "time", "json"]);
-import { bySortKey, fieldLabel, hexToRgba, linkifyText, moveArrayItem } from "./listBrowser/utils";
+import { byMultiSort, type SortLayer, fieldLabel, hexToRgba, linkifyText, moveArrayItem } from "./listBrowser/utils";
 
 type ListInfo = {
   id: string;
@@ -59,8 +59,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const filterColorMenuRef = React.useRef<HTMLDetailsElement | null>(null);
   useDismissibleDetails(filterColorMenuRef);
 
-  const [sortKey, setSortKey] = React.useState("createdAt");
-  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
+  const [sortLayers, setSortLayers] = React.useState<SortLayer[]>([{ key: "createdAt", dir: "desc" }]);
+  const [sortModalOpen, setSortModalOpen] = React.useState(false);
+  const [sortDraft, setSortDraft] = React.useState<SortLayer[]>([]);
   const [reorderPriority, setReorderPriority] = React.useState<number>(3);
   const [reorderMode, setReorderMode] = React.useState(false);
   const [reorderIds, setReorderIds] = React.useState<string[]>([]);
@@ -70,8 +71,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     filterColor: string | "";
     filterTopic: string;
     showArchived: boolean;
-    sortKey: string;
-    sortDir: "asc" | "desc";
+    sortLayers: SortLayer[];
     searchAllLists: boolean;
   } | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
@@ -282,7 +282,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     return true;
   });
 
-  const filtered = visibleRows.sort(bySortKey(sortKey, sortDir));
+  const filtered = visibleRows.sort(byMultiSort(sortLayers));
   const filteredById = new Map(filtered.map((r) => [r.id, r]));
   const displayRows = reorderMode ? (reorderIds.map((id) => filteredById.get(id)).filter(Boolean) as ItemRow[]) : filtered;
 
@@ -296,12 +296,12 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
   function toggleSort(key: string) {
     if (reorderMode) return;
-    if (sortKey !== key) {
-      setSortKey(key);
-      setSortDir("asc");
-      return;
-    }
-    setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    setSortLayers((prev) => {
+      if (prev[0]?.key === key) {
+        return [{ key, dir: prev[0].dir === "asc" ? "desc" : "asc" }, ...prev.slice(1)];
+      }
+      return [{ key, dir: "asc" }, ...prev.filter((l) => l.key !== key)];
+    });
   }
 
   async function commit(action: any, opts?: { refresh?: boolean; expectedItemUpdatedAt?: string; undoLabel?: string }) {
@@ -719,15 +719,13 @@ export function ListBrowser(props: { refreshSignal: number }) {
       filterColor,
       filterTopic,
       showArchived,
-      sortKey,
-      sortDir,
+      sortLayers,
       searchAllLists,
     };
     setReorderMode(true);
     setFilterPriority(reorderPriority);
     setShowArchived(false);
-    setSortKey("order");
-    setSortDir("asc");
+    setSortLayers([{ key: "order", dir: "asc" }]);
     const ids = items
       .filter((it) => (it.priority ?? 3) === reorderPriority)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -746,8 +744,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setFilterColor(b.filterColor);
     setFilterTopic(b.filterTopic);
     setShowArchived(b.showArchived);
-    setSortKey(b.sortKey);
-    setSortDir(b.sortDir);
+    setSortLayers(b.sortLayers);
     setSearchAllLists(b.searchAllLists);
   }
 
@@ -1257,6 +1254,14 @@ export function ListBrowser(props: { refreshSignal: number }) {
           >
             {filtersOpen ? "− Filters" : "+ Filters"}
           </button>
+          <button
+            className="iconbtn"
+            onClick={() => { setSortDraft([...sortLayers]); setSortModalOpen(true); }}
+            style={{ flexShrink: 0, borderColor: "rgba(122,162,255,0.45)", color: "var(--accent)", background: sortLayers.length > 1 ? "rgba(122,162,255,0.12)" : "rgba(122,162,255,0.05)" }}
+            title="Sort by"
+          >
+            ↕ Sort{sortLayers.length > 1 ? ` (${sortLayers.length})` : ""}
+          </button>
         </div>
       ) : null}
 
@@ -1626,11 +1631,126 @@ export function ListBrowser(props: { refreshSignal: number }) {
       </div>
 
       {!reorderMode && !undoMode ? (
-        <div className="pill small" style={{ marginTop: 8, display: "inline-flex" }}>
+        <div className="pill small" style={{ marginTop: 8, display: "inline-flex", flexWrap: "wrap", gap: 2 }}>
           <span className="muted">Sort</span>
-          <span>{sortKey} ({sortDir})</span>
+          {sortLayers.map((l, i) => (
+            <React.Fragment key={i}>
+              {i > 0 ? <span className="muted">then</span> : null}
+              <span>{fieldLabel(l.key)} {l.dir === "asc" ? "↑" : "↓"}</span>
+            </React.Fragment>
+          ))}
         </div>
       ) : null}
+
+      {sortModalOpen ? (() => {
+        const builtinSortFields: { key: string; label: string }[] = [
+          { key: "text", label: "Text" },
+          { key: "priority", label: "Priority" },
+          { key: "status", label: "Status" },
+          { key: "color", label: "Color" },
+          { key: "createdAt", label: "Created" },
+        ];
+        if (searchAllLists) builtinSortFields.push({ key: "listId", label: "List" });
+        const customFields = activeList
+          ? Object.entries(activeList.fields)
+              .filter(([k]) => !["order", "archivedAt", "unarchivedAt", "text", "priority", "status", "color"].includes(k))
+              .map(([k]) => ({ key: k, label: fieldLabel(k) }))
+          : [];
+        const allSortFields = [...builtinSortFields, ...customFields];
+        const usedKeys = new Set(sortDraft.map((l) => l.key));
+
+        function draftMove(i: number, dir: -1 | 1) {
+          setSortDraft((prev) => {
+            const next = [...prev];
+            const swap = i + dir;
+            if (swap < 0 || swap >= next.length) return prev;
+            [next[i], next[swap]] = [next[swap]!, next[i]!];
+            return next;
+          });
+        }
+
+        return (
+          <>
+            <div className="dialogOverlay" onClick={() => setSortModalOpen(false)} />
+            <dialog open className="dialog" style={{ minWidth: 340, maxWidth: 480 }}>
+              <div className="topbar" style={{ marginBottom: 14 }}>
+                <div>
+                  <div className="title">Sort by</div>
+                  <div className="muted small">Drag or reorder sort levels</div>
+                </div>
+                <div className="btnrow">
+                  <button onClick={() => setSortModalOpen(false)}>Close</button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                {sortDraft.length === 0 && (
+                  <div className="muted small" style={{ padding: "8px 0" }}>No sort applied — rows appear in natural order.</div>
+                )}
+                {sortDraft.map((layer, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <button className="iconbtn" style={{ padding: "0 6px", fontSize: 11, lineHeight: 1.4 }} onClick={() => draftMove(i, -1)} disabled={i === 0} title="Move up">▲</button>
+                      <button className="iconbtn" style={{ padding: "0 6px", fontSize: 11, lineHeight: 1.4 }} onClick={() => draftMove(i, 1)} disabled={i === sortDraft.length - 1} title="Move down">▼</button>
+                    </div>
+                    <span className="muted small" style={{ width: 14, textAlign: "right", flexShrink: 0 }}>{i + 1}.</span>
+                    <select
+                      value={layer.key}
+                      style={{ flex: 1 }}
+                      onChange={(e) => {
+                        const key = e.target.value;
+                        setSortDraft((prev) => prev.map((l, j) => j === i ? { ...l, key } : l));
+                      }}
+                    >
+                      {allSortFields.map((f) => (
+                        <option key={f.key} value={f.key} disabled={f.key !== layer.key && usedKeys.has(f.key)}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="iconbtn"
+                      style={{ flexShrink: 0, minWidth: 56 }}
+                      onClick={() => setSortDraft((prev) => prev.map((l, j) => j === i ? { ...l, dir: l.dir === "asc" ? "desc" : "asc" } : l))}
+                      title="Toggle direction"
+                    >
+                      {layer.dir === "asc" ? "↑ Asc" : "↓ Desc"}
+                    </button>
+                    <button
+                      className="iconbtn"
+                      style={{ flexShrink: 0, color: "var(--danger)", borderColor: "rgba(255,107,107,0.4)" }}
+                      onClick={() => setSortDraft((prev) => prev.filter((_, j) => j !== i))}
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <button
+                  className="iconbtn"
+                  onClick={() => {
+                    const available = allSortFields.find((f) => !usedKeys.has(f.key));
+                    if (!available) return;
+                    setSortDraft((prev) => [...prev, { key: available.key, dir: "asc" }]);
+                  }}
+                  disabled={sortDraft.length >= allSortFields.length}
+                >
+                  + Add level
+                </button>
+                <div className="btnrow">
+                  <button onClick={() => setSortDraft([])}>Clear all</button>
+                  <button className="primary" onClick={() => { setSortLayers(sortDraft.length > 0 ? sortDraft : [{ key: "createdAt", dir: "desc" }]); setSortModalOpen(false); }}>
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </dialog>
+          </>
+        );
+      })() : null}
 
       {addOpen ? (
         <>
