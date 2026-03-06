@@ -2,9 +2,10 @@ import type { Db } from "./supabase";
 
 export type UndoSnapshot = {
   listId: string;
-  action: "delete_item" | "update_item";
+  action: "delete_item" | "update_item" | "move_item";
   item: Record<string, unknown> & { id: string };
   patchedFields?: string[]; // update_item only: which fields to restore on undo
+  movedToListId?: string; // move_item only: the list the item was moved to
 };
 
 export type UndoLogEntry = {

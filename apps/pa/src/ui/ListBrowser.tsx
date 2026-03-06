@@ -778,7 +778,7 @@ export function ListBrowser(props: {
         if (!row || row.__listId === toListId) continue;
         await commit(
           { type: "move_item", valid: true, confidence: 1, fromListId: row.__listId, toListId, itemId: id },
-          { refresh: false },
+          { refresh: false, undoLabel: "Moved item" },
         );
       }
       setSelectedIds(new Set());
@@ -1083,7 +1083,7 @@ export function ListBrowser(props: {
 
   async function moveRow(fromListId: string, toListId: string, itemId: string) {
     if (fromListId === toListId) return;
-    await commit({ type: "move_item", valid: true, confidence: 1, fromListId, toListId, itemId });
+    await commit({ type: "move_item", valid: true, confidence: 1, fromListId, toListId, itemId }, { undoLabel: "Moved item" });
   }
 
   function openAdd() {

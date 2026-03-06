@@ -7,13 +7,33 @@ function speak(text: string, lang: string) {
   if (!s) return;
   if (typeof window === "undefined") return;
   if (!("speechSynthesis" in window)) return;
-  try {
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(s);
-    if (lang) u.lang = lang;
-    window.speechSynthesis.speak(u);
-  } catch {
-    // ignore
+
+  function doSpeak() {
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(s);
+      if (lang) {
+        u.lang = lang;
+        const voices = window.speechSynthesis.getVoices();
+        const match =
+          voices.find((v) => v.lang === lang) ??
+          voices.find((v) => v.lang.startsWith(lang.split("-")[0]));
+        if (match) u.voice = match;
+      }
+      window.speechSynthesis.speak(u);
+    } catch {
+      // ignore
+    }
+  }
+
+  // On iOS, getVoices() returns [] until onvoiceschanged fires
+  if (window.speechSynthesis.getVoices().length === 0) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      doSpeak();
+    };
+  } else {
+    doSpeak();
   }
 }
 

@@ -333,9 +333,20 @@ app.post("/commit", async (c) => {
       result = { ok: true };
       break;
     }
-    case "move_item":
+    case "move_item": {
       result = await repo.moveItem(schema, canonical.fromListId, canonical.toListId, canonical.itemId, { updatedBy });
+      if ((result as any).moved) {
+        undoId = crypto.randomUUID();
+        const movedLabel = `Moved item to "${schema.lists[canonical.toListId]?.title ?? canonical.toListId}"`;
+        await undoRepo.push({
+          id: undoId,
+          userId: email,
+          label: movedLabel,
+          snapshots: [{ listId: canonical.fromListId, action: "move_item", item: { id: canonical.itemId }, movedToListId: canonical.toListId }],
+        });
+      }
       break;
+    }
     case "delete_list": {
       const deleteListId = (canonical as any).listId as string;
       const listTitle = schema.lists[deleteListId]?.title ?? deleteListId;
@@ -435,6 +446,9 @@ async function applyUndoSnapshot(repo: PaRepo, snap: UndoSnapshot, updatedBy: st
       restorePatch[field] = (snap.item as any)[field];
     }
     await repo.patchItemRaw(snap.listId, snap.item.id, restorePatch, { updatedBy });
+  } else if (snap.action === "move_item" && snap.movedToListId) {
+    const schema = await repo.loadSchemaRegistry();
+    await repo.moveItem(schema, snap.movedToListId, snap.listId, snap.item.id, { updatedBy });
   }
 }
 
