@@ -230,6 +230,7 @@ export type PaRepo = {
   createList(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "create_list" }>): Promise<{ listId: string; created: boolean }>;
   addFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "add_fields" }>, opts: { updatedBy: string }): Promise<{ listId: string; added: string[]; migrated: number }>;
   removeFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "remove_fields" }>, opts: { updatedBy: string }): Promise<{ listId: string; removed: string[]; migrated: number }>;
+  deleteList(schema: SchemaRegistry, listId: string): Promise<{ listId: string; items: ListItem[] }>;
 };
 
 export function makePaRepo(db: Db): PaRepo {
@@ -810,6 +811,33 @@ export function makePaRepo(db: Db): PaRepo {
 
       await touchList(db, listId, opts.updatedBy);
       return { listId, added: added.map((a) => a.name), migrated };
+    },
+
+    async deleteList(schema, listIdInput) {
+      const listId = resolveListId(schema, { listId: listIdInput });
+      const listDef = schema.lists[listId];
+      if (!listDef) throw new Error(`List "${listId}" not found.`);
+
+      // Read all items before deleting (for undo snapshots)
+      const items = await this.readListItems(schema, listId);
+
+      // Bulk delete all items
+      const { error: itemsErr } = await db.from("pa_list_items").delete().eq("list_id", listId);
+      if (itemsErr) throw itemsErr;
+
+      // Delete custom fields
+      const { error: cfErr } = await db.from("pa_list_custom_fields").delete().eq("list_id", listId);
+      if (cfErr) throw cfErr;
+
+      // Delete aliases
+      const { error: aliasErr } = await db.from("pa_list_aliases").delete().eq("list_id", listId);
+      if (aliasErr) throw aliasErr;
+
+      // Delete the list itself
+      const { error: listErr } = await db.from("pa_lists").delete().eq("list_id", listId);
+      if (listErr) throw listErr;
+
+      return { listId, items };
     },
 
     async removeFields(schema, action, opts) {

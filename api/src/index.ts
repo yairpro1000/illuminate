@@ -287,6 +287,27 @@ app.post("/commit", async (c) => {
     case "move_item":
       result = await repo.moveItem(schema, canonical.fromListId, canonical.toListId, canonical.itemId, { updatedBy });
       break;
+    case "delete_list": {
+      const deleteListId = (canonical as any).listId as string;
+      const listTitle = schema.lists[deleteListId]?.title ?? deleteListId;
+      const deleteListResult = await repo.deleteList(schema, deleteListId);
+      if (deleteListResult.items.length > 0) {
+        undoId = crypto.randomUUID();
+        const label = `Deleted list "${listTitle}" (${deleteListResult.items.length} item${deleteListResult.items.length !== 1 ? "s" : ""})`;
+        await undoRepo.push({
+          id: undoId,
+          userId: email,
+          label,
+          snapshots: deleteListResult.items.map((item) => ({
+            listId: deleteListId,
+            action: "delete_item" as const,
+            item: item as any,
+          })),
+        });
+      }
+      result = { ok: true, deletedListId: deleteListId, itemCount: deleteListResult.items.length };
+      break;
+    }
     case "create_list":
       result = await repo.createList(schema, canonical as any);
       break;

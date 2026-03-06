@@ -26,6 +26,8 @@ function summarize(action: ParsedAction | null) {
         .join(", ")}`;
     case "remove_fields":
       return `Remove fields from ${action.listId ?? action.target}: ${action.fieldsToRemove.join(", ")}`;
+    case "delete_list":
+      return `Delete entire list: ${(action as any).listId ?? (action as any).target}`;
     default:
       return "—";
   }
@@ -73,7 +75,12 @@ export function VoicePanel(props: { onCommitted: () => void }) {
 
   function start() {
     if (!SR) return;
+    if (listeningRef.current) return; // guard against double-tap / async state lag
     setErr(null);
+
+    // Stop any existing instance before creating a new one
+    recRef.current?.stop();
+    recRef.current = null;
 
     micBaseRef.current = transcript.trim();
     micFinalRef.current = "";
@@ -160,6 +167,13 @@ export function VoicePanel(props: { onCommitted: () => void }) {
       }
 
       const parsed = ParsedActionZ.parse(json);
+
+      if (parsed.type === "delete_list") {
+        const listName = (parsed as any).listId ?? (parsed as any).target ?? "this list";
+        const confirmed = window.confirm(`Are you sure you want to remove the entire list "${listName}"?`);
+        if (!confirmed) return;
+      }
+
       await api("/commit", { method: "POST", body: JSON.stringify({ action: parsed }) });
       props.onCommitted();
       setErr(null);

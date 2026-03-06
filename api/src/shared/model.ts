@@ -172,6 +172,12 @@ export const BatchActionZ = z
   .strict();
 export type BatchAction = z.infer<typeof BatchActionZ>;
 
+export const DeleteListActionZ = ActionBaseZ.extend({
+  type: z.literal("delete_list"),
+  listId: z.string().min(1).optional(),
+  target: z.string().min(1).optional(),
+}).strict();
+
 const ParsedActionUnionZ = z.discriminatedUnion("type", [
   AppendItemActionZ,
   UpdateItemActionZ,
@@ -181,12 +187,14 @@ const ParsedActionUnionZ = z.discriminatedUnion("type", [
   RemoveFieldsActionZ,
   MoveItemActionZ,
   BatchActionZ,
+  DeleteListActionZ,
 ]);
 
 export const ParsedActionZ = ParsedActionUnionZ.superRefine((val, ctx) => {
   if (val.type === "create_list") return;
   if (val.type === "move_item") return;
   if (val.type === "batch") return;
+  if (val.type === "delete_list") return;
   const hasTarget = Boolean((val as any).listId || (val as any).target);
   if (!hasTarget) {
     ctx.addIssue({

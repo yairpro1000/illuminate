@@ -306,6 +306,24 @@ function patternParse(schema: SchemaRegistry, transcript: string): { action: Par
     }
   }
 
+  // "remove list <name>" / "delete list <name>"
+  const deleteList = t.match(/^(remove|delete)\s+(the\s+)?list\s+(?<list>.+)$/i);
+  if (deleteList?.groups?.list) {
+    const listRaw = deleteList.groups.list.trim();
+    try {
+      const listId = resolveListId(schema, { target: listRaw });
+      return {
+        rule: "delete_list",
+        action: { type: "delete_list", valid: true, confidence: 0.9, listId } as any,
+      };
+    } catch {
+      return {
+        rule: "delete_list",
+        action: { type: "delete_list", valid: false, confidence: 0.2, target: listRaw } as any,
+      };
+    }
+  }
+
   // "create list <name> with fields a, b"
   const createList = t.match(/^create\s+list\s+(?<title>.+?)(\s+with\s+fields?\s+(?<fields>.+))?$/i);
   if (createList?.groups?.title) {
@@ -565,6 +583,14 @@ function normalizeRawAction(schema: SchemaRegistry, transcript: string, raw: any
     return base;
   }
 
+  if (base.type === "delete_list") {
+    if (!base.listId && !base.target) {
+      base.valid = false;
+      base.confidence = 0;
+    }
+    return base;
+  }
+
   if (base.type && base.type !== "move_item" && base.type !== "batch" && !base.listId && !base.target) {
     base.listId = schema.lists.app ? "app" : Object.keys(schema.lists)[0] ?? "inbox";
     base.valid = false;
@@ -708,6 +734,7 @@ async function openAiParse(
     "- delete_item: {type,valid,confidence,listId|target,itemId}",
     "- move_item: {type,valid,confidence,fromListId,toListId,itemId}",
     "- create_list: {type,valid,confidence,title,listId?,aliases?,fields?}",
+    "- delete_list: {type,valid,confidence,listId|target}",
     "- add_fields: {type,valid,confidence,listId|target,fieldsToAdd:[{name,type,default?,nullable?,description?}]}",
     "- remove_fields: {type,valid,confidence,listId|target,fieldsToRemove:[\"fieldA\",...]}",
     "- batch: {type,valid,confidence,label,actions:[BatchActionItem,...]}",
@@ -742,6 +769,8 @@ async function openAiParse(
     "- \"-groceries: banana\" => delete_item from groceries, itemId=\"banana\" (text query ok).",
     "- \"add banana, eggs and gravy to groceries\" => batch append_item.",
     "- \"add to app remove unnecessary columns\" => append_item to app, fields.text=\"remove unnecessary columns\".",
+    "- \"remove list home\" => delete_list with listId=\"home\" (or target=\"home\" if not resolved).",
+    "- \"delete list groceries\" => delete_list with listId=\"groceries\".",
     "- \"create list chores with fields room, tools\" => create_list with fields {room:{type:\"string\",nullable:true},tools:{...}}.",
     "- \"add fields to chores room tools\" => add_fields with fieldsToAdd room/tools.",
     "- \"remove customfield room from chores\" => remove_fields with fieldsToRemove [\"room\"].",
