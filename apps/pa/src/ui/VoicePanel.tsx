@@ -10,6 +10,8 @@ function summarize(action: ParsedAction | null) {
   switch (action.type) {
     case "append_item":
       return `Append item to ${action.listId ?? action.target}: ${(action.fields as any)?.text ?? ""}`;
+    case "batch":
+      return `Batch: ${action.label} (${action.actions.length} actions)`;
     case "update_item":
       return `Update ${action.itemId} in ${action.listId ?? action.target}`;
     case "delete_item":
@@ -22,6 +24,8 @@ function summarize(action: ParsedAction | null) {
       return `Add fields to ${action.listId ?? action.target}: ${action.fieldsToAdd
         .map((f) => f.name)
         .join(", ")}`;
+    case "remove_fields":
+      return `Remove fields from ${action.listId ?? action.target}: ${action.fieldsToRemove.join(", ")}`;
     default:
       return "—";
   }
@@ -32,6 +36,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
   const [listening, setListening] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [action, setAction] = React.useState<ParsedAction | null>(null);
+  const [parseDebug, setParseDebug] = React.useState<any>(null);
   const [actionDraft, setActionDraft] = React.useState("");
   const [editJson, setEditJson] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -122,17 +127,18 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     rec.start();
   }
 
-  async function parse() {
+  async function parse(forceLlm?: boolean) {
     setBusy(true);
     setErr(null);
     try {
-      const data = await api<{ action: ParsedAction; parseError?: string }>("/parse", {
+      const data = await api<{ action: ParsedAction; parseError?: string | null; parseDebug?: any }>("/parse", {
         method: "POST",
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript, forceLlm: Boolean(forceLlm) }),
       });
       setAction(data.action);
       setActionDraft(JSON.stringify(data.action, null, 2));
       setEditJson(false);
+      setParseDebug((data as any).parseDebug ?? null);
       if (data.parseError) setErr(data.parseError);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -158,6 +164,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
       props.onCommitted();
       setErr(null);
       setAction(null);
+      setParseDebug(null);
       setActionDraft("");
       setTranscript("");
     } catch (e: any) {
@@ -179,6 +186,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     stop();
     setTranscript("");
     setAction(null);
+    setParseDebug(null);
     setActionDraft("");
     setEditJson(false);
     setErr(null);
@@ -208,8 +216,8 @@ export function VoicePanel(props: { onCommitted: () => void }) {
       <textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} />
 
       <div style={{ marginTop: 10 }} className="btnrow">
-        <button onClick={parse} disabled={busy || !transcript.trim()}>
-          {busy ? "Working…" : "Parse"}
+        <button onClick={() => parse(Boolean(action))} disabled={busy || !transcript.trim()}>
+          {busy ? "Working…" : action ? "Force LLM" : "Parse"}
         </button>
         <button
           className="primary"
@@ -245,6 +253,23 @@ export function VoicePanel(props: { onCommitted: () => void }) {
           ) : (
             <div className="pill small">
               <span className="muted">Action</span>
+              <span>—</span>
+            </div>
+          )}
+        </div>
+        <div className="col">
+          {parseDebug ? (
+            <div className="pill small" title={parseDebug?.requestId ? `requestId: ${parseDebug.requestId}` : ""}>
+              <span className="muted">parser</span>
+              <span>
+                {String(parseDebug.method ?? "—")}
+                {parseDebug.model ? ` (${parseDebug.model})` : ""}
+                {parseDebug.rule ? ` / ${parseDebug.rule}` : ""}
+              </span>
+            </div>
+          ) : (
+            <div className="pill small">
+              <span className="muted">parser</span>
               <span>—</span>
             </div>
           )}

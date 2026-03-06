@@ -117,6 +117,13 @@ export const AddFieldsActionZ = ActionBaseZ.extend({
     .min(1),
 }).strict();
 
+export const RemoveFieldsActionZ = ActionBaseZ.extend({
+  type: z.literal("remove_fields"),
+  listId: ListTargetFieldsZ.shape.listId,
+  target: ListTargetFieldsZ.shape.target,
+  fieldsToRemove: z.array(z.string().min(1)).min(1),
+}).strict();
+
 export const MoveItemActionZ = z
   .object({
     type: z.literal("move_item"),
@@ -128,18 +135,58 @@ export const MoveItemActionZ = z
   })
   .strict();
 
+export const BatchActionItemZ = z.union([
+  z
+    .object({
+      type: z.literal("append_item"),
+      listId: z.string().min(1),
+      fields: z.record(z.unknown()),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("update_item"),
+      listId: z.string().min(1),
+      itemId: z.string().min(1),
+      patch: z.record(z.unknown()),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("delete_item"),
+      listId: z.string().min(1),
+      itemId: z.string().min(1),
+    })
+    .strict(),
+]);
+export type BatchActionItem = z.infer<typeof BatchActionItemZ>;
+
+export const BatchActionZ = z
+  .object({
+    type: z.literal("batch"),
+    valid: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    label: z.string().min(1),
+    actions: z.array(BatchActionItemZ).min(1),
+  })
+  .strict();
+export type BatchAction = z.infer<typeof BatchActionZ>;
+
 const ParsedActionUnionZ = z.discriminatedUnion("type", [
   AppendItemActionZ,
   UpdateItemActionZ,
   DeleteItemActionZ,
   CreateListActionZ,
   AddFieldsActionZ,
+  RemoveFieldsActionZ,
   MoveItemActionZ,
+  BatchActionZ,
 ]);
 
 export const ParsedActionZ = ParsedActionUnionZ.superRefine((val, ctx) => {
   if (val.type === "create_list") return;
   if (val.type === "move_item") return;
+  if (val.type === "batch") return;
   const hasTarget = Boolean((val as any).listId || (val as any).target);
   if (!hasTarget) {
     ctx.addIssue({

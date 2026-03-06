@@ -200,6 +200,8 @@ async function getMaxOrderInBucket(db: Db, listId: string, priority: number) {
   return typeof max === "number" ? max : -1;
 }
 
+export type { ListItem };
+
 export type PaRepo = {
   loadSchemaRegistry(): Promise<SchemaRegistry>;
   listListsForUi(): Promise<
@@ -219,11 +221,15 @@ export type PaRepo = {
   readListItems(schema: SchemaRegistry, listId: string): Promise<ListItem[]>;
   appendItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, fields: Record<string, unknown>, opts: { updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
   updateItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, patch: Record<string, unknown>, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
-  deleteItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; deletedId: string }>;
+  deleteItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; deletedId: string; prev: ListItem }>;
+  readItemsByIds(itemIds: string[]): Promise<Map<string, { listId: string; item: ListItem }>>;
+  upsertItem(listId: string, item: ListItem, opts: { updatedBy: string }): Promise<void>;
+  patchItemRaw(listId: string, itemId: string, fields: Record<string, unknown>, opts: { updatedBy: string }): Promise<void>;
   moveItem(schema: SchemaRegistry, fromListIdInput: string, toListIdInput: string, itemId: string, opts: { updatedBy: string }): Promise<{ fromListId: string; toListId: string; itemId: string; moved: boolean }>;
   reorderWithinPriorityBucket(schema: SchemaRegistry, listIdInput: string, priority: number, orderedIds: string[], opts: { expectedRevision: number; updatedBy: string }): Promise<{ listId: string; priority: number; orderedIds: string[]; revision: number }>;
   createList(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "create_list" }>): Promise<{ listId: string; created: boolean }>;
   addFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "add_fields" }>, opts: { updatedBy: string }): Promise<{ listId: string; added: string[]; migrated: number }>;
+  removeFields(schema: SchemaRegistry, action: Extract<ParsedAction, { type: "remove_fields" }>, opts: { updatedBy: string }): Promise<{ listId: string; removed: string[]; migrated: number }>;
 };
 
 export function makePaRepo(db: Db): PaRepo {
@@ -479,6 +485,9 @@ export function makePaRepo(db: Db): PaRepo {
         ...(Object.keys(core).length ? core : {}),
       };
 
+      const patchedFields = [...Object.keys(validatedPatch)];
+      if (priorityChanged && !orderChanged) patchedFields.push("order");
+
       const { data: updatedRows, error: updErr } = await db
         .from("pa_list_items")
         .update(updateRow)
@@ -493,19 +502,21 @@ export function makePaRepo(db: Db): PaRepo {
       const updated = updatedRows?.[0] as PaListItemRow | undefined;
       if (!updated) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
       await touchList(db, listId, opts.updatedBy);
-      return { listId, item: fromDbRow(updated) };
+      return { listId, item: fromDbRow(updated), prev: fromDbRow(prev), patchedFields };
     },
 
     async deleteItem(schema, target, itemId, opts) {
       const listId = resolveListId(schema, target);
       const { data: prevRows, error: prevErr } = await db
         .from("pa_list_items")
-        .select("id,updated_at")
+        .select(
+          "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
+        )
         .eq("id", itemId)
         .eq("list_id", listId)
         .limit(1);
       if (prevErr) throw prevErr;
-      const prev = (prevRows?.[0] as { id: string; updated_at: string } | undefined) ?? null;
+      const prev = (prevRows?.[0] as PaListItemRow | undefined) ?? null;
       if (!prev) throw new Error(`Item "${itemId}" not found.`);
       if (opts.expectedUpdatedAt && String(prev.updated_at) !== String(opts.expectedUpdatedAt)) {
         throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt, currentUpdatedAt: prev.updated_at });
@@ -522,7 +533,71 @@ export function makePaRepo(db: Db): PaRepo {
       if (error) throw error;
       if (!deletedRows?.[0]) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
       await touchList(db, listId, opts.updatedBy);
-      return { listId, deletedId: itemId };
+      return { listId, deletedId: itemId, prev: fromDbRow(prev) };
+    },
+
+    async readItemsByIds(itemIds) {
+      if (itemIds.length === 0) return new Map();
+      const { data, error } = await db
+        .from("pa_list_items")
+        .select(
+          "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
+        )
+        .in("id", itemIds);
+      if (error) throw error;
+      const result = new Map<string, { listId: string; item: ListItem }>();
+      for (const row of (data ?? []) as PaListItemRow[]) {
+        result.set(row.id, { listId: row.list_id, item: fromDbRow(row) });
+      }
+      return result;
+    },
+
+    async upsertItem(listId, item, opts) {
+      const { id, createdAt, updatedAt: _updatedAt, ...rest } = item as any;
+      const { core, extra } = splitFields(rest);
+      const row = {
+        id,
+        list_id: listId,
+        created_at: createdAt ?? new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        text: String((core as any).text ?? ""),
+        priority: typeof (core as any).priority === "number" ? (core as any).priority : 3,
+        color: (core as any).color ?? null,
+        status: typeof (core as any).status === "string" ? (core as any).status : "todo",
+        order: typeof (core as any).order === "number" ? (core as any).order : 0,
+        archived_at: (core as any).archived_at ?? null,
+        unarchived_at: (core as any).unarchived_at ?? null,
+        extra_fields: extra,
+      };
+      const { error } = await db.from("pa_list_items").upsert(row, { onConflict: "id" });
+      if (error) throw error;
+      await touchList(db, listId, opts.updatedBy);
+    },
+
+    async patchItemRaw(listId, itemId, fields, opts) {
+      const { core, extra } = splitFields(fields);
+      const updateRow: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      for (const [k, v] of Object.entries(core as Record<string, unknown>)) {
+        updateRow[k] = v;
+      }
+      if (Object.keys(extra).length > 0) {
+        const { data: prevRows, error: prevErr } = await db
+          .from("pa_list_items")
+          .select("extra_fields")
+          .eq("id", itemId)
+          .eq("list_id", listId)
+          .limit(1);
+        if (prevErr) throw prevErr;
+        const currentExtra = (prevRows?.[0] as any)?.extra_fields ?? {};
+        updateRow.extra_fields = { ...currentExtra, ...extra };
+      }
+      const { error } = await db
+        .from("pa_list_items")
+        .update(updateRow)
+        .eq("id", itemId)
+        .eq("list_id", listId);
+      if (error) throw error;
+      await touchList(db, listId, opts.updatedBy);
     },
 
     async moveItem(schema, fromListIdInput, toListIdInput, itemId, opts) {
@@ -735,6 +810,43 @@ export function makePaRepo(db: Db): PaRepo {
 
       await touchList(db, listId, opts.updatedBy);
       return { listId, added: added.map((a) => a.name), migrated };
+    },
+
+    async removeFields(schema, action, opts) {
+      const listId = action.listId ? sanitizeListId(action.listId) : resolveListId(schema, action as any);
+      const listDef = schema.lists[listId];
+      if (!listDef) throw new Error(`List "${listId}" not found.`);
+
+      const toRemove = Array.from(
+        new Set(
+          (action.fieldsToRemove ?? [])
+            .map((s) => String(s ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 25),
+        ),
+      );
+      if (toRemove.length === 0) throw new Error("No fields to remove.");
+
+      const removed: string[] = [];
+      for (const name of toRemove) {
+        if (baseFieldNames.has(name)) throw new Error(`Field "${name}" is a base field and cannot be removed.`);
+        if (["id", "createdAt", "updatedAt"].includes(name)) throw new Error(`Field "${name}" is reserved.`);
+        if (!listDef.fields[name]) throw new Error(`Field "${name}" does not exist on "${listId}".`);
+        delete listDef.fields[name];
+        removed.push(name);
+      }
+
+      // Keep removal fast and reliable: deleting the custom-field definition hides the column in UI.
+      // We intentionally do NOT scan/update every item row here (can time out on large lists).
+      const { error } = await db
+        .from("pa_list_custom_fields")
+        .delete()
+        .eq("list_id", listId)
+        .in("name", removed);
+      if (error) throw error;
+
+      await touchList(db, listId, opts.updatedBy);
+      return { listId, removed, migrated: 0 };
     },
   };
 }

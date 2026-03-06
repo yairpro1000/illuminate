@@ -39,7 +39,8 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   if (!isJson) {
     const text = await res.text();
     const details = text?.slice?.(0, 300) ?? "";
-    if (!res.ok) throw new Error(details || `HTTP ${res.status}`);
+    const requestId = res.headers.get("x-request-id") ?? res.headers.get("X-Request-Id") ?? "";
+    if (!res.ok) throw new Error(`${details || `HTTP ${res.status}`}${requestId ? ` (requestId: ${requestId})` : ""}`);
     throw new Error(
       `Expected JSON from ${fullUrl} but got ${contentType || "unknown content-type"} (HTTP ${res.status}). ${
         details ? `Body starts with: ${JSON.stringify(details)}` : ""

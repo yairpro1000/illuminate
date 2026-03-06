@@ -13,8 +13,10 @@ Target shape:
   - `POST /api/lists/:listId/reorder`
   - `POST /api/parse`
   - `POST /api/commit`
-  - `GET /api/export/:listId.csv`
-  - `GET /api/export/:listId.xlsx`
+  - `GET /api/export/csv/:listId`
+  - `GET /api/export/xlsx/:listId`
+  - `GET /api/export/:listId.csv` (legacy)
+  - `GET /api/export/:listId.xlsx` (legacy)
 
 - Marketing-site ops (future):
   - `POST /booking/create`

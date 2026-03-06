@@ -32,6 +32,17 @@ type ListInfo = {
 
 type ItemRow = ListItem & { __listId: string };
 
+type UndoLogEntryLight = {
+  id: string;
+  label: string;
+  itemCount: number;
+  listIds: string[];
+  createdAt: string;
+};
+
+type UndoToast = { id: string; label: string; timerId: number };
+type UndoConfirm = { ids: string[] };
+
 export function ListBrowser(props: { refreshSignal: number }) {
   const SR = getSpeechRecognition();
   const [lists, setLists] = React.useState<ListInfo[]>([]);
@@ -98,6 +109,14 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const addMicBaseRef = React.useRef<string>("");
   const addMicFinalRef = React.useRef<string>("");
   const addMicRestartTimerRef = React.useRef<number | null>(null);
+
+  // Undo mode
+  const [undoMode, setUndoMode] = React.useState(false);
+  const [undoLog, setUndoLog] = React.useState<UndoLogEntryLight[]>([]);
+  const [undoSelectedIds, setUndoSelectedIds] = React.useState<Set<string>>(new Set());
+  const [undoToast, setUndoToast] = React.useState<UndoToast | null>(null);
+  const [undoConfirm, setUndoConfirm] = React.useState<UndoConfirm | null>(null);
+  const [undoBusy, setUndoBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!addListening) return;
@@ -285,9 +304,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setSortDir((d) => (d === "asc" ? "desc" : "asc"));
   }
 
-  async function commit(action: any, opts?: { refresh?: boolean; expectedItemUpdatedAt?: string }) {
+  async function commit(action: any, opts?: { refresh?: boolean; expectedItemUpdatedAt?: string; undoLabel?: string }) {
+    let res: { ok: boolean; result?: any; undoId?: string } | undefined;
     try {
-      await api("/commit", {
+      res = await api<{ ok: boolean; result?: any; undoId?: string }>("/commit", {
         method: "POST",
         body: JSON.stringify({
           action,
@@ -313,11 +333,85 @@ export function ListBrowser(props: { refreshSignal: number }) {
       throw e;
     }
 
+    if (res?.undoId && opts?.undoLabel) showUndoToast(res.undoId, opts.undoLabel);
     await loadLists().catch(() => {});
     const refresh = opts?.refresh !== false;
     if (refresh) {
       if (searchAllLists) await loadAllRows();
       else await loadItems(listId);
+    }
+  }
+
+  function showUndoToast(id: string, label: string) {
+    setUndoToast((prev) => {
+      if (prev?.timerId) window.clearTimeout(prev.timerId);
+      const timerId = window.setTimeout(() => setUndoToast(null), 7000);
+      return { id, label, timerId };
+    });
+  }
+
+  function dismissUndoToast() {
+    setUndoToast((prev) => {
+      if (prev?.timerId) window.clearTimeout(prev.timerId);
+      return null;
+    });
+  }
+
+  async function loadUndoLog() {
+    const res = await api<{ entries: UndoLogEntryLight[] }>("/undo");
+    setUndoLog(res.entries);
+  }
+
+  async function enterUndoMode() {
+    setErr(null);
+    setUndoSelectedIds(new Set());
+    try {
+      await loadUndoLog();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+    setUndoMode(true);
+  }
+
+  function exitUndoMode() {
+    setUndoMode(false);
+    setUndoSelectedIds(new Set());
+  }
+
+  function toggleUndoSelect(id: string) {
+    setUndoSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function executeUndo(ids: string[], confirmed: boolean) {
+    setUndoBusy(true);
+    setErr(null);
+    setStale(null);
+    try {
+      for (const id of ids) {
+        const res = await api<{ ok: boolean; conflicts?: boolean }>("/undo", {
+          method: "POST",
+          body: JSON.stringify({ id, confirmed }),
+        });
+        if (!confirmed && res.conflicts) {
+          setUndoConfirm({ ids });
+          return;
+        }
+      }
+      dismissUndoToast();
+      await loadLists().catch(() => {});
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+      if (undoMode) await loadUndoLog();
+      setUndoSelectedIds(new Set());
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setUndoBusy(false);
     }
   }
 
@@ -395,7 +489,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       itemId,
       patch: { archivedAt: new Date().toISOString() },
       },
-      { refresh: true, expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+      { refresh: true, expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId), undoLabel: "Archived item" },
     );
   }
 
@@ -410,7 +504,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
   async function del(targetListId: string, itemId: string) {
     await commit(
       { type: "delete_item", valid: true, confidence: 1, listId: targetListId, itemId },
-      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
+      { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId), undoLabel: "Deleted item" },
     );
   }
 
@@ -434,22 +528,24 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
   async function deleteSelected() {
     if (selectedIds.size === 0) return;
-    const confirmed = window.confirm(`Delete ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`);
+    const confirmed = window.confirm(`Delete ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}?`);
     if (!confirmed) return;
     setBusy(true);
     setErr(null);
     try {
-      for (const id of selectedIds) {
-        const row = displayRows.find((r) => r.id === id);
-        if (!row) continue;
-        await commit(
-          { type: "delete_item", valid: true, confidence: 1, listId: row.__listId, itemId: id },
-          { refresh: false, expectedItemUpdatedAt: findItemUpdatedAt(row.__listId, id) },
-        );
-      }
+      const rows = displayRows.filter((r) => selectedIds.has(r.id));
+      const label = `Deleted ${rows.length} item${rows.length !== 1 ? "s" : ""}`;
+      await commit(
+        {
+          type: "batch",
+          valid: true,
+          confidence: 1,
+          label,
+          actions: rows.map((r) => ({ type: "delete_item", listId: r.__listId, itemId: r.id })),
+        },
+        { undoLabel: label },
+      );
       setSelectedIds(new Set());
-      if (searchAllLists) await loadAllRows();
-      else await loadItems(listId);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -593,7 +689,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       }
       await commit(
         { type: "update_item", valid: true, confidence: 1, listId: fieldEditRow.__listId, itemId: fieldEditRow.id, patch: { [fieldEditName]: value } },
-        { expectedItemUpdatedAt: (fieldEditRow as any).updatedAt },
+        { expectedItemUpdatedAt: (fieldEditRow as any).updatedAt, undoLabel: "Updated item" },
       );
       setFieldEditOpen(false);
       setFieldEditRow(null);
@@ -691,26 +787,25 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setBusy(true);
     setErr(null);
     try {
+      const listIds = Array.from(new Set(archiveDoneCandidates.map((it) => it.__listId)));
+      for (const lid of listIds) await ensureArchivedField(lid);
       const now = new Date().toISOString();
-      const byList = new Map<string, Array<{ id: string; updatedAt?: string }>>();
-      for (const it of archiveDoneCandidates) {
-        const lid = it.__listId;
-        if (!byList.has(lid)) byList.set(lid, []);
-        byList.get(lid)!.push({ id: it.id, updatedAt: (it as any).updatedAt });
-      }
-
-      for (const [lid, rows] of byList.entries()) {
-        await ensureArchivedField(lid);
-        for (const { id: itemId, updatedAt } of rows) {
-          await commit(
-            { type: "update_item", valid: true, confidence: 1, listId: lid, itemId, patch: { archivedAt: now } },
-            { refresh: false, expectedItemUpdatedAt: updatedAt ?? findItemUpdatedAt(lid, itemId) },
-          );
-        }
-      }
-
-      if (searchAllLists) await loadAllRows();
-      else await loadItems(listId);
+      const label = `Archived ${archiveDoneCandidates.length} done item${archiveDoneCandidates.length !== 1 ? "s" : ""}`;
+      await commit(
+        {
+          type: "batch",
+          valid: true,
+          confidence: 1,
+          label,
+          actions: archiveDoneCandidates.map((it) => ({
+            type: "update_item",
+            listId: it.__listId,
+            itemId: it.id,
+            patch: { archivedAt: now },
+          })),
+        },
+        { undoLabel: label },
+      );
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -724,25 +819,24 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setBusy(true);
     setErr(null);
     try {
-      const byList = new Map<string, Array<{ id: string; updatedAt?: string }>>();
-      for (const it of unarchiveCandidates) {
-        const lid = it.__listId;
-        if (!byList.has(lid)) byList.set(lid, []);
-        byList.get(lid)!.push({ id: it.id, updatedAt: (it as any).updatedAt });
-      }
-
-      for (const [lid, rows] of byList.entries()) {
-        await ensureArchivedField(lid);
-        for (const { id: itemId, updatedAt } of rows) {
-          await commit(
-            { type: "update_item", valid: true, confidence: 1, listId: lid, itemId, patch: { archivedAt: null } },
-            { refresh: false, expectedItemUpdatedAt: updatedAt ?? findItemUpdatedAt(lid, itemId) },
-          );
-        }
-      }
-
-      if (searchAllLists) await loadAllRows();
-      else await loadItems(listId);
+      const listIds = Array.from(new Set(unarchiveCandidates.map((it) => it.__listId)));
+      for (const lid of listIds) await ensureArchivedField(lid);
+      const label = `Unarchived ${unarchiveCandidates.length} item${unarchiveCandidates.length !== 1 ? "s" : ""}`;
+      await commit(
+        {
+          type: "batch",
+          valid: true,
+          confidence: 1,
+          label,
+          actions: unarchiveCandidates.map((it) => ({
+            type: "update_item",
+            listId: it.__listId,
+            itemId: it.id,
+            patch: { archivedAt: null },
+          })),
+        },
+        { undoLabel: label },
+      );
     } catch (e: any) {
       setErr(String(e?.message ?? e));
     } finally {
@@ -788,7 +882,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
           itemId: editRow.id,
           patch: parsed,
         },
-        { expectedItemUpdatedAt: (editRow as any).updatedAt },
+        { expectedItemUpdatedAt: (editRow as any).updatedAt, undoLabel: "Updated item" },
       );
       setEditOpen(false);
       setEditRow(null);
@@ -1051,19 +1145,31 @@ export function ListBrowser(props: { refreshSignal: number }) {
       )
     : [];
 
+  const filteredUndoLog = undoLog.filter((entry) => {
+    if (filterText && !entry.label.toLowerCase().includes(filterText.toLowerCase())) return false;
+    if (!searchAllLists && listId && !entry.listIds.includes(listId)) return false;
+    return true;
+  });
+
+  const undoAllSelected = undoSelectedIds.size === filteredUndoLog.length && filteredUndoLog.length > 0;
+
   return (
-    <div className="card">
+    <div className="card" style={undoMode ? { borderColor: "#1a90d4", boxShadow: "0 0 0 2px rgba(26,144,212,0.25)" } : undefined}>
       {/* Topbar */}
       <div className="topbar" style={{ marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div className="title">Lists</div>
-          <div className="muted small">Browse • filter • sort • export</div>
+          <div className="title">{undoMode ? "Undo History" : "Lists"}</div>
+          <div className="muted small">
+            {undoMode ? `${filteredUndoLog.length} action${filteredUndoLog.length !== 1 ? "s" : ""}` : "Browse • filter • sort • export"}
+          </div>
         </div>
         <div className="btnrow">
-          <button className="primary" onClick={openAdd} disabled={reorderMode || (!listId && lists.length === 0)}>
-            + Add item
-          </button>
-          {reorderMode ? (
+          {!undoMode && (
+            <button className="primary" onClick={openAdd} disabled={reorderMode || (!listId && lists.length === 0)}>
+              + Add item
+            </button>
+          )}
+          {!undoMode && reorderMode ? (
             <>
               <select
                 value={String(reorderPriority)}
@@ -1079,7 +1185,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
               </button>
               <button onClick={cancelReorder}>Cancel</button>
             </>
-          ) : (
+          ) : !undoMode ? (
             <button
               onClick={beginReorder}
               disabled={searchAllLists || items.filter((it) => (it.priority ?? 3) === reorderPriority).length < 2}
@@ -1087,7 +1193,13 @@ export function ListBrowser(props: { refreshSignal: number }) {
             >
               ↕ Reorder P{reorderPriority}
             </button>
-          )}
+          ) : null}
+          <button
+            onClick={undoMode ? exitUndoMode : enterUndoMode}
+            style={undoMode ? { background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" } : {}}
+          >
+            {undoMode ? "Exit Undo" : "↩ Undo"}
+          </button>
         </div>
       </div>
 
@@ -1113,7 +1225,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       ) : null}
 
       {/* Always-visible toolbar: scope + stats + filter toggle */}
-      {!reorderMode ? (
+      {!reorderMode && !undoMode ? (
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <select
             value={searchAllLists ? "__all__" : listId}
@@ -1149,7 +1261,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       ) : null}
 
       {/* Bulk bar — always visible when items selected (ignores filtersOpen) */}
-      {!reorderMode && selectedIds.size > 0 ? (
+      {!reorderMode && !undoMode && selectedIds.size > 0 ? (
         <div className="filterBar bulkBar">
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", flexShrink: 0 }}>
             <span style={{ fontWeight: 600, color: "var(--danger)", fontSize: 13 }}>{selectedIds.size} selected</span>
@@ -1191,7 +1303,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       ) : null}
 
       {/* Expandable filter bar — shown when filtersOpen and no bulk selection */}
-      {!reorderMode && filtersOpen && selectedIds.size === 0 ? (
+      {!reorderMode && !undoMode && filtersOpen && selectedIds.size === 0 ? (
         <div className="filterBar">
           <div className="filterItem" style={{ flex: 2, minWidth: 160 }}>
             <label className="small muted">Filter text</label>
@@ -1253,15 +1365,93 @@ export function ListBrowser(props: { refreshSignal: number }) {
             <div className="filterItem">
               <label className="small muted">Export</label>
               <div style={{ display: "flex", gap: 6 }}>
-                <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">CSV</a>
-                <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">XLSX</a>
+                <a href={`${API_BASE}/export/csv/${encodeURIComponent(listId)}`} className="pill small">CSV</a>
+                <a href={`${API_BASE}/export/xlsx/${encodeURIComponent(listId)}`} className="pill small">XLSX</a>
               </div>
             </div>
           ) : null}
         </div>
       ) : null}
 
+      {/* Undo history table */}
+      {undoMode ? (
+        <div style={{ overflow: "auto" }}>
+          <table>
+            <thead className="stickyHead">
+              <tr>
+                <th style={{ width: 36 }}>
+                  <input
+                    type="checkbox"
+                    checked={undoAllSelected}
+                    onChange={() => setUndoSelectedIds(undoAllSelected ? new Set() : new Set(filteredUndoLog.map((e) => e.id)))}
+                    style={{ width: 16, height: 16 }}
+                  />
+                </th>
+                <th>action</th>
+                <th>list(s)</th>
+                <th>items</th>
+                <th>time</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUndoLog.map((entry) => {
+                const listNames = entry.listIds
+                  .map((lid) => lists.find((l) => l.id === lid)?.title ?? lid)
+                  .join(", ");
+                return (
+                  <tr key={entry.id}>
+                    <td style={{ width: 36 }}>
+                      <input
+                        type="checkbox"
+                        checked={undoSelectedIds.has(entry.id)}
+                        onChange={() => toggleUndoSelect(entry.id)}
+                        style={{ width: 16, height: 16 }}
+                      />
+                    </td>
+                    <td style={{ minWidth: 280 }}>{entry.label}</td>
+                    <td className="small muted" style={{ minWidth: 120 }}>{listNames}</td>
+                    <td className="small muted" style={{ minWidth: 60 }}>{entry.itemCount}</td>
+                    <td className="small muted" style={{ minWidth: 150 }}>
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </td>
+                    <td>
+                      <button
+                        className="iconbtn"
+                        onClick={() => executeUndo([entry.id], false)}
+                        disabled={undoBusy}
+                        title="Undo this action"
+                      >
+                        ↩
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredUndoLog.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="muted small">No undo history</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {undoMode ? (
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+          <button
+            style={{ background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" }}
+            onClick={() => executeUndo(Array.from(undoSelectedIds), false)}
+            disabled={undoBusy || undoSelectedIds.size === 0}
+          >
+            Undo selected ({undoSelectedIds.size})
+          </button>
+        </div>
+      ) : null}
+
       {/* Table */}
+      <div style={{ display: undoMode ? "none" : undefined }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderMode ? onDragEnd : undefined}>
         <SortableContext items={reorderMode ? reorderIds : []} strategy={verticalListSortingStrategy}>
           <table>
@@ -1433,8 +1623,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
           </table>
         </SortableContext>
       </DndContext>
+      </div>
 
-      {!reorderMode ? (
+      {!reorderMode && !undoMode ? (
         <div className="pill small" style={{ marginTop: 8, display: "inline-flex" }}>
           <span className="muted">Sort</span>
           <span>{sortKey} ({sortDir})</span>
@@ -1619,6 +1810,51 @@ export function ListBrowser(props: { refreshSignal: number }) {
           {editErr ? <div style={{ marginTop: 10 }} className="error small">{editErr}</div> : null}
         </dialog>
       ) : null}
+
+      {/* Undo toast */}
+      {undoToast && (
+        <div style={{
+          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8,
+          padding: "10px 16px", display: "flex", alignItems: "center", gap: 12,
+          zIndex: 1000, color: "#e7ecff", boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+        }}>
+          <span className="small">{undoToast.label}</span>
+          <button
+            onClick={() => executeUndo([undoToast.id], false)}
+            disabled={undoBusy}
+            style={{ background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" }}
+          >
+            Undo
+          </button>
+          <button className="iconbtn" onClick={dismissUndoToast}>×</button>
+        </div>
+      )}
+
+      {/* Undo conflict confirm */}
+      {undoConfirm && (
+        <dialog open className="dialog">
+          <div className="topbar" style={{ marginBottom: 8 }}>
+            <div className="title">Confirm undo</div>
+          </div>
+          <p className="small" style={{ marginBottom: 16 }}>
+            This will undo all later changes on this/these items. Are you sure?
+          </p>
+          <div className="btnrow">
+            <button
+              className="primary"
+              onClick={async () => {
+                const ids = undoConfirm.ids;
+                setUndoConfirm(null);
+                await executeUndo(ids, true);
+              }}
+            >
+              Yes, undo all
+            </button>
+            <button onClick={() => setUndoConfirm(null)}>Cancel</button>
+          </div>
+        </dialog>
+      )}
 
       {err ? (
         <div style={{ marginTop: 10 }} className="error small">

@@ -1,0 +1,28 @@
+
+--- 2026-03-06T14:12:33.198Z debug
+🪵  Writing logs to "/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/api/.wrangler-logs/wrangler-2026-03-06_14-12-33_153.log"
+---
+
+--- 2026-03-06T14:12:33.198Z debug
+Metrics dispatcher: Posting data {"deviceId":"75394687-a6dc-4a55-bec1-8ea62c1b0b54","event":"wrangler command started","timestamp":1772806353198,"properties":{"amplitude_session_id":1772806353197,"amplitude_event_id":0,"wranglerVersion":"3.114.17","osPlatform":"Mac OS","osVersion":"Darwin Kernel Version 24.6.0: Wed Nov  5 21:33:59 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T8112","nodeVersion":25,"packageManager":"npm","isFirstUsage":false,"configFileType":"jsonc","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"argsUsed":["version"],"argsCombination":"version","command":"wrangler ","args":{}}}
+---
+
+--- 2026-03-06T14:12:33.201Z debug
+.env file not found at ".env". Continuing... For more details, refer to https://developers.cloudflare.com/workers/wrangler/system-environment-variables/
+---
+
+--- 2026-03-06T14:12:33.201Z log
+3.114.17
+---
+
+--- 2026-03-06T14:12:33.208Z debug
+Metrics dispatcher: Posting data {"deviceId":"75394687-a6dc-4a55-bec1-8ea62c1b0b54","event":"wrangler command completed","timestamp":1772806353208,"properties":{"amplitude_session_id":1772806353197,"amplitude_event_id":1,"wranglerVersion":"3.114.17","osPlatform":"Mac OS","osVersion":"Darwin Kernel Version 24.6.0: Wed Nov  5 21:33:59 PST 2025; root:xnu-11417.140.69.705.2~1/RELEASE_ARM64_T8112","nodeVersion":25,"packageManager":"npm","isFirstUsage":false,"configFileType":"jsonc","isCI":false,"isPagesCI":false,"isWorkersCI":false,"isInteractive":false,"hasAssets":false,"argsUsed":["version"],"argsCombination":"version","command":"wrangler ","args":{},"durationMs":17,"durationSeconds":0.017,"durationMinutes":0.00028333333333333335}}
+---
+
+--- 2026-03-06T14:12:33.210Z debug
+Metrics dispatcher: Failed to send request: fetch failed
+---
+
+--- 2026-03-06T14:12:33.212Z debug
+Metrics dispatcher: Failed to send request: fetch failed
+---

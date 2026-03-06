@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:iamemilioortiz.com)"
+      "WebFetch(domain:iamemilioortiz.com)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(ls:*)"
     ]
   }
 }

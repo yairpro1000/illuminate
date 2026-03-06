@@ -3,10 +3,11 @@ import { z } from "zod";
 import * as XLSX from "xlsx";
 import { ParsedActionZ, type ParsedAction } from "./shared/model";
 import { makeSupabase } from "./repo/supabase";
-import { makePaRepo } from "./repo/paRepo";
+import { makePaRepo, type PaRepo } from "./repo/paRepo";
+import { makeUndoRepo, type UndoSnapshot } from "./repo/undoRepo";
 import { requireAccess } from "./auth";
 import type { Env } from "./env";
-import { parseTranscript, canonicalizeActionTargets, refineUpdateDelete } from "./llm/parse";
+import { parseTranscriptWithDebug, canonicalizeActionTargets, refineUpdateDelete } from "./llm/parse";
 
 function makeRequestId() {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
@@ -49,6 +50,33 @@ function xlsxSheetName(raw: string) {
 }
 
 const app = new Hono<{ Bindings: Env }>().basePath("/api");
+
+function getListIdFromExportRouteParam(c: any, ext: "csv" | "xlsx") {
+  function normalize(raw: unknown) {
+    let s = String(raw ?? "").trim().toLowerCase();
+    const suffix = `.${ext}`;
+    while (s.endsWith(suffix)) s = s.slice(0, -suffix.length);
+    return s;
+  }
+
+  // Prefer parsing the URL path, since some routers treat `.csv`/`.xlsx` as part of the param.
+  const path = typeof c?.req?.path === "string" ? c.req.path : "";
+  const m = path.match(new RegExp(`(?:^|/)export/(.+)\\.${ext}$`));
+  if (m?.[1]) {
+    try {
+      return normalize(decodeURIComponent(m[1]));
+    } catch {
+      return normalize(m[1]);
+    }
+  }
+
+  const direct = typeof c?.req?.param === "function" ? c.req.param("listId") : "";
+  if (direct) return normalize(direct);
+
+  const dotted = typeof c?.req?.param === "function" ? c.req.param(`listId.${ext}`) : "";
+  if (dotted) return normalize(dotted);
+  return "";
+}
 
 app.use("/*", async (c, next) => {
   const requestId = makeRequestId();
@@ -124,35 +152,48 @@ app.post("/lists/:listId/reorder", async (c) => {
 
 app.post("/parse", async (c) => {
   requireAccess(c);
-  const BodyZ = z.object({ transcript: z.string().min(1) }).strict();
+  const BodyZ = z.object({ transcript: z.string().min(1), forceLlm: z.boolean().optional() }).strict();
   const body = BodyZ.parse(await c.req.json());
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
   const requestId = (c as any).requestId as string | undefined;
-  const provider = (c.env.PA_LLM_PROVIDER ?? "heuristic") === "openai" ? "openai" : "heuristic";
-  let action = await parseTranscript(schema, body.transcript, {
-    provider,
-    openaiApiKey: c.env.OPENAI_API_KEY,
-    openaiModel: c.env.OPENAI_MODEL,
-    requestId,
-  });
-  let canonical = canonicalizeActionTargets(schema, action as any) as any;
+  const providerFromEnv = (c.env.PA_LLM_PROVIDER ?? "heuristic") === "openai" ? "openai" : "heuristic";
+  const forceLlm = Boolean(body.forceLlm);
+  const provider = forceLlm ? "openai" : providerFromEnv;
+  let parseError: string | null = null;
+  let canonical: any;
+  let parseDebug: any = { requestId: requestId ?? null, providerRequested: provider, method: "unknown" };
+  try {
+    const parsed = await parseTranscriptWithDebug(schema, body.transcript, {
+      provider,
+      openaiApiKey: c.env.OPENAI_API_KEY,
+      openaiModel: c.env.OPENAI_MODEL,
+      requestId,
+      ...(forceLlm ? { skipFast: true } : {}),
+    } as any);
+    parseDebug = parsed.debug;
+    canonical = canonicalizeActionTargets(schema, parsed.action as any) as any;
 
-  if (provider === "openai" && (canonical.type === "update_item" || canonical.type === "delete_item")) {
-    const listId = String(canonical.listId ?? "").trim();
-    if (listId && c.env.OPENAI_API_KEY) {
-      const items = await repo.readListItems(schema, listId);
-      const candidates = items.map((it: any) => ({ id: it.id, text: String(it.text ?? "") }));
-      canonical = await refineUpdateDelete(schema, body.transcript, canonical, candidates, {
-        openaiApiKey: c.env.OPENAI_API_KEY,
-        openaiModel: c.env.OPENAI_MODEL,
-        requestId,
-      });
+    if (parseDebug?.method === "openai" && (canonical.type === "update_item" || canonical.type === "delete_item")) {
+      const listId = String(canonical.listId ?? "").trim();
+      if (listId && c.env.OPENAI_API_KEY) {
+        const items = await repo.readListItems(schema, listId);
+        const candidates = items.map((it: any) => ({ id: it.id, text: String(it.text ?? "") }));
+        canonical = await refineUpdateDelete(schema, body.transcript, canonical, candidates, {
+          openaiApiKey: c.env.OPENAI_API_KEY,
+          openaiModel: c.env.OPENAI_MODEL,
+          requestId,
+        });
+      }
     }
+  } catch (e: any) {
+    parseError = String(e?.message ?? e ?? "Parse failed");
+    const fallbackListId = schema.lists.app ? "app" : Object.keys(schema.lists)[0] ?? "inbox";
+    canonical = { type: "append_item", valid: false, confidence: 0, listId: fallbackListId, fields: { text: body.transcript } };
   }
 
-  return c.json({ action: canonical, parseError: null });
+  return c.json({ action: canonical, parseError, parseDebug });
 });
 
 app.post("/commit", async (c) => {
@@ -179,22 +220,70 @@ app.post("/commit", async (c) => {
   const updatedBy = `${email}_${deviceId}`;
 
   let result: any;
+  let undoId: string | undefined;
+  const undoRepo = makeUndoRepo(db);
+
   switch (canonical.type) {
     case "append_item":
       result = await repo.appendItem(schema, canonical as any, canonical.fields, { updatedBy });
       break;
-    case "update_item":
+    case "update_item": {
       result = await repo.updateItem(schema, canonical as any, canonical.itemId, canonical.patch, {
         expectedUpdatedAt: body.expected?.itemUpdatedAt,
         updatedBy,
       });
+      undoId = crypto.randomUUID();
+      const label = `Updated "${String((result.prev as any)?.text ?? "").slice(0, 50)}"`;
+      await undoRepo.push({
+        id: undoId,
+        userId: email,
+        label,
+        snapshots: [{ listId: result.listId, action: "update_item", item: result.prev as any, patchedFields: result.patchedFields }],
+      });
       break;
-    case "delete_item":
+    }
+    case "delete_item": {
       result = await repo.deleteItem(schema, canonical as any, canonical.itemId, {
         expectedUpdatedAt: body.expected?.itemUpdatedAt,
         updatedBy,
       });
+      undoId = crypto.randomUUID();
+      const label = `Deleted "${String((result.prev as any)?.text ?? "").slice(0, 50)}"`;
+      await undoRepo.push({
+        id: undoId,
+        userId: email,
+        label,
+        snapshots: [{ listId: result.listId, action: "delete_item", item: result.prev as any }],
+      });
       break;
+    }
+    case "batch": {
+      const idActions = (canonical as any).actions.filter(
+        (a: any) => a && typeof a === "object" && (a.type === "update_item" || a.type === "delete_item"),
+      );
+      const allItemIds = idActions.map((a: any) => a.itemId);
+      const beforeImages = allItemIds.length > 0 ? await repo.readItemsByIds(allItemIds) : new Map();
+      const snapshots: UndoSnapshot[] = [];
+      for (const batchAction of (canonical as any).actions) {
+        if (batchAction.type === "append_item") {
+          await repo.appendItem(schema, { listId: batchAction.listId }, batchAction.fields, { updatedBy });
+        } else if (batchAction.type === "update_item") {
+          await repo.updateItem(schema, { listId: batchAction.listId }, batchAction.itemId, batchAction.patch, { updatedBy });
+          const prev = beforeImages.get(batchAction.itemId);
+          if (prev) snapshots.push({ listId: batchAction.listId, action: "update_item", item: prev.item as any, patchedFields: Object.keys(batchAction.patch) });
+        } else if (batchAction.type === "delete_item") {
+          await repo.deleteItem(schema, { listId: batchAction.listId }, batchAction.itemId, { updatedBy });
+          const prev = beforeImages.get(batchAction.itemId);
+          if (prev) snapshots.push({ listId: batchAction.listId, action: "delete_item", item: prev.item as any });
+        }
+      }
+      if (snapshots.length > 0) {
+        undoId = crypto.randomUUID();
+        await undoRepo.push({ id: undoId, userId: email, label: (canonical as any).label, snapshots });
+      }
+      result = { ok: true };
+      break;
+    }
     case "move_item":
       result = await repo.moveItem(schema, canonical.fromListId, canonical.toListId, canonical.itemId, { updatedBy });
       break;
@@ -204,24 +293,93 @@ app.post("/commit", async (c) => {
     case "add_fields":
       result = await repo.addFields(schema, canonical as any, { updatedBy });
       break;
+    case "remove_fields":
+      result = await repo.removeFields(schema, canonical as any, { updatedBy });
+      break;
     default:
       return c.json({ error: "unsupported_action" }, 400);
   }
 
-  return c.json({ ok: true, result });
+  return c.json({ ok: true, result, ...(undoId ? { undoId } : {}) });
 });
+
+app.get("/undo", async (c) => {
+  const { email } = requireAccess(c);
+  const db = makeSupabase(c.env);
+  const undoRepo = makeUndoRepo(db);
+  const entries = await undoRepo.list(email);
+  return c.json({ entries });
+});
+
+app.post("/undo", async (c) => {
+  const { email } = requireAccess(c);
+  const BodyZ = z.object({ id: z.string().min(1), confirmed: z.boolean().default(false) }).strict();
+  const body = BodyZ.parse(await c.req.json());
+
+  const db = makeSupabase(c.env);
+  const repo = makePaRepo(db);
+  const undoRepo = makeUndoRepo(db);
+  const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
+  const updatedBy = `${email}_${deviceId}`;
+
+  const target = await undoRepo.get(body.id, email);
+  if (!target) return c.json({ error: "not_found", details: "Undo entry not found or already undone." }, 404);
+
+  const targetItemIds = target.snapshots.map((s) => s.item.id);
+  const conflicts = await undoRepo.findConflicts(target.createdAt, target.id, targetItemIds, email);
+
+  if (conflicts.length > 0 && !body.confirmed) {
+    return c.json({ ok: false, conflicts: true, conflictEntries: conflicts });
+  }
+
+  // Apply conflicts newest-first, popping only the overlapping items from each
+  const targetItemIdSet = new Set(targetItemIds);
+  const sortedConflicts = [...conflicts].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  for (const conflict of sortedConflicts) {
+    const conflictEntry = await undoRepo.get(conflict.id, email);
+    if (!conflictEntry) continue;
+    const overlapping = conflictEntry.snapshots.filter((s) => targetItemIdSet.has(s.item.id));
+    for (const snap of overlapping) {
+      await applyUndoSnapshot(repo, snap, updatedBy);
+    }
+    await undoRepo.removeItemsFromEntry(conflict.id, overlapping.map((s) => s.item.id));
+  }
+
+  // Apply the target undo
+  for (const snap of target.snapshots) {
+    await applyUndoSnapshot(repo, snap, updatedBy);
+  }
+  await undoRepo.delete(target.id, email);
+
+  return c.json({ ok: true });
+});
+
+async function applyUndoSnapshot(repo: PaRepo, snap: UndoSnapshot, updatedBy: string) {
+  if (snap.action === "delete_item") {
+    await repo.upsertItem(snap.listId, snap.item as any, { updatedBy });
+  } else if (snap.action === "update_item" && snap.patchedFields && snap.patchedFields.length > 0) {
+    const restorePatch: Record<string, unknown> = {};
+    for (const field of snap.patchedFields) {
+      restorePatch[field] = (snap.item as any)[field];
+    }
+    await repo.patchItemRaw(snap.listId, snap.item.id, restorePatch, { updatedBy });
+  }
+}
 
 app.get("/export/:listId.csv", async (c) => {
   requireAccess(c);
+  const listId = getListIdFromExportRouteParam(c, "csv");
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
-  const listId = c.req.param("listId");
-  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const lists = await repo.listLists(schema);
-  const def = lists.find((l) => l.id === listId) ?? null;
-  if (!def) return c.json({ error: "not_found" }, 404);
-  const items = await repo.readListItems(schema, listId);
+  const defEntry = lists.find((l) => l.id.toLowerCase() === listId) ?? null;
+  if (!defEntry) return c.json({ error: "not_found", details: `Unknown listId "${listId}".` }, 404);
+  const def = defEntry;
+  const items = await repo.readListItems(schema, def.id);
   const fieldNames = Object.keys(def.fields);
   const headers = ["id", "createdAt", ...fieldNames];
   const lines: string[] = [];
@@ -236,18 +394,45 @@ app.get("/export/:listId.csv", async (c) => {
   return c.body(csv);
 });
 
-app.get("/export/:listId.xlsx", async (c) => {
+app.get("/export/csv/:listId", async (c) => {
   requireAccess(c);
+  const listId = String(c.req.param("listId") ?? "").trim();
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
   const schema = await repo.loadSchemaRegistry();
-  const listId = c.req.param("listId");
-  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const lists = await repo.listLists(schema);
-  const def = lists.find((l) => l.id === listId) ?? null;
-  if (!def) return c.json({ error: "not_found" }, 404);
+  const defEntry = lists.find((l) => l.id.toLowerCase() === listId.toLowerCase()) ?? null;
+  if (!defEntry) return c.json({ error: "not_found", details: `Unknown listId "${listId}".` }, 404);
+  const def = defEntry;
+  const items = await repo.readListItems(schema, def.id);
+  const fieldNames = Object.keys(def.fields);
+  const headers = ["id", "createdAt", ...fieldNames];
+  const lines: string[] = [];
+  lines.push(headers.join(","));
+  for (const it of items as any[]) {
+    const row = headers.map((h) => csvEscape(it[h]));
+    lines.push(row.join(","));
+  }
+  const csv = lines.join("\n") + "\n";
+  c.header("Content-Type", "text/csv; charset=utf-8");
+  c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(def.id)}.csv"`);
+  return c.body(csv);
+});
 
-  const items = await repo.readListItems(schema, listId);
+app.get("/export/:listId.xlsx", async (c) => {
+  requireAccess(c);
+  const listId = getListIdFromExportRouteParam(c, "xlsx");
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
+  const db = makeSupabase(c.env);
+  const repo = makePaRepo(db);
+  const schema = await repo.loadSchemaRegistry();
+  const lists = await repo.listLists(schema);
+  const defEntry = lists.find((l) => l.id.toLowerCase() === listId) ?? null;
+  if (!defEntry) return c.json({ error: "not_found", details: `Unknown listId "${listId}".` }, 404);
+  const def = defEntry;
+
+  const items = await repo.readListItems(schema, def.id);
   const fieldNames = Object.keys(def.fields);
   const headers = ["id", "createdAt", ...fieldNames];
   const rows: unknown[][] = [headers];
@@ -265,6 +450,39 @@ app.get("/export/:listId.xlsx", async (c) => {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   );
   c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(listId)}.xlsx"`);
+  return c.body(new Uint8Array(out));
+});
+
+app.get("/export/xlsx/:listId", async (c) => {
+  requireAccess(c);
+  const listId = String(c.req.param("listId") ?? "").trim();
+  if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
+  const db = makeSupabase(c.env);
+  const repo = makePaRepo(db);
+  const schema = await repo.loadSchemaRegistry();
+  const lists = await repo.listLists(schema);
+  const defEntry = lists.find((l) => l.id.toLowerCase() === listId.toLowerCase()) ?? null;
+  if (!defEntry) return c.json({ error: "not_found", details: `Unknown listId "${listId}".` }, 404);
+  const def = defEntry;
+
+  const items = await repo.readListItems(schema, def.id);
+  const fieldNames = Object.keys(def.fields);
+  const headers = ["id", "createdAt", ...fieldNames];
+  const rows: unknown[][] = [headers];
+  for (const it of items as any[]) {
+    rows.push(headers.map((h) => xlsxCell(it[h])));
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, xlsxSheetName(def.title || def.id));
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+
+  c.header(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(def.id)}.xlsx"`);
   return c.body(new Uint8Array(out));
 });
 
