@@ -32,7 +32,11 @@ function appendQa(comments: string, q: string, a: string) {
   const qq = String(q ?? "").trim();
   const aa = String(a ?? "").trim();
   if (!qq && !aa) return comments;
-  const block = [`Q: ${qq}`, `A: ${aa}`].filter(Boolean).join("\n");
+  const lines: string[] = [];
+  if (qq) lines.push(`Q: ${qq}`);
+  if (aa) lines.push(`A: ${aa}`);
+  if (!lines.length) return comments;
+  const block = lines.join("\n");
   const base = normalizeLines(comments).trim();
   return base ? `${base}\n\n${block}` : block;
 }
@@ -61,7 +65,8 @@ export function TranslateModal(props: {
     setQuestion("");
     setErr(null);
     setBusy(false);
-  }, [props.open, props.initial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open]);
 
   if (!props.open) return null;
 
@@ -126,7 +131,7 @@ export function TranslateModal(props: {
 
   function langSelect(value: TranslateLang | "", onChange: (v: TranslateLang | "") => void, label: string) {
     return (
-      <div className="formCol" style={{ minWidth: 160 }}>
+      <div className="formCol" style={{ minWidth: 120 }}>
         <label className="small muted">{label}</label>
         <select value={value} onChange={(e) => onChange(e.target.value as any)} disabled={busy}>
           <option value="">—</option>
@@ -218,18 +223,29 @@ export function TranslateModal(props: {
           </div>
         </div>
 
-        <div className="formRow">
-          {langSelect(draft.originLanguage as any, (v) => setDraft((p) => ({ ...p, originLanguage: v })), "Origin")}
+        <div className="formRow" style={{ alignItems: "flex-end" }}>
+          {langSelect(draft.originLanguage as any, (v) => setDraft((p) => ({ ...p, originLanguage: v })), "From")}
+          <button
+            className="iconbtn"
+            style={{ marginBottom: 2, flexShrink: 0 }}
+            onClick={() =>
+              setDraft((p) => ({ ...p, originLanguage: p.destinationLanguage, destinationLanguage: p.originLanguage }))
+            }
+            disabled={busy}
+            title="Swap languages"
+          >
+            ⇄
+          </button>
           {langSelect(
             draft.destinationLanguage as any,
             (v) => setDraft((p) => ({ ...p, destinationLanguage: v })),
-            "Destination",
+            "To",
           )}
         </div>
 
         <div style={{ marginTop: 8 }}>
           <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <label className="small muted">Origin expression</label>
+            <label className="small muted">Expression</label>
             <button
               className="iconbtn"
               onClick={() => speak(draft.originExpression, String(draft.originLanguage ?? ""))}

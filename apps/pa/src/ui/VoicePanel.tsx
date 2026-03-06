@@ -35,12 +35,14 @@ function summarize(action: ParsedAction | null) {
       return `Remove fields from ${action.listId ?? action.target}: ${action.fieldsToRemove.join(", ")}`;
     case "delete_list":
       return `Delete entire list: ${(action as any).listId ?? (action as any).target}`;
+    case "translate_intent":
+      return `Translate: ${(action as any).input ?? ""}`;
     default:
       return "—";
   }
 }
 
-export function VoicePanel(props: { onCommitted: () => void }) {
+export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?: (input: string) => void }) {
   const SR = getSpeechRecognition();
   const [listening, setListening] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
@@ -259,6 +261,13 @@ export function VoicePanel(props: { onCommitted: () => void }) {
           (json as any).fields = (json as any).item;
           delete (json as any).item;
         }
+      }
+
+      // Intercept translate_intent before Zod parse — it is client-only and never committed
+      if (json && typeof json === "object" && (json as any).type === "translate_intent") {
+        props.onTranslateIntent?.((json as any).input ?? transcript);
+        cancel();
+        return;
       }
 
       const parsed = ParsedActionZ.parse(json);

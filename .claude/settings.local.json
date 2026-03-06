@@ -4,7 +4,9 @@
       "WebFetch(domain:iamemilioortiz.com)",
       "Bash(npx tsc:*)",
       "Bash(npm run:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(./apps/pa/node_modules/typescript/bin/tsc:*)"
     ]
   }
 }

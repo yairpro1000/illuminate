@@ -54,6 +54,12 @@ export function isTranslateLike(raw: string): boolean {
   // Spanish
   if (/^como se dice\b/.test(s)) return true;
 
+  // French
+  if (/^comment (dit-on|on dit)\b/.test(s)) return true;
+
+  // German
+  if (/^wie (sagt man|hei[sß]t)\b/.test(s)) return true;
+
   return false;
 }
 

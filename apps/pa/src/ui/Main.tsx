@@ -4,6 +4,7 @@ import { VoicePanel } from "./VoicePanel";
 
 export function Main(props: { email: string; llmLabel: string }) {
   const [lastCommittedAt, setLastCommittedAt] = React.useState<number | null>(null);
+  const [translatePending, setTranslatePending] = React.useState<string | null>(null);
 
   return (
     <>
@@ -28,11 +29,18 @@ export function Main(props: { email: string; llmLabel: string }) {
           </div>
         </div>
 
-        <VoicePanel onCommitted={() => setLastCommittedAt(Date.now())} />
+        <VoicePanel
+          onCommitted={() => setLastCommittedAt(Date.now())}
+          onTranslateIntent={(input) => setTranslatePending(input)}
+        />
       </div>
 
       <div className="container">
-        <ListBrowser refreshSignal={lastCommittedAt ?? 0} />
+        <ListBrowser
+          refreshSignal={lastCommittedAt ?? 0}
+          translateIntent={translatePending}
+          onTranslateIntentHandled={() => setTranslatePending(null)}
+        />
       </div>
     </>
   );

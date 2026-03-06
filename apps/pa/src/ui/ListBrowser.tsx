@@ -27,8 +27,11 @@ import { TranslateModal } from "./TranslateModal";
 import {
   isTranslateLike,
   TRANSLATE_LIST_ID,
+  TRANSLATE_LANG_VALUES,
   TranslationPayloadZ,
   translateLangFlag,
+  translateLangLabel,
+  type TranslateLang,
   type TranslationPayload,
 } from "./translate";
 
@@ -58,7 +61,11 @@ type UndoLogEntryLight = {
 type UndoToast = { id: string; label: string; timerId: number };
 type UndoConfirm = { ids: string[] };
 
-export function ListBrowser(props: { refreshSignal: number }) {
+export function ListBrowser(props: {
+  refreshSignal: number;
+  translateIntent?: string | null;
+  onTranslateIntentHandled?: () => void;
+}) {
   const SR = getSpeechRecognition();
   const [lists, setLists] = React.useState<ListInfo[]>([]);
   const [listId, setListId] = React.useState<string>("");
@@ -123,6 +130,8 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [addStatus, setAddStatus] = React.useState<StatusValue>("todo");
   const [addColor, setAddColor] = React.useState<string | null>(null);
   const [addErr, setAddErr] = React.useState<string | null>(null);
+  const [addTranslateFrom, setAddTranslateFrom] = React.useState<TranslateLang | "">("");
+  const [addTranslateTo, setAddTranslateTo] = React.useState<TranslateLang | "">("");
   const [addListening, setAddListening] = React.useState(false);
   const addListeningRef = React.useRef(false);
   const addMicHoldActiveRef = React.useRef(false);
@@ -477,6 +486,53 @@ export function ListBrowser(props: { refreshSignal: number }) {
     });
     return { translation: TranslationPayloadZ.parse(res.translation), answer: String((res as any).answer ?? "") };
   }
+
+  async function handleTranslateIntentInput(input: string, extra?: { priority?: number; color?: string | null; status?: string }) {
+    setErr(null);
+    setBusy(true);
+    try {
+      await ensureTranslateListReady();
+      const translation = await llmTranslate(input);
+      const originExpression = String(translation.originExpression ?? "").trim() || input.trim();
+      const result = await commit(
+        {
+          type: "append_item",
+          valid: true,
+          confidence: 1,
+          listId: TRANSLATE_LIST_ID,
+          fields: {
+            ...(extra?.priority !== undefined ? { priority: extra.priority } : {}),
+            ...(extra?.color != null ? { color: extra.color } : {}),
+            ...(extra?.status !== undefined ? { status: extra.status } : {}),
+            text: originExpression,
+            originLanguage: translation.originLanguage,
+            originExpression,
+            destinationLanguage: translation.destinationLanguage,
+            possibleTranslations: translation.possibleTranslations,
+            examplesOrigin: translation.examplesOrigin,
+            examplesDestination: translation.examplesDestination,
+            comments: translation.comments,
+          },
+        },
+        { refresh: true },
+      );
+      setSearchAllLists(false);
+      setListId(TRANSLATE_LIST_ID);
+      const row = result?.item ? ({ ...(result.item as any), __listId: TRANSLATE_LIST_ID } as ItemRow) : null;
+      if (row) openTranslateModal(row, translation);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!props.translateIntent) return;
+    props.onTranslateIntentHandled?.();
+    handleTranslateIntentInput(props.translateIntent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.translateIntent]);
 
   function showUndoToast(id: string, label: string) {
     setUndoToast((prev) => {
@@ -1198,6 +1254,13 @@ export function ListBrowser(props: { refreshSignal: number }) {
   function validateAddForm() {
     const l = activeAddList();
     if (!l) return "No list selected.";
+    const text = String(addFields.text ?? "");
+    // In translate mode (translate list selected, or text looks like a translate request),
+    // only the text field is required — translate flow bypasses all other fields.
+    if (l.id === TRANSLATE_LIST_ID || isTranslateLike(text)) {
+      if (!text.trim()) return "Text is required.";
+      return null;
+    }
     const required = requiredFieldNamesForList(l);
     for (const name of required) {
       const v = addFields[name];
@@ -1207,7 +1270,6 @@ export function ListBrowser(props: { refreshSignal: number }) {
         return `Missing required field: ${name}`;
       }
     }
-    const text = String(addFields.text ?? "");
     if (!text.trim()) return "Text is required.";
     return null;
   }
@@ -1243,35 +1305,42 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
     try {
       const rawText = String(fields.text ?? "");
-      const translateIntent = isTranslateLike(rawText);
-      if (translateIntent) {
-        await ensureTranslateListReady();
-        const translation = await llmTranslate(rawText);
-        const originExpression = String(translation.originExpression ?? "").trim() || rawText.trim();
-        const result = await commit(
-          {
-            type: "append_item",
-            valid: true,
-            confidence: 1,
-            listId: TRANSLATE_LIST_ID,
-            fields: {
-              ...(fields.priority !== undefined ? { priority: fields.priority } : {}),
-              ...(fields.color !== undefined ? { color: fields.color } : {}),
-              ...(fields.status !== undefined ? { status: fields.status } : {}),
-              text: originExpression,
-              originLanguage: translation.originLanguage,
-              originExpression,
-              destinationLanguage: translation.destinationLanguage,
-              possibleTranslations: translation.possibleTranslations,
-              examplesOrigin: translation.examplesOrigin,
-              examplesDestination: translation.examplesDestination,
-              comments: translation.comments,
+      const isTranslateMode = l.id === TRANSLATE_LIST_ID || isTranslateLike(rawText);
+      if (isTranslateMode) {
+        setBusy(true);
+        try {
+          await ensureTranslateListReady();
+          const translation = await llmTranslate(rawText);
+          const originExpression = String(translation.originExpression ?? "").trim() || rawText.trim();
+          const result = await commit(
+            {
+              type: "append_item",
+              valid: true,
+              confidence: 1,
+              listId: TRANSLATE_LIST_ID,
+              fields: {
+                ...(fields.priority !== undefined ? { priority: fields.priority } : {}),
+                ...(fields.color !== undefined ? { color: fields.color } : {}),
+                ...(fields.status !== undefined ? { status: fields.status } : {}),
+                text: originExpression,
+                originLanguage: translation.originLanguage,
+                originExpression,
+                destinationLanguage: translation.destinationLanguage,
+                possibleTranslations: translation.possibleTranslations,
+                examplesOrigin: translation.examplesOrigin,
+                examplesDestination: translation.examplesDestination,
+                comments: translation.comments,
+              },
             },
-          },
-          { refresh: true },
-        );
-        const row = (result?.item ? ({ ...(result.item as any), __listId: TRANSLATE_LIST_ID } as ItemRow) : null) ?? null;
-        if (row) openTranslateModal(row, translation);
+            { refresh: true },
+          );
+          setSearchAllLists(false);
+          setListId(TRANSLATE_LIST_ID);
+          const row = result?.item ? ({ ...(result.item as any), __listId: TRANSLATE_LIST_ID } as ItemRow) : null;
+          if (row) openTranslateModal(row, translation);
+        } finally {
+          setBusy(false);
+        }
       } else {
         await ensureStatusFieldIfUsed(l.id);
         await commit({ type: "append_item", valid: true, confidence: 1, listId: l.id, fields });
@@ -1284,6 +1353,26 @@ export function ListBrowser(props: { refreshSignal: number }) {
     } catch (e: any) {
       setAddErr(String(e?.message ?? e));
     }
+  }
+
+  async function submitAddTranslate() {
+    const expr = String(addFields.text ?? "").trim();
+    if (!expr) return;
+    let input = expr;
+    if (addTranslateFrom && addTranslateTo) {
+      input = `translate "${expr}" from ${translateLangLabel(addTranslateFrom)} to ${translateLangLabel(addTranslateTo)}`;
+    } else if (addTranslateFrom) {
+      input = `translate "${expr}" from ${translateLangLabel(addTranslateFrom)}`;
+    } else if (addTranslateTo) {
+      input = `translate "${expr}" to ${translateLangLabel(addTranslateTo)}`;
+    }
+    setAddOpen(false);
+    setAddErr(null);
+    await handleTranslateIntentInput(input, {
+      priority: Number(addFields.priority ?? 3),
+      color: addColor,
+      status: addStatus,
+    });
   }
 
   function renderAddFieldInput(list: ListInfo, fieldName: string, def: FieldDef) {
@@ -1299,7 +1388,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     switch (def.type) {
       case "string":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <input value={typeof val === "string" ? val : String(val ?? "")} onChange={(e) => setAddField(fieldName, e.target.value)} />
           </div>
@@ -1307,7 +1396,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       case "int":
       case "float":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <input
               type="number"
@@ -1319,7 +1408,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         );
       case "boolean":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <div className="row" style={{ alignItems: "center", gap: 10 }}>
               <input
@@ -1334,7 +1423,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         );
       case "date":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <input
               type="date"
@@ -1345,7 +1434,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         );
       case "time":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <input
               type="time"
@@ -1356,7 +1445,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
         );
       case "json":
         return (
-          <div key={fieldName} className="col">
+          <div key={fieldName} className="formCol">
             <label className="small muted">{label}</label>
             <textarea
               value={typeof val === "string" ? val : val ? JSON.stringify(val, null, 2) : ""}
@@ -1372,7 +1461,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
   }
 
   React.useEffect(() => {
-    if (!addOpen) stopAddMic();
+    if (!addOpen) {
+      stopAddMic();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addOpen]);
 
@@ -1390,6 +1481,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
   });
 
   const undoAllSelected = undoSelectedIds.size === filteredUndoLog.length && filteredUndoLog.length > 0;
+  const isAddTranslateMode = activeAddList()?.id === TRANSLATE_LIST_ID;
 
   return (
     <div className="card" style={undoMode ? { borderColor: "#1a90d4", boxShadow: "0 0 0 2px rgba(26,144,212,0.25)" } : undefined}>
@@ -1848,7 +1940,8 @@ export function ListBrowser(props: { refreshSignal: number }) {
                                   {lists.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
                                 </select>
                               </div>
-                              {expandCustomFields.map((k) => {
+                              {/* For translate rows, the modal covers all fields — skip raw field cells */}
+                              {!isTranslateRow && expandCustomFields.map((k) => {
                                 const def = activeList!.fields[k];
                                 return (
                                   <div key={k} className="expandField">
@@ -2079,6 +2172,38 @@ export function ListBrowser(props: { refreshSignal: number }) {
             </div>
           </div>
 
+          {isAddTranslateMode && (
+            <div className="formRow" style={{ alignItems: "flex-end", marginTop: 8 }}>
+              <div className="formCol" style={{ minWidth: 120 }}>
+                <label className="small muted">From</label>
+                <select value={addTranslateFrom} onChange={(e) => setAddTranslateFrom(e.target.value as TranslateLang | "")} disabled={busy}>
+                  <option value="">—</option>
+                  {TRANSLATE_LANG_VALUES.map((v) => (
+                    <option key={v} value={v}>{translateLangFlag(v)} {translateLangLabel(v)}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                className="iconbtn"
+                style={{ marginBottom: 2, flexShrink: 0 }}
+                onClick={() => { const t = addTranslateFrom; setAddTranslateFrom(addTranslateTo); setAddTranslateTo(t); }}
+                disabled={busy}
+                title="Swap languages"
+              >
+                ⇄
+              </button>
+              <div className="formCol" style={{ minWidth: 120 }}>
+                <label className="small muted">To</label>
+                <select value={addTranslateTo} onChange={(e) => setAddTranslateTo(e.target.value as TranslateLang | "")} disabled={busy}>
+                  <option value="">—</option>
+                  {TRANSLATE_LANG_VALUES.map((v) => (
+                    <option key={v} value={v}>{translateLangFlag(v)} {translateLangLabel(v)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
           <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
             <label className="small muted">Text *</label>
             <div className="row" style={{ alignItems: "center", gap: 8 }}>
@@ -2101,26 +2226,26 @@ export function ListBrowser(props: { refreshSignal: number }) {
                   if (coarsePointerRef.current) return;
                   if (addListening) stopAddMic();
                   else startAddMic();
-	                }}
-	                onPointerDown={onAddMicPointerDown}
-	                onPointerUp={onAddMicPointerUp}
-	                onPointerCancel={onAddMicPointerUp}
-	                disabled={!SR}
-	                title={!SR ? "SpeechRecognition not supported in this browser" : ""}
-	                data-mic="add"
-	              >
+                }}
+                onPointerDown={onAddMicPointerDown}
+                onPointerUp={onAddMicPointerUp}
+                onPointerCancel={onAddMicPointerUp}
+                disabled={!SR}
+                title={!SR ? "SpeechRecognition not supported in this browser" : ""}
+                data-mic="add"
+              >
                 {addListening ? "Stop 🎙" : "Mic 🎙"}
               </button>
             </div>
           </div>
-	          <textarea value={String(addFields.text ?? "")} onChange={(e) => setAddField("text", e.target.value)} />
+          <textarea value={String(addFields.text ?? "")} onChange={(e) => setAddField("text", e.target.value)} />
 
-          {activeAddList() ? (
+          {!isAddTranslateMode && activeAddList() ? (
             <div style={{ marginTop: 10 }}>
               <div className="muted small" style={{ marginBottom: 6 }}>
                 Extra fields
               </div>
-              <div className="row" style={{ flexWrap: "wrap" }}>
+              <div className="formRow">
                 {Object.entries(activeAddList()!.fields)
                   .filter(([name]) => !["text", "priority", "color", "order", "status", "archivedAt", "unarchivedAt"].includes(name))
                   .map(([name, def]) => renderAddFieldInput(activeAddList()!, name, def))}
@@ -2129,9 +2254,15 @@ export function ListBrowser(props: { refreshSignal: number }) {
           ) : null}
 
           <div style={{ marginTop: 12 }} className="btnrow">
-            <button className="primary" onClick={submitAdd} disabled={Boolean(validateAddForm())}>
-              Add
-            </button>
+            {isAddTranslateMode ? (
+              <button className="primary" onClick={submitAddTranslate} disabled={!String(addFields.text ?? "").trim() || busy}>
+                {busy ? "Working…" : "Run LLM"}
+              </button>
+            ) : (
+              <button className="primary" onClick={submitAdd} disabled={Boolean(validateAddForm()) || busy}>
+                {busy ? "Working…" : "Add"}
+              </button>
+            )}
             <button
               className="danger"
               onClick={() => {
@@ -2233,7 +2364,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
       {translateOpen && translateRow && translateInitial ? (
         <TranslateModal
           open={translateOpen}
-          title="Translate"
+          title={translateInitial.originExpression ? String(translateInitial.originExpression) : "Translate"}
           initial={translateInitial}
           onClose={() => {
             setTranslateOpen(false);
@@ -2243,27 +2374,34 @@ export function ListBrowser(props: { refreshSignal: number }) {
           onRepeat={async (draft, question) => await llmRefine(draft, question)}
           onSave={async (next) => {
             if (!translateRow) return;
-            await commit({
-              type: "update_item",
-              valid: true,
-              confidence: 1,
-              listId: translateRow.__listId,
-              itemId: translateRow.id,
-              patch: {
-                text: String(next.originExpression ?? "").trim() || String((translateRow as any).text ?? ""),
-                originLanguage: next.originLanguage,
-                originExpression: next.originExpression,
-                destinationLanguage: next.destinationLanguage,
-                possibleTranslations: next.possibleTranslations,
-                examplesOrigin: next.examplesOrigin,
-                examplesDestination: next.examplesDestination,
-                comments: next.comments,
+            const expr = String(next.originExpression ?? "").trim();
+            await commit(
+              {
+                type: "update_item",
+                valid: true,
+                confidence: 1,
+                listId: translateRow.__listId,
+                itemId: translateRow.id,
+                patch: {
+                  text: expr || String((translateRow as any).text ?? ""),
+                  originLanguage: next.originLanguage,
+                  originExpression: next.originExpression,
+                  destinationLanguage: next.destinationLanguage,
+                  possibleTranslations: next.possibleTranslations,
+                  examplesOrigin: next.examplesOrigin,
+                  examplesDestination: next.examplesDestination,
+                  comments: next.comments,
+                },
               },
-            });
+              { undoLabel: `Updated translation: ${expr.slice(0, 40) || "item"}` },
+            );
           }}
           onDelete={async () => {
             if (!translateRow) return;
-            await commit({ type: "delete_item", valid: true, confidence: 1, listId: translateRow.__listId, itemId: translateRow.id });
+            await commit(
+              { type: "delete_item", valid: true, confidence: 1, listId: translateRow.__listId, itemId: translateRow.id },
+              { undoLabel: `Deleted translation: ${String((translateRow as any).originExpression ?? translateRow.text ?? "").slice(0, 40)}` },
+            );
           }}
         />
       ) : null}

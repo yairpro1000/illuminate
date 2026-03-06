@@ -132,7 +132,8 @@ function refineSystemPrompt(allowed: TranslateLang[]) {
     "The JSON must be a single object.",
     "",
     "You will receive:",
-    "- a current draft translation object",
+    "- a current draft translation object (comments field is omitted — it is managed client-side)",
+    "- existingComments: the accumulated comments so far, provided for context only",
     "- an optional user question",
     "",
     "You MUST output JSON in this exact shape:",
@@ -152,6 +153,8 @@ function refineSystemPrompt(allowed: TranslateLang[]) {
     `Allowed languages (BCP-47 codes) for origin/destination: ${allowed.join(", ")}.`,
     "If asked for an unsupported language, explain in answer and comments, and keep languages \"\".",
     "The 'answer' must directly answer the user's question (or be \"\" if no question).",
+    "translation.comments must contain ONLY new notes from this response — do NOT copy or repeat existingComments.",
+    "Leave translation.comments as \"\" if you have nothing new to add.",
     "Prefer updating the translation fields only when the question or draft implies a change.",
   ].join("\n");
 }
@@ -223,7 +226,10 @@ export async function refineTranslationWithOpenAI(opts: {
   requestId?: string;
 }): Promise<{ translation: TranslationPayload; answer: string }> {
   const system = refineSystemPrompt(opts.allowedLanguages);
-  const user = JSON.stringify({ draft: opts.draft, question: opts.question ?? "" });
+  // Strip comments from the draft so the LLM doesn't echo them back into translation.comments.
+  // Pass them separately as existingComments for context only.
+  const { comments: existingComments, ...draftWithoutComments } = opts.draft;
+  const user = JSON.stringify({ draft: draftWithoutComments, existingComments, question: opts.question ?? "" });
 
   console.log(
     JSON.stringify({

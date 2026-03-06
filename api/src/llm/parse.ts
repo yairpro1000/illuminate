@@ -142,6 +142,8 @@ function patternParse(schema: SchemaRegistry, transcript: string): { action: Par
     const texts = items.length ? items : [colonAdd.groups.items.trim()];
     try {
       const listId = resolveListId(schema, { target: listRaw });
+      // Let the LLM handle translate-list additions so translate processing runs
+      if (listId === "translate") return null;
       if (texts.length === 1) {
         return {
           rule: "colon_add",
@@ -471,6 +473,13 @@ function heuristicParse(schema: SchemaRegistry, transcript: string): ParsedActio
 function normalizeRawAction(schema: SchemaRegistry, transcript: string, raw: any) {
   const base = raw && typeof raw === "object" ? { ...raw } : {};
 
+  if (base.type === "translate_intent") {
+    if (typeof base.input !== "string" || !base.input.trim()) base.input = transcript.trim();
+    if (typeof base.valid !== "boolean") base.valid = true;
+    if (typeof base.confidence !== "number" || !Number.isFinite(base.confidence)) base.confidence = 0.9;
+    return base;
+  }
+
   if (base.type === "batch") {
     if (typeof base.valid !== "boolean") base.valid = true;
     if (typeof base.confidence !== "number" || !Number.isFinite(base.confidence)) base.confidence = 0.65;
@@ -738,6 +747,22 @@ async function openAiParse(
     "- add_fields: {type,valid,confidence,listId|target,fieldsToAdd:[{name,type,default?,nullable?,description?}]}",
     "- remove_fields: {type,valid,confidence,listId|target,fieldsToRemove:[\"fieldA\",...]}",
     "- batch: {type,valid,confidence,label,actions:[BatchActionItem,...]}",
+    "- translate_intent: {type,valid,confidence,input} — ONLY for translation/lookup requests",
+    "",
+    "Translation detection (highest priority rule — check BEFORE anything else):",
+    "If the transcript is asking to translate or look up a word/phrase in another language, return translate_intent.",
+    "Examples that MUST produce translate_intent:",
+    "  'how do you say chicken in italian'",
+    "  'translate aggiungere'",
+    "  'translate idempotency to hebrew'",
+    "  'come si dice il latte in francese'",
+    "  'come se dice mantequilla'",
+    "  'como se dice butter in english'",
+    "  'comment dit-on bonjour en espagnol'",
+    "  'wie sagt man Schmetterling auf Englisch'",
+    "  'how to say goodbye in german'",
+    "For translate_intent set input to the original transcript verbatim.",
+    "Do NOT return append_item or any other type for translation requests, even if a 'translate' list exists.",
     "",
     "BatchActionItem allowed types:",
     "- append_item: {type:\"append_item\",listId,fields:{text,...}}",
@@ -965,6 +990,8 @@ export function canonicalizeActionTargets(schema: SchemaRegistry, action: Parsed
     if ((action as any).listId) (action as any).listId = sanitizeListId((action as any).listId);
     return action;
   }
+
+  if (action.type === "translate_intent") return action;
 
   if ("listId" in (action as any) || "target" in (action as any)) {
     const listId = resolveListId(schema, action as any);
