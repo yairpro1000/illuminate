@@ -200,6 +200,16 @@ td {
   vertical-align: top;
 }
 
+.colPriority select {
+  padding: 4px 6px;
+}
+
+th.colPriority,
+td.colPriority {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 th {
   text-align: left;
   font-size: 12px;
@@ -350,6 +360,20 @@ th {
   flex-shrink: 0;
 }
 
+.spinnerLg {
+  width: 52px;
+  height: 52px;
+  border-width: 4px;
+}
+
+.stickyHead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--panel);
+  box-shadow: 0 1px 0 var(--border);
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -416,6 +440,10 @@ th {
   display: contents;
 }
 
+.expandMobileOnly {
+  display: none;
+}
+
 /* Normalize all control heights in the expand panel */
 .expandPanel select,
 .expandPanel .iconbtn,
@@ -452,5 +480,23 @@ th {
 
   .btnrow {
     flex-wrap: wrap;
+  }
+
+  .colColor,
+  .colPriority {
+    display: none;
+  }
+
+  .expandPanel {
+    grid-auto-columns: minmax(50px, auto);
+    column-gap: 10px;
+  }
+
+  .expandSpacer {
+    display: none;
+  }
+
+  .expandMobileOnly {
+    display: contents;
   }
 }

@@ -79,6 +79,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [fieldEditErr, setFieldEditErr] = React.useState<string | null>(null);
   // Multi-select for bulk delete
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   // Expanded accordion rows
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
   const [searchRows, setSearchRows] = React.useState<ItemRow[] | null>(null);
@@ -1056,7 +1057,6 @@ export function ListBrowser(props: { refreshSignal: number }) {
       <div className="topbar" style={{ marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="title">Lists</div>
-          {busy ? <div className="spinner" title="Loading…" /> : null}
           <div className="muted small">Browse • filter • sort • export</div>
         </div>
         <div className="btnrow">
@@ -1112,22 +1112,43 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </div>
       ) : null}
 
-      {activeList ? (
-        <div className="row" style={{ marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-          <div className="pill small">
-            <span className="muted">Items</span>
-            <span>{searchAllLists ? (searchRows?.length ?? 0) : items.length}</span>
-            <span className="muted">Filtered</span>
-            <span>{filtered.length}</span>
-          </div>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">CSV</a>
-            <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">XLSX</a>
-          </div>
+      {/* Always-visible toolbar: scope + stats + filter toggle */}
+      {!reorderMode ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <select
+            value={searchAllLists ? "__all__" : listId}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === "__all__") { setSearchAllLists(true); return; }
+              setSearchAllLists(false);
+              setListId(next);
+            }}
+            style={{ flex: 1, minWidth: 140 }}
+          >
+            <option value="__all__">All lists</option>
+            {!searchAllLists && !listId ? <option value="" disabled>Choose a list…</option> : null}
+            {sortedLists.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+          </select>
+          {(activeList || searchAllLists) ? (
+            <div className="pill small" style={{ flexShrink: 0 }}>
+              <span className="muted">Items</span>
+              <span>{searchAllLists ? (searchRows?.length ?? 0) : items.length}</span>
+              <span className="muted">Filtered</span>
+              <span>{filtered.length}</span>
+            </div>
+          ) : null}
+          <button
+            className="iconbtn"
+            onClick={() => setFiltersOpen((f) => !f)}
+            style={{ flexShrink: 0, borderColor: "rgba(232,180,40,0.45)", color: "#e8b428", background: filtersOpen ? "rgba(232,180,40,0.12)" : "rgba(232,180,40,0.05)" }}
+            title={filtersOpen ? "Hide filters" : "Show filters"}
+          >
+            {filtersOpen ? "− Filters" : "+ Filters"}
+          </button>
         </div>
       ) : null}
 
-      {/* Bulk action bar — shown when items are selected */}
+      {/* Bulk bar — always visible when items selected (ignores filtersOpen) */}
       {!reorderMode && selectedIds.size > 0 ? (
         <div className="filterBar bulkBar">
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", flexShrink: 0 }}>
@@ -1169,37 +1190,16 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </div>
       ) : null}
 
-      {/* Filter bar — hidden in reorder mode or when bulk-selecting */}
-      {!reorderMode && selectedIds.size === 0 ? (
+      {/* Expandable filter bar — shown when filtersOpen and no bulk selection */}
+      {!reorderMode && filtersOpen && selectedIds.size === 0 ? (
         <div className="filterBar">
           <div className="filterItem" style={{ flex: 2, minWidth: 160 }}>
             <label className="small muted">Filter text</label>
-            <input value={filterText} onChange={(e) => setFilterText(e.target.value)} placeholder="Search…" />
-          </div>
-          <div className="filterItem">
-            <label className="small muted">Scope</label>
-            <select
-              value={searchAllLists ? "__all__" : listId}
-              onChange={(e) => {
-                const next = e.target.value;
-                if (next === "__all__") { setSearchAllLists(true); return; }
-                setSearchAllLists(false);
-                setListId(next);
-              }}
-            >
-              <option value="__all__">All lists</option>
-              {!searchAllLists && !listId ? <option value="" disabled>Choose a list…</option> : null}
-              {sortedLists.map((l) => (
-                <option key={l.id} value={l.id}>{l.title}</option>
-              ))}
-            </select>
+            <input value={filterText} onChange={(e) => setFilterText(e.target.value)} placeholder="Search…" autoFocus />
           </div>
           <div className="filterItem">
             <label className="small muted">Priority</label>
-            <select
-              value={filterPriority === "" ? "" : String(filterPriority)}
-              onChange={(e) => setFilterPriority(e.target.value ? Number(e.target.value) : "")}
-            >
+            <select value={filterPriority === "" ? "" : String(filterPriority)} onChange={(e) => setFilterPriority(e.target.value ? Number(e.target.value) : "")}>
               <option value="">All</option>
               {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -1244,31 +1244,28 @@ export function ListBrowser(props: { refreshSignal: number }) {
           <div className="filterItem">
             <label className="small muted">Bulk</label>
             {showArchived ? (
-              <button onClick={unarchiveAllInScope} disabled={busy || unarchiveCandidates.length === 0}
-                title={unarchiveCandidates.length === 0 ? "No archived items in current view" : ""}>
-                Unarchive all ({unarchiveCandidates.length})
-              </button>
+              <button onClick={unarchiveAllInScope} disabled={busy || unarchiveCandidates.length === 0}>Unarchive all ({unarchiveCandidates.length})</button>
             ) : (
-              <button onClick={archiveAllDoneInScope} disabled={busy || archiveDoneCandidates.length === 0}
-                title={archiveDoneCandidates.length === 0 ? "No done items to archive in current view" : ""}>
-                Archive done ({archiveDoneCandidates.length})
-              </button>
+              <button onClick={archiveAllDoneInScope} disabled={busy || archiveDoneCandidates.length === 0}>Archive done ({archiveDoneCandidates.length})</button>
             )}
           </div>
-        </div>
-      ) : reorderMode ? (
-        <div className="pill small" style={{ marginBottom: 10, display: "inline-flex" }}>
-          <span className="muted">Reorder mode</span>
-          <span>P{reorderPriority} — drag rows to reorder, then Save</span>
+          {activeList ? (
+            <div className="filterItem">
+              <label className="small muted">Export</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">CSV</a>
+                <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">XLSX</a>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       {/* Table */}
-      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderMode ? onDragEnd : undefined}>
-          <SortableContext items={reorderMode ? reorderIds : []} strategy={verticalListSortingStrategy}>
-            <table>
-              <thead>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderMode ? onDragEnd : undefined}>
+        <SortableContext items={reorderMode ? reorderIds : []} strategy={verticalListSortingStrategy}>
+          <table>
+            <thead className="stickyHead">
                 <tr>
                   {reorderMode ? (
                     <th style={{ width: "100%" }} onClick={() => toggleSort("text")}>text</th>
@@ -1284,10 +1281,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                           aria-label="Select all"
                         />
                       </th>
-                      <th style={{ width: 36 }} onClick={() => toggleSort("color")} />
+                      <th className="colColor" style={{ width: 36 }} onClick={() => toggleSort("color")} />
                       <th onClick={() => toggleSort("text")}>text</th>
                       <th style={{ width: 130 }} onClick={() => toggleSort("status")}>status</th>
-                      <th style={{ width: 72 }} onClick={() => toggleSort("priority")}>P</th>
+                      <th className="colPriority" style={{ width: 56 }} onClick={() => toggleSort("priority")}>P</th>
                       <th style={{ width: 32 }} />
                     </>
                   )}
@@ -1332,7 +1329,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
                             aria-label="Select row"
                           />
                         </td>
-                        <td style={{ width: 36 }}>
+                        <td className="colColor" style={{ width: 36 }}>
                           <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
                         </td>
                         <td>
@@ -1350,11 +1347,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
                             onUnarchive={() => unarchiveItem(it.__listId, it.id)}
                           />
                         </td>
-                        <td style={{ width: 72 }}>
+                        <td className="colPriority" style={{ width: 56 }}>
                           <select
                             value={String(it.priority ?? 3)}
                             onChange={(e) => setPriority(it.__listId, it.id, Number(e.target.value))}
-                            style={{ padding: "4px 4px" }}
                           >
                             {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
                           </select>
@@ -1373,9 +1369,20 @@ export function ListBrowser(props: { refreshSignal: number }) {
                       </tr>
                       {isExpanded ? (
                         <tr style={{ background: rowStyle.background }}>
-                          <td colSpan={2} style={{ paddingTop: 0 }} />
-                          <td colSpan={4} style={{ paddingTop: 0 }}>
+                          <td style={{ paddingTop: 0 }} />
+                          <td className="colColor" style={{ padding: 0 }} />
+                          <td colSpan={3} style={{ paddingTop: 0 }}>
                             <div className="expandPanel">
+                              <div className="expandField expandMobileOnly">
+                                <span className="small muted">Color</span>
+                                <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
+                              </div>
+                              <div className="expandField expandMobileOnly">
+                                <span className="small muted">Priority</span>
+                                <select value={String(it.priority ?? 3)} onChange={(e) => setPriority(it.__listId, it.id, Number(e.target.value))} style={{ padding: "4px 4px" }}>
+                                  {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                              </div>
                               <div className="expandField">
                                 <span className="small muted">List</span>
                                 <select value={it.__listId} onChange={(e) => moveRow(it.__listId, e.target.value, it.id)}>
@@ -1411,6 +1418,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
                               </div>
                             </div>
                           </td>
+                          <td className="expandSpacer" style={{ padding: 0 }} />
                         </tr>
                       ) : null}
                     </React.Fragment>
@@ -1422,10 +1430,9 @@ export function ListBrowser(props: { refreshSignal: number }) {
                   </tr>
                 ) : null}
               </tbody>
-            </table>
-          </SortableContext>
-        </DndContext>
-      </div>
+          </table>
+        </SortableContext>
+      </DndContext>
 
       {!reorderMode ? (
         <div className="pill small" style={{ marginTop: 8, display: "inline-flex" }}>
@@ -1616,6 +1623,22 @@ export function ListBrowser(props: { refreshSignal: number }) {
       {err ? (
         <div style={{ marginTop: 10 }} className="error small">
           {err}
+        </div>
+      ) : null}
+
+      {busy ? (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 500,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "rgba(0, 0, 0, 0.35)",
+          backdropFilter: "blur(2px)",
+          WebkitBackdropFilter: "blur(2px)",
+        }}>
+          <div className="spinner spinnerLg" title="Loading…" />
         </div>
       ) : null}
     </div>
