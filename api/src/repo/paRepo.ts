@@ -290,20 +290,34 @@ export function makePaRepo(db: Db): PaRepo {
     },
 
     async listListsForUi() {
+      const listSelectWithMeta =
+        "list_id,title,description,ui_default_sort,items_revision,items_updated_at,items_updated_by";
+      const listSelectFallback = "list_id,title,description,ui_default_sort";
+
+      const listsResult = await db.from("pa_lists").select(listSelectWithMeta);
+      const listErr: any = listsResult.error;
+      const isMissingColumn =
+        String(listErr?.code ?? "").trim() === "42703" ||
+        /column .* does not exist/i.test(String(listErr?.message ?? "")) ||
+        /schema cache/i.test(String(listErr?.message ?? ""));
+
+      const listsFallbackResult =
+        listErr && isMissingColumn ? await db.from("pa_lists").select(listSelectFallback) : null;
+
       const [
-        { data: lists, error: listErr },
         { data: aliases, error: aliasErr },
         { data: baseFields, error: baseErr },
         { data: customFields, error: customErr },
       ] = await Promise.all([
-        db.from("pa_lists").select("list_id,title,description,ui_default_sort,items_revision,items_updated_at,items_updated_by"),
         db.from("pa_list_aliases").select("list_id,alias"),
         db.from("pa_base_fields").select("name,type,default_value_json,nullable,description,ui_show_in_preview"),
         db
           .from("pa_list_custom_fields")
           .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview"),
       ]);
-      if (listErr) throw listErr;
+      const lists = (listsFallbackResult?.data ?? listsResult.data) as any;
+      const listErrFinal = listsFallbackResult?.error ?? listsResult.error;
+      if (listErrFinal) throw listErrFinal;
       if (aliasErr) throw aliasErr;
       if (baseErr) throw baseErr;
       if (customErr) throw customErr;

@@ -3,10 +3,14 @@ main = "src/index.ts"
 compatibility_date = "2026-03-05"
 
 [vars]
-# PA_LLM_PROVIDER = "heuristic"
+PA_API_PORT = "8788"
+PA_ADMIN_USER = "admin"
+PA_LLM_PROVIDER = "openai"
+OPENAI_MODEL = "gpt-4.1-nano"
+PA_LOG_LLM_TEXT = "1"
+PA_LOG_CONSOLE_MAX = "20000"
+SUPABASE_URL = "https://ljblpufziablobrhtpfz.supabase.co"
 
 # Secrets (set via `wrangler secret put`):
-# - SUPABASE_URL
 # - SUPABASE_SECRET_KEY
 # - OPENAI_API_KEY (optional)
-# - OPENAI_MODEL (optional)
