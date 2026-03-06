@@ -978,7 +978,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
   function requiredFieldNamesForList(l: ListInfo | null) {
     if (!l) return [];
     return Object.entries(l.fields)
-      .filter(([name]) => !["order"].includes(name))
+      .filter(([name]) => !["order", "archivedAt", "unarchivedAt"].includes(name))
       .filter(([name, def]) => {
         if (name === "color") return false;
         if (name === "status") return false;
@@ -1633,8 +1633,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
       ) : null}
 
       {addOpen ? (
-        <dialog open className="dialog">
-          <div className="topbar" style={{ marginBottom: 8 }}>
+        <>
+          <div className="dialogOverlay" onClick={() => { setAddOpen(false); setAddErr(null); }} />
+          <dialog open className="dialog">
+          <div className="topbar" style={{ marginBottom: 12 }}>
             <div>
               <div className="title">Add item</div>
               <div className="muted small">Manual add (no voice parsing)</div>
@@ -1651,8 +1653,8 @@ export function ListBrowser(props: { refreshSignal: number }) {
             </div>
           </div>
 
-          <div className="row" style={{ marginBottom: 10 }}>
-            <div className="col">
+          <div className="formRow">
+            <div className="formCol">
               <label className="small muted">List</label>
               <select value={addListId || ""} onChange={(e) => setAddListId(e.target.value)}>
                 {lists.map((l) => (
@@ -1662,7 +1664,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
                 ))}
               </select>
             </div>
-            <div className="col">
+            <div className="formCol">
               <label className="small muted">Priority</label>
               <select
                 value={String((addFields.priority as any) ?? 3)}
@@ -1675,15 +1677,11 @@ export function ListBrowser(props: { refreshSignal: number }) {
                 ))}
               </select>
             </div>
-            <div className="col">
+            <div className="formCol">
               <label className="small muted">Status</label>
-              <div className="row" style={{ alignItems: "center" }}>
-                <StatusSelect value={addStatus} onChange={setAddStatus} />
-                <div style={{ width: 10 }} />
-                <StatusBadge value={addStatus} />
-              </div>
+              <StatusSelect value={addStatus} onChange={setAddStatus} />
             </div>
-            <div className="col">
+            <div className="formCol">
               <label className="small muted">Color</label>
               <ColorSelect value={addColor} onChange={setAddColor} />
             </div>
@@ -1710,7 +1708,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
               </div>
               <div className="row" style={{ flexWrap: "wrap" }}>
                 {Object.entries(activeAddList()!.fields)
-                  .filter(([name]) => !["text", "priority", "color", "order", "status"].includes(name))
+                  .filter(([name]) => !["text", "priority", "color", "order", "status", "archivedAt", "unarchivedAt"].includes(name))
                   .map(([name, def]) => renderAddFieldInput(activeAddList()!, name, def))}
               </div>
             </div>
@@ -1738,12 +1736,15 @@ export function ListBrowser(props: { refreshSignal: number }) {
             </div>
           ) : null}
         </dialog>
+        </>
       ) : null}
 
       {/* Single-field edit modal */}
       {fieldEditOpen && fieldEditRow ? (
-        <dialog open className="dialog">
-          <div className="topbar" style={{ marginBottom: 8 }}>
+        <>
+          <div className="dialogOverlay" onClick={() => { setFieldEditOpen(false); setFieldEditRow(null); }} />
+          <dialog open className="dialog">
+          <div className="topbar" style={{ marginBottom: 12 }}>
             <div>
               <div className="title">Edit {fieldLabel(fieldEditName)}</div>
               <div className="muted small">{lists.find((l) => l.id === fieldEditRow.__listId)?.title ?? fieldEditRow.__listId}</div>
@@ -1777,12 +1778,15 @@ export function ListBrowser(props: { refreshSignal: number }) {
           </div>
           {fieldEditErr ? <div style={{ marginTop: 10 }} className="error small">{fieldEditErr}</div> : null}
         </dialog>
+        </>
       ) : null}
 
       {/* Full JSON edit modal (from expanded panel) */}
       {editOpen && editRow ? (
-        <dialog open className="dialog">
-          <div className="topbar" style={{ marginBottom: 8 }}>
+        <>
+          <div className="dialogOverlay" onClick={() => { setEditOpen(false); setEditRow(null); setEditDraft(""); setEditOriginalDraft(""); setEditErr(null); }} />
+          <dialog open className="dialog">
+          <div className="topbar" style={{ marginBottom: 12 }}>
             <div>
               <div className="title">Edit item (JSON)</div>
               <div className="muted small">
@@ -1809,6 +1813,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
           </div>
           {editErr ? <div style={{ marginTop: 10 }} className="error small">{editErr}</div> : null}
         </dialog>
+        </>
       ) : null}
 
       {/* Undo toast */}
@@ -1833,27 +1838,30 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
       {/* Undo conflict confirm */}
       {undoConfirm && (
-        <dialog open className="dialog">
-          <div className="topbar" style={{ marginBottom: 8 }}>
-            <div className="title">Confirm undo</div>
-          </div>
-          <p className="small" style={{ marginBottom: 16 }}>
-            This will undo all later changes on this/these items. Are you sure?
-          </p>
-          <div className="btnrow">
-            <button
-              className="primary"
-              onClick={async () => {
-                const ids = undoConfirm.ids;
-                setUndoConfirm(null);
-                await executeUndo(ids, true);
-              }}
-            >
-              Yes, undo all
-            </button>
-            <button onClick={() => setUndoConfirm(null)}>Cancel</button>
-          </div>
-        </dialog>
+        <>
+          <div className="dialogOverlay" onClick={() => setUndoConfirm(null)} />
+          <dialog open className="dialog">
+            <div className="topbar" style={{ marginBottom: 12 }}>
+              <div className="title">Confirm undo</div>
+            </div>
+            <p className="small" style={{ marginBottom: 16 }}>
+              This will undo all later changes on this/these items. Are you sure?
+            </p>
+            <div className="btnrow">
+              <button
+                className="primary"
+                onClick={async () => {
+                  const ids = undoConfirm.ids;
+                  setUndoConfirm(null);
+                  await executeUndo(ids, true);
+                }}
+              >
+                Yes, undo all
+              </button>
+              <button onClick={() => setUndoConfirm(null)}>Cancel</button>
+            </div>
+          </dialog>
+        </>
       )}
 
       {err ? (

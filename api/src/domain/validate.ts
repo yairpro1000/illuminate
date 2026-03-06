@@ -106,7 +106,8 @@ export function applyDefaultsForCreate(listDef: ListDef, input: Record<string, u
     if (value === undefined) {
       if (Object.prototype.hasOwnProperty.call(def, "default")) out[fieldName] = def.default;
       else if (def.nullable) out[fieldName] = null;
-      else throw new Error(`Missing required field "${fieldName}".`);
+      // Otherwise, allow missing fields on create/append. This keeps custom fields optional by default
+      // and avoids making older lists with strict custom-field schemas unappendable.
       continue;
     }
     out[fieldName] = coerceFieldValue(fieldName, def, value);
@@ -140,4 +141,3 @@ export function migrateAddMissingFields(
   }
   return next as ListItem;
 }
-
