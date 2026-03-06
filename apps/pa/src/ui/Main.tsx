@@ -31,7 +31,7 @@ export function Main(props: { email: string; llmLabel: string }) {
         <VoicePanel onCommitted={() => setLastCommittedAt(Date.now())} />
       </div>
 
-      <div style={{ padding: 18 }}>
+      <div className="container">
         <ListBrowser refreshSignal={lastCommittedAt ?? 0} />
       </div>
     </>

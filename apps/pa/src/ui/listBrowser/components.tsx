@@ -5,6 +5,8 @@ import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from ".
 
 export function useDismissibleDetails(ref: React.RefObject<HTMLDetailsElement | null>) {
   React.useEffect(() => {
+    const el = ref.current;
+
     function close() {
       ref.current?.removeAttribute("open");
     }
@@ -22,17 +24,41 @@ export function useDismissibleDetails(ref: React.RefObject<HTMLDetailsElement | 
       const el = ref.current;
       if (!el) return;
       if (!el.open) return;
-      if (e.key === "Escape") {
-        close();
-        return;
-      }
+      if (e.key === "Escape") { close(); return; }
+    }
+
+    function onToggle() {
+      const el = ref.current;
+      if (!el || !el.open) return;
+      const panel = el.querySelector(":scope > .menuPanel") as HTMLElement | null;
+      if (!panel) return;
+
+      const rect = el.getBoundingClientRect();
+      const panelH = panel.offsetHeight;
+      const panelW = panel.offsetWidth;
+
+      // Vertical: prefer below, flip up if not enough space
+      const spaceBelow = window.innerHeight - rect.bottom;
+      let y = spaceBelow >= panelH + 10 || rect.top < panelH + 10
+        ? rect.bottom + 6
+        : rect.top - panelH - 6;
+      y = Math.max(8, Math.min(y, window.innerHeight - panelH - 8));
+
+      // Horizontal: right-align to trigger, clamp to viewport
+      let x = rect.right - panelW;
+      x = Math.max(8, Math.min(x, window.innerWidth - panelW - 8));
+
+      el.style.setProperty("--menu-y", `${y}px`);
+      el.style.setProperty("--menu-x", `${x}px`);
     }
 
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown, true);
+    el?.addEventListener("toggle", onToggle);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
+      el?.removeEventListener("toggle", onToggle);
     };
   }, [ref]);
 }
@@ -76,8 +102,8 @@ export function ColorPicker(props: { value: string | null | undefined; onChange:
   }
   return (
     <details className="menu" ref={ref}>
-      <summary className="iconbtn" title="Set color" aria-label="Set color">
-        {current ? <ColorSwatch color={current} /> : <span className="muted small">No color</span>}
+      <summary className="iconbtn" title="Set color" aria-label="Set color" style={{ width: 32, height: 32, padding: 0 }}>
+        <ColorSwatch color={current ?? "var(--bg)"} size={14} />
       </summary>
       <div className="menuPanel" style={{ minWidth: 220 }}>
         <div className="swatchGrid">
@@ -103,6 +129,7 @@ export function StatusPicker(props: {
   onUnarchive: () => void;
 }) {
   const ref = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(ref);
   const current: StatusValue = STATUS_OPTIONS.includes(props.value as any)
     ? (props.value as StatusValue)
     : "todo";
@@ -234,6 +261,7 @@ export function ToggleSwitch(props: {
 export function SortableTr(props: {
   id: string;
   disabled: boolean;
+  fullRowDrag?: boolean;
   render: (args: { dragHandleProps: any; setDragHandleRef: (el: HTMLElement | null) => void }) => React.ReactNode;
   style?: React.CSSProperties;
 }) {
@@ -250,11 +278,13 @@ export function SortableTr(props: {
     opacity: isDragging ? 0.75 : 1,
   };
 
+  const rowProps = props.fullRowDrag ? { ...attributes, ...listeners } : {};
+
   return (
-    <tr ref={setNodeRef} style={style}>
+    <tr ref={setNodeRef} style={style} {...rowProps}>
       {props.render({
-        dragHandleProps: { ...attributes, ...listeners },
-        setDragHandleRef: setActivatorNodeRef as any,
+        dragHandleProps: props.fullRowDrag ? {} : { ...attributes, ...listeners },
+        setDragHandleRef: props.fullRowDrag ? () => {} : (setActivatorNodeRef as any),
       })}
     </tr>
   );

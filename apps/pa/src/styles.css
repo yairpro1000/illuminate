@@ -264,14 +264,14 @@ th {
 }
 
 .menuPanel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  position: fixed;
+  top: var(--menu-y, 0);
+  left: var(--menu-x, 0);
   background: linear-gradient(180deg, var(--panel) 0%, var(--panel2) 100%);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px;
-  z-index: 20;
+  z-index: 200;
   min-width: 180px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
 }
@@ -336,6 +336,20 @@ th {
   transform: translate(-50%, -50%);
 }
 
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
 .statusBadge {
   display: inline-flex;
   align-items: center;
@@ -344,4 +358,99 @@ th {
   border-radius: 999px;
   font-size: 12px;
   white-space: nowrap;
+}
+
+/* Responsive filter bar */
+.filterBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+
+.filterItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 130px;
+}
+
+.bulkBar {
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 107, 107, 0.05);
+}
+
+/* Click-to-edit cell */
+.editableCell {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 120ms ease;
+  padding: 2px 0;
+  min-height: 1.4em;
+}
+
+.editableCell:hover {
+  border-bottom-color: var(--muted);
+}
+
+/* Accordion expand panel — 2-row grid: labels on top, controls below */
+.expandPanel {
+  display: grid;
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(110px, auto);
+  column-gap: 12px;
+  row-gap: 4px;
+  padding: 8px 4px 6px;
+  align-items: end;
+}
+
+.expandField {
+  display: contents;
+}
+
+/* Normalize all control heights in the expand panel */
+.expandPanel select,
+.expandPanel .iconbtn,
+.expandPanel .editableCell,
+.expandPanel .switch {
+  height: 36px;
+  box-sizing: border-box;
+}
+
+.expandPanel select {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.expandPanel .iconbtn,
+.expandPanel .editableCell {
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .filterItem {
+    flex: 1 1 calc(50% - 10px);
+    min-width: 0;
+  }
+
+  .kpi {
+    flex-wrap: wrap;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .btnrow {
+    flex-wrap: wrap;
+  }
 }

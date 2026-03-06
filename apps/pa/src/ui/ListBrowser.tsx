@@ -1,10 +1,10 @@
 import React from "react";
 import { API_BASE, api } from "../api";
 import type { FieldDef, ListItem } from "@shared/model";
-import { DndContext, closestCenter } from "@dnd-kit/core";
+import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { getSpeechRecognition, type SpeechRecognitionLike } from "./speech";
-import { COLOR_PALETTE, type StatusValue } from "./listBrowser/constants";
+import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from "./listBrowser/constants";
 import {
   ColorPicker,
   ColorSelect,
@@ -16,6 +16,9 @@ import {
   ToggleSwitch,
   useDismissibleDetails,
 } from "./listBrowser/components";
+
+// Field types that need a click-to-edit modal (not natively interactive)
+const EDITABLE_FIELD_TYPES = new Set(["string", "int", "float", "date", "time", "json"]);
 import { bySortKey, fieldLabel, hexToRgba, linkifyText, moveArrayItem } from "./listBrowser/utils";
 
 type ListInfo = {
@@ -62,12 +65,27 @@ export function ListBrowser(props: { refreshSignal: number }) {
   } | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // Full JSON edit modal (accessible from expanded panel)
   const [editOpen, setEditOpen] = React.useState(false);
   const [editRow, setEditRow] = React.useState<ItemRow | null>(null);
   const [editDraft, setEditDraft] = React.useState("");
   const [editOriginalDraft, setEditOriginalDraft] = React.useState("");
   const [editErr, setEditErr] = React.useState<string | null>(null);
+  // Single-field edit modal
+  const [fieldEditOpen, setFieldEditOpen] = React.useState(false);
+  const [fieldEditRow, setFieldEditRow] = React.useState<ItemRow | null>(null);
+  const [fieldEditName, setFieldEditName] = React.useState<string>("");
+  const [fieldEditValue, setFieldEditValue] = React.useState<string>("");
+  const [fieldEditErr, setFieldEditErr] = React.useState<string | null>(null);
+  // Multi-select for bulk delete
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  // Expanded accordion rows
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(new Set());
   const [searchRows, setSearchRows] = React.useState<ItemRow[] | null>(null);
+  // dnd sensors: mouse + touch with long-press activation for mobile
+  const mouseSensor = useSensor(MouseSensor);
+  const touchSensor = useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } });
+  const sensors = useSensors(mouseSensor, touchSensor);
   const [addOpen, setAddOpen] = React.useState(false);
   const [addListId, setAddListId] = React.useState<string>("");
   const [addFields, setAddFields] = React.useState<Record<string, unknown>>({});
@@ -246,7 +264,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
   const filtered = visibleRows.sort(bySortKey(sortKey, sortDir));
   const filteredById = new Map(filtered.map((r) => [r.id, r]));
-  const displayRows = reorderMode ? reorderIds.map((id) => filteredById.get(id)).filter(Boolean) : filtered;
+  const displayRows = reorderMode ? (reorderIds.map((id) => filteredById.get(id)).filter(Boolean) as ItemRow[]) : filtered;
 
   const topics = Array.from(
     new Set(
@@ -393,6 +411,194 @@ export function ListBrowser(props: { refreshSignal: number }) {
       { type: "delete_item", valid: true, confidence: 1, listId: targetListId, itemId },
       { expectedItemUpdatedAt: findItemUpdatedAt(targetListId, itemId) },
     );
+  }
+
+  // Multi-select
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(displayRows.map((r) => r.id)));
+    }
+  }
+
+  async function deleteSelected() {
+    if (selectedIds.size === 0) return;
+    const confirmed = window.confirm(`Delete ${selectedIds.size} item${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`);
+    if (!confirmed) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      for (const id of selectedIds) {
+        const row = displayRows.find((r) => r.id === id);
+        if (!row) continue;
+        await commit(
+          { type: "delete_item", valid: true, confidence: 1, listId: row.__listId, itemId: id },
+          { refresh: false, expectedItemUpdatedAt: findItemUpdatedAt(row.__listId, id) },
+        );
+      }
+      setSelectedIds(new Set());
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulkUpdate(patch: Record<string, unknown>) {
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      for (const id of selectedIds) {
+        const row = displayRows.find((r) => r.id === id);
+        if (!row) continue;
+        await commit(
+          { type: "update_item", valid: true, confidence: 1, listId: row.__listId, itemId: id, patch },
+          { refresh: false, expectedItemUpdatedAt: findItemUpdatedAt(row.__listId, id) },
+        );
+      }
+      setSelectedIds(new Set());
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulkMove(toListId: string) {
+    if (selectedIds.size === 0 || !toListId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      for (const id of selectedIds) {
+        const row = displayRows.find((r) => r.id === id);
+        if (!row || row.__listId === toListId) continue;
+        await commit(
+          { type: "move_item", valid: true, confidence: 1, fromListId: row.__listId, toListId, itemId: id },
+          { refresh: false },
+        );
+      }
+      setSelectedIds(new Set());
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulkSetStatus(status: StatusValue) {
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const affectedListIds = Array.from(new Set(
+        displayRows.filter((r) => selectedIds.has(r.id)).map((r) => r.__listId)
+      ));
+      for (const lid of affectedListIds) await ensureStatusField(lid);
+      for (const id of selectedIds) {
+        const row = displayRows.find((r) => r.id === id);
+        if (!row) continue;
+        await commit(
+          { type: "update_item", valid: true, confidence: 1, listId: row.__listId, itemId: id, patch: { status } },
+          { refresh: false, expectedItemUpdatedAt: findItemUpdatedAt(row.__listId, id) },
+        );
+      }
+      setSelectedIds(new Set());
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulkArchive() {
+    if (selectedIds.size === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const listIds = Array.from(new Set(displayRows.filter((r) => selectedIds.has(r.id)).map((r) => r.__listId)));
+      for (const lid of listIds) await ensureArchivedField(lid);
+      for (const id of selectedIds) {
+        const row = displayRows.find((r) => r.id === id);
+        if (!row) continue;
+        await commit(
+          { type: "update_item", valid: true, confidence: 1, listId: row.__listId, itemId: id, patch: { archivedAt: now } },
+          { refresh: false, expectedItemUpdatedAt: findItemUpdatedAt(row.__listId, id) },
+        );
+      }
+      setSelectedIds(new Set());
+      if (searchAllLists) await loadAllRows();
+      else await loadItems(listId);
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Accordion expand
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Single-field edit modal
+  function openFieldEdit(row: ItemRow, fieldName: string) {
+    setFieldEditRow(row);
+    setFieldEditName(fieldName);
+    setFieldEditValue(String((row as any)[fieldName] ?? ""));
+    setFieldEditErr(null);
+    setFieldEditOpen(true);
+  }
+
+  async function confirmFieldEdit() {
+    if (!fieldEditRow || !fieldEditName) return;
+    setFieldEditErr(null);
+    try {
+      const list = lists.find((l) => l.id === fieldEditRow.__listId);
+      const fieldDef = list?.fields[fieldEditName];
+      let value: unknown = fieldEditValue;
+      if (fieldDef?.type === "int") value = parseInt(fieldEditValue, 10);
+      else if (fieldDef?.type === "float") value = parseFloat(fieldEditValue);
+      else if (fieldDef?.type === "boolean") value = fieldEditValue === "true";
+      else if (fieldDef?.type === "json") {
+        try { value = JSON.parse(fieldEditValue); } catch (e: any) {
+          setFieldEditErr(`Invalid JSON: ${String(e?.message ?? e)}`);
+          return;
+        }
+      }
+      await commit(
+        { type: "update_item", valid: true, confidence: 1, listId: fieldEditRow.__listId, itemId: fieldEditRow.id, patch: { [fieldEditName]: value } },
+        { expectedItemUpdatedAt: (fieldEditRow as any).updatedAt },
+      );
+      setFieldEditOpen(false);
+      setFieldEditRow(null);
+    } catch (e: any) {
+      setFieldEditErr(String(e?.message ?? e));
+    }
   }
 
   async function saveReorder(orderedIds: string[]) {
@@ -837,17 +1043,51 @@ export function ListBrowser(props: { refreshSignal: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addOpen]);
 
+  const expandCustomFields = activeList
+    ? Object.keys(activeList.fields).filter(
+        (k) => !["text", "priority", "color", "order", "status", "archivedAt", "unarchivedAt"].includes(k) &&
+               activeList.fields[k]?.ui?.showInPreview !== false,
+      )
+    : [];
+
   return (
     <div className="card">
+      {/* Topbar */}
       <div className="topbar" style={{ marginBottom: 10 }}>
-        <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div className="title">Lists</div>
-          <div className="muted small">Browse • filter • sort • export • reorder</div>
+          {busy ? <div className="spinner" title="Loading…" /> : null}
+          <div className="muted small">Browse • filter • sort • export</div>
         </div>
         <div className="btnrow">
-          <button className="primary" onClick={openAdd} disabled={!listId && lists.length === 0}>
+          <button className="primary" onClick={openAdd} disabled={reorderMode || (!listId && lists.length === 0)}>
             + Add item
           </button>
+          {reorderMode ? (
+            <>
+              <select
+                value={String(reorderPriority)}
+                onChange={(e) => setReorderPriority(Number(e.target.value))}
+                style={{ width: 72 }}
+              >
+                {[1, 2, 3, 4, 5].map((p) => (
+                  <option key={p} value={p}>P{p}</option>
+                ))}
+              </select>
+              <button className="primary" onClick={commitReorder} disabled={reorderIds.length < 2}>
+                Save order
+              </button>
+              <button onClick={cancelReorder}>Cancel</button>
+            </>
+          ) : (
+            <button
+              onClick={beginReorder}
+              disabled={searchAllLists || items.filter((it) => (it.priority ?? 3) === reorderPriority).length < 2}
+              title={searchAllLists ? "Switch scope to a single list to reorder" : ""}
+            >
+              ↕ Reorder P{reorderPriority}
+            </button>
+          )}
         </div>
       </div>
 
@@ -873,231 +1113,235 @@ export function ListBrowser(props: { refreshSignal: number }) {
       ) : null}
 
       {activeList ? (
-        <div className="row" style={{ marginBottom: 10 }}>
-          <div className="col">
-            <div className="pill small">
-              <span className="muted">Items</span>
-              <span>{searchAllLists ? (searchRows?.length ?? 0) : items.length}</span>
-              <span className="muted">Filtered</span>
-              <span>{filtered.length}</span>
-            </div>
+        <div className="row" style={{ marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+          <div className="pill small">
+            <span className="muted">Items</span>
+            <span>{searchAllLists ? (searchRows?.length ?? 0) : items.length}</span>
+            <span className="muted">Filtered</span>
+            <span>{filtered.length}</span>
           </div>
-          <div className="col">
-            <div className="btnrow" style={{ justifyContent: "flex-end" }}>
-              <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">
-                Download CSV
-              </a>
-              <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">
-                Download XLSX
-              </a>
-            </div>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">CSV</a>
+            <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">XLSX</a>
           </div>
         </div>
       ) : null}
 
-      <div className="row" style={{ marginBottom: 10, alignItems: "flex-end" }}>
-        <div className="col">
-          <label className="small muted">Filter text</label>
-          <input
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Search…"
-            disabled={reorderMode}
-          />
-        </div>
-        <div style={{ width: 180 }}>
-          <label className="small muted">Scope</label>
-          <select
-            value={searchAllLists ? "__all__" : listId}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (next === "__all__") {
-                setSearchAllLists(true);
-                return;
-              }
-              setSearchAllLists(false);
-              setListId(next);
-            }}
-            disabled={reorderMode}
-          >
-            <option value="__all__">All lists</option>
-            {!searchAllLists && !listId ? (
-              <option value="" disabled>
-                Choose a list…
-              </option>
-            ) : null}
-            {sortedLists.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="col">
-          <label className="small muted">Priority</label>
-          <select
-            value={filterPriority === "" ? "" : String(filterPriority)}
-            onChange={(e) => setFilterPriority(e.target.value ? Number(e.target.value) : "")}
-            disabled={reorderMode}
-          >
-            <option value="">All</option>
-            {[1, 2, 3, 4, 5].map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ width: 220 }}>
-          <label className="small muted">Color</label>
-          <details className="menu" style={{ width: "100%" }} ref={filterColorMenuRef}>
-            <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
-              <span className="muted small">Filter</span>
-              {filterColor ? <ColorSwatch color={String(filterColor)} /> : <span className="muted small">All</span>}
-            </summary>
-            <div className="menuPanel" style={{ minWidth: 240 }}>
-              <div className="swatchGrid">
-                {COLOR_PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    className="swatchBtn"
-                    onClick={() => {
-                      setFilterColor(c);
-                      filterColorMenuRef.current?.removeAttribute("open");
-                    }}
-                    title={c}
-                    aria-label={c}
-                    disabled={reorderMode}
-                  >
-                    <ColorSwatch color={c} size={18} />
-                  </button>
-                ))}
-                <button
-                  className="swatchBtn"
-                  onClick={() => {
-                    setFilterColor("");
-                    filterColorMenuRef.current?.removeAttribute("open");
-                  }}
-                  title="All"
-                  aria-label="All"
-                  disabled={reorderMode}
-                >
-                  <span className="muted small">All</span>
-                </button>
-              </div>
-            </div>
-          </details>
-        </div>
-        <div style={{ width: 220 }}>
-          <label className="small muted">Topic</label>
-          <select value={filterTopic} onChange={(e) => setFilterTopic(e.target.value)} disabled={reorderMode}>
-            <option value="">All</option>
-            {topics.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div style={{ width: 170 }}>
-          <label className="small muted">Show archived</label>
-          <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
-            <span />
-            <ToggleSwitch
-              checked={showArchived}
-              onChange={setShowArchived}
-              disabled={reorderMode}
-              label="Show archived"
-            />
+      {/* Bulk action bar — shown when items are selected */}
+      {!reorderMode && selectedIds.size > 0 ? (
+        <div className="filterBar bulkBar">
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", flexShrink: 0 }}>
+            <span style={{ fontWeight: 600, color: "var(--danger)", fontSize: 13 }}>{selectedIds.size} selected</span>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Move to list</label>
+            <select value="" onChange={(e) => { if (e.target.value) bulkMove(e.target.value); }} disabled={busy}>
+              <option value="">Choose…</option>
+              {sortedLists.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+            </select>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Set priority</label>
+            <select value="" onChange={(e) => { if (e.target.value) bulkUpdate({ priority: Number(e.target.value) }); }} disabled={busy}>
+              <option value="">Choose…</option>
+              {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Set status</label>
+            <select value="" onChange={(e) => { if (e.target.value) bulkSetStatus(e.target.value as StatusValue); }} disabled={busy}>
+              <option value="">Choose…</option>
+              {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{STATUS_STYLE[s].label}</option>)}
+            </select>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Set color</label>
+            <ColorPicker value={null} onChange={(c) => bulkUpdate({ color: c })} />
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Archive</label>
+            <button onClick={bulkArchive} disabled={busy}>Archive ({selectedIds.size})</button>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Delete</label>
+            <button className="danger" onClick={deleteSelected} disabled={busy}>Delete ({selectedIds.size})</button>
           </div>
         </div>
-        <div style={{ width: 200 }}>
-          <label className="small muted">Bulk</label>
-          {showArchived ? (
-            <button
-              onClick={unarchiveAllInScope}
-              disabled={reorderMode || busy || unarchiveCandidates.length === 0}
-              title={unarchiveCandidates.length === 0 ? "No archived items in current view" : ""}
-            >
-              Unarchive all ({unarchiveCandidates.length})
-            </button>
-          ) : (
-            <button
-              onClick={archiveAllDoneInScope}
-              disabled={reorderMode || busy || archiveDoneCandidates.length === 0}
-              title={archiveDoneCandidates.length === 0 ? "No done items to archive in current view" : ""}
-            >
-              Archive done ({archiveDoneCandidates.length})
-            </button>
-          )}
-        </div>
-      </div>
+      ) : null}
 
-      <div style={{ overflow: "auto" }}>
-        <DndContext collisionDetection={closestCenter} onDragEnd={reorderMode ? onDragEnd : undefined}>
+      {/* Filter bar — hidden in reorder mode or when bulk-selecting */}
+      {!reorderMode && selectedIds.size === 0 ? (
+        <div className="filterBar">
+          <div className="filterItem" style={{ flex: 2, minWidth: 160 }}>
+            <label className="small muted">Filter text</label>
+            <input value={filterText} onChange={(e) => setFilterText(e.target.value)} placeholder="Search…" />
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Scope</label>
+            <select
+              value={searchAllLists ? "__all__" : listId}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (next === "__all__") { setSearchAllLists(true); return; }
+                setSearchAllLists(false);
+                setListId(next);
+              }}
+            >
+              <option value="__all__">All lists</option>
+              {!searchAllLists && !listId ? <option value="" disabled>Choose a list…</option> : null}
+              {sortedLists.map((l) => (
+                <option key={l.id} value={l.id}>{l.title}</option>
+              ))}
+            </select>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Priority</label>
+            <select
+              value={filterPriority === "" ? "" : String(filterPriority)}
+              onChange={(e) => setFilterPriority(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="">All</option>
+              {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Color</label>
+            <details className="menu" style={{ width: "100%" }} ref={filterColorMenuRef}>
+              <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
+                <span className="muted small">Filter</span>
+                {filterColor ? <ColorSwatch color={String(filterColor)} /> : <span className="muted small">All</span>}
+              </summary>
+              <div className="menuPanel" style={{ minWidth: 240 }}>
+                <div className="swatchGrid">
+                  {COLOR_PALETTE.map((c) => (
+                    <button key={c} className="swatchBtn" onClick={() => { setFilterColor(c); filterColorMenuRef.current?.removeAttribute("open"); }} title={c} aria-label={c}>
+                      <ColorSwatch color={c} size={18} />
+                    </button>
+                  ))}
+                  <button className="swatchBtn" onClick={() => { setFilterColor(""); filterColorMenuRef.current?.removeAttribute("open"); }} title="All" aria-label="All">
+                    <span className="muted small">All</span>
+                  </button>
+                </div>
+              </div>
+            </details>
+          </div>
+          {topics.length > 0 ? (
+            <div className="filterItem">
+              <label className="small muted">Topic</label>
+              <select value={filterTopic} onChange={(e) => setFilterTopic(e.target.value)}>
+                <option value="">All</option>
+                {topics.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          ) : null}
+          <div className="filterItem">
+            <label className="small muted">Archived</label>
+            <div style={{ display: "flex", alignItems: "center", height: 42, gap: 8 }}>
+              <ToggleSwitch checked={showArchived} onChange={setShowArchived} label="Show archived" />
+              <span className="small muted">{showArchived ? "On" : "Off"}</span>
+            </div>
+          </div>
+          <div className="filterItem">
+            <label className="small muted">Bulk</label>
+            {showArchived ? (
+              <button onClick={unarchiveAllInScope} disabled={busy || unarchiveCandidates.length === 0}
+                title={unarchiveCandidates.length === 0 ? "No archived items in current view" : ""}>
+                Unarchive all ({unarchiveCandidates.length})
+              </button>
+            ) : (
+              <button onClick={archiveAllDoneInScope} disabled={busy || archiveDoneCandidates.length === 0}
+                title={archiveDoneCandidates.length === 0 ? "No done items to archive in current view" : ""}>
+                Archive done ({archiveDoneCandidates.length})
+              </button>
+            )}
+          </div>
+        </div>
+      ) : reorderMode ? (
+        <div className="pill small" style={{ marginBottom: 10, display: "inline-flex" }}>
+          <span className="muted">Reorder mode</span>
+          <span>P{reorderPriority} — drag rows to reorder, then Save</span>
+        </div>
+      ) : null}
+
+      {/* Table */}
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" as any }}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorderMode ? onDragEnd : undefined}>
           <SortableContext items={reorderMode ? reorderIds : []} strategy={verticalListSortingStrategy}>
             <table>
               <thead>
                 <tr>
-                  {reorderMode ? <th style={{ width: 46 }} /> : null}
-                  <th onClick={() => toggleSort("priority")}>priority</th>
-                  <th onClick={() => toggleSort("order")}>order</th>
-                  <th onClick={() => toggleSort("__listId")}>list</th>
-                  <th onClick={() => toggleSort("status")}>status</th>
-                  <th onClick={() => toggleSort("text")}>text</th>
-                  <th onClick={() => toggleSort("createdAt")}>createdAt</th>
-                  {activeList
-                    ? Object.keys(activeList.fields)
-                        .filter((k) => !["text", "priority", "color", "order", "status", "archivedAt"].includes(k))
-                        .filter((k) => activeList.fields[k]?.ui?.showInPreview !== false)
-                        .map((k) => (
-                          <th key={k} onClick={() => toggleSort(k)}>
-                            {k}
-                          </th>
-                        ))
-                    : null}
-                  <th onClick={() => toggleSort("color")}>color</th>
-                  <th>actions</th>
+                  {reorderMode ? (
+                    <th style={{ width: "100%" }} onClick={() => toggleSort("text")}>text</th>
+                  ) : (
+                    <>
+                      <th style={{ width: 36 }}>
+                        <input
+                          type="checkbox"
+                          checked={displayRows.length > 0 && selectedIds.size === displayRows.length}
+                          onChange={toggleSelectAll}
+                          style={{ width: 16, height: 16, cursor: "pointer" }}
+                          title="Select all"
+                          aria-label="Select all"
+                        />
+                      </th>
+                      <th style={{ width: 36 }} onClick={() => toggleSort("color")} />
+                      <th onClick={() => toggleSort("text")}>text</th>
+                      <th style={{ width: 130 }} onClick={() => toggleSort("status")}>status</th>
+                      <th style={{ width: 72 }} onClick={() => toggleSort("priority")}>P</th>
+                      <th style={{ width: 32 }} />
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {displayRows.map((it) => {
                   const isArchived = typeof (it as any).archivedAt === "string" && String((it as any).archivedAt).trim();
-                  const draggable =
-                    reorderMode && !searchAllLists && it.__listId === listId && (it.priority ?? 3) === reorderPriority;
+                  const draggable = reorderMode && !searchAllLists && it.__listId === listId && (it.priority ?? 3) === reorderPriority;
                   const rowStyle: React.CSSProperties = {
                     background: typeof it.color === "string" && it.color ? hexToRgba(it.color, 0.12) : undefined,
                     opacity: isArchived ? 0.65 : undefined,
                   };
+                  const isExpanded = expandedIds.has(it.id);
 
-                  if (!reorderMode) {
+                  if (reorderMode) {
                     return (
-                      <tr key={`${it.__listId}:${it.id}`} style={rowStyle}>
-                        <td style={{ minWidth: 92 }}>
-                          <select
-                            value={String(it.priority ?? 3)}
-                            onChange={(e) => setPriority(it.__listId, it.id, Number(e.target.value))}
-                          >
-                            {[1, 2, 3, 4, 5].map((p) => (
-                              <option key={p} value={p}>
-                                {p}
-                              </option>
-                            ))}
-                          </select>
+                      <SortableTr
+                        key={`${it.__listId}:${it.id}`}
+                        id={it.id}
+                        disabled={!draggable}
+                        fullRowDrag
+                        style={{ ...rowStyle, cursor: draggable ? "grab" : undefined }}
+                        render={() => (
+                          <td style={{ width: "100%" }}>
+                            {linkifyText(String(it.text ?? ""))}
+                          </td>
+                        )}
+                      />
+                    );
+                  }
+
+                  return (
+                    <React.Fragment key={`${it.__listId}:${it.id}`}>
+                      <tr style={rowStyle}>
+                        <td style={{ width: 36 }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(it.id)}
+                            onChange={() => toggleSelect(it.id)}
+                            style={{ width: 16, height: 16, cursor: "pointer" }}
+                            aria-label="Select row"
+                          />
                         </td>
-                        <td className="small muted" style={{ minWidth: 58 }}>
-                          {String(it.order ?? 0)}
+                        <td style={{ width: 36 }}>
+                          <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
                         </td>
-                        <td style={{ minWidth: 160 }}>
-                          <select value={it.__listId} onChange={(e) => moveRow(it.__listId, e.target.value, it.id)}>
-                            {lists.map((l) => (
-                              <option key={l.id} value={l.id}>
-                                {l.title}
-                              </option>
-                            ))}
-                          </select>
+                        <td>
+                          <div className="editableCell" onClick={() => openFieldEdit(it, "text")} title="Click to edit">
+                            {linkifyText(String(it.text ?? ""))}
+                          </div>
+                          <div className="small muted">{it.id.slice(0, 8)}</div>
                         </td>
-                        <td style={{ minWidth: 160 }}>
+                        <td style={{ width: 130 }}>
                           <StatusPicker
                             value={(it as any).status}
                             archived={Boolean(isArchived)}
@@ -1106,141 +1350,75 @@ export function ListBrowser(props: { refreshSignal: number }) {
                             onUnarchive={() => unarchiveItem(it.__listId, it.id)}
                           />
                         </td>
-                        <td style={{ minWidth: 240 }}>
-                          <div>{linkifyText(String(it.text ?? ""))}</div>
-                          <div className="small muted">{it.id.slice(0, 12)}</div>
+                        <td style={{ width: 72 }}>
+                          <select
+                            value={String(it.priority ?? 3)}
+                            onChange={(e) => setPriority(it.__listId, it.id, Number(e.target.value))}
+                            style={{ padding: "4px 4px" }}
+                          >
+                            {[1, 2, 3, 4, 5].map((p) => <option key={p} value={p}>{p}</option>)}
+                          </select>
                         </td>
-                        <td className="small muted" style={{ minWidth: 150 }}>
-                          {new Date(String(it.createdAt)).toLocaleString()}
-                        </td>
-                        {activeList
-                          ? Object.keys(activeList.fields)
-                              .filter((k) => !["text", "priority", "color", "order", "status", "archivedAt"].includes(k))
-                              .filter((k) => activeList.fields[k]?.ui?.showInPreview !== false)
-                              .map((k) => (
-                                <td key={k} className="small">
-                                  {String((it as any)[k] ?? "")}
-                                </td>
-                              ))
-                          : null}
-                        <td style={{ minWidth: 110 }}>
-                          <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <div className="btnrow">
-                            <button className="iconbtn" onClick={() => openEdit(it)} title="Edit" aria-label="Edit">
-                              ✎
-                            </button>
-                            <button
-                              className="iconbtn"
-                              onClick={() => del(it.__listId, it.id)}
-                              title="Delete"
-                              aria-label="Delete"
-                            >
-                              🗑
-                            </button>
-                          </div>
+                        <td style={{ width: 32 }}>
+                          <button
+                            className="iconbtn"
+                            onClick={() => toggleExpand(it.id)}
+                            title={isExpanded ? "Collapse" : "More"}
+                            aria-label={isExpanded ? "Collapse" : "More"}
+                            style={{ width: 28, height: 28, padding: 0, fontSize: 15 }}
+                          >
+                            {isExpanded ? "−" : "+"}
+                          </button>
                         </td>
                       </tr>
-                    );
-                  }
-
-                  return (
-                    <SortableTr
-                      key={`${it.__listId}:${it.id}`}
-                      id={it.id}
-                      disabled={!draggable}
-                      style={rowStyle}
-                      render={({ dragHandleProps, setDragHandleRef }) => (
-                        <>
-                          <td style={{ width: 46 }}>
-                            {draggable ? (
-                              <button
-                                className="iconbtn"
-                                ref={setDragHandleRef as any}
-                                {...dragHandleProps}
-                                title="Drag to reorder"
-                                aria-label="Drag to reorder"
-                              >
-                                ↕
-                              </button>
-                            ) : null}
-                          </td>
-                          <td style={{ minWidth: 92 }}>
-                            <select value={String(it.priority ?? 3)} disabled>
-                              {[1, 2, 3, 4, 5].map((p) => (
-                                <option key={p} value={p}>
-                                  {p}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="small muted" style={{ minWidth: 58 }}>
-                            {String(it.order ?? 0)}
-                          </td>
-                          <td style={{ minWidth: 160 }}>
-                            <select value={it.__listId} disabled>
-                              {lists.map((l) => (
-                                <option key={l.id} value={l.id}>
-                                  {l.title}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-                          <td style={{ minWidth: 160 }}>
-                            <StatusPicker
-                              value={(it as any).status}
-                              archived={Boolean(isArchived)}
-                              onChange={(s) => setStatusAny(it.__listId, it.id, s)}
-                              onArchive={() => archiveItem(it.__listId, it.id)}
-                              onUnarchive={() => unarchiveItem(it.__listId, it.id)}
-                            />
-                          </td>
-                          <td style={{ minWidth: 240 }}>
-                            <div>{linkifyText(String(it.text ?? ""))}</div>
-                            <div className="small muted">{it.id.slice(0, 12)}</div>
-                          </td>
-                          <td className="small muted" style={{ minWidth: 150 }}>
-                            {new Date(String(it.createdAt)).toLocaleString()}
-                          </td>
-                          {activeList
-                            ? Object.keys(activeList.fields)
-                                .filter((k) => !["text", "priority", "color", "order", "status", "archivedAt"].includes(k))
-                                .filter((k) => activeList.fields[k]?.ui?.showInPreview !== false)
-                                .map((k) => (
-                                  <td key={k} className="small">
-                                    {String((it as any)[k] ?? "")}
-                                  </td>
-                                ))
-                            : null}
-                          <td style={{ minWidth: 110 }}>
-                            <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
-                          </td>
-                          <td style={{ minWidth: 120 }}>
-                            <div className="btnrow">
-                              <button className="iconbtn" onClick={() => openEdit(it)} title="Edit" aria-label="Edit">
-                                ✎
-                              </button>
-                              <button
-                                className="iconbtn"
-                                onClick={() => del(it.__listId, it.id)}
-                                title="Delete"
-                                aria-label="Delete"
-                              >
-                                🗑
-                              </button>
+                      {isExpanded ? (
+                        <tr style={{ background: rowStyle.background }}>
+                          <td colSpan={2} style={{ paddingTop: 0 }} />
+                          <td colSpan={4} style={{ paddingTop: 0 }}>
+                            <div className="expandPanel">
+                              <div className="expandField">
+                                <span className="small muted">List</span>
+                                <select value={it.__listId} onChange={(e) => moveRow(it.__listId, e.target.value, it.id)}>
+                                  {lists.map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}
+                                </select>
+                              </div>
+                              {expandCustomFields.map((k) => {
+                                const def = activeList!.fields[k];
+                                return (
+                                  <div key={k} className="expandField">
+                                    <span className="small muted">{fieldLabel(k)}</span>
+                                    {def?.type === "boolean" ? (
+                                      <ToggleSwitch
+                                        checked={Boolean((it as any)[k])}
+                                        onChange={(v) => commit({ type: "update_item", valid: true, confidence: 1, listId: it.__listId, itemId: it.id, patch: { [k]: v } })}
+                                        label={fieldLabel(k)}
+                                      />
+                                    ) : EDITABLE_FIELD_TYPES.has(def?.type ?? "string") ? (
+                                      <div className="editableCell" onClick={() => openFieldEdit(it, k)} title="Click to edit">
+                                        {String((it as any)[k] ?? "") || <span className="muted small">—</span>}
+                                      </div>
+                                    ) : (
+                                      <span className="small">{String((it as any)[k] ?? "")}</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              <div className="expandField">
+                                <span className="small muted">Raw</span>
+                                <button className="iconbtn" onClick={() => openEdit(it)}>
+                                  Edit JSON
+                                </button>
+                              </div>
                             </div>
                           </td>
-                        </>
-                      )}
-                    />
+                        </tr>
+                      ) : null}
+                    </React.Fragment>
                   );
                 })}
                 {!busy && displayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={50} className="muted small">
-                      No items
-                    </td>
+                    <td colSpan={6} className="muted small">No items</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -1249,50 +1427,12 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </DndContext>
       </div>
 
-      <div style={{ marginTop: 10 }} className="row">
-        <div className="col">
-          <label className="small muted">Reorder priority bucket</label>
-          <select
-            value={String(reorderPriority)}
-            onChange={(e) => setReorderPriority(Number(e.target.value))}
-            disabled={reorderMode}
-          >
-            {[1, 2, 3, 4, 5].map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+      {!reorderMode ? (
+        <div className="pill small" style={{ marginTop: 8, display: "inline-flex" }}>
+          <span className="muted">Sort</span>
+          <span>{sortKey} ({sortDir})</span>
         </div>
-        <div className="col">
-          <div className="pill small" style={{ marginTop: 18 }}>
-            <span className="muted">Sort</span>
-            <span>
-              {sortKey} ({sortDir})
-            </span>
-          </div>
-        </div>
-        <div className="col" style={{ display: "flex", justifyContent: "flex-end", alignItems: "flex-end" }}>
-          <div className="btnrow">
-            {reorderMode ? (
-              <>
-                <button className="primary" onClick={commitReorder} disabled={reorderIds.length < 2}>
-                  Save reorder
-                </button>
-                <button onClick={cancelReorder}>Cancel</button>
-              </>
-            ) : (
-              <button
-                onClick={beginReorder}
-                disabled={searchAllLists || items.filter((it) => (it.priority ?? 3) === reorderPriority).length < 2}
-                title={searchAllLists ? "Switch scope to a single list to reorder" : ""}
-              >
-                Reorder
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      ) : null}
 
       {addOpen ? (
         <dialog open className="dialog">
@@ -1402,11 +1542,51 @@ export function ListBrowser(props: { refreshSignal: number }) {
         </dialog>
       ) : null}
 
+      {/* Single-field edit modal */}
+      {fieldEditOpen && fieldEditRow ? (
+        <dialog open className="dialog">
+          <div className="topbar" style={{ marginBottom: 8 }}>
+            <div>
+              <div className="title">Edit {fieldLabel(fieldEditName)}</div>
+              <div className="muted small">{lists.find((l) => l.id === fieldEditRow.__listId)?.title ?? fieldEditRow.__listId}</div>
+            </div>
+            <div className="btnrow">
+              <button onClick={() => { setFieldEditOpen(false); setFieldEditRow(null); }}>Close</button>
+            </div>
+          </div>
+          {(() => {
+            const def = lists.find((l) => l.id === fieldEditRow.__listId)?.fields[fieldEditName];
+            if (!def || def.type === "string" || fieldEditName === "text") {
+              return <textarea value={fieldEditValue} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus style={{ minHeight: 120 }} />;
+            }
+            if (def.type === "int" || def.type === "float") {
+              return <input type="number" value={fieldEditValue} step={def.type === "float" ? "any" : "1"} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus />;
+            }
+            if (def.type === "date") {
+              return <input type="date" value={fieldEditValue.slice(0, 10)} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus />;
+            }
+            if (def.type === "time") {
+              return <input type="time" value={fieldEditValue} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus />;
+            }
+            if (def.type === "json") {
+              return <textarea value={fieldEditValue} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus style={{ minHeight: 160, fontFamily: "monospace" }} />;
+            }
+            return <input value={fieldEditValue} onChange={(e) => setFieldEditValue(e.target.value)} autoFocus />;
+          })()}
+          <div style={{ marginTop: 10 }} className="btnrow">
+            <button className="primary" onClick={confirmFieldEdit}>Save</button>
+            <button className="danger" onClick={() => { setFieldEditOpen(false); setFieldEditRow(null); setFieldEditErr(null); }}>Cancel</button>
+          </div>
+          {fieldEditErr ? <div style={{ marginTop: 10 }} className="error small">{fieldEditErr}</div> : null}
+        </dialog>
+      ) : null}
+
+      {/* Full JSON edit modal (from expanded panel) */}
       {editOpen && editRow ? (
         <dialog open className="dialog">
           <div className="topbar" style={{ marginBottom: 8 }}>
             <div>
-              <div className="title">Edit item</div>
+              <div className="title">Edit item (JSON)</div>
               <div className="muted small">
                 {lists.find((l) => l.id === editRow.__listId)?.title ?? editRow.__listId} • {editRow.id.slice(0, 12)}
               </div>
@@ -1418,38 +1598,18 @@ export function ListBrowser(props: { refreshSignal: number }) {
           <label className="small muted">Fields JSON (patch)</label>
           <textarea
             value={editDraft}
-            onChange={(e) => {
-              setEditDraft(e.target.value);
-              setEditErr(null);
-            }}
+            onChange={(e) => { setEditDraft(e.target.value); setEditErr(null); }}
+            style={{ fontFamily: "monospace" }}
           />
           <div style={{ marginTop: 10 }} className="btnrow">
-            <button
-              className="primary"
-              onClick={confirmEdit}
-              disabled={!editDraft.trim() || editDraft === editOriginalDraft}
-              title={editDraft === editOriginalDraft ? "No changes" : ""}
-            >
+            <button className="primary" onClick={confirmEdit} disabled={!editDraft.trim() || editDraft === editOriginalDraft} title={editDraft === editOriginalDraft ? "No changes" : ""}>
               Save
             </button>
-            <button
-              className="danger"
-              onClick={() => {
-                setEditOpen(false);
-                setEditRow(null);
-                setEditDraft("");
-                setEditOriginalDraft("");
-                setEditErr(null);
-              }}
-            >
+            <button className="danger" onClick={() => { setEditOpen(false); setEditRow(null); setEditDraft(""); setEditOriginalDraft(""); setEditErr(null); }}>
               Cancel
             </button>
           </div>
-          {editErr ? (
-            <div style={{ marginTop: 10 }} className="error small">
-              {editErr}
-            </div>
-          ) : null}
+          {editErr ? <div style={{ marginTop: 10 }} className="error small">{editErr}</div> : null}
         </dialog>
       ) : null}
 
