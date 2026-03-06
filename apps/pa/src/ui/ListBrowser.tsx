@@ -105,10 +105,12 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [addColor, setAddColor] = React.useState<string | null>(null);
   const [addErr, setAddErr] = React.useState<string | null>(null);
   const [addListening, setAddListening] = React.useState(false);
+  const addListeningRef = React.useRef(false);
   const addRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const addMicBaseRef = React.useRef<string>("");
   const addMicFinalRef = React.useRef<string>("");
   const addMicRestartTimerRef = React.useRef<number | null>(null);
+  const addMicSessionRef = React.useRef(0);
 
   // Undo mode
   const [undoMode, setUndoMode] = React.useState(false);
@@ -903,28 +905,29 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setAddColor(null);
   }
 
-  function stopAddMic() {
-    if (addMicRestartTimerRef.current) {
-      window.clearTimeout(addMicRestartTimerRef.current);
-      addMicRestartTimerRef.current = null;
-    }
-    addRecRef.current?.stop();
-    setAddListening(false);
-  }
-
-  function startAddMic() {
+  function createAndStartAddRec(sessionId: number) {
     if (!SR) return;
-    setAddErr(null);
+    if (sessionId !== addMicSessionRef.current) return;
 
-    // Keep what's already in the field and append dictation to it.
-    addMicBaseRef.current = String(addFields.text ?? "").trim();
-    addMicFinalRef.current = "";
+    const prev = addRecRef.current;
+    addRecRef.current = null;
+    if (prev) {
+      prev.onend = null;
+      prev.onresult = null;
+      prev.onerror = null;
+      try {
+        prev.stop();
+      } catch {
+        // ignore
+      }
+    }
 
     const rec = new SR();
     rec.lang = "en-US";
-    rec.continuous = true;
+    rec.continuous = false; // manual restart prevents browser auto-restart overlap
     rec.interimResults = true;
     rec.onresult = (ev) => {
+      if (sessionId !== addMicSessionRef.current) return;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const res = ev.results[i];
@@ -940,27 +943,68 @@ export function ListBrowser(props: { refreshSignal: number }) {
       setAddField("text", merged);
     };
     rec.onerror = (ev) => {
-      const code = String(ev?.error ?? "unknown");
+      if (sessionId !== addMicSessionRef.current) return;
+      const code = String((ev as any)?.error ?? "unknown");
       // Many browsers emit "no-speech" when you pause; keep the mic "on" by restarting.
-      if (addListening && ["no-speech", "audio-capture", "network"].includes(code)) return;
+      if (addListeningRef.current && ["no-speech", "audio-capture", "network"].includes(code)) return;
       setAddErr(`Speech error: ${code}`);
       stopAddMic();
     };
     rec.onend = () => {
+      if (sessionId !== addMicSessionRef.current) return;
       // Auto-restart to tolerate silence gaps while the mic toggle is "on".
-      if (!addListening) return;
+      if (!addListeningRef.current) return;
       if (addMicRestartTimerRef.current) window.clearTimeout(addMicRestartTimerRef.current);
       addMicRestartTimerRef.current = window.setTimeout(() => {
-        try {
-          addRecRef.current?.start();
-        } catch {
-          // ignore
-        }
+        if (sessionId !== addMicSessionRef.current) return;
+        if (addListeningRef.current) createAndStartAddRec(sessionId);
       }, 250);
     };
+
     addRecRef.current = rec;
+    try {
+      rec.start();
+    } catch (e: any) {
+      setAddErr(String(e?.message ?? e));
+      stopAddMic();
+    }
+  }
+
+  function stopAddMic() {
+    addListeningRef.current = false;
+    addMicSessionRef.current += 1; // invalidate any in-flight callbacks/timers
+    if (addMicRestartTimerRef.current) {
+      window.clearTimeout(addMicRestartTimerRef.current);
+      addMicRestartTimerRef.current = null;
+    }
+    const prev = addRecRef.current;
+    addRecRef.current = null;
+    if (prev) {
+      prev.onend = null;
+      prev.onresult = null;
+      prev.onerror = null;
+      try {
+        prev.stop();
+      } catch {
+        // ignore
+      }
+    }
+    setAddListening(false);
+  }
+
+  function startAddMic() {
+    if (!SR) return;
+    if (addListeningRef.current) return;
+    setAddErr(null);
+
+    // Keep what's already in the field and append dictation to it.
+    addMicBaseRef.current = String(addFields.text ?? "").trim();
+    addMicFinalRef.current = "";
+
+    addListeningRef.current = true;
     setAddListening(true);
-    rec.start();
+    const sessionId = (addMicSessionRef.current += 1);
+    createAndStartAddRec(sessionId);
   }
 
   function setAddField(name: string, value: unknown) {

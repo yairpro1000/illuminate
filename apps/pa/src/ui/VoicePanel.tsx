@@ -45,6 +45,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
   const [err, setErr] = React.useState<string | null>(null);
   const recRef = React.useRef<SpeechRecognitionLike | null>(null);
   const listeningRef = React.useRef(false);
+  const micSessionRef = React.useRef(0);
   const micBaseRef = React.useRef<string>("");
   const micFinalRef = React.useRef<string>("");
   const micRestartTimerRef = React.useRef<number | null>(null);
@@ -65,31 +66,49 @@ export function VoicePanel(props: { onCommitted: () => void }) {
 
   function stop() {
     listeningRef.current = false;
+    micSessionRef.current += 1; // invalidate any in-flight callbacks/timers
     if (micRestartTimerRef.current) {
       window.clearTimeout(micRestartTimerRef.current);
       micRestartTimerRef.current = null;
     }
-    recRef.current?.stop();
+    const prev = recRef.current;
+    recRef.current = null;
+    if (prev) {
+      prev.onend = null;
+      prev.onresult = null;
+      prev.onerror = null;
+      try {
+        prev.stop();
+      } catch {
+        // ignore
+      }
+    }
     setListening(false);
   }
 
-  function start() {
+  function createAndStartRec(sessionId: number) {
     if (!SR) return;
-    if (listeningRef.current) return; // guard against double-tap / async state lag
-    setErr(null);
-
-    // Stop any existing instance before creating a new one
-    recRef.current?.stop();
+    if (sessionId !== micSessionRef.current) return;
+    // Always destroy the previous instance before creating a new one
+    const prev = recRef.current;
     recRef.current = null;
-
-    micBaseRef.current = transcript.trim();
-    micFinalRef.current = "";
+    if (prev) {
+      prev.onend = null;
+      prev.onresult = null;
+      prev.onerror = null;
+      try {
+        prev.stop();
+      } catch {
+        // ignore
+      }
+    }
 
     const rec = new SR();
     rec.lang = "en-US";
-    rec.continuous = true;
+    rec.continuous = false; // manual restart prevents double-start with browser auto-restart
     rec.interimResults = true;
     rec.onresult = (ev) => {
+      if (sessionId !== micSessionRef.current) return;
       let interim = "";
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const res = ev.results[i];
@@ -109,29 +128,43 @@ export function VoicePanel(props: { onCommitted: () => void }) {
       setTranscript(merged);
     };
     rec.onerror = (ev) => {
+      if (sessionId !== micSessionRef.current) return;
       const code = String((ev as any)?.error ?? "unknown");
       if (listeningRef.current && ["no-speech", "audio-capture", "network"].includes(code)) return;
       setErr(`Speech error: ${code}`);
       stop();
     };
     rec.onend = () => {
+      if (sessionId !== micSessionRef.current) return;
       if (!listeningRef.current) {
         setListening(false);
         return;
       }
       if (micRestartTimerRef.current) window.clearTimeout(micRestartTimerRef.current);
       micRestartTimerRef.current = window.setTimeout(() => {
-        try {
-          recRef.current?.start();
-        } catch {
-          // ignore
-        }
+        if (sessionId !== micSessionRef.current) return;
+        if (listeningRef.current) createAndStartRec(sessionId); // fresh instance, not .start() on old one
       }, 250);
     };
     recRef.current = rec;
+    try {
+      rec.start();
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+      stop();
+    }
+  }
+
+  function start() {
+    if (!SR) return;
+    if (listeningRef.current) return; // guard against double-tap / async state lag
+    setErr(null);
+    micBaseRef.current = transcript.trim();
+    micFinalRef.current = "";
     listeningRef.current = true;
     setListening(true);
-    rec.start();
+    const sessionId = (micSessionRef.current += 1);
+    createAndStartRec(sessionId);
   }
 
   async function parse(forceLlm?: boolean) {
