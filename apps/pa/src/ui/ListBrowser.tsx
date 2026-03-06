@@ -23,6 +23,14 @@ import {
   ToggleSwitch,
   useDismissibleDetails,
 } from "./listBrowser/components";
+import { TranslateModal } from "./TranslateModal";
+import {
+  isTranslateLike,
+  TRANSLATE_LIST_ID,
+  TranslationPayloadZ,
+  translateLangFlag,
+  type TranslationPayload,
+} from "./translate";
 
 // Field types that need a click-to-edit modal (not natively interactive)
 const EDITABLE_FIELD_TYPES = new Set(["string", "int", "float", "date", "time", "json"]);
@@ -95,6 +103,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [fieldEditName, setFieldEditName] = React.useState<string>("");
   const [fieldEditValue, setFieldEditValue] = React.useState<string>("");
   const [fieldEditErr, setFieldEditErr] = React.useState<string | null>(null);
+  // Translate modal
+  const [translateOpen, setTranslateOpen] = React.useState(false);
+  const [translateRow, setTranslateRow] = React.useState<ItemRow | null>(null);
+  const [translateInitial, setTranslateInitial] = React.useState<TranslationPayload | null>(null);
   // Multi-select for bulk delete
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = React.useState(false);
@@ -373,6 +385,97 @@ export function ListBrowser(props: { refreshSignal: number }) {
       if (searchAllLists) await loadAllRows();
       else await loadItems(listId);
     }
+    return res?.result;
+  }
+
+  function rowToTranslationPayload(row: ItemRow): TranslationPayload {
+    const originLanguage = typeof (row as any).originLanguage === "string" ? String((row as any).originLanguage) : "";
+    const destinationLanguage =
+      typeof (row as any).destinationLanguage === "string" ? String((row as any).destinationLanguage) : "";
+    const originExpression =
+      typeof (row as any).originExpression === "string"
+        ? String((row as any).originExpression)
+        : String((row as any).text ?? "");
+    const possibleTranslations = Array.isArray((row as any).possibleTranslations) ? (row as any).possibleTranslations : [];
+    const examplesOrigin = Array.isArray((row as any).examplesOrigin) ? (row as any).examplesOrigin : [];
+    const examplesDestination = Array.isArray((row as any).examplesDestination) ? (row as any).examplesDestination : [];
+    const comments = typeof (row as any).comments === "string" ? String((row as any).comments) : "";
+    return {
+      originLanguage: originLanguage as any,
+      originExpression,
+      destinationLanguage: destinationLanguage as any,
+      possibleTranslations: possibleTranslations.map((s: any) => String(s ?? "")),
+      examplesOrigin: examplesOrigin.map((s: any) => String(s ?? "")),
+      examplesDestination: examplesDestination.map((s: any) => String(s ?? "")),
+      comments,
+    };
+  }
+
+  function openTranslateModal(row: ItemRow, initial?: TranslationPayload) {
+    setTranslateRow(row);
+    setTranslateInitial(initial ?? rowToTranslationPayload(row));
+    setTranslateOpen(true);
+  }
+
+  async function ensureTranslateListReady() {
+    const requiredFields: Record<string, FieldDef> = {
+      originLanguage: { type: "string", nullable: true, description: "Origin language (BCP-47)", ui: { showInPreview: true } },
+      originExpression: { type: "string", nullable: true, description: "Origin expression", ui: { showInPreview: true } },
+      destinationLanguage: { type: "string", nullable: true, description: "Destination language (BCP-47)", ui: { showInPreview: true } },
+      possibleTranslations: { type: "json", nullable: true, description: "Possible translations", ui: { showInPreview: false } },
+      examplesOrigin: { type: "json", nullable: true, description: "Examples in origin language", ui: { showInPreview: false } },
+      examplesDestination: { type: "json", nullable: true, description: "Examples in destination language", ui: { showInPreview: false } },
+      comments: { type: "string", nullable: true, description: "Comments", ui: { showInPreview: false } },
+    };
+
+    const existing = lists.find((l) => l.id === TRANSLATE_LIST_ID) ?? null;
+    if (!existing) {
+      await commit({
+        type: "create_list",
+        valid: true,
+        confidence: 1,
+        listId: TRANSLATE_LIST_ID,
+        title: "Translate",
+        aliases: ["translation", "translations"],
+        fields: requiredFields,
+      });
+      return;
+    }
+
+    const missing = Object.entries(requiredFields)
+      .filter(([k]) => !existing.fields[k])
+      .map(([name, def]) => ({
+        name,
+        type: def.type,
+        ...(Object.prototype.hasOwnProperty.call(def, "default") ? { default: (def as any).default } : {}),
+        ...(typeof def.nullable === "boolean" ? { nullable: def.nullable } : {}),
+        ...(typeof def.description === "string" ? { description: def.description } : {}),
+      }));
+    if (missing.length > 0) {
+      await commit({
+        type: "add_fields",
+        valid: true,
+        confidence: 1,
+        listId: TRANSLATE_LIST_ID,
+        fieldsToAdd: missing,
+      });
+    }
+  }
+
+  async function llmTranslate(input: string): Promise<TranslationPayload> {
+    const res = await api<{ ok: true; translation: unknown }>("/translate", {
+      method: "POST",
+      body: JSON.stringify({ input }),
+    });
+    return TranslationPayloadZ.parse(res.translation);
+  }
+
+  async function llmRefine(draft: TranslationPayload, question: string): Promise<{ translation: TranslationPayload; answer: string }> {
+    const res = await api<{ ok: true; translation: unknown; answer: unknown }>("/translate/refine", {
+      method: "POST",
+      body: JSON.stringify({ draft, question }),
+    });
+    return { translation: TranslationPayloadZ.parse(res.translation), answer: String((res as any).answer ?? "") };
   }
 
   function showUndoToast(id: string, label: string) {
@@ -1139,8 +1242,40 @@ export function ListBrowser(props: { refreshSignal: number }) {
     if (addStatus !== "todo") fields.status = addStatus;
 
     try {
-      await ensureStatusFieldIfUsed(l.id);
-      await commit({ type: "append_item", valid: true, confidence: 1, listId: l.id, fields });
+      const rawText = String(fields.text ?? "");
+      const translateIntent = isTranslateLike(rawText);
+      if (translateIntent) {
+        await ensureTranslateListReady();
+        const translation = await llmTranslate(rawText);
+        const originExpression = String(translation.originExpression ?? "").trim() || rawText.trim();
+        const result = await commit(
+          {
+            type: "append_item",
+            valid: true,
+            confidence: 1,
+            listId: TRANSLATE_LIST_ID,
+            fields: {
+              ...(fields.priority !== undefined ? { priority: fields.priority } : {}),
+              ...(fields.color !== undefined ? { color: fields.color } : {}),
+              ...(fields.status !== undefined ? { status: fields.status } : {}),
+              text: originExpression,
+              originLanguage: translation.originLanguage,
+              originExpression,
+              destinationLanguage: translation.destinationLanguage,
+              possibleTranslations: translation.possibleTranslations,
+              examplesOrigin: translation.examplesOrigin,
+              examplesDestination: translation.examplesDestination,
+              comments: translation.comments,
+            },
+          },
+          { refresh: true },
+        );
+        const row = (result?.item ? ({ ...(result.item as any), __listId: TRANSLATE_LIST_ID } as ItemRow) : null) ?? null;
+        if (row) openTranslateModal(row, translation);
+      } else {
+        await ensureStatusFieldIfUsed(l.id);
+        await commit({ type: "append_item", valid: true, confidence: 1, listId: l.id, fields });
+      }
       setAddOpen(false);
       setAddListId("");
       setAddFields({});
@@ -1595,6 +1730,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
                 {displayRows.map((it) => {
                   const isArchived = typeof (it as any).archivedAt === "string" && String((it as any).archivedAt).trim();
                   const draggable = reorderMode && !searchAllLists && it.__listId === listId && (it.priority ?? 3) === reorderPriority;
+                  const isTranslateRow = it.__listId === TRANSLATE_LIST_ID;
                   const rowStyle: React.CSSProperties = {
                     background: typeof it.color === "string" && it.color ? hexToRgba(it.color, 0.12) : undefined,
                     opacity: isArchived ? 0.65 : undefined,
@@ -1634,8 +1770,30 @@ export function ListBrowser(props: { refreshSignal: number }) {
                           <ColorPicker value={it.color as any} onChange={(c) => setColor(it.__listId, it.id, c)} />
                         </td>
                         <td>
-                          <div className="editableCell" onClick={() => openFieldEdit(it, "text")} title="Click to edit">
-                            {linkifyText(String(it.text ?? ""))}
+                          <div
+                            className="editableCell"
+                            onClick={() => (isTranslateRow ? openTranslateModal(it) : openFieldEdit(it, "text"))}
+                            title={isTranslateRow ? "Open translate modal" : "Click to edit"}
+                            style={isTranslateRow ? { cursor: "pointer" } : undefined}
+                          >
+                            {isTranslateRow ? (() => {
+                              const origin = typeof (it as any).originLanguage === "string" ? String((it as any).originLanguage) : "";
+                              const dest = typeof (it as any).destinationLanguage === "string" ? String((it as any).destinationLanguage) : "";
+                              const expr = typeof (it as any).originExpression === "string" ? String((it as any).originExpression) : String(it.text ?? "");
+                              const translations = Array.isArray((it as any).possibleTranslations) ? (it as any).possibleTranslations : [];
+                              const first = translations.length ? String(translations[0] ?? "") : "";
+                              return (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <span className="pill small" style={{ padding: "2px 8px" }}>
+                                      {translateLangFlag(origin as any)}→{translateLangFlag(dest as any)}
+                                    </span>
+                                    <span>{linkifyText(expr)}</span>
+                                  </div>
+                                  {first ? <div className="small muted">{first}</div> : null}
+                                </div>
+                              );
+                            })() : linkifyText(String(it.text ?? ""))}
                           </div>
                           <div className="small muted">{it.id.slice(0, 8)}</div>
                         </td>
@@ -1711,6 +1869,14 @@ export function ListBrowser(props: { refreshSignal: number }) {
                                   </div>
                                 );
                               })}
+                              {it.__listId === TRANSLATE_LIST_ID ? (
+                                <div className="expandField">
+                                  <span className="small muted">Translate</span>
+                                  <button className="iconbtn" onClick={() => openTranslateModal(it)} title="Open translate modal">
+                                    ✎
+                                  </button>
+                                </div>
+                              ) : null}
                               <div className="expandField">
                                 <span className="small muted">Raw</span>
                                 <button className="iconbtn" onClick={() => openEdit(it)}>
@@ -2062,6 +2228,44 @@ export function ListBrowser(props: { refreshSignal: number }) {
           {editErr ? <div style={{ marginTop: 10 }} className="error small">{editErr}</div> : null}
         </dialog>
         </>
+      ) : null}
+
+      {translateOpen && translateRow && translateInitial ? (
+        <TranslateModal
+          open={translateOpen}
+          title="Translate"
+          initial={translateInitial}
+          onClose={() => {
+            setTranslateOpen(false);
+            setTranslateRow(null);
+            setTranslateInitial(null);
+          }}
+          onRepeat={async (draft, question) => await llmRefine(draft, question)}
+          onSave={async (next) => {
+            if (!translateRow) return;
+            await commit({
+              type: "update_item",
+              valid: true,
+              confidence: 1,
+              listId: translateRow.__listId,
+              itemId: translateRow.id,
+              patch: {
+                text: String(next.originExpression ?? "").trim() || String((translateRow as any).text ?? ""),
+                originLanguage: next.originLanguage,
+                originExpression: next.originExpression,
+                destinationLanguage: next.destinationLanguage,
+                possibleTranslations: next.possibleTranslations,
+                examplesOrigin: next.examplesOrigin,
+                examplesDestination: next.examplesDestination,
+                comments: next.comments,
+              },
+            });
+          }}
+          onDelete={async () => {
+            if (!translateRow) return;
+            await commit({ type: "delete_item", valid: true, confidence: 1, listId: translateRow.__listId, itemId: translateRow.id });
+          }}
+        />
       ) : null}
 
       {/* Undo toast */}

@@ -738,7 +738,8 @@ export function makePaRepo(db: Db): PaRepo {
           name,
           type: def.type,
           default_value_json: Object.prototype.hasOwnProperty.call(def, "default") ? (def as any).default : null,
-          nullable: Boolean((def as any).nullable ?? false),
+          // Custom fields should be optional by default (non-mandatory).
+          nullable: typeof (def as any).nullable === "boolean" ? (def as any).nullable : true,
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };
@@ -766,7 +767,8 @@ export function makePaRepo(db: Db): PaRepo {
         const def: FieldDef = {
           type: f.type,
           ...(Object.prototype.hasOwnProperty.call(f, "default") ? { default: f.default } : {}),
-          ...(typeof f.nullable === "boolean" ? { nullable: f.nullable } : {}),
+          // Custom fields are optional by default; only make them required if explicitly requested.
+          ...(typeof f.nullable === "boolean" ? { nullable: f.nullable } : { nullable: true }),
           ...(typeof f.description === "string" ? { description: f.description } : {}),
         };
         listDef.fields[name] = def;
@@ -779,7 +781,8 @@ export function makePaRepo(db: Db): PaRepo {
           name,
           type: def.type,
           default_value_json: Object.prototype.hasOwnProperty.call(def, "default") ? (def as any).default : null,
-          nullable: Boolean((def as any).nullable ?? false),
+          // Custom fields should be optional by default (non-mandatory).
+          nullable: typeof (def as any).nullable === "boolean" ? (def as any).nullable : true,
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };

@@ -8,6 +8,7 @@ import { makeUndoRepo, type UndoSnapshot } from "./repo/undoRepo";
 import { requireAccess } from "./auth";
 import type { Env } from "./env";
 import { parseTranscriptWithDebug, canonicalizeActionTargets, refineUpdateDelete } from "./llm/parse";
+import { TranslateLangZ, translateWithOpenAI, refineTranslationWithOpenAI, TranslationPayloadZ } from "./llm/translate";
 
 function makeRequestId() {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
@@ -194,6 +195,54 @@ app.post("/parse", async (c) => {
   }
 
   return c.json({ action: canonical, parseError, parseDebug });
+});
+
+app.post("/translate", async (c) => {
+  requireAccess(c);
+  const BodyZ = z.object({ input: z.string().min(1) }).strict();
+  const body = BodyZ.parse(await c.req.json());
+  const requestId = (c as any).requestId as string | undefined;
+
+  const apiKey = c.env.OPENAI_API_KEY;
+  if (!apiKey) return c.json({ error: "bad_request", details: "OPENAI_API_KEY is not set.", requestId }, 400);
+  const model = c.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+
+  const allowedLanguages = TranslateLangZ.options;
+  const translation = await translateWithOpenAI({
+    apiKey,
+    model,
+    input: body.input,
+    allowedLanguages,
+    requestId,
+  });
+  return c.json({ ok: true, translation });
+});
+
+app.post("/translate/refine", async (c) => {
+  requireAccess(c);
+  const BodyZ = z
+    .object({
+      draft: TranslationPayloadZ,
+      question: z.string().optional(),
+    })
+    .strict();
+  const body = BodyZ.parse(await c.req.json());
+  const requestId = (c as any).requestId as string | undefined;
+
+  const apiKey = c.env.OPENAI_API_KEY;
+  if (!apiKey) return c.json({ error: "bad_request", details: "OPENAI_API_KEY is not set.", requestId }, 400);
+  const model = c.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+
+  const allowedLanguages = TranslateLangZ.options;
+  const refined = await refineTranslationWithOpenAI({
+    apiKey,
+    model,
+    draft: body.draft,
+    question: body.question,
+    allowedLanguages,
+    requestId,
+  });
+  return c.json({ ok: true, ...refined });
 });
 
 app.post("/commit", async (c) => {
