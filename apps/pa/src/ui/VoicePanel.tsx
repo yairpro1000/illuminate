@@ -3,7 +3,14 @@ import { api } from "../api";
 import type { ParsedAction } from "@shared/model";
 import { ParsedActionZ } from "@shared/model";
 import { z } from "zod";
-import { getSpeechRecognition, type SpeechRecognitionLike } from "./speech";
+import {
+  DEFAULT_SPEECH_LANG_VALUE,
+  SPEECH_LANG_OPTIONS,
+  SPEECH_LANG_STORAGE_KEY,
+  getSpeechRecognition,
+  resolveSpeechLang,
+  type SpeechRecognitionLike,
+} from "./speech";
 
 function summarize(action: ParsedAction | null) {
   if (!action) return "—";
@@ -46,9 +53,33 @@ export function VoicePanel(props: { onCommitted: () => void }) {
   const recRef = React.useRef<SpeechRecognitionLike | null>(null);
   const listeningRef = React.useRef(false);
   const micSessionRef = React.useRef(0);
+  const micHoldActiveRef = React.useRef(false);
+  const suppressMicClickRef = React.useRef(false);
+  const coarsePointerRef = React.useRef(false);
   const micBaseRef = React.useRef<string>("");
   const micFinalRef = React.useRef<string>("");
   const micRestartTimerRef = React.useRef<number | null>(null);
+  const [speechLang, setSpeechLang] = React.useState<string>(() => {
+    try {
+      return window.localStorage.getItem(SPEECH_LANG_STORAGE_KEY) ?? DEFAULT_SPEECH_LANG_VALUE;
+    } catch {
+      return DEFAULT_SPEECH_LANG_VALUE;
+    }
+  });
+
+  React.useEffect(() => {
+    coarsePointerRef.current =
+      (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches) ||
+      (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(SPEECH_LANG_STORAGE_KEY, speechLang);
+    } catch {
+      // ignore
+    }
+  }, [speechLang]);
 
   React.useEffect(() => {
     if (!listening) return;
@@ -104,7 +135,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     }
 
     const rec = new SR();
-    rec.lang = "en-US";
+    rec.lang = resolveSpeechLang(speechLang);
     rec.continuous = false; // manual restart prevents double-start with browser auto-restart
     rec.interimResults = true;
     rec.onresult = (ev) => {
@@ -165,6 +196,25 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     setListening(true);
     const sessionId = (micSessionRef.current += 1);
     createAndStartRec(sessionId);
+  }
+
+  function onMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!coarsePointerRef.current) return;
+    if (!SR || busy) return;
+    suppressMicClickRef.current = true;
+    micHoldActiveRef.current = true;
+    e.preventDefault();
+    if (!listeningRef.current) start();
+  }
+
+  function onMicPointerUp() {
+    if (!coarsePointerRef.current) return;
+    if (!micHoldActiveRef.current) return;
+    micHoldActiveRef.current = false;
+    stop();
+    window.setTimeout(() => {
+      suppressMicClickRef.current = false;
+    }, 0);
   }
 
   async function parse(forceLlm?: boolean) {
@@ -247,9 +297,30 @@ export function VoicePanel(props: { onCommitted: () => void }) {
           <div className="muted small">Transcript → strict JSON action → validated commit</div>
         </div>
         <div className="btnrow">
+          <select
+            value={speechLang}
+            onChange={(e) => setSpeechLang(e.target.value)}
+            disabled={!SR || busy}
+            title="Speech language"
+          >
+            {SPEECH_LANG_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
           <button
             className="primary"
-            onClick={listening ? stop : start}
+            onClick={() => {
+              if (suppressMicClickRef.current) return;
+              if (coarsePointerRef.current) return;
+              if (listening) stop();
+              else start();
+            }}
+            onPointerDown={onMicPointerDown}
+            onPointerUp={onMicPointerUp}
+            onPointerCancel={onMicPointerUp}
+            onPointerLeave={onMicPointerUp}
             disabled={!SR || busy}
             data-mic="voice"
             title={!SR ? "SpeechRecognition not supported in this browser" : ""}

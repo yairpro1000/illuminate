@@ -3,7 +3,14 @@ import { API_BASE, api } from "../api";
 import type { FieldDef, ListItem } from "@shared/model";
 import { DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { getSpeechRecognition, type SpeechRecognitionLike } from "./speech";
+import {
+  DEFAULT_SPEECH_LANG_VALUE,
+  SPEECH_LANG_OPTIONS,
+  SPEECH_LANG_STORAGE_KEY,
+  getSpeechRecognition,
+  resolveSpeechLang,
+  type SpeechRecognitionLike,
+} from "./speech";
 import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from "./listBrowser/constants";
 import {
   ColorPicker,
@@ -106,11 +113,35 @@ export function ListBrowser(props: { refreshSignal: number }) {
   const [addErr, setAddErr] = React.useState<string | null>(null);
   const [addListening, setAddListening] = React.useState(false);
   const addListeningRef = React.useRef(false);
+  const addMicHoldActiveRef = React.useRef(false);
+  const suppressAddMicClickRef = React.useRef(false);
+  const coarsePointerRef = React.useRef(false);
   const addRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const addMicBaseRef = React.useRef<string>("");
   const addMicFinalRef = React.useRef<string>("");
   const addMicRestartTimerRef = React.useRef<number | null>(null);
   const addMicSessionRef = React.useRef(0);
+  const [speechLang, setSpeechLang] = React.useState<string>(() => {
+    try {
+      return window.localStorage.getItem(SPEECH_LANG_STORAGE_KEY) ?? DEFAULT_SPEECH_LANG_VALUE;
+    } catch {
+      return DEFAULT_SPEECH_LANG_VALUE;
+    }
+  });
+
+  React.useEffect(() => {
+    coarsePointerRef.current =
+      (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches) ||
+      (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0);
+  }, []);
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(SPEECH_LANG_STORAGE_KEY, speechLang);
+    } catch {
+      // ignore
+    }
+  }, [speechLang]);
 
   // Undo mode
   const [undoMode, setUndoMode] = React.useState(false);
@@ -923,7 +954,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     }
 
     const rec = new SR();
-    rec.lang = "en-US";
+    rec.lang = resolveSpeechLang(speechLang);
     rec.continuous = false; // manual restart prevents browser auto-restart overlap
     rec.interimResults = true;
     rec.onresult = (ev) => {
@@ -1005,6 +1036,25 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setAddListening(true);
     const sessionId = (addMicSessionRef.current += 1);
     createAndStartAddRec(sessionId);
+  }
+
+  function onAddMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!coarsePointerRef.current) return;
+    if (!SR) return;
+    suppressAddMicClickRef.current = true;
+    addMicHoldActiveRef.current = true;
+    e.preventDefault();
+    if (!addListeningRef.current) startAddMic();
+  }
+
+  function onAddMicPointerUp() {
+    if (!coarsePointerRef.current) return;
+    if (!addMicHoldActiveRef.current) return;
+    addMicHoldActiveRef.current = false;
+    stopAddMic();
+    window.setTimeout(() => {
+      suppressAddMicClickRef.current = false;
+    }, 0);
   }
 
   function setAddField(name: string, value: unknown) {
@@ -1853,17 +1903,40 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
           <div className="row" style={{ alignItems: "center", justifyContent: "space-between" }}>
             <label className="small muted">Text *</label>
-            <button
-              className="iconbtn"
-              onClick={addListening ? stopAddMic : startAddMic}
-              disabled={!SR}
-              title={!SR ? "SpeechRecognition not supported in this browser" : ""}
-              data-mic="add"
-            >
-              {addListening ? "Stop 🎙" : "Mic 🎙"}
-            </button>
+            <div className="row" style={{ alignItems: "center", gap: 8 }}>
+              <select
+                value={speechLang}
+                onChange={(e) => setSpeechLang(e.target.value)}
+                disabled={!SR}
+                title="Speech language"
+              >
+                {SPEECH_LANG_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="iconbtn"
+                onClick={() => {
+                  if (suppressAddMicClickRef.current) return;
+                  if (coarsePointerRef.current) return;
+                  if (addListening) stopAddMic();
+                  else startAddMic();
+                }}
+                onPointerDown={onAddMicPointerDown}
+                onPointerUp={onAddMicPointerUp}
+                onPointerCancel={onAddMicPointerUp}
+                onPointerLeave={onAddMicPointerUp}
+                disabled={!SR}
+                title={!SR ? "SpeechRecognition not supported in this browser" : ""}
+                data-mic="add"
+              >
+                {addListening ? "Stop 🎙" : "Mic 🎙"}
+              </button>
+            </div>
           </div>
-          <textarea value={String(addFields.text ?? "")} onChange={(e) => setAddField("text", e.target.value)} />
+	          <textarea value={String(addFields.text ?? "")} onChange={(e) => setAddField("text", e.target.value)} />
 
           {activeAddList() ? (
             <div style={{ marginTop: 10 }}>
