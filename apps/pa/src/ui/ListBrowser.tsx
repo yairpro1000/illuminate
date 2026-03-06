@@ -1044,13 +1044,25 @@ export function ListBrowser(props: { refreshSignal: number }) {
     suppressAddMicClickRef.current = true;
     addMicHoldActiveRef.current = true;
     e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     if (!addListeningRef.current) startAddMic();
   }
 
-  function onAddMicPointerUp() {
+  function onAddMicPointerUp(e?: React.PointerEvent<HTMLButtonElement>) {
     if (!coarsePointerRef.current) return;
     if (!addMicHoldActiveRef.current) return;
     addMicHoldActiveRef.current = false;
+    if (e) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
     stopAddMic();
     window.setTimeout(() => {
       suppressAddMicClickRef.current = false;
@@ -1923,15 +1935,14 @@ export function ListBrowser(props: { refreshSignal: number }) {
                   if (coarsePointerRef.current) return;
                   if (addListening) stopAddMic();
                   else startAddMic();
-                }}
-                onPointerDown={onAddMicPointerDown}
-                onPointerUp={onAddMicPointerUp}
-                onPointerCancel={onAddMicPointerUp}
-                onPointerLeave={onAddMicPointerUp}
-                disabled={!SR}
-                title={!SR ? "SpeechRecognition not supported in this browser" : ""}
-                data-mic="add"
-              >
+	                }}
+	                onPointerDown={onAddMicPointerDown}
+	                onPointerUp={onAddMicPointerUp}
+	                onPointerCancel={onAddMicPointerUp}
+	                disabled={!SR}
+	                title={!SR ? "SpeechRecognition not supported in this browser" : ""}
+	                data-mic="add"
+	              >
                 {addListening ? "Stop 🎙" : "Mic 🎙"}
               </button>
             </div>

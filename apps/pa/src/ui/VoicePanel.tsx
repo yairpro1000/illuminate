@@ -204,13 +204,25 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     suppressMicClickRef.current = true;
     micHoldActiveRef.current = true;
     e.preventDefault();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
     if (!listeningRef.current) start();
   }
 
-  function onMicPointerUp() {
+  function onMicPointerUp(e?: React.PointerEvent<HTMLButtonElement>) {
     if (!coarsePointerRef.current) return;
     if (!micHoldActiveRef.current) return;
     micHoldActiveRef.current = false;
+    if (e) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+    }
     stop();
     window.setTimeout(() => {
       suppressMicClickRef.current = false;
@@ -320,7 +332,6 @@ export function VoicePanel(props: { onCommitted: () => void }) {
             onPointerDown={onMicPointerDown}
             onPointerUp={onMicPointerUp}
             onPointerCancel={onMicPointerUp}
-            onPointerLeave={onMicPointerUp}
             disabled={!SR || busy}
             data-mic="voice"
             title={!SR ? "SpeechRecognition not supported in this browser" : ""}
