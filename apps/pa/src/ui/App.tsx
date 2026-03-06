@@ -12,7 +12,7 @@ export function App() {
   async function refresh() {
     setErr(null);
     try {
-      const data = await api<{ user: { email: string } | null }>("/pa/me", { method: "GET" });
+      const data = await api<{ user: { email: string } | null }>("/me", { method: "GET" });
       setMe(data);
     } catch (e: any) {
       setErr(String(e?.message ?? e));
@@ -22,7 +22,7 @@ export function App() {
 
   async function loadConfig() {
     try {
-      const data = await api<{ llmProvider: string; llmModel: string | null }>("/pa/config", {
+      const data = await api<{ llmProvider: string; llmModel: string | null }>("/config", {
         method: "GET",
       });
       setConfig(data);
@@ -86,4 +86,3 @@ export function App() {
 
   return <Main email={me.user.email} llmLabel={llmLabel} />;
 }
-

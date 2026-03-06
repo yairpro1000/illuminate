@@ -268,14 +268,14 @@ Confirms email for a free event registration.
 
 # PA (Private Admin) API (V1)
 
-PA endpoints are served by the Worker under `/pa/*` and are expected to be accessible only behind Cloudflare Access.
+PA endpoints are served by the Worker under `/api/*` and are expected to be accessible only behind Cloudflare Access.
 
 ## Headers
 
 - `cf-access-authenticated-user-email`: provided by Cloudflare Access
 - `x-pa-device-id`: frontend-generated stable device id (used to populate `items_updated_by`)
 
-## `GET /pa/lists`
+## `GET /api/lists`
 
 **200**
 ```json
@@ -294,7 +294,7 @@ PA endpoints are served by the Worker under `/pa/*` and are expected to be acces
 }
 ```
 
-## `POST /pa/lists/:listId/reorder` (atomic + conflict-safe)
+## `POST /api/lists/:listId/reorder` (atomic + conflict-safe)
 
 Reorders items within a priority bucket using **list-level optimistic concurrency**.
 
@@ -305,7 +305,7 @@ Reorders items within a priority bucket using **list-level optimistic concurrenc
 
 - If the DB revision changed since the UI loaded, returns **409** (conflict).
 
-## `POST /pa/commit` (optimistic concurrency for update/delete)
+## `POST /api/commit` (optimistic concurrency for update/delete)
 
 **Body**
 ```json

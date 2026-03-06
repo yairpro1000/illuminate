@@ -1,5 +1,5 @@
 import React from "react";
-import { api } from "../api";
+import { API_BASE, api } from "../api";
 import type { FieldDef, ListItem } from "@shared/model";
 import { DndContext, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -96,7 +96,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
   async function loadLists() {
     setErr(null);
-    const data = await api<{ lists: ListInfo[] }>("/pa/lists", { method: "GET" });
+    const data = await api<{ lists: ListInfo[] }>("/lists", { method: "GET" });
     setLists(data.lists);
     setStale(null);
     if (!listId) {
@@ -110,7 +110,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     setBusy(true);
     setErr(null);
     try {
-      const data = await api<{ items: ListItem[] }>(`/pa/lists/${encodeURIComponent(id)}/items`, {
+      const data = await api<{ items: ListItem[] }>(`/lists/${encodeURIComponent(id)}/items`, {
         method: "GET",
       });
       setItems(data.items);
@@ -127,7 +127,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
     try {
       const pairs = await Promise.all(
         lists.map(async (l) => {
-          const data = await api<{ items: ListItem[] }>(`/pa/lists/${encodeURIComponent(l.id)}/items`, {
+          const data = await api<{ items: ListItem[] }>(`/lists/${encodeURIComponent(l.id)}/items`, {
             method: "GET",
           });
           return data.items.map((it) => ({ ...(it as any), __listId: l.id }) as ItemRow);
@@ -199,7 +199,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
     async function poll() {
       try {
-        const data = await api<{ lists: ListInfo[] }>("/pa/lists", { method: "GET" });
+        const data = await api<{ lists: ListInfo[] }>("/lists", { method: "GET" });
         if (cancelled) return;
         const dbRev = data.lists.find((l) => l.id === listId)?.meta?.revision;
         const curRev = activeList.meta?.revision;
@@ -268,7 +268,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
 
   async function commit(action: any, opts?: { refresh?: boolean; expectedItemUpdatedAt?: string }) {
     try {
-      await api("/pa/commit", {
+      await api("/commit", {
         method: "POST",
         body: JSON.stringify({
           action,
@@ -396,7 +396,7 @@ export function ListBrowser(props: { refreshSignal: number }) {
   }
 
   async function saveReorder(orderedIds: string[]) {
-    await api(`/pa/lists/${encodeURIComponent(listId)}/reorder`, {
+    await api(`/lists/${encodeURIComponent(listId)}/reorder`, {
       method: "POST",
       body: JSON.stringify({ priority: reorderPriority, orderedIds, expectedRevision: activeList?.meta?.revision ?? 0 }),
     });
@@ -884,10 +884,10 @@ export function ListBrowser(props: { refreshSignal: number }) {
           </div>
           <div className="col">
             <div className="btnrow" style={{ justifyContent: "flex-end" }}>
-              <a href={`/pa/export/${encodeURIComponent(listId)}.csv`} className="pill small">
+              <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.csv`} className="pill small">
                 Download CSV
               </a>
-              <a href={`/pa/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">
+              <a href={`${API_BASE}/export/${encodeURIComponent(listId)}.xlsx`} className="pill small">
                 Download XLSX
               </a>
             </div>

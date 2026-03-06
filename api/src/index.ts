@@ -38,9 +38,9 @@ function xlsxSheetName(raw: string) {
   return s || "Sheet1";
 }
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env }>().basePath("/api");
 
-app.use("/pa/*", async (c, next) => {
+app.use("/*", async (c, next) => {
   const requestId = makeRequestId();
   c.header("X-Request-Id", requestId);
   (c as any).requestId = requestId;
@@ -57,28 +57,28 @@ app.use("/pa/*", async (c, next) => {
   }
 });
 
-app.get("/pa/health", (c) => c.json({ ok: true }));
+app.get("/health", (c) => c.json({ ok: true }));
 
-app.get("/pa/me", (c) => {
+app.get("/me", (c) => {
   const { email } = requireAccess(c);
   return c.json({ user: { email } });
 });
 
-app.get("/pa/config", (c) => {
+app.get("/config", (c) => {
   requireAccess(c);
   const provider = c.env.PA_LLM_PROVIDER ?? "heuristic";
   const model = provider === "openai" ? c.env.OPENAI_MODEL ?? null : null;
   return c.json({ llmProvider: provider, llmModel: model });
 });
 
-app.get("/pa/lists", async (c) => {
+app.get("/lists", async (c) => {
   requireAccess(c);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
   return c.json({ lists: await repo.listListsForUi() });
 });
 
-app.get("/pa/lists/:listId/items", async (c) => {
+app.get("/lists/:listId/items", async (c) => {
   requireAccess(c);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
@@ -87,7 +87,7 @@ app.get("/pa/lists/:listId/items", async (c) => {
   return c.json({ items });
 });
 
-app.post("/pa/lists/:listId/reorder", async (c) => {
+app.post("/lists/:listId/reorder", async (c) => {
   const { email } = requireAccess(c);
   const BodyZ = z
     .object({
@@ -112,7 +112,7 @@ app.post("/pa/lists/:listId/reorder", async (c) => {
   return c.json({ ok: true, result });
 });
 
-app.post("/pa/parse", async (c) => {
+app.post("/parse", async (c) => {
   requireAccess(c);
   const BodyZ = z.object({ transcript: z.string().min(1) }).strict();
   const body = BodyZ.parse(await c.req.json());
@@ -145,7 +145,7 @@ app.post("/pa/parse", async (c) => {
   return c.json({ action: canonical, parseError: null });
 });
 
-app.post("/pa/commit", async (c) => {
+app.post("/commit", async (c) => {
   const { email } = requireAccess(c);
   const BodyZ = z
     .object({
@@ -201,7 +201,7 @@ app.post("/pa/commit", async (c) => {
   return c.json({ ok: true, result });
 });
 
-app.get("/pa/export/:listId.csv", async (c) => {
+app.get("/export/:listId.csv", async (c) => {
   requireAccess(c);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);
@@ -226,7 +226,7 @@ app.get("/pa/export/:listId.csv", async (c) => {
   return c.body(csv);
 });
 
-app.get("/pa/export/:listId.xlsx", async (c) => {
+app.get("/export/:listId.xlsx", async (c) => {
   requireAccess(c);
   const db = makeSupabase(c.env);
   const repo = makePaRepo(db);

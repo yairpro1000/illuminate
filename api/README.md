@@ -5,16 +5,16 @@ This folder is reserved for the backend API Worker.
 Target shape:
 
 - PA (admin-only):
-  - `GET /pa/health`
-  - `GET /pa/me`
-  - `GET /pa/config`
-  - `GET /pa/lists`
-  - `GET /pa/lists/:listId/items`
-  - `POST /pa/lists/:listId/reorder`
-  - `POST /pa/parse`
-  - `POST /pa/commit`
-  - `GET /pa/export/:listId.csv`
-  - `GET /pa/export/:listId.xlsx`
+  - `GET /api/health`
+  - `GET /api/me`
+  - `GET /api/config`
+  - `GET /api/lists`
+  - `GET /api/lists/:listId/items`
+  - `POST /api/lists/:listId/reorder`
+  - `POST /api/parse`
+  - `POST /api/commit`
+  - `GET /api/export/:listId.csv`
+  - `GET /api/export/:listId.xlsx`
 
 - Marketing-site ops (future):
   - `POST /booking/create`

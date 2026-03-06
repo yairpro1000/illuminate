@@ -1,4 +1,5 @@
-const API_BASE = (import.meta as any).env?.VITE_API_BASE ?? "";
+const rawBase = (import.meta as any).env?.VITE_API_BASE ?? "/api";
+export const API_BASE = String(rawBase).trim().replace(/\/+$/g, "");
 
 function getDeviceId() {
   if (typeof window === "undefined") return "unknown_device";
@@ -20,7 +21,9 @@ function getDeviceId() {
 }
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
+  const fullUrl = url.startsWith("http")
+    ? url
+    : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
   const res = await fetch(fullUrl, {
     ...init,
     headers: {
@@ -32,16 +35,29 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   });
 
   const contentType = res.headers.get("content-type") ?? "";
-  const isJson = contentType.includes("application/json");
-  const body = isJson ? await res.json() : await res.text();
+  const isJson = contentType.toLowerCase().includes("application/json");
+  if (!isJson) {
+    const text = await res.text();
+    const details = text?.slice?.(0, 300) ?? "";
+    if (!res.ok) throw new Error(details || `HTTP ${res.status}`);
+    throw new Error(
+      `Expected JSON from ${fullUrl} but got ${contentType || "unknown content-type"} (HTTP ${res.status}). ${
+        details ? `Body starts with: ${JSON.stringify(details)}` : ""
+      }`.trim(),
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch (e: any) {
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    throw new Error(`Failed to parse JSON from ${fullUrl} (HTTP ${res.status}): ${String(e?.message ?? e)}`);
+  }
 
   if (!res.ok) {
     const details =
-      typeof body === "string"
-        ? body
-        : typeof (body as any)?.details === "string"
-          ? (body as any).details
-          : JSON.stringify(body);
+      typeof (body as any)?.details === "string" ? (body as any).details : JSON.stringify(body);
     throw new Error(details || `HTTP ${res.status}`);
   }
 

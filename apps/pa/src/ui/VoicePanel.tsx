@@ -126,7 +126,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
     setBusy(true);
     setErr(null);
     try {
-      const data = await api<{ action: ParsedAction; parseError?: string }>("/pa/parse", {
+      const data = await api<{ action: ParsedAction; parseError?: string }>("/parse", {
         method: "POST",
         body: JSON.stringify({ transcript }),
       });
@@ -154,7 +154,7 @@ export function VoicePanel(props: { onCommitted: () => void }) {
       }
 
       const parsed = ParsedActionZ.parse(json);
-      await api("/pa/commit", { method: "POST", body: JSON.stringify({ action: parsed }) });
+      await api("/commit", { method: "POST", body: JSON.stringify({ action: parsed }) });
       props.onCommitted();
       setErr(null);
       setAction(null);
