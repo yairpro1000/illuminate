@@ -56,9 +56,12 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
+    const requestId = typeof (body as any)?.requestId === "string" ? (body as any).requestId : "";
     const details =
       typeof (body as any)?.details === "string" ? (body as any).details : JSON.stringify(body);
-    throw new Error(details || `HTTP ${res.status}`);
+    throw new Error(
+      `${details || `HTTP ${res.status}`}${requestId ? ` (requestId: ${requestId})` : ""}`,
+    );
   }
 
   return body as T;

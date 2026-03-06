@@ -15,6 +15,16 @@ function makeRequestId() {
     .join("");
 }
 
+function extractErrorDetails(e: any): { message: string; details: string } {
+  const message = typeof e?.message === "string" && e.message.trim() ? e.message.trim() : "Internal Server Error";
+  const parts: string[] = [];
+  if (typeof e?.details === "string" && e.details.trim()) parts.push(e.details.trim());
+  if (typeof e?.hint === "string" && e.hint.trim()) parts.push(`hint: ${e.hint.trim()}`);
+  if (typeof e?.code === "string" && e.code.trim()) parts.push(`code: ${e.code.trim()}`);
+  const details = parts.length ? `${message} (${parts.join("; ")})` : message;
+  return { message, details };
+}
+
 function csvEscape(value: unknown) {
   if (value === null || value === undefined) return "";
   const s = typeof value === "string" ? value : JSON.stringify(value);
@@ -43,17 +53,17 @@ const app = new Hono<{ Bindings: Env }>().basePath("/api");
 app.use("/*", async (c, next) => {
   const requestId = makeRequestId();
   c.header("X-Request-Id", requestId);
+  c.header("X-Worker", "yairb-pa-api");
   (c as any).requestId = requestId;
   try {
     return await next();
   } catch (e: any) {
     const status = typeof e?.status === "number" ? e.status : 500;
-    const message = typeof e?.message === "string" ? e.message : String(e);
-    console.log(JSON.stringify({ type: "error", requestId, status, message }));
+    const { message, details } = extractErrorDetails(e);
+    console.log(JSON.stringify({ type: "error", requestId, status, message, details }));
     const error =
       status === 401 ? "unauthorized" : status === 409 ? "conflict" : status === 400 ? "bad_request" : "internal_error";
-    const details = typeof e?.details === "string" ? e.details : message;
-    return c.json({ error, details }, status);
+    return c.json({ error, details, requestId }, status);
   }
 });
 
