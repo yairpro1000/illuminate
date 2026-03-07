@@ -570,19 +570,4 @@ app.get("/export/xlsx/:listId", async (c) => {
   return c.body(new Uint8Array(out));
 });
 
-app.post("/transcribe", async (c) => {
-  requireAccess(c);
-  const formData = await c.req.formData();
-  const audioFile = formData.get("audio") as File | null;
-  if (!audioFile) return c.json({ error: "bad_request", details: "Missing audio field." }, 400);
-
-  const lang = (formData.get("lang") as string | null)?.trim() || null;
-  const arrayBuffer = await audioFile.arrayBuffer();
-  const input: Record<string, unknown> = { audio: [...new Uint8Array(arrayBuffer)] };
-  if (lang && lang !== "auto") input.source_lang = lang.split("-")[0]; // "en-US" → "en"
-
-  const result = await (c.env.AI as any).run("@cf/openai/whisper", input);
-  return c.json({ text: String(result?.text ?? "").trim() });
-});
-
 export default app;

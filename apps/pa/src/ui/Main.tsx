@@ -14,10 +14,28 @@ export function Main(props: { email: string; llmLabel: string }) {
   const userButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const userMenuRef = React.useRef<HTMLDivElement | null>(null);
 
-  const doLogout = React.useCallback(() => {
-    const returnTo = window.location.href;
-    const logoutUrl = `${CF_LOGOUT_TEAM_DOMAIN}?returnTo=${encodeURIComponent(returnTo)}`;
-    window.location.replace(logoutUrl);
+  const doLogout = React.useCallback(async () => {
+    setUserMenuOpen(false);
+
+    const isLocalhost =
+      window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
+
+    if (isLocalhost) {
+      const returnTo = window.location.href;
+      const logoutUrl = `${CF_LOGOUT_TEAM_DOMAIN}?returnTo=${encodeURIComponent(returnTo)}`;
+      window.location.replace(logoutUrl);
+      return;
+    }
+
+    try {
+      await fetch("/cdn-cgi/access/logout", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+    } finally {
+      window.location.replace(window.location.href);
+    }
   }, []);
 
   React.useEffect(() => {

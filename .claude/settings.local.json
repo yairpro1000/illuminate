@@ -12,7 +12,8 @@
       "WebFetch(domain:bugs.chromium.org)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:issues.chromium.org)",
-      "WebFetch(domain:dev.to)"
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:developers.cloudflare.com)"
     ]
   }
 }
