@@ -1981,12 +1981,6 @@ export function ListBrowser(props: {
                                   </button>
                                 </div>
                               ) : null}
-                              <div className="expandField">
-                                <span className="small muted">Raw</span>
-                                <button className="iconbtn" onClick={() => openEdit(it)}>
-                                  Edit JSON
-                                </button>
-                              </div>
                             </div>
                           </td>
                           <td className="expandSpacer" style={{ padding: 0 }} />
