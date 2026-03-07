@@ -1871,7 +1871,11 @@ export function ListBrowser(props: {
                         <td>
                           <div
                             className="editableCell"
-                            onClick={() => (isTranslateRow ? openTranslateModal(it) : openFieldEdit(it, "text"))}
+                            onClick={(e) => {
+                              if ((e.target as Element).closest?.(".menu")) return;
+                              if (document.querySelector(".menu[open]")) return;
+                              isTranslateRow ? openTranslateModal(it) : openFieldEdit(it, "text");
+                            }}
                             title={isTranslateRow ? "Open translate modal" : "Click to edit"}
                             style={isTranslateRow ? { cursor: "pointer" } : undefined}
                           >

@@ -393,10 +393,10 @@ PA V1 assumes a single user across multiple devices (laptop + phone). To prevent
 
 The DDL defines two functions used by the Worker API:
 
-- `pa_touch_list(list_id, updated_by)`:
+- `pa_touch_list(user_id, list_id, updated_by)`:
   - increments `items_revision`
   - updates `items_updated_at/items_updated_by`
-- `pa_reorder_bucket(list_id, priority, ordered_ids, expected_revision, updated_by)`:
+- `pa_reorder_bucket(user_id, list_id, priority, ordered_ids, expected_revision, updated_by)`:
   - locks the list row
   - verifies `expected_revision`
   - updates all `order` values in one atomic statement

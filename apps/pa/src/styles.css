@@ -302,8 +302,8 @@ th {
 
 .menuPanel {
   position: fixed;
-  top: var(--menu-y, 0);
-  left: var(--menu-x, 0);
+  top: var(--menu-y, -9999px);
+  left: var(--menu-x, -9999px);
   background: linear-gradient(180deg, var(--panel) 0%, var(--panel2) 100%);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -311,6 +311,7 @@ th {
   z-index: 200;
   min-width: 180px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
 }
 
 .menuItem {

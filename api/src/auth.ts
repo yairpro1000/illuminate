@@ -1,6 +1,19 @@
 import type { Context } from "hono";
 import type { Db } from "./repo/supabase";
 
+function normalizeEmailLike(raw: string): string {
+  let s = String(raw ?? "").trim();
+  if (s.startsWith('"') && s.endsWith('"') && s.length >= 2) s = s.slice(1, -1).trim();
+  const angle = s.match(/<([^>]+)>/);
+  if (angle?.[1]) s = angle[1].trim();
+  return s;
+}
+
+function isValidEmailFormat(email: string): boolean {
+  // Intentionally simple: good enough for rejecting obvious local-dev mistakes.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 function headerValue(c: Context, name: string): string | null {
   const v = c.req.header(name);
   return typeof v === "string" && v.trim() ? v.trim() : null;
@@ -19,11 +32,11 @@ export function getAccessEmail(c: Context): string | null {
   const fromAccess =
     headerValue(c, "cf-access-authenticated-user-email") ??
     headerValue(c, "Cf-Access-Authenticated-User-Email");
-  if (fromAccess) return fromAccess;
+  if (fromAccess) return normalizeEmailLike(fromAccess);
 
   // Local dev fallback: allow bypassing Access only on localhost and only when explicitly configured.
   const devEmail = (c as any)?.env?.PA_DEV_EMAIL;
-  if (typeof devEmail === "string" && devEmail.trim() && isLocalhostRequest(c)) return devEmail.trim();
+  if (typeof devEmail === "string" && devEmail.trim() && isLocalhostRequest(c)) return normalizeEmailLike(devEmail);
 
   return null;
 }
@@ -60,21 +73,28 @@ async function findAuthUserIdByEmail(db: Db, email: string): Promise<string | nu
 }
 
 async function getOrCreateAuthUserId(db: Db, email: string): Promise<string> {
-  const cached = userIdCache.get(email);
+  const normalizedEmail = normalizeEmailLike(email);
+  if (!isValidEmailFormat(normalizedEmail)) {
+    const err = new Error(`Invalid email format: "${normalizedEmail}". Set PA_DEV_EMAIL like "me@example.com".`);
+    (err as any).status = 400;
+    throw err;
+  }
+
+  const cached = userIdCache.get(normalizedEmail);
   if (cached && cached.expiresAt > Date.now()) return cached.userId;
 
-  const existing = await findAuthUserIdByEmail(db, email);
+  const existing = await findAuthUserIdByEmail(db, normalizedEmail);
   if (existing) {
-    userIdCache.set(email, { userId: existing, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
+    userIdCache.set(normalizedEmail, { userId: existing, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
     return existing;
   }
 
-  const { data, error } = await db.auth.admin.createUser({ email, email_confirm: true });
+  const { data, error } = await db.auth.admin.createUser({ email: normalizedEmail, email_confirm: true });
   if (error) {
     // Possible race: created between list+create. Retry once.
-    const retry = await findAuthUserIdByEmail(db, email);
+    const retry = await findAuthUserIdByEmail(db, normalizedEmail);
     if (retry) {
-      userIdCache.set(email, { userId: retry, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
+      userIdCache.set(normalizedEmail, { userId: retry, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
       return retry;
     }
     throw error;
@@ -82,7 +102,7 @@ async function getOrCreateAuthUserId(db: Db, email: string): Promise<string> {
 
   const createdId = (data as any)?.user?.id as string | undefined;
   if (!createdId) throw new Error("Failed to resolve Supabase auth user id.");
-  userIdCache.set(email, { userId: createdId, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
+  userIdCache.set(normalizedEmail, { userId: createdId, expiresAt: Date.now() + USER_ID_CACHE_TTL_MS });
   return createdId;
 }
 

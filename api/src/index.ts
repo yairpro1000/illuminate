@@ -583,14 +583,14 @@ app.post("/email", async (c) => {
   }).strict();
   const body = BodyZ.parse(await c.req.json());
 
-  const resend = new Resend(apiKey);
-  const result = await resend.emails.send({
-    from: "bookings@letsilluminate.co",
-    to: body.to,
-    reply_to: "hello@yairb.ch",
-    subject: body.subject,
-    html: body.html,
-  });
+	  const resend = new Resend(apiKey);
+	  const result = await resend.emails.send({
+	    from: "bookings@letsilluminate.co",
+	    to: body.to,
+	    replyTo: "hello@yairb.ch",
+	    subject: body.subject,
+	    html: body.html,
+	  });
 
   return c.json({ ok: true, result });
 });
