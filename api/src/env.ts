@@ -6,6 +6,7 @@ export type Env = {
   PA_LLM_PROVIDER?: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
+  AI: Ai;
 };
 
 export function mustEnv(env: Env, key: keyof Env): string {

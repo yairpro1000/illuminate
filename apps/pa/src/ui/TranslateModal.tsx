@@ -13,12 +13,12 @@ function findVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesi
   );
 }
 
-async function speakViaApi(text: string) {
+async function speakViaApi(text: string, lang: string) {
   try {
     const res = await fetch(`${API_BASE}/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, lang }),
       credentials: "include",
     });
     if (!res.ok) return;
@@ -39,7 +39,7 @@ function speak(text: string, lang: string) {
   function doSpeak(voices: SpeechSynthesisVoice[]) {
     const match = lang ? findVoice(voices, lang) : null;
     if (!match) {
-      speakViaApi(s);
+      speakViaApi(s, lang);
       return;
     }
     try {
@@ -55,7 +55,7 @@ function speak(text: string, lang: string) {
   }
 
   if (!("speechSynthesis" in window)) {
-    speakViaApi(s);
+    speakViaApi(s, lang);
     return;
   }
 

@@ -570,27 +570,40 @@ app.get("/export/xlsx/:listId", async (c) => {
   return c.body(new Uint8Array(out));
 });
 
+// BCP-47 → MeloTTS lang code. Unsupported langs (he, de, it) fall back to "en".
+function toMeloLang(bcp47: string): string {
+  const base = bcp47.split("-")[0].toLowerCase();
+  const map: Record<string, string> = { en: "en", es: "es", fr: "fr", zh: "zh", ja: "ja", ko: "ko" };
+  return map[base] ?? "en";
+}
+
 app.post("/speak", async (c) => {
   requireAccess(c);
-  const BodyZ = z.object({ text: z.string().min(1).max(4096) }).strict();
+  const BodyZ = z.object({ text: z.string().min(1).max(4096), lang: z.string().optional() }).strict();
   const body = BodyZ.parse(await c.req.json());
 
-  const apiKey = c.env.OPENAI_API_KEY;
-  if (!apiKey) return c.json({ error: "bad_request", details: "OPENAI_API_KEY is not set." }, 400);
-
-  const res = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "tts-1", input: body.text, voice: "alloy", response_format: "mp3" }),
+  const result = await (c.env.AI as any).run("@cf/myshell-ai/melotts", {
+    prompt: body.text,
+    lang: toMeloLang(body.lang ?? "en"),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    return c.json({ error: "tts_failed", details: err.slice(0, 300) }, 502);
-  }
-
+  const audioBytes = Uint8Array.from(atob(result.audio), (ch) => ch.charCodeAt(0));
   c.header("Content-Type", "audio/mpeg");
-  return c.body(await res.arrayBuffer());
+  return c.body(audioBytes);
+
+  // OpenAI TTS fallback (supports all languages including he, de, it):
+  // const apiKey = c.env.OPENAI_API_KEY;
+  // if (!apiKey) return c.json({ error: "bad_request", details: "OPENAI_API_KEY is not set." }, 400);
+  // const res = await fetch("https://api.openai.com/v1/audio/speech", {
+  //   method: "POST",
+  //   headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+  //   body: JSON.stringify({ model: "tts-1", input: body.text, voice: "alloy", response_format: "mp3" }),
+  // });
+  // if (!res.ok) {
+  //   const err = await res.text();
+  //   return c.json({ error: "tts_failed", details: err.slice(0, 300) }, 502);
+  // }
+  // c.header("Content-Type", "audio/mpeg");
+  // return c.body(await res.arrayBuffer());
 });
 
 export default app;
