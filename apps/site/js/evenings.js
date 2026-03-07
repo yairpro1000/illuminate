@@ -37,7 +37,7 @@
       eventLocation: event.location,
       isPaid:        'false',
     });
-    return 'book.html?' + params.toString();
+    return 'book?' + params.toString();
   }
 
   function dateBadge(dateIso) {

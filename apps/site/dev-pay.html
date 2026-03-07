@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dev: Simulate Payment – ILLUMINATE</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    body { background: repeating-linear-gradient(45deg, #f9f0e8 0, #f9f0e8 10px, #fdf6f0 10px, #fdf6f0 20px); }
+    .dev-page {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .dev-card {
+      background: #fff;
+      border: 2px dashed oklch(75% 0.1 50);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+    }
+    .dev-badge {
+      display: inline-block;
+      background: oklch(90% 0.12 60);
+      color: oklch(40% 0.15 60);
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: .2rem .6rem;
+      border-radius: .25rem;
+      margin-bottom: 1rem;
+    }
+    .dev-title { font-size: 1.25rem; font-weight: 700; margin: 0 0 .5rem; }
+    .dev-detail { color: #888; margin: 0 0 2rem; font-size: .9rem; }
+    .dev-actions { display: flex; flex-direction: column; gap: .75rem; }
+    .btn-success { background: oklch(55% 0.15 150); color: #fff; }
+    .btn-success:hover { background: oklch(50% 0.15 150); }
+    .btn-fail { background: oklch(55% 0.15 25); color: #fff; }
+    .btn-fail:hover { background: oklch(50% 0.15 25); }
+  </style>
+</head>
+<body>
+<main class="dev-page">
+  <div class="dev-card">
+    <p class="dev-badge">⚙ Dev mode — mock payment</p>
+    <h1 class="dev-title">Stripe Checkout (simulated)</h1>
+    <p class="dev-detail" id="dev-detail">Loading payment details…</p>
+    <div class="dev-actions">
+      <button class="btn btn-success" id="btn-success">✓ Simulate payment success</button>
+      <button class="btn btn-fail" id="btn-fail">✗ Simulate payment failure</button>
+    </div>
+    <p style="margin-top:1.5rem;font-size:.8rem;color:#aaa">This page only appears in PROVIDERS_MODE=mock</p>
+  </div>
+</main>
+<script>
+(async function () {
+  const API_BASE   = localStorage.getItem('API_BASE') ||
+    (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
+  const params     = new URLSearchParams(window.location.search);
+  const sessionId  = params.get('session_id');
+  const amount     = params.get('amount');
+  const currency   = (params.get('currency') || 'CHF').toUpperCase();
+
+  const detail = document.getElementById('dev-detail');
+  if (amount) {
+    const chf = (parseInt(amount, 10) / 100).toFixed(2);
+    detail.textContent = `Amount: ${currency} ${chf} · Session: ${sessionId}`;
+  } else {
+    detail.textContent = `Session: ${sessionId}`;
+  }
+
+  async function simulate(result) {
+    const btn = result === 'success'
+      ? document.getElementById('btn-success')
+      : document.getElementById('btn-fail');
+    btn.disabled = true;
+    btn.textContent = 'Processing…';
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/__dev/simulate-payment?session_id=${encodeURIComponent(sessionId)}&result=${result}`,
+        { method: 'POST' },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Error');
+
+      if (result === 'success') {
+        window.location.href = 'payment-success?session_id=' + encodeURIComponent(sessionId);
+      } else {
+        window.location.href = 'payment-cancel?session_id=' + encodeURIComponent(sessionId);
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = result === 'success' ? '✓ Simulate payment success' : '✗ Simulate payment failure';
+      alert('Error: ' + (err.message || 'Unknown'));
+    }
+  }
+
+  document.getElementById('btn-success').addEventListener('click', () => simulate('success'));
+  document.getElementById('btn-fail').addEventListener('click',    () => simulate('failure'));
+})();
+</script>
+</body>
+</html>

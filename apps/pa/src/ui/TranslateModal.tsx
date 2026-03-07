@@ -15,10 +15,17 @@ function speak(text: string, lang: string) {
       if (lang) {
         u.lang = lang;
         const voices = window.speechSynthesis.getVoices();
+        // Android Chrome returns lang codes with underscores (e.g. "it_IT")
+        // instead of hyphens ("it-IT"), so normalize before matching.
+        const norm = (l: string) => l.replace(/_/g, "-");
         const match =
-          voices.find((v) => v.lang === lang) ??
-          voices.find((v) => v.lang.startsWith(lang.split("-")[0]));
-        if (match) u.voice = match;
+          voices.find((v) => norm(v.lang) === norm(lang)) ??
+          voices.find((v) => norm(v.lang).startsWith(lang.split("-")[0]));
+        if (match) {
+          u.voice = match;
+          u.voiceURI = match.voiceURI; // required on Android Chrome
+          u.lang = match.lang;         // use voice's own lang string for consistency
+        }
       }
       window.speechSynthesis.speak(u);
     } catch {

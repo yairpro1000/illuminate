@@ -6,7 +6,13 @@
       "Bash(npm run:*)",
       "Bash(ls:*)",
       "Bash(node_modules/.bin/tsc:*)",
-      "Bash(./apps/pa/node_modules/typescript/bin/tsc:*)"
+      "Bash(./apps/pa/node_modules/typescript/bin/tsc:*)",
+      "WebSearch",
+      "WebFetch(domain:talkrapp.com)",
+      "WebFetch(domain:bugs.chromium.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:issues.chromium.org)",
+      "WebFetch(domain:dev.to)"
     ]
   }
 }

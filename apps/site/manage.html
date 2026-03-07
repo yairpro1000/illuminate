@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Booking – ILLUMINATE</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    .manage-page {
+      min-height: 100dvh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 3rem 1rem;
+    }
+    .manage-card {
+      background: var(--color-surface, #fff);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 2px 24px rgba(0,0,0,.08);
+    }
+    .manage-title { font-size: 1.5rem; font-weight: 700; margin: 0 0 .25rem; }
+    .manage-subtitle { color: var(--color-muted, #666); margin: 0 0 2rem; }
+    .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
+    .detail-table th, .detail-table td { padding: .5rem 0; vertical-align: top; text-align: left; }
+    .detail-table th { color: var(--color-muted, #888); font-weight: 500; width: 40%; font-size: .9rem; }
+    .detail-table td { font-weight: 600; }
+    .status-badge {
+      display: inline-block;
+      padding: .25rem .75rem;
+      border-radius: 2rem;
+      font-size: .8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .status-badge--confirmed  { background: oklch(90% 0.08 150); color: oklch(40% 0.12 150); }
+    .status-badge--pending    { background: oklch(95% 0.08 60);  color: oklch(45% 0.12 60); }
+    .status-badge--cancelled  { background: oklch(93% 0.05 0);   color: oklch(45% 0.1 0); }
+    .manage-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .confirm-dialog {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.5);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem; z-index: 100;
+    }
+    .confirm-dialog__box {
+      background: #fff; border-radius: 1rem; padding: 2rem;
+      max-width: 400px; width: 100%;
+    }
+    .confirm-dialog__title { font-size: 1.1rem; font-weight: 700; margin: 0 0 .5rem; }
+    .confirm-dialog__msg   { color: var(--color-muted,#666); margin: 0 0 1.5rem; }
+    .confirm-dialog__btns  { display: flex; gap: .75rem; justify-content: flex-end; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+<main class="manage-page">
+  <div class="manage-card" id="manage-card">
+    <p style="color:var(--color-muted,#888)">Loading…</p>
+  </div>
+</main>
+
+<!-- Cancel confirmation dialog -->
+<div class="confirm-dialog" id="cancel-dialog" hidden>
+  <div class="confirm-dialog__box">
+    <h2 class="confirm-dialog__title">Cancel this booking?</h2>
+    <p class="confirm-dialog__msg">This action cannot be undone. Please check our cancellation policy before proceeding.</p>
+    <div class="confirm-dialog__btns">
+      <button class="btn btn-ghost" id="cancel-no">Keep it</button>
+      <button class="btn btn-primary" id="cancel-yes" style="background:oklch(50% 0.15 25)">Yes, cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function () {
+  const API_BASE = localStorage.getItem('API_BASE') ||
+    (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
+  const params = new URLSearchParams(window.location.search);
+  const type   = params.get('type');
+  const token  = params.get('token');
+  const id     = params.get('id');
+  const card   = document.getElementById('manage-card');
+
+  function statusBadge(status) {
+    const cls = ['confirmed','cash_ok'].includes(status)
+      ? 'confirmed'
+      : ['pending_email','pending_payment'].includes(status)
+        ? 'pending'
+        : 'cancelled';
+    return `<span class="status-badge status-badge--${cls}">${status.replace('_', ' ')}</span>`;
+  }
+
+  function formatDt(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('en-GB', {
+      weekday:'short', day:'numeric', month:'long', year:'numeric',
+      hour:'2-digit', minute:'2-digit',
+    });
+  }
+
+  if (!type || !token || !id) {
+    card.innerHTML = '<p style="color:oklch(50% 0.15 25)">Invalid manage link. Please use the link from your email.</p>';
+    return;
+  }
+
+  let data;
+  try {
+    const res = await fetch(`${API_BASE}/api/manage?type=${encodeURIComponent(type)}&token=${encodeURIComponent(token)}&id=${encodeURIComponent(id)}`);
+    data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Error');
+  } catch (err) {
+    card.innerHTML = `<p style="color:oklch(50% 0.15 25)">${err.message || 'Could not load booking details.'}</p><a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>`;
+    return;
+  }
+
+  const isBooking = data.type === 'booking';
+  const cancellable = ['pending_email','pending_payment','confirmed','cash_ok'].includes(data.status);
+
+  const rows = isBooking ? [
+    ['Status',   statusBadge(data.status)],
+    ['Date',     formatDt(data.starts_at)],
+    ['Address',  data.address_line || '—'],
+    data.payment_due_at ? ['Payment due', formatDt(data.payment_due_at)] : null,
+  ].filter(Boolean) : [
+    ['Status',      statusBadge(data.status)],
+    ['Event',       data.event_title || '—'],
+    ['Date',        formatDt(data.event_starts_at)],
+    ['Attendees',   String(data.attendee_count)],
+    data.attendees?.length ? ['Guests', data.attendees.join(', ')] : null,
+  ].filter(Boolean);
+
+  card.innerHTML = `
+    <h1 class="manage-title">${isBooking ? 'Your Booking' : 'Your Registration'}</h1>
+    <p class="manage-subtitle">${isBooking ? data.client_name : data.primary_name}</p>
+    <table class="detail-table" aria-label="Booking details">
+      <tbody>
+        ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="manage-actions">
+      ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel ${isBooking ? 'booking' : 'registration'}</button>` : ''}
+      <a href="index.html" class="btn btn-ghost">← Homepage</a>
+    </div>
+  `;
+
+  if (cancellable) {
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+      document.getElementById('cancel-dialog').removeAttribute('hidden');
+    });
+    document.getElementById('cancel-no').addEventListener('click', () => {
+      document.getElementById('cancel-dialog').setAttribute('hidden', '');
+    });
+    document.getElementById('cancel-yes').addEventListener('click', async () => {
+      document.getElementById('cancel-yes').textContent = 'Cancelling…';
+      document.getElementById('cancel-yes').disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/api/manage/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, token, id }),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message || 'Error');
+        document.getElementById('cancel-dialog').setAttribute('hidden', '');
+        card.innerHTML = `
+          <h1 class="manage-title">Cancelled</h1>
+          <p class="manage-subtitle">Your ${isBooking ? 'booking' : 'registration'} has been cancelled.</p>
+          <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
+        `;
+      } catch (err) {
+        document.getElementById('cancel-yes').textContent = 'Yes, cancel';
+        document.getElementById('cancel-yes').disabled = false;
+        alert('Could not cancel: ' + (err.message || 'Unknown error'));
+      }
+    });
+  }
+})();
+</script>
+</body>
+</html>

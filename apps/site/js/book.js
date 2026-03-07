@@ -647,49 +647,8 @@ function buildConfirmation() {
     `;
   }
 
-  // Paid — payment succeeded
-  if (S.paymentResult === 'success') {
-    const widget = _buildConfirmationWidget(isEvent);
-    return `
-      <div class="confirmation">
-        <div class="confirmation__icon confirmation__icon--success" aria-hidden="true">
-          <svg viewBox="0 0 64 64" fill="none">
-            <circle cx="32" cy="32" r="30" stroke="var(--color-lake)" stroke-width="1.25"/>
-            <polyline points="18,32 28,42 46,22" stroke="var(--color-lake-light)"
-                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <h2 class="confirmation__title">Payment confirmed!</h2>
-        <p class="confirmation__message">
-          Your ${isEvent ? 'registration' : 'booking'} is confirmed.
-          A receipt and calendar invite are on their way to <strong>${escHtml(S.email)}</strong>.
-        </p>
-        ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}
-        <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
-      </div>
-    `;
-  }
-
-  // Paid — payment failed
-  return `
-    <div class="confirmation">
-      <div class="confirmation__icon confirmation__icon--failure" aria-hidden="true">
-        <svg viewBox="0 0 64 64" fill="none">
-          <circle cx="32" cy="32" r="30" stroke="oklch(55% 0.18 25)" stroke-width="1.25"/>
-          <path d="M22 22l20 20M42 22L22 42" stroke="oklch(65% 0.16 25)"
-                stroke-width="2" stroke-linecap="round"/>
-        </svg>
-      </div>
-      <h2 class="confirmation__title confirmation__title--failure">Payment failed</h2>
-      <p class="confirmation__message">
-        Something went wrong with your payment. Your ${isEvent ? 'spot' : 'slot'} is held for a few more minutes.
-      </p>
-      <div class="confirmation__actions">
-        <button class="btn btn-primary" data-retry-payment>Try again</button>
-        <button class="btn btn-ghost" data-back-to-review>← Edit details</button>
-      </div>
-    </div>
-  `;
+  // paymentResult is always null here — redirect happens in handleSubmit
+  return '';
 }
 
 /* ── Add-to-calendar widget for confirmation screens ─────── */
@@ -847,16 +806,7 @@ function attachListeners() {
   if (backBtn)   backBtn.addEventListener('click',   handleBack);
   if (submitBtn) submitBtn.addEventListener('click', handleSubmit);
 
-  // Payment simulation retry / back-to-review
-  const retryBtn   = app.querySelector('[data-retry-payment]');
-  const backReview = app.querySelector('[data-back-to-review]');
-  if (retryBtn)   retryBtn.addEventListener('click',  triggerPaymentSimulation);
-  if (backReview) backReview.addEventListener('click', () => {
-    S.paymentResult = null;
-    S.step--;
-    render();
-    scrollToApp();
-  });
+  // No retry/back buttons needed — paid flows redirect away to Stripe
 
   // Add-to-calendar widgets rendered in this step
   if (typeof initAddToCalendar === 'function') initAddToCalendar(app);
@@ -920,40 +870,30 @@ async function handleSubmit() {
   render();
 
   try {
-    let isPaidFlow = false;
+    let checkoutUrl = null;
     if (CTX.source === 'event') {
-      await submitEventRegistration();
-      isPaidFlow = CTX.isPaid;
+      const result = await submitEventRegistration();
+      checkoutUrl = result.checkout_url || null;
     } else {
-      await submitBooking();
-      isPaidFlow = S.paymentMethod === 'pay-now';
+      const result = await submitBooking();
+      checkoutUrl = result.checkout_url || null;
     }
-    S.submitting  = false;
+
+    S.submitting    = false;
     S.paymentResult = null;
     S.step++;
     render();
     scrollToApp();
 
-    if (isPaidFlow) {
-      setTimeout(triggerPaymentSimulation, 1000);
+    if (checkoutUrl) {
+      // Show "Redirecting to payment…" briefly then navigate
+      setTimeout(() => { window.location.href = checkoutUrl; }, 400);
     }
   } catch (err) {
     console.error('[Book] Submission error:', err);
     S.submitting = false;
     render();
   }
-}
-
-function triggerPaymentSimulation() {
-  const success = confirm(
-    'ILLUMINATE — Payment simulation\n\n'
-    + 'OK  →  Payment succeeded\n'
-    + 'Cancel  →  Payment failed'
-  );
-  S.paymentResult = success ? 'success' : 'failure';
-  console.log('[Book] Payment simulation result:', S.paymentResult);
-  render();
-  scrollToApp();
 }
 
 async function submitBooking() {

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payment Confirmed – ILLUMINATE</title>
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    .result-page {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+    .result-card {
+      background: var(--color-surface, #fff);
+      border-radius: 1rem;
+      padding: 3rem 2rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 2px 24px rgba(0,0,0,.08);
+    }
+    .result-icon { width: 72px; height: 72px; margin: 0 auto 1.5rem; }
+    .result-title { font-size: 1.75rem; font-weight: 700; margin: 0 0 .75rem; }
+    .result-msg { color: var(--color-muted, #666); margin: 0 0 2rem; line-height: 1.6; }
+  </style>
+</head>
+<body>
+<main class="result-page">
+  <div class="result-card">
+    <div class="result-icon" aria-hidden="true">
+      <svg viewBox="0 0 64 64" fill="none">
+        <circle cx="32" cy="32" r="30" stroke="var(--color-lake,#4a8fa8)" stroke-width="1.5"/>
+        <polyline points="18,32 28,42 46,22" stroke="var(--color-lake,#4a8fa8)"
+                  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1 class="result-title">Payment confirmed!</h1>
+    <p class="result-msg">
+      Your booking is confirmed. A receipt and calendar invite are on their way to your inbox.
+    </p>
+    <a href="index.html" class="btn btn-primary">← Back to homepage</a>
+  </div>
+</main>
+</body>
+</html>
