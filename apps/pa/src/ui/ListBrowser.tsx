@@ -134,9 +134,7 @@ export function ListBrowser(props: {
   const [addTranslateTo, setAddTranslateTo] = React.useState<TranslateLang | "">("");
   const [addListening, setAddListening] = React.useState(false);
   const addListeningRef = React.useRef(false);
-  const addMicHoldActiveRef = React.useRef(false);
-  const suppressAddMicClickRef = React.useRef(false);
-  const coarsePointerRef = React.useRef(false);
+  const lastAddMicClickRef = React.useRef<number>(0);
   const addRecRef = React.useRef<SpeechRecognitionLike | null>(null);
   const addMicBaseRef = React.useRef<string>("");
   const addMicFinalRef = React.useRef<string>("");
@@ -149,12 +147,6 @@ export function ListBrowser(props: {
       return DEFAULT_SPEECH_LANG_VALUE;
     }
   });
-
-  React.useEffect(() => {
-    coarsePointerRef.current =
-      (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches) ||
-      (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0);
-  }, []);
 
   React.useEffect(() => {
     try {
@@ -1204,37 +1196,6 @@ export function ListBrowser(props: {
     createAndStartAddRec(sessionId);
   }
 
-  function onAddMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!coarsePointerRef.current) return;
-    if (!SR) return;
-    suppressAddMicClickRef.current = true;
-    addMicHoldActiveRef.current = true;
-    e.preventDefault();
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-    if (!addListeningRef.current) startAddMic();
-  }
-
-  function onAddMicPointerUp(e?: React.PointerEvent<HTMLButtonElement>) {
-    if (!coarsePointerRef.current) return;
-    if (!addMicHoldActiveRef.current) return;
-    addMicHoldActiveRef.current = false;
-    if (e) {
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-    }
-    stopAddMic();
-    window.setTimeout(() => {
-      suppressAddMicClickRef.current = false;
-    }, 0);
-  }
-
   function setAddField(name: string, value: unknown) {
     setAddFields((prev) => ({ ...prev, [name]: value }));
   }
@@ -2227,14 +2188,12 @@ export function ListBrowser(props: {
               <button
                 className="iconbtn"
                 onClick={() => {
-                  if (suppressAddMicClickRef.current) return;
-                  if (coarsePointerRef.current) return;
+                  const now = Date.now();
+                  if (now - lastAddMicClickRef.current < 400) return; // debounce rapid double-taps
+                  lastAddMicClickRef.current = now;
                   if (addListening) stopAddMic();
                   else startAddMic();
                 }}
-                onPointerDown={onAddMicPointerDown}
-                onPointerUp={onAddMicPointerUp}
-                onPointerCancel={onAddMicPointerUp}
                 disabled={!SR}
                 title={!SR ? "SpeechRecognition not supported in this browser" : ""}
                 data-mic="add"

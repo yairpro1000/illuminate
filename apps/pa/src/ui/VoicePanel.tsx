@@ -122,9 +122,7 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
   const recRef = React.useRef<SpeechRecognitionLike | null>(null);
   const listeningRef = React.useRef(false);
   const micSessionRef = React.useRef(0);
-  const micHoldActiveRef = React.useRef(false);
-  const suppressMicClickRef = React.useRef(false);
-  const coarsePointerRef = React.useRef(false);
+  const lastMicClickRef = React.useRef<number>(0);
   const micBaseRef = React.useRef<string>("");
   const micFinalRef = React.useRef<string>("");
   const micRestartTimerRef = React.useRef<number | null>(null);
@@ -135,12 +133,6 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
       return DEFAULT_SPEECH_LANG_VALUE;
     }
   });
-
-  React.useEffect(() => {
-    coarsePointerRef.current =
-      (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)")?.matches) ||
-      (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0);
-  }, []);
 
   React.useEffect(() => {
     try {
@@ -267,37 +259,6 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
     createAndStartRec(sessionId);
   }
 
-  function onMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
-    if (!coarsePointerRef.current) return;
-    if (!SR || busy) return;
-    suppressMicClickRef.current = true;
-    micHoldActiveRef.current = true;
-    e.preventDefault();
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-    if (!listeningRef.current) start();
-  }
-
-  function onMicPointerUp(e?: React.PointerEvent<HTMLButtonElement>) {
-    if (!coarsePointerRef.current) return;
-    if (!micHoldActiveRef.current) return;
-    micHoldActiveRef.current = false;
-    if (e) {
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // ignore
-      }
-    }
-    stop();
-    window.setTimeout(() => {
-      suppressMicClickRef.current = false;
-    }, 0);
-  }
-
   async function parse(forceLlm?: boolean) {
     setBusy(true);
     setErr(null);
@@ -400,14 +361,12 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
           <button
             className="primary"
             onClick={() => {
-              if (suppressMicClickRef.current) return;
-              if (coarsePointerRef.current) return;
+              const now = Date.now();
+              if (now - lastMicClickRef.current < 400) return; // debounce rapid double-taps
+              lastMicClickRef.current = now;
               if (listening) stop();
               else start();
             }}
-            onPointerDown={onMicPointerDown}
-            onPointerUp={onMicPointerUp}
-            onPointerCancel={onMicPointerUp}
             disabled={!SR || busy}
             data-mic="voice"
             title={!SR ? "SpeechRecognition not supported in this browser" : ""}
