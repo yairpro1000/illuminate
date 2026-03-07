@@ -178,6 +178,10 @@ button:disabled {
   align-items: baseline;
 }
 
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .pill {
   display: inline-flex;
   gap: 8px;
@@ -186,6 +190,23 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.03);
+}
+
+.pillButton {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.userMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 10px 14px;
+  cursor: pointer;
+  color: inherit;
 }
 
 table {

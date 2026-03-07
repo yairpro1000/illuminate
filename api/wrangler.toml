@@ -26,6 +26,9 @@ PA_LOG_LLM_TEXT = "1"
 PA_LOG_CONSOLE_MAX = "20000"
 SUPABASE_URL = "https://ljblpufziablobrhtpfz.supabase.co"
 
+[ai]
+binding = "AI"
+
 # Secrets (set via `wrangler secret put`):
 # - SUPABASE_SECRET_KEY
 # - OPENAI_API_KEY (optional)

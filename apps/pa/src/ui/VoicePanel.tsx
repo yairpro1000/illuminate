@@ -1,5 +1,5 @@
 import React from "react";
-import { api } from "../api";
+import { api, API_BASE } from "../api";
 import type { ParsedAction } from "@shared/model";
 import { ParsedActionZ } from "@shared/model";
 import { z } from "zod";
@@ -7,9 +7,6 @@ import {
   DEFAULT_SPEECH_LANG_VALUE,
   SPEECH_LANG_OPTIONS,
   SPEECH_LANG_STORAGE_KEY,
-  getSpeechRecognition,
-  resolveSpeechLang,
-  type SpeechRecognitionLike,
 } from "./speech";
 
 function summarize(action: ParsedAction | null) {
@@ -43,7 +40,6 @@ function summarize(action: ParsedAction | null) {
 }
 
 export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?: (input: string) => void }) {
-  const SR = getSpeechRecognition();
   const [listening, setListening] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [action, setAction] = React.useState<ParsedAction | null>(null);
@@ -52,15 +48,12 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
   const [editJson, setEditJson] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
-  const recRef = React.useRef<SpeechRecognitionLike | null>(null);
-  const listeningRef = React.useRef(false);
-  const micSessionRef = React.useRef(0);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
+  const streamRef = React.useRef<MediaStream | null>(null);
   const micHoldActiveRef = React.useRef(false);
   const suppressMicClickRef = React.useRef(false);
   const coarsePointerRef = React.useRef(false);
-  const micBaseRef = React.useRef<string>("");
-  const micFinalRef = React.useRef<string>("");
-  const micRestartTimerRef = React.useRef<number | null>(null);
   const [speechLang, setSpeechLang] = React.useState<string>(() => {
     try {
       return window.localStorage.getItem(SPEECH_LANG_STORAGE_KEY) ?? DEFAULT_SPEECH_LANG_VALUE;
@@ -98,111 +91,69 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
   }, [listening]);
 
   function stop() {
-    listeningRef.current = false;
-    micSessionRef.current += 1; // invalidate any in-flight callbacks/timers
-    if (micRestartTimerRef.current) {
-      window.clearTimeout(micRestartTimerRef.current);
-      micRestartTimerRef.current = null;
-    }
-    const prev = recRef.current;
-    recRef.current = null;
-    if (prev) {
-      prev.onend = null;
-      prev.onresult = null;
-      prev.onerror = null;
-      try {
-        prev.stop();
-      } catch {
-        // ignore
-      }
-    }
+    const mr = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
     setListening(false);
-  }
-
-  function createAndStartRec(sessionId: number) {
-    if (!SR) return;
-    if (sessionId !== micSessionRef.current) return;
-    // Always destroy the previous instance before creating a new one
-    const prev = recRef.current;
-    recRef.current = null;
-    if (prev) {
-      prev.onend = null;
-      prev.onresult = null;
-      prev.onerror = null;
-      try {
-        prev.stop();
-      } catch {
-        // ignore
-      }
-    }
-
-    const rec = new SR();
-    rec.lang = resolveSpeechLang(speechLang);
-    rec.continuous = false; // manual restart prevents double-start with browser auto-restart
-    rec.interimResults = true;
-    rec.onresult = (ev) => {
-      if (sessionId !== micSessionRef.current) return;
-      let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const res = ev.results[i];
-        const chunk = String(res?.[0]?.transcript ?? "");
-        if (!chunk) continue;
-        if (res.isFinal) micFinalRef.current += chunk;
-        else interim += chunk;
-      }
-      const base = micBaseRef.current;
-      const finalPart = micFinalRef.current.trim();
-      const interimPart = interim.trim();
-      const merged = [base, finalPart, interimPart]
-        .filter(Boolean)
-        .join(" ")
-        .replaceAll(/\s+/g, " ")
-        .trim();
-      setTranscript(merged);
-    };
-    rec.onerror = (ev) => {
-      if (sessionId !== micSessionRef.current) return;
-      const code = String((ev as any)?.error ?? "unknown");
-      if (listeningRef.current && ["no-speech", "audio-capture", "network"].includes(code)) return;
-      setErr(`Speech error: ${code}`);
-      stop();
-    };
-    rec.onend = () => {
-      if (sessionId !== micSessionRef.current) return;
-      if (!listeningRef.current) {
-        setListening(false);
-        return;
-      }
-      if (micRestartTimerRef.current) window.clearTimeout(micRestartTimerRef.current);
-      micRestartTimerRef.current = window.setTimeout(() => {
-        if (sessionId !== micSessionRef.current) return;
-        if (listeningRef.current) createAndStartRec(sessionId); // fresh instance, not .start() on old one
-      }, 250);
-    };
-    recRef.current = rec;
-    try {
-      rec.start();
-    } catch (e: any) {
-      setErr(String(e?.message ?? e));
-      stop();
+    if (mr && mr.state !== "inactive") {
+      try { mr.stop(); } catch { /* ignore */ }
+    } else {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     }
   }
 
-  function start() {
-    if (!SR) return;
-    if (listeningRef.current) return; // guard against double-tap / async state lag
+  async function start() {
+    if (listening) return;
     setErr(null);
-    micBaseRef.current = transcript.trim();
-    micFinalRef.current = "";
-    listeningRef.current = true;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e: any) {
+      setErr(`Microphone access denied: ${String(e?.message ?? e)}`);
+      return;
+    }
+    streamRef.current = stream;
+    audioChunksRef.current = [];
+    const mr = new MediaRecorder(stream);
+    mediaRecorderRef.current = mr;
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data);
+    };
+    mr.onstop = async () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      const chunks = audioChunksRef.current;
+      audioChunksRef.current = [];
+      if (chunks.length === 0) return;
+      const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
+      setBusy(true);
+      setErr(null);
+      try {
+        const fd = new FormData();
+        fd.append("audio", blob, "recording");
+        if (speechLang !== "auto") fd.append("lang", speechLang);
+        const res = await fetch(`${API_BASE}/transcribe`, {
+          method: "POST",
+          body: fd,
+          credentials: "include",
+        });
+        const data = await res.json() as any;
+        if (!res.ok) throw new Error(data.details ?? `HTTP ${res.status}`);
+        const text = String(data.text ?? "").trim();
+        if (text) setTranscript((prev) => [prev.trim(), text].filter(Boolean).join(" "));
+      } catch (e: any) {
+        setErr(String(e?.message ?? e));
+      } finally {
+        setBusy(false);
+      }
+    };
+    mr.start();
     setListening(true);
-    const sessionId = (micSessionRef.current += 1);
-    createAndStartRec(sessionId);
   }
 
   function onMicPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
     if (!coarsePointerRef.current) return;
-    if (!SR || busy) return;
+    if (busy) return;
     suppressMicClickRef.current = true;
     micHoldActiveRef.current = true;
     e.preventDefault();
@@ -211,7 +162,7 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
     } catch {
       // ignore
     }
-    if (!listeningRef.current) start();
+    if (!listening) start();
   }
 
   function onMicPointerUp(e?: React.PointerEvent<HTMLButtonElement>) {
@@ -321,7 +272,7 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
           <select
             value={speechLang}
             onChange={(e) => setSpeechLang(e.target.value)}
-            disabled={!SR || busy}
+            disabled={busy}
             title="Speech language"
           >
             {SPEECH_LANG_OPTIONS.map((o) => (
@@ -341,9 +292,9 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
             onPointerDown={onMicPointerDown}
             onPointerUp={onMicPointerUp}
             onPointerCancel={onMicPointerUp}
-            disabled={!SR || busy}
+            disabled={busy}
             data-mic="voice"
-            title={!SR ? "SpeechRecognition not supported in this browser" : ""}
+            title=""
           >
             {listening ? "Stop 🎙" : "Mic 🎙"}
           </button>
