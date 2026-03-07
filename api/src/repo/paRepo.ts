@@ -771,7 +771,7 @@ export function makePaRepo(db: Db, userId: string): PaRepo {
       for (const alias of action.aliases ?? []) {
         const { error } = await db
           .from("pa_list_aliases")
-          .upsert({ list_id: listId, user_id: userId, alias }, { onConflict: "list_id,alias" });
+          .upsert({ list_id: listId, user_id: userId, alias }, { onConflict: "user_id,list_id,alias" });
         if (error) throw error;
       }
 
@@ -789,7 +789,7 @@ export function makePaRepo(db: Db, userId: string): PaRepo {
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };
-        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "list_id,name" });
+        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "user_id,list_id,name" });
         if (error) throw error;
       }
 
@@ -833,7 +833,7 @@ export function makePaRepo(db: Db, userId: string): PaRepo {
           description: (def as any).description ?? null,
           ui_show_in_preview: (def as any).ui?.showInPreview ?? null,
         };
-        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "list_id,name" });
+        const { error } = await db.from("pa_list_custom_fields").upsert(row, { onConflict: "user_id,list_id,name" });
         if (error) throw error;
       }
 

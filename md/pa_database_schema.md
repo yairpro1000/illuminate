@@ -59,8 +59,9 @@ $$;
 
 -- Lists
 create table if not exists pa_lists (
-  list_id text primary key,
+  list_id text not null,
   user_id uuid not null references auth.users(id),
+  primary key (user_id, list_id),
   title text not null,
   description text null,
   ui_default_sort text null,
@@ -79,11 +80,12 @@ for each row execute function pa_set_updated_at();
 -- Aliases
 create table if not exists pa_list_aliases (
   id uuid primary key default gen_random_uuid(),
-  list_id text not null references pa_lists(list_id) on delete cascade,
+  list_id text not null,
   user_id uuid not null references auth.users(id),
   alias text not null,
   created_at timestamptz not null default now(),
-  unique(list_id, alias)
+  foreign key (user_id, list_id) references pa_lists(user_id, list_id) on delete cascade,
+  unique(user_id, list_id, alias)
 );
 
 create index if not exists pa_list_aliases_user_list_id_idx on pa_list_aliases(user_id, list_id);
@@ -109,7 +111,7 @@ for each row execute function pa_set_updated_at();
 -- Custom fields (per-list schema)
 create table if not exists pa_list_custom_fields (
   id uuid primary key default gen_random_uuid(),
-  list_id text not null references pa_lists(list_id) on delete cascade,
+  list_id text not null,
   user_id uuid not null references auth.users(id),
   name text not null,
   type text not null,
@@ -119,7 +121,8 @@ create table if not exists pa_list_custom_fields (
   ui_show_in_preview boolean null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique(list_id, name)
+  foreign key (user_id, list_id) references pa_lists(user_id, list_id) on delete cascade,
+  unique(user_id, list_id, name)
 );
 
 drop trigger if exists pa_list_custom_fields_set_updated_at on pa_list_custom_fields;
@@ -132,8 +135,9 @@ create index if not exists pa_list_custom_fields_user_list_id_idx on pa_list_cus
 -- Items
 create table if not exists pa_list_items (
   id uuid primary key default gen_random_uuid(),
-  list_id text not null references pa_lists(list_id) on delete cascade,
+  list_id text not null,
   user_id uuid not null references auth.users(id),
+  foreign key (user_id, list_id) references pa_lists(user_id, list_id) on delete cascade,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   text text not null,
@@ -277,7 +281,7 @@ If you want to pre-create the `translate` list via SQL (instead of letting the a
 -- (This doc uses `<user_uuid>` as a placeholder.)
 insert into pa_lists (list_id, user_id, title, description, ui_default_sort)
 values ('translate', '<user_uuid>', 'Translate', 'Translation entries', null)
-on conflict (list_id) do nothing;
+on conflict (user_id, list_id) do nothing;
 
 insert into pa_list_aliases (list_id, user_id, alias)
 values
