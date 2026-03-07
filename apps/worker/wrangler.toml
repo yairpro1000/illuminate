@@ -5,7 +5,7 @@ compatibility_date = "2024-09-23"
 [vars]
 # Switch each provider independently: 'mock' or its real value ('supabase'/'resend'/'google'/'stripe'/'turnstile')
 REPOSITORY_MODE = "mock"
-EMAIL_MODE      = "mock"
+EMAIL_MODE      = "resend"
 CALENDAR_MODE   = "mock"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"
