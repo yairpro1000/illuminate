@@ -2,7 +2,8 @@ import React from "react";
 import { ListBrowser } from "./ListBrowser";
 import { VoicePanel } from "./VoicePanel";
 
-const CF_LOGOUT = "https://yairpro.cloudflareaccess.com/cdn-cgi/access/logout";
+const CF_LOGOUT_TEAM_DOMAIN = "https://yairpro.cloudflareaccess.com/cdn-cgi/access/logout";
+const CF_LOGOUT_SAME_ORIGIN = "/cdn-cgi/access/logout";
 
 export function Main(props: { email: string; llmLabel: string }) {
   const [lastCommittedAt, setLastCommittedAt] = React.useState<number | null>(null);
@@ -13,6 +14,16 @@ export function Main(props: { email: string; llmLabel: string }) {
 
   const userButtonRef = React.useRef<HTMLButtonElement | null>(null);
   const userMenuRef = React.useRef<HTMLDivElement | null>(null);
+
+  const doLogout = React.useCallback(() => {
+    const returnTo = window.location.href;
+    const logoutBase =
+      window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+        ? CF_LOGOUT_TEAM_DOMAIN
+        : CF_LOGOUT_SAME_ORIGIN;
+    const logoutUrl = `${logoutBase}?returnTo=${encodeURIComponent(returnTo)}`;
+    window.location.replace(logoutUrl);
+  }, []);
 
   React.useEffect(() => {
     if (!userMenuOpen) return;
@@ -75,7 +86,7 @@ export function Main(props: { email: string; llmLabel: string }) {
                     type="button"
                     role="menuitem"
                     className="menu-item userMenuItem"
-                    onClick={() => { window.location.href = CF_LOGOUT; }}
+                    onClick={doLogout}
                   >
                     Change user
                   </button>
@@ -83,7 +94,7 @@ export function Main(props: { email: string; llmLabel: string }) {
                     type="button"
                     role="menuitem"
                     className="menu-item userMenuItem"
-                    onClick={() => { window.location.href = CF_LOGOUT; }}
+                    onClick={doLogout}
                   >
                     Logout
                   </button>
