@@ -62,7 +62,7 @@ export function makeUndoRepo(db: Db) {
       if (histErr) throw histErr;
 
       const ids = (overflow as any[]).map((row) => row.id);
-      const { error: delErr } = await db.from("pa_undo_log").delete().in("id", ids);
+      const { error: delErr } = await db.from("pa_undo_log").delete().eq("user_id", userId).in("id", ids);
       if (delErr) throw delErr;
     },
 
@@ -141,10 +141,11 @@ export function makeUndoRepo(db: Db) {
 
     // Removes snapshots whose item.id is in itemIds from the entry.
     // Deletes the entry entirely if it becomes empty.
-    async removeItemsFromEntry(entryId: string, itemIds: string[]): Promise<void> {
+    async removeItemsFromEntry(entryId: string, itemIds: string[], userId: string): Promise<void> {
       const { data, error } = await db
         .from("pa_undo_log")
         .select("id,snapshots")
+        .eq("user_id", userId)
         .eq("id", entryId)
         .limit(1);
       if (error) throw error;
@@ -155,12 +156,13 @@ export function makeUndoRepo(db: Db) {
       const filtered = (row.snapshots as UndoSnapshot[]).filter((s) => !idSet.has(s.item.id));
 
       if (filtered.length === 0) {
-        const { error: delErr } = await db.from("pa_undo_log").delete().eq("id", entryId);
+        const { error: delErr } = await db.from("pa_undo_log").delete().eq("user_id", userId).eq("id", entryId);
         if (delErr) throw delErr;
       } else {
         const { error: updErr } = await db
           .from("pa_undo_log")
           .update({ snapshots: filtered })
+          .eq("user_id", userId)
           .eq("id", entryId);
         if (updErr) throw updErr;
       }

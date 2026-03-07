@@ -8,6 +8,7 @@ export type Env = {
   OPENAI_MODEL?: string;
   AI: Ai;
   GOOGLE_TTS_API_KEY?: string;
+  RESEND_API_KEY?: string;
 };
 
 export function mustEnv(env: Env, key: keyof Env): string {

@@ -36,6 +36,7 @@ function slugify(input: string) {
 
 type PaListRow = {
   list_id: string;
+  user_id?: string;
   title: string;
   description: string | null;
   ui_default_sort: string | null;
@@ -46,6 +47,7 @@ type PaListRow = {
 
 type PaListAliasRow = {
   list_id: string;
+  user_id?: string;
   alias: string;
 };
 
@@ -60,11 +62,13 @@ type PaBaseFieldRow = {
 
 type PaListCustomFieldRow = PaBaseFieldRow & {
   list_id: string;
+  user_id?: string;
 };
 
 type PaListItemRow = {
   id: string;
   list_id: string;
+  user_id?: string;
   created_at: string;
   updated_at: string;
   text: string;
@@ -163,8 +167,12 @@ function fieldRowToDef(f: {
   };
 }
 
-async function touchList(db: Db, listId: string, updatedBy: string) {
-  const { data, error } = await db.rpc("pa_touch_list", { p_list_id: listId, p_updated_by: updatedBy });
+async function touchListForUser(db: Db, userId: string, listId: string, updatedBy: string) {
+  const { data, error } = await db.rpc("pa_touch_list", {
+    p_user_id: userId,
+    p_list_id: listId,
+    p_updated_by: updatedBy,
+  });
   if (error) throw error;
   return typeof data === "number" ? data : Number(data);
 }
@@ -187,10 +195,11 @@ function splitFields(input: Record<string, unknown>) {
   return { core, extra };
 }
 
-async function getMaxOrderInBucket(db: Db, listId: string, priority: number) {
+async function getMaxOrderInBucket(db: Db, userId: string, listId: string, priority: number) {
   const { data, error } = await db
     .from("pa_list_items")
     .select("order")
+    .eq("user_id", userId)
     .eq("list_id", listId)
     .eq("priority", priority)
     .order("order", { ascending: false })
@@ -233,7 +242,7 @@ export type PaRepo = {
   deleteList(schema: SchemaRegistry, listId: string): Promise<{ listId: string; items: ListItem[] }>;
 };
 
-export function makePaRepo(db: Db): PaRepo {
+export function makePaRepo(db: Db, userId: string): PaRepo {
   return {
     async loadSchemaRegistry() {
       const [
@@ -242,12 +251,13 @@ export function makePaRepo(db: Db): PaRepo {
         { data: baseFields, error: baseErr },
         { data: customFields, error: customErr },
       ] = await Promise.all([
-        db.from("pa_lists").select("list_id,title,description,ui_default_sort"),
-        db.from("pa_list_aliases").select("list_id,alias"),
+        db.from("pa_lists").select("list_id,title,description,ui_default_sort").eq("user_id", userId),
+        db.from("pa_list_aliases").select("list_id,alias").eq("user_id", userId),
         db.from("pa_base_fields").select("name,type,default_value_json,nullable,description,ui_show_in_preview"),
         db
           .from("pa_list_custom_fields")
-          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview"),
+          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview")
+          .eq("user_id", userId),
       ]);
       if (listErr) throw listErr;
       if (aliasErr) throw aliasErr;
@@ -301,7 +311,7 @@ export function makePaRepo(db: Db): PaRepo {
         "list_id,title,description,ui_default_sort,items_revision,items_updated_at,items_updated_by";
       const listSelectFallback = "list_id,title,description,ui_default_sort";
 
-      const listsResult = await db.from("pa_lists").select(listSelectWithMeta);
+      const listsResult = await db.from("pa_lists").select(listSelectWithMeta).eq("user_id", userId);
       const listErr: any = listsResult.error;
       const isMissingColumn =
         String(listErr?.code ?? "").trim() === "42703" ||
@@ -309,18 +319,19 @@ export function makePaRepo(db: Db): PaRepo {
         /schema cache/i.test(String(listErr?.message ?? ""));
 
       const listsFallbackResult =
-        listErr && isMissingColumn ? await db.from("pa_lists").select(listSelectFallback) : null;
+        listErr && isMissingColumn ? await db.from("pa_lists").select(listSelectFallback).eq("user_id", userId) : null;
 
       const [
         { data: aliases, error: aliasErr },
         { data: baseFields, error: baseErr },
         { data: customFields, error: customErr },
       ] = await Promise.all([
-        db.from("pa_list_aliases").select("list_id,alias"),
+        db.from("pa_list_aliases").select("list_id,alias").eq("user_id", userId),
         db.from("pa_base_fields").select("name,type,default_value_json,nullable,description,ui_show_in_preview"),
         db
           .from("pa_list_custom_fields")
-          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview"),
+          .select("list_id,name,type,default_value_json,nullable,description,ui_show_in_preview")
+          .eq("user_id", userId),
       ]);
       const lists = (listsFallbackResult?.data ?? listsResult.data) as any;
       const listErrFinal = listsFallbackResult?.error ?? listsResult.error;
@@ -390,6 +401,7 @@ export function makePaRepo(db: Db): PaRepo {
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
+        .eq("user_id", userId)
         .eq("list_id", listId)
         .order("priority", { ascending: true })
         .order("order", { ascending: true })
@@ -411,13 +423,14 @@ export function makePaRepo(db: Db): PaRepo {
       const nowIso = new Date().toISOString();
       const id = crypto.randomUUID();
       const priority = typeof (coerced as any).priority === "number" ? ((coerced as any).priority as number) : 3;
-      const maxOrder = await getMaxOrderInBucket(db, listId, priority);
+      const maxOrder = await getMaxOrderInBucket(db, userId, listId, priority);
       const order = maxOrder + 1;
 
       const { core, extra } = splitFields(coerced as Record<string, unknown>);
       const row = {
         id,
         list_id: listId,
+        user_id: userId,
         created_at: nowIso,
         updated_at: nowIso,
         text: String((core as any).text ?? ""),
@@ -432,7 +445,7 @@ export function makePaRepo(db: Db): PaRepo {
 
       const { error } = await db.from("pa_list_items").insert(row);
       if (error) throw error;
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
 
       const item = fromDbRow(row as any);
       return { listId, item };
@@ -450,6 +463,7 @@ export function makePaRepo(db: Db): PaRepo {
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", listId)
         .limit(1);
@@ -472,7 +486,7 @@ export function makePaRepo(db: Db): PaRepo {
 
       let nextOrder = prev.order;
       if (priorityChanged && !orderChanged) {
-        const maxOrder = await getMaxOrderInBucket(db, listId, nextPriority);
+        const maxOrder = await getMaxOrderInBucket(db, userId, listId, nextPriority);
         nextOrder = maxOrder + 1;
         (core as any).order = nextOrder;
       }
@@ -492,6 +506,7 @@ export function makePaRepo(db: Db): PaRepo {
       const { data: updatedRows, error: updErr } = await db
         .from("pa_list_items")
         .update(updateRow)
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", listId)
         .eq("updated_at", opts.expectedUpdatedAt ?? prev.updated_at)
@@ -502,7 +517,7 @@ export function makePaRepo(db: Db): PaRepo {
       if (updErr) throw updErr;
       const updated = updatedRows?.[0] as PaListItemRow | undefined;
       if (!updated) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
       return { listId, item: fromDbRow(updated), prev: fromDbRow(prev), patchedFields };
     },
 
@@ -513,6 +528,7 @@ export function makePaRepo(db: Db): PaRepo {
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", listId)
         .limit(1);
@@ -526,6 +542,7 @@ export function makePaRepo(db: Db): PaRepo {
       const { data: deletedRows, error } = await db
         .from("pa_list_items")
         .delete()
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", listId)
         .eq("updated_at", opts.expectedUpdatedAt ?? prev.updated_at)
@@ -533,7 +550,7 @@ export function makePaRepo(db: Db): PaRepo {
         .limit(1);
       if (error) throw error;
       if (!deletedRows?.[0]) throw conflict({ expectedUpdatedAt: opts.expectedUpdatedAt ?? prev.updated_at });
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
       return { listId, deletedId: itemId, prev: fromDbRow(prev) };
     },
 
@@ -544,6 +561,7 @@ export function makePaRepo(db: Db): PaRepo {
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
+        .eq("user_id", userId)
         .in("id", itemIds);
       if (error) throw error;
       const result = new Map<string, { listId: string; item: ListItem }>();
@@ -559,6 +577,7 @@ export function makePaRepo(db: Db): PaRepo {
       const row = {
         id,
         list_id: listId,
+        user_id: userId,
         created_at: createdAt ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
         text: String((core as any).text ?? ""),
@@ -570,9 +589,21 @@ export function makePaRepo(db: Db): PaRepo {
         unarchived_at: (core as any).unarchived_at ?? null,
         extra_fields: extra,
       };
-      const { error } = await db.from("pa_list_items").upsert(row, { onConflict: "id" });
-      if (error) throw error;
-      await touchList(db, listId, opts.updatedBy);
+      const { data: existing, error: exErr } = await db
+        .from("pa_list_items")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("id", id)
+        .limit(1);
+      if (exErr) throw exErr;
+      if (existing?.[0]) {
+        const { error } = await db.from("pa_list_items").update(row).eq("user_id", userId).eq("id", id);
+        if (error) throw error;
+      } else {
+        const { error } = await db.from("pa_list_items").insert(row);
+        if (error) throw error;
+      }
+      await touchListForUser(db, userId, listId, opts.updatedBy);
     },
 
     async patchItemRaw(listId, itemId, fields, opts) {
@@ -585,6 +616,7 @@ export function makePaRepo(db: Db): PaRepo {
         const { data: prevRows, error: prevErr } = await db
           .from("pa_list_items")
           .select("extra_fields")
+          .eq("user_id", userId)
           .eq("id", itemId)
           .eq("list_id", listId)
           .limit(1);
@@ -595,10 +627,11 @@ export function makePaRepo(db: Db): PaRepo {
       const { error } = await db
         .from("pa_list_items")
         .update(updateRow)
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", listId);
       if (error) throw error;
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
     },
 
     async moveItem(schema, fromListIdInput, toListIdInput, itemId, opts) {
@@ -611,6 +644,7 @@ export function makePaRepo(db: Db): PaRepo {
         .select(
           "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
         )
+        .eq("user_id", userId)
         .eq("id", itemId)
         .eq("list_id", fromListId)
         .limit(1);
@@ -629,7 +663,7 @@ export function makePaRepo(db: Db): PaRepo {
       const coerced = applyDefaultsForCreate(toDef, picked);
 
       const priority = typeof (coerced as any).priority === "number" ? ((coerced as any).priority as number) : 3;
-      const maxOrder = await getMaxOrderInBucket(db, toListId, priority);
+      const maxOrder = await getMaxOrderInBucket(db, userId, toListId, priority);
       const order = maxOrder + 1;
 
       const { core, extra } = splitFields(coerced as Record<string, unknown>);
@@ -647,9 +681,17 @@ export function makePaRepo(db: Db): PaRepo {
         extra_fields: extra,
       };
 
-      const { error: updErr } = await db.from("pa_list_items").update(updateRow).eq("id", itemId);
+      const { error: updErr } = await db
+        .from("pa_list_items")
+        .update(updateRow)
+        .eq("user_id", userId)
+        .eq("id", itemId)
+        .eq("list_id", fromListId);
       if (updErr) throw updErr;
-      await Promise.all([touchList(db, fromListId, opts.updatedBy), touchList(db, toListId, opts.updatedBy)]);
+      await Promise.all([
+        touchListForUser(db, userId, fromListId, opts.updatedBy),
+        touchListForUser(db, userId, toListId, opts.updatedBy),
+      ]);
 
       return { fromListId, toListId, itemId, moved: true };
     },
@@ -660,6 +702,7 @@ export function makePaRepo(db: Db): PaRepo {
       const { data: rows, error } = await db
         .from("pa_list_items")
         .select("id")
+        .eq("user_id", userId)
         .eq("list_id", listId)
         .eq("priority", priority)
         .in("id", orderedIds);
@@ -671,6 +714,7 @@ export function makePaRepo(db: Db): PaRepo {
       }
 
       const { data: nextRevision, error: rpcErr } = await db.rpc("pa_reorder_bucket", {
+        p_user_id: userId,
         p_list_id: listId,
         p_priority: priority,
         p_ordered_ids: orderedIds,
@@ -717,6 +761,7 @@ export function makePaRepo(db: Db): PaRepo {
         .from("pa_lists")
         .insert({
           list_id: listId,
+          user_id: userId,
           title: action.title,
           description: action.description ?? null,
           ui_default_sort: null,
@@ -726,7 +771,7 @@ export function makePaRepo(db: Db): PaRepo {
       for (const alias of action.aliases ?? []) {
         const { error } = await db
           .from("pa_list_aliases")
-          .upsert({ list_id: listId, alias }, { onConflict: "list_id,alias" });
+          .upsert({ list_id: listId, user_id: userId, alias }, { onConflict: "list_id,alias" });
         if (error) throw error;
       }
 
@@ -735,6 +780,7 @@ export function makePaRepo(db: Db): PaRepo {
         if (["id", "createdAt", "updatedAt"].includes(name)) throw new Error(`Field "${name}" is reserved.`);
         const row = {
           list_id: listId,
+          user_id: userId,
           name,
           type: def.type,
           default_value_json: Object.prototype.hasOwnProperty.call(def, "default") ? (def as any).default : null,
@@ -778,6 +824,7 @@ export function makePaRepo(db: Db): PaRepo {
       for (const { name, def } of added) {
         const row = {
           list_id: listId,
+          user_id: userId,
           name,
           type: def.type,
           default_value_json: Object.prototype.hasOwnProperty.call(def, "default") ? (def as any).default : null,
@@ -793,6 +840,7 @@ export function makePaRepo(db: Db): PaRepo {
       const { data: itemRows, error: itemsErr } = await db
         .from("pa_list_items")
         .select("id,extra_fields")
+        .eq("user_id", userId)
         .eq("list_id", listId);
       if (itemsErr) throw itemsErr;
 
@@ -806,13 +854,14 @@ export function makePaRepo(db: Db): PaRepo {
         const { error } = await db
           .from("pa_list_items")
           .update({ extra_fields: merged, updated_at: new Date().toISOString() })
+          .eq("user_id", userId)
           .eq("id", row.id)
           .eq("list_id", listId);
         if (error) throw error;
         migrated += 1;
       }
 
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
       return { listId, added: added.map((a) => a.name), migrated };
     },
 
@@ -825,19 +874,19 @@ export function makePaRepo(db: Db): PaRepo {
       const items = await this.readListItems(schema, listId);
 
       // Bulk delete all items
-      const { error: itemsErr } = await db.from("pa_list_items").delete().eq("list_id", listId);
+      const { error: itemsErr } = await db.from("pa_list_items").delete().eq("user_id", userId).eq("list_id", listId);
       if (itemsErr) throw itemsErr;
 
       // Delete custom fields
-      const { error: cfErr } = await db.from("pa_list_custom_fields").delete().eq("list_id", listId);
+      const { error: cfErr } = await db.from("pa_list_custom_fields").delete().eq("user_id", userId).eq("list_id", listId);
       if (cfErr) throw cfErr;
 
       // Delete aliases
-      const { error: aliasErr } = await db.from("pa_list_aliases").delete().eq("list_id", listId);
+      const { error: aliasErr } = await db.from("pa_list_aliases").delete().eq("user_id", userId).eq("list_id", listId);
       if (aliasErr) throw aliasErr;
 
       // Delete the list itself
-      const { error: listErr } = await db.from("pa_lists").delete().eq("list_id", listId);
+      const { error: listErr } = await db.from("pa_lists").delete().eq("user_id", userId).eq("list_id", listId);
       if (listErr) throw listErr;
 
       return { listId, items };
@@ -872,11 +921,12 @@ export function makePaRepo(db: Db): PaRepo {
       const { error } = await db
         .from("pa_list_custom_fields")
         .delete()
+        .eq("user_id", userId)
         .eq("list_id", listId)
         .in("name", removed);
       if (error) throw error;
 
-      await touchList(db, listId, opts.updatedBy);
+      await touchListForUser(db, userId, listId, opts.updatedBy);
       return { listId, removed, migrated: 0 };
     },
   };

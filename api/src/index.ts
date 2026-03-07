@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { Resend } from "resend";
 import * as XLSX from "xlsx";
 import { ParsedActionZ, type ParsedAction } from "./shared/model";
 import { makeSupabase } from "./repo/supabase";
 import { makePaRepo, type PaRepo } from "./repo/paRepo";
 import { makeUndoRepo, type UndoSnapshot } from "./repo/undoRepo";
-import { requireAccess } from "./auth";
+import { requireAccess, requireAccessUser } from "./auth";
 import type { Env } from "./env";
 import { parseTranscriptWithDebug, canonicalizeActionTargets, refineUpdateDelete } from "./llm/parse";
 import { TranslateLangZ, translateWithOpenAI, refineTranslationWithOpenAI, TranslationPayloadZ } from "./llm/translate";
@@ -111,23 +112,24 @@ app.get("/config", (c) => {
 });
 
 app.get("/lists", async (c) => {
-  requireAccess(c);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   return c.json({ lists: await repo.listListsForUi() });
 });
 
 app.get("/lists/:listId/items", async (c) => {
-  requireAccess(c);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const items = await repo.readListItems(schema, c.req.param("listId"));
   return c.json({ items });
 });
 
 app.post("/lists/:listId/reorder", async (c) => {
-  const { email } = requireAccess(c);
+  const db = makeSupabase(c.env);
+  const { email, userId } = await requireAccessUser(c, db);
   const BodyZ = z
     .object({
       priority: z.number().int(),
@@ -136,8 +138,7 @@ app.post("/lists/:listId/reorder", async (c) => {
     })
     .strict();
   const body = BodyZ.parse(await c.req.json());
-  const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
   const updatedBy = `${email}_${deviceId}`;
@@ -152,11 +153,11 @@ app.post("/lists/:listId/reorder", async (c) => {
 });
 
 app.post("/parse", async (c) => {
-  requireAccess(c);
   const BodyZ = z.object({ transcript: z.string().min(1), forceLlm: z.boolean().optional() }).strict();
   const body = BodyZ.parse(await c.req.json());
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const requestId = (c as any).requestId as string | undefined;
   const providerFromEnv = (c.env.PA_LLM_PROVIDER ?? "heuristic") === "openai" ? "openai" : "heuristic";
@@ -246,7 +247,8 @@ app.post("/translate/refine", async (c) => {
 });
 
 app.post("/commit", async (c) => {
-  const { email } = requireAccess(c);
+  const db = makeSupabase(c.env);
+  const { email, userId } = await requireAccessUser(c, db);
   const BodyZ = z
     .object({
       action: z.unknown(),
@@ -261,8 +263,7 @@ app.post("/commit", async (c) => {
   const action = ParsedActionZ.parse(body.action) as ParsedAction;
   if (!action.valid) return c.json({ error: "invalid_action", details: "Action is not valid; refusing to commit." }, 400);
 
-  const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const canonical = canonicalizeActionTargets(schema, action as any) as ParsedAction;
   const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
@@ -285,7 +286,7 @@ app.post("/commit", async (c) => {
       const label = `Updated "${String((result.prev as any)?.text ?? "").slice(0, 50)}"`;
       await undoRepo.push({
         id: undoId,
-        userId: email,
+        userId,
         label,
         snapshots: [{ listId: result.listId, action: "update_item", item: result.prev as any, patchedFields: result.patchedFields }],
       });
@@ -300,7 +301,7 @@ app.post("/commit", async (c) => {
       const label = `Deleted "${String((result.prev as any)?.text ?? "").slice(0, 50)}"`;
       await undoRepo.push({
         id: undoId,
-        userId: email,
+        userId,
         label,
         snapshots: [{ listId: result.listId, action: "delete_item", item: result.prev as any }],
       });
@@ -328,7 +329,7 @@ app.post("/commit", async (c) => {
       }
       if (snapshots.length > 0) {
         undoId = crypto.randomUUID();
-        await undoRepo.push({ id: undoId, userId: email, label: (canonical as any).label, snapshots });
+        await undoRepo.push({ id: undoId, userId, label: (canonical as any).label, snapshots });
       }
       result = { ok: true };
       break;
@@ -340,7 +341,7 @@ app.post("/commit", async (c) => {
         const movedLabel = `Moved item to "${schema.lists[canonical.toListId]?.title ?? canonical.toListId}"`;
         await undoRepo.push({
           id: undoId,
-          userId: email,
+          userId,
           label: movedLabel,
           snapshots: [{ listId: canonical.fromListId, action: "move_item", item: { id: canonical.itemId }, movedToListId: canonical.toListId }],
         });
@@ -356,7 +357,7 @@ app.post("/commit", async (c) => {
         const label = `Deleted list "${listTitle}" (${deleteListResult.items.length} item${deleteListResult.items.length !== 1 ? "s" : ""})`;
         await undoRepo.push({
           id: undoId,
-          userId: email,
+          userId,
           label,
           snapshots: deleteListResult.items.map((item) => ({
             listId: deleteListId,
@@ -385,29 +386,29 @@ app.post("/commit", async (c) => {
 });
 
 app.get("/undo", async (c) => {
-  const { email } = requireAccess(c);
   const db = makeSupabase(c.env);
+  const { userId } = await requireAccessUser(c, db);
   const undoRepo = makeUndoRepo(db);
-  const entries = await undoRepo.list(email);
+  const entries = await undoRepo.list(userId);
   return c.json({ entries });
 });
 
 app.post("/undo", async (c) => {
-  const { email } = requireAccess(c);
+  const db = makeSupabase(c.env);
+  const { email, userId } = await requireAccessUser(c, db);
   const BodyZ = z.object({ id: z.string().min(1), confirmed: z.boolean().default(false) }).strict();
   const body = BodyZ.parse(await c.req.json());
 
-  const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const repo = makePaRepo(db, userId);
   const undoRepo = makeUndoRepo(db);
   const deviceId = c.req.header("x-pa-device-id")?.trim() || "unknown_device";
   const updatedBy = `${email}_${deviceId}`;
 
-  const target = await undoRepo.get(body.id, email);
+  const target = await undoRepo.get(body.id, userId);
   if (!target) return c.json({ error: "not_found", details: "Undo entry not found or already undone." }, 404);
 
   const targetItemIds = target.snapshots.map((s) => s.item.id);
-  const conflicts = await undoRepo.findConflicts(target.createdAt, target.id, targetItemIds, email);
+  const conflicts = await undoRepo.findConflicts(target.createdAt, target.id, targetItemIds, userId);
 
   if (conflicts.length > 0 && !body.confirmed) {
     return c.json({ ok: false, conflicts: true, conflictEntries: conflicts });
@@ -419,20 +420,20 @@ app.post("/undo", async (c) => {
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   );
   for (const conflict of sortedConflicts) {
-    const conflictEntry = await undoRepo.get(conflict.id, email);
+    const conflictEntry = await undoRepo.get(conflict.id, userId);
     if (!conflictEntry) continue;
     const overlapping = conflictEntry.snapshots.filter((s) => targetItemIdSet.has(s.item.id));
     for (const snap of overlapping) {
       await applyUndoSnapshot(repo, snap, updatedBy);
     }
-    await undoRepo.removeItemsFromEntry(conflict.id, overlapping.map((s) => s.item.id));
+    await undoRepo.removeItemsFromEntry(conflict.id, overlapping.map((s) => s.item.id), userId);
   }
 
   // Apply the target undo
   for (const snap of target.snapshots) {
     await applyUndoSnapshot(repo, snap, updatedBy);
   }
-  await undoRepo.delete(target.id, email);
+  await undoRepo.delete(target.id, userId);
 
   return c.json({ ok: true });
 });
@@ -453,11 +454,11 @@ async function applyUndoSnapshot(repo: PaRepo, snap: UndoSnapshot, updatedBy: st
 }
 
 app.get("/export/:listId.csv", async (c) => {
-  requireAccess(c);
   const listId = getListIdFromExportRouteParam(c, "csv");
   if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const lists = await repo.listLists(schema);
   const defEntry = lists.find((l) => l.id.toLowerCase() === listId) ?? null;
@@ -479,11 +480,11 @@ app.get("/export/:listId.csv", async (c) => {
 });
 
 app.get("/export/csv/:listId", async (c) => {
-  requireAccess(c);
   const listId = String(c.req.param("listId") ?? "").trim();
   if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const lists = await repo.listLists(schema);
   const defEntry = lists.find((l) => l.id.toLowerCase() === listId.toLowerCase()) ?? null;
@@ -505,11 +506,11 @@ app.get("/export/csv/:listId", async (c) => {
 });
 
 app.get("/export/:listId.xlsx", async (c) => {
-  requireAccess(c);
   const listId = getListIdFromExportRouteParam(c, "xlsx");
   if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const lists = await repo.listLists(schema);
   const defEntry = lists.find((l) => l.id.toLowerCase() === listId) ?? null;
@@ -538,11 +539,11 @@ app.get("/export/:listId.xlsx", async (c) => {
 });
 
 app.get("/export/xlsx/:listId", async (c) => {
-  requireAccess(c);
   const listId = String(c.req.param("listId") ?? "").trim();
   if (!listId) return c.json({ error: "bad_request", details: "Missing listId." }, 400);
   const db = makeSupabase(c.env);
-  const repo = makePaRepo(db);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
   const schema = await repo.loadSchemaRegistry();
   const lists = await repo.listLists(schema);
   const defEntry = lists.find((l) => l.id.toLowerCase() === listId.toLowerCase()) ?? null;
@@ -568,6 +569,30 @@ app.get("/export/xlsx/:listId", async (c) => {
   );
   c.header("Content-Disposition", `attachment; filename="${encodeURIComponent(def.id)}.xlsx"`);
   return c.body(new Uint8Array(out));
+});
+
+app.post("/email", async (c) => {
+  requireAccess(c);
+  const apiKey = c.env.RESEND_API_KEY;
+  if (!apiKey) return c.json({ error: "bad_request", details: "RESEND_API_KEY is not set." }, 400);
+
+  const BodyZ = z.object({
+    to: z.string().email(),
+    subject: z.string().min(1),
+    html: z.string().min(1),
+  }).strict();
+  const body = BodyZ.parse(await c.req.json());
+
+  const resend = new Resend(apiKey);
+  const result = await resend.emails.send({
+    from: "bookings@letsilluminate.co",
+    to: body.to,
+    reply_to: "hello@yairb.ch",
+    subject: body.subject,
+    html: body.html,
+  });
+
+  return c.json({ ok: true, result });
 });
 
 app.post("/speak", async (c) => {

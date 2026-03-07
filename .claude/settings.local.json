@@ -13,7 +13,8 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:issues.chromium.org)",
       "WebFetch(domain:dev.to)",
-      "WebFetch(domain:developers.cloudflare.com)"
+      "WebFetch(domain:developers.cloudflare.com)",
+      "Bash(git checkout:*)"
     ]
   }
 }

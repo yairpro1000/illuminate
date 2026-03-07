@@ -7,6 +7,29 @@ Goal: replace the current file-based PA storage with a **lean relational schema*
 
 PA tables are prefixed `pa_`.
 
+## Multi-user ownership (PA V1 → multi-user)
+
+PA is now **multi-user**. Every user-owned row includes:
+
+- `user_id UUID NOT NULL REFERENCES auth.users(id)`
+
+**User-owned tables**
+
+- `pa_lists` (a list belongs to a user)
+- `pa_list_aliases` (belongs to a list + user)
+- `pa_list_custom_fields` (belongs to a list + user)
+- `pa_list_items` (belongs to a list + user)
+- `pa_undo_log` / `pa_undo_log_history` (belongs to a user)
+
+**Global/reference tables**
+
+- `pa_base_fields` (shared base schema; not user-owned)
+
+Ownership chain (enforced by app queries + FKs):
+
+- List → user
+- Alias/custom-field/item → list → user (and also stores `user_id` directly for fast/scoped queries)
+
 ## DDL source of truth
 
 The DDL is captured in this doc; copy/paste into Supabase SQL editor.
@@ -18,6 +41,7 @@ The DDL is captured in this doc; copy/paste into Supabase SQL editor.
 -- Notes:
 -- - Uses jsonb for custom per-list fields (pa_list_items.extra_fields)
 -- - Uses 2 RPC functions: pa_touch_list + pa_reorder_bucket
+-- - All user-owned tables include `user_id uuid not null references auth.users(id)`
 
 -- UUID helper (Supabase typically enables this already)
 create extension if not exists pgcrypto;
@@ -36,6 +60,7 @@ $$;
 -- Lists
 create table if not exists pa_lists (
   list_id text primary key,
+  user_id uuid not null references auth.users(id),
   title text not null,
   description text null,
   ui_default_sort text null,
@@ -55,12 +80,13 @@ for each row execute function pa_set_updated_at();
 create table if not exists pa_list_aliases (
   id uuid primary key default gen_random_uuid(),
   list_id text not null references pa_lists(list_id) on delete cascade,
+  user_id uuid not null references auth.users(id),
   alias text not null,
   created_at timestamptz not null default now(),
   unique(list_id, alias)
 );
 
-create index if not exists pa_list_aliases_list_id_idx on pa_list_aliases(list_id);
+create index if not exists pa_list_aliases_user_list_id_idx on pa_list_aliases(user_id, list_id);
 create index if not exists pa_list_aliases_alias_idx on pa_list_aliases(alias);
 
 -- Base fields (shared schema)
@@ -84,6 +110,7 @@ for each row execute function pa_set_updated_at();
 create table if not exists pa_list_custom_fields (
   id uuid primary key default gen_random_uuid(),
   list_id text not null references pa_lists(list_id) on delete cascade,
+  user_id uuid not null references auth.users(id),
   name text not null,
   type text not null,
   default_value_json jsonb null,
@@ -100,12 +127,13 @@ create trigger pa_list_custom_fields_set_updated_at
 before update on pa_list_custom_fields
 for each row execute function pa_set_updated_at();
 
-create index if not exists pa_list_custom_fields_list_id_idx on pa_list_custom_fields(list_id);
+create index if not exists pa_list_custom_fields_user_list_id_idx on pa_list_custom_fields(user_id, list_id);
 
 -- Items
 create table if not exists pa_list_items (
   id uuid primary key default gen_random_uuid(),
   list_id text not null references pa_lists(list_id) on delete cascade,
+  user_id uuid not null references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   text text not null,
@@ -123,14 +151,14 @@ create trigger pa_list_items_set_updated_at
 before update on pa_list_items
 for each row execute function pa_set_updated_at();
 
-create index if not exists pa_list_items_list_priority_order_idx on pa_list_items(list_id, priority, "order");
-create index if not exists pa_list_items_list_created_at_desc_idx on pa_list_items(list_id, created_at desc);
-create index if not exists pa_list_items_list_archived_at_idx on pa_list_items(list_id, archived_at);
+create index if not exists pa_list_items_user_list_priority_order_idx on pa_list_items(user_id, list_id, priority, "order");
+create index if not exists pa_list_items_user_list_created_at_desc_idx on pa_list_items(user_id, list_id, created_at desc);
+create index if not exists pa_list_items_user_list_archived_at_idx on pa_list_items(user_id, list_id, archived_at);
 
 -- Undo log (current)
 create table if not exists pa_undo_log (
   id uuid primary key,
-  user_id text not null,
+  user_id uuid not null references auth.users(id),
   label text not null,
   snapshots jsonb not null,
   created_at timestamptz not null default now()
@@ -141,7 +169,7 @@ create index if not exists pa_undo_log_user_created_at_desc_idx on pa_undo_log(u
 -- Undo log (history/overflow)
 create table if not exists pa_undo_log_history (
   id uuid primary key,
-  user_id text not null,
+  user_id uuid not null references auth.users(id),
   label text not null,
   snapshots jsonb not null,
   created_at timestamptz not null
@@ -150,7 +178,7 @@ create table if not exists pa_undo_log_history (
 create index if not exists pa_undo_log_history_user_created_at_desc_idx on pa_undo_log_history(user_id, created_at desc);
 
 -- RPC: touch list (increments revision + timestamps)
-create or replace function pa_touch_list(p_list_id text, p_updated_by text)
+create or replace function pa_touch_list(p_user_id uuid, p_list_id text, p_updated_by text)
 returns bigint
 language plpgsql
 as $$
@@ -162,7 +190,7 @@ begin
     items_revision = items_revision + 1,
     items_updated_at = now(),
     items_updated_by = p_updated_by
-  where list_id = p_list_id
+  where user_id = p_user_id and list_id = p_list_id
   returning items_revision into next_rev;
 
   if next_rev is null then
@@ -175,6 +203,7 @@ $$;
 
 -- RPC: reorder a single priority bucket atomically with optimistic concurrency
 create or replace function pa_reorder_bucket(
+  p_user_id uuid,
   p_list_id text,
   p_priority int,
   p_ordered_ids uuid[],
@@ -198,7 +227,7 @@ begin
   -- Lock list row for revision check + atomic update
   select items_revision into current_rev
   from pa_lists
-  where list_id = p_list_id
+  where user_id = p_user_id and list_id = p_list_id
   for update;
 
   if current_rev is null then
@@ -217,7 +246,11 @@ begin
   update pa_list_items it
   set "order" = ord.idx
   from ord
-  where it.id = ord.id and it.list_id = p_list_id and it.priority = p_priority;
+  where
+    it.id = ord.id
+    and it.user_id = p_user_id
+    and it.list_id = p_list_id
+    and it.priority = p_priority;
 
   -- bump revision
   update pa_lists
@@ -225,7 +258,7 @@ begin
     items_revision = items_revision + 1,
     items_updated_at = now(),
     items_updated_by = p_updated_by
-  where list_id = p_list_id
+  where user_id = p_user_id and list_id = p_list_id
   returning items_revision into next_rev;
 
   return next_rev;
@@ -240,33 +273,36 @@ The translate feature does **not** require new tables/columns: it uses `pa_list_
 If you want to pre-create the `translate` list via SQL (instead of letting the app auto-create it), here is a seed script:
 
 ```sql
-insert into pa_lists (list_id, title, description, ui_default_sort)
-values ('translate', 'Translate', 'Translation entries', null)
+-- Replace with the owning user's auth.users.id
+-- (This doc uses `<user_uuid>` as a placeholder.)
+insert into pa_lists (list_id, user_id, title, description, ui_default_sort)
+values ('translate', '<user_uuid>', 'Translate', 'Translation entries', null)
 on conflict (list_id) do nothing;
 
-insert into pa_list_aliases (list_id, alias)
+insert into pa_list_aliases (list_id, user_id, alias)
 values
-  ('translate', 'translation'),
-  ('translate', 'translations')
+  ('translate', '<user_uuid>', 'translation'),
+  ('translate', '<user_uuid>', 'translations')
 on conflict (list_id, alias) do nothing;
 
-insert into pa_list_custom_fields (list_id, name, type, default_value_json, nullable, description, ui_show_in_preview)
+insert into pa_list_custom_fields (list_id, user_id, name, type, default_value_json, nullable, description, ui_show_in_preview)
 values
-  ('translate', 'originLanguage', 'string', null, true, 'Origin language (BCP-47)', true),
-  ('translate', 'originExpression', 'string', null, true, 'Origin expression', true),
-  ('translate', 'destinationLanguage', 'string', null, true, 'Destination language (BCP-47)', true),
-  ('translate', 'possibleTranslations', 'json', null, true, 'Possible translations', false),
-  ('translate', 'examplesOrigin', 'json', null, true, 'Examples in origin language', false),
-  ('translate', 'examplesDestination', 'json', null, true, 'Examples in destination language', false),
-  ('translate', 'comments', 'string', null, true, 'Comments', false)
+  ('translate', '<user_uuid>', 'originLanguage', 'string', null, true, 'Origin language (BCP-47)', true),
+  ('translate', '<user_uuid>', 'originExpression', 'string', null, true, 'Origin expression', true),
+  ('translate', '<user_uuid>', 'destinationLanguage', 'string', null, true, 'Destination language (BCP-47)', true),
+  ('translate', '<user_uuid>', 'possibleTranslations', 'json', null, true, 'Possible translations', false),
+  ('translate', '<user_uuid>', 'examplesOrigin', 'json', null, true, 'Examples in origin language', false),
+  ('translate', '<user_uuid>', 'examplesDestination', 'json', null, true, 'Examples in destination language', false),
+  ('translate', '<user_uuid>', 'comments', 'string', null, true, 'Comments', false)
 on conflict (list_id, name) do nothing;
 ```
 
 ## Tables (current)
 
-### `pa_lists` (list metadata + concurrency)
+### `pa_lists` (user-owned list metadata + concurrency)
 
 - `list_id` (PK)
+- `user_id` (UUID FK → `auth.users.id`) — owner
 - `title`
 - `description`
 - `ui_default_sort`
@@ -276,10 +312,11 @@ on conflict (list_id, name) do nothing;
 - `created_at`
 - `updated_at`
 
-### `pa_list_aliases` (list name aliases)
+### `pa_list_aliases` (user-owned list name aliases)
 
 - `id` (uuid PK)
 - `list_id` (FK → `pa_lists.list_id`)
+- `user_id` (UUID FK → `auth.users.id`) — should match the owning list
 - `alias`
 - `created_at`
 
@@ -296,10 +333,11 @@ Defines the **base fields** once (the fields that are fixed columns in `pa_list_
 - `created_at`
 - `updated_at`
 
-### `pa_list_custom_fields` (list-specific schema fields)
+### `pa_list_custom_fields` (user-owned list-specific schema fields)
 
 - `id` (uuid PK)
 - `list_id` (FK → `pa_lists.list_id`)
+- `user_id` (UUID FK → `auth.users.id`) — should match the owning list
 - `name`
 - `type`
 - `default_value_json` (jsonb)
@@ -309,11 +347,12 @@ Defines the **base fields** once (the fields that are fixed columns in `pa_list_
 - `created_at`
 - `updated_at`
 
-### `pa_list_items` (items / rows)
+### `pa_list_items` (user-owned items / rows)
 
 Universal columns (exist for all lists):
 - `id` (uuid PK)
 - `list_id` (FK → `pa_lists.list_id`)
+- `user_id` (UUID FK → `auth.users.id`) — should match the owning list
 - `created_at`
 - `updated_at`
 - `text`
@@ -327,13 +366,21 @@ Universal columns (exist for all lists):
 Custom per-list fields:
 - `extra_fields` (jsonb) — stores non-universal fields
 
+### `pa_undo_log` / `pa_undo_log_history` (user-owned undo stack)
+
+- `id` (uuid PK)
+- `user_id` (UUID FK → `auth.users.id`) — owner
+- `label`
+- `snapshots` (jsonb)
+- `created_at`
+
 ## Indexes (minimum)
 
 The DDL includes indexes to keep list browsing and sorting fast, including:
 
-- `(list_id, priority, order)` for bucket ordering
-- `(list_id, created_at desc)`
-- `(list_id, archived_at)`
+- `(user_id, list_id, priority, order)` for bucket ordering
+- `(user_id, list_id, created_at desc)`
+- `(user_id, list_id, archived_at)`
 
 ## Concurrency (why `items_revision` exists)
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { api } from "../api";
+import { api, API_BASE } from "../api";
 import type { ParsedAction } from "@shared/model";
 import { ParsedActionZ } from "@shared/model";
 import { z } from "zod";
@@ -11,6 +11,73 @@ import {
   resolveSpeechLang,
   type SpeechRecognitionLike,
 } from "./speech";
+
+const norm = (l: string) => l.replace(/_/g, "-");
+
+function findVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null {
+  return (
+    voices.find((v) => norm(v.lang) === norm(lang)) ??
+    voices.find((v) => norm(v.lang).startsWith(lang.split("-")[0])) ??
+    null
+  );
+}
+
+async function speakViaApi(text: string, lang: string) {
+  try {
+    const res = await fetch(`${API_BASE}/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, lang }),
+      credentials: "include",
+    });
+    if (!res.ok) return;
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play();
+  } catch {
+    // ignore
+  }
+}
+
+function speak(text: string, lang: string) {
+  const s = String(text ?? "").trim();
+  if (!s) return;
+  if (typeof window === "undefined") return;
+
+  function doSpeak(voices: SpeechSynthesisVoice[]) {
+    const match = lang ? findVoice(voices, lang) : null;
+    if (!match) {
+      speakViaApi(s, lang);
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(s);
+      u.voice = match;
+      u.voiceURI = match.voiceURI;
+      u.lang = match.lang;
+      window.speechSynthesis.speak(u);
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!("speechSynthesis" in window)) {
+    speakViaApi(s, lang);
+    return;
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null;
+      doSpeak(window.speechSynthesis.getVoices());
+    };
+  } else {
+    doSpeak(voices);
+  }
+}
 
 function summarize(action: ParsedAction | null) {
   if (!action) return "—";
@@ -346,6 +413,20 @@ export function VoicePanel(props: { onCommitted: () => void; onTranslateIntent?:
             title={!SR ? "SpeechRecognition not supported in this browser" : ""}
           >
             {listening ? "Stop 🎙" : "Mic 🎙"}
+          </button>
+          <button
+            className="iconbtn"
+            onClick={() => {
+              if (window.speechSynthesis?.speaking) {
+                window.speechSynthesis.cancel();
+              } else {
+                speak(transcript, resolveSpeechLang(speechLang));
+              }
+            }}
+            disabled={!transcript.trim()}
+            title="Speak / Stop"
+          >
+            🔊
           </button>
         </div>
       </div>

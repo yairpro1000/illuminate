@@ -5,6 +5,7 @@
 
 create or replace view v_translations as
 select
+  i.user_id,
   i.id,
   i.created_at,
   i.updated_at,
