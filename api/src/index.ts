@@ -97,6 +97,16 @@ app.use("/*", async (c, next) => {
   }
 });
 
+app.onError((e, c) => {
+  const requestId = (c as any).requestId ?? "";
+  const status = typeof (e as any)?.status === "number" ? (e as any).status : 500;
+  const { message, details } = extractErrorDetails(e);
+  console.log(JSON.stringify({ type: "onError", requestId, status, message, details }));
+  const error =
+    status === 401 ? "unauthorized" : status === 409 ? "conflict" : status === 400 ? "bad_request" : "internal_error";
+  return c.json({ error, details, requestId }, status as any);
+});
+
 app.get("/health", (c) => c.json({ ok: true }));
 
 app.get("/me", (c) => {

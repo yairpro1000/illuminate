@@ -766,7 +766,10 @@ export function makePaRepo(db: Db, userId: string): PaRepo {
           description: action.description ?? null,
           ui_default_sort: null,
         });
-      if (listErr) throw listErr;
+      if (listErr) {
+        if ((listErr as any).code === "23505") throw httpError(409, "conflict", `A list with ID "${listId}" already exists.`);
+        throw listErr;
+      }
 
       for (const alias of action.aliases ?? []) {
         const { error } = await db
