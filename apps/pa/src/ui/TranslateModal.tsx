@@ -1,46 +1,72 @@
 import React from "react";
 import type { TranslationPayload, TranslateLang } from "./translate";
 import { TRANSLATE_LANG_VALUES, translateLangFlag, translateLangLabel } from "./translate";
+import { API_BASE } from "../api";
+
+const norm = (l: string) => l.replace(/_/g, "-");
+
+function findVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesisVoice | null {
+  return (
+    voices.find((v) => norm(v.lang) === norm(lang)) ??
+    voices.find((v) => norm(v.lang).startsWith(lang.split("-")[0])) ??
+    null
+  );
+}
+
+async function speakViaApi(text: string) {
+  try {
+    const res = await fetch(`${API_BASE}/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      credentials: "include",
+    });
+    if (!res.ok) return;
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.play();
+  } catch {
+    // ignore
+  }
+}
 
 function speak(text: string, lang: string) {
   const s = String(text ?? "").trim();
   if (!s) return;
   if (typeof window === "undefined") return;
-  if (!("speechSynthesis" in window)) return;
 
-  function doSpeak() {
+  function doSpeak(voices: SpeechSynthesisVoice[]) {
+    const match = lang ? findVoice(voices, lang) : null;
+    if (!match) {
+      speakViaApi(s);
+      return;
+    }
     try {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(s);
-      if (lang) {
-        u.lang = lang;
-        const voices = window.speechSynthesis.getVoices();
-        // Android Chrome returns lang codes with underscores (e.g. "it_IT")
-        // instead of hyphens ("it-IT"), so normalize before matching.
-        const norm = (l: string) => l.replace(/_/g, "-");
-        const match =
-          voices.find((v) => norm(v.lang) === norm(lang)) ??
-          voices.find((v) => norm(v.lang).startsWith(lang.split("-")[0]));
-        if (match) {
-          u.voice = match;
-          u.voiceURI = match.voiceURI; // required on Android Chrome
-          u.lang = match.lang;         // use voice's own lang string for consistency
-        }
-      }
+      u.voice = match;
+      u.voiceURI = match.voiceURI;
+      u.lang = match.lang;
       window.speechSynthesis.speak(u);
     } catch {
       // ignore
     }
   }
 
-  // On iOS, getVoices() returns [] until onvoiceschanged fires
-  if (window.speechSynthesis.getVoices().length === 0) {
+  if (!("speechSynthesis" in window)) {
+    speakViaApi(s);
+    return;
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  if (voices.length === 0) {
     window.speechSynthesis.onvoiceschanged = () => {
       window.speechSynthesis.onvoiceschanged = null;
-      doSpeak();
+      doSpeak(window.speechSynthesis.getVoices());
     };
   } else {
-    doSpeak();
+    doSpeak(voices);
   }
 }
 

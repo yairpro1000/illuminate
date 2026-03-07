@@ -570,4 +570,27 @@ app.get("/export/xlsx/:listId", async (c) => {
   return c.body(new Uint8Array(out));
 });
 
+app.post("/speak", async (c) => {
+  requireAccess(c);
+  const BodyZ = z.object({ text: z.string().min(1).max(4096) }).strict();
+  const body = BodyZ.parse(await c.req.json());
+
+  const apiKey = c.env.OPENAI_API_KEY;
+  if (!apiKey) return c.json({ error: "bad_request", details: "OPENAI_API_KEY is not set." }, 400);
+
+  const res = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "tts-1", input: body.text, voice: "alloy", response_format: "mp3" }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    return c.json({ error: "tts_failed", details: err.slice(0, 300) }, 502);
+  }
+
+  c.header("Content-Type", "audio/mpeg");
+  return c.body(await res.arrayBuffer());
+});
+
 export default app;
