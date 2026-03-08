@@ -11,6 +11,7 @@ interface GoogleEnv {
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
 const freeBusyCache = new Map<string, { data: TimeSlot[]; expires: number }>();
+const MAX_FREEBUSY_CHUNK_DAYS = 90;
 
 // ── JWT (RS256) using Web Crypto API — no Node.js crypto needed ───────────────
 
@@ -97,7 +98,27 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     }
 
     const token = await getAccessToken(this.env);
+    const chunks = splitDateRangeIntoChunks(from, to, MAX_FREEBUSY_CHUNK_DAYS);
+    const busy: TimeSlot[] = [];
+    const seen = new Set<string>();
 
+    for (const chunk of chunks) {
+      const chunkBusy = await this.fetchFreeBusyChunk(token, chunk.from, chunk.to);
+      for (const slot of chunkBusy) {
+        const key = `${slot.start}|${slot.end}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          busy.push(slot);
+        }
+      }
+    }
+
+    busy.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+    freeBusyCache.set(cacheKey, { data: busy, expires: Date.now() + 60_000 });
+    return busy;
+  }
+
+  private async fetchFreeBusyChunk(token: string, from: string, to: string): Promise<TimeSlot[]> {
     const payload = {
       timeMin: `${from}T00:00:00Z`,
       timeMax: `${to}T23:59:59Z`,
@@ -115,7 +136,13 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
     if (!res.ok) {
       const body = await res.text();
-      console.error('Google Calendar error', { stage: 'freeBusy', status: res.status, body: body.slice(0, 500) });
+      console.error('Google Calendar error', {
+        stage: 'freeBusy',
+        status: res.status,
+        from,
+        to,
+        body: body.slice(0, 500),
+      });
       throw new Error(`Google freeBusy failed (${res.status})`);
     }
 
@@ -123,9 +150,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       calendars: Record<string, { busy: Array<{ start: string; end: string }> }>;
     };
 
-    const busy = data.calendars[this.env.GOOGLE_CALENDAR_ID]?.busy ?? [];
-    freeBusyCache.set(cacheKey, { data: busy, expires: Date.now() + 60_000 });
-    return busy;
+    return data.calendars[this.env.GOOGLE_CALENDAR_ID]?.busy ?? [];
   }
 
   async createEvent(event: CalendarEvent): Promise<{ eventId: string }> {
@@ -209,4 +234,31 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       throw new Error(`Google deleteEvent failed (${res.status}): ${body}`);
     }
   }
+}
+
+function splitDateRangeIntoChunks(
+  from: string,
+  to: string,
+  maxChunkDays: number,
+): Array<{ from: string; to: string }> {
+  const chunks: Array<{ from: string; to: string }> = [];
+  const end = new Date(`${to}T00:00:00Z`);
+  let cursor = new Date(`${from}T00:00:00Z`);
+
+  while (cursor <= end) {
+    const chunkStart = new Date(cursor);
+    const chunkEnd = new Date(cursor);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + (maxChunkDays - 1));
+    if (chunkEnd > end) chunkEnd.setTime(end.getTime());
+
+    chunks.push({
+      from: chunkStart.toISOString().slice(0, 10),
+      to: chunkEnd.toISOString().slice(0, 10),
+    });
+
+    cursor = new Date(chunkEnd);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return chunks;
 }
