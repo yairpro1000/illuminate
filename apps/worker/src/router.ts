@@ -3,6 +3,7 @@ import type { Providers } from './providers/index.js';
 import type { Logger } from './lib/logger.js';
 
 import { handleGetSlots }      from './handlers/slots.js';
+import { handleHealth }        from './handlers/health.js';
 import { handlePayNow, handlePayLater } from './handlers/bookings.js';
 import { handleConfirm }       from './handlers/confirm.js';
 import { handleManageInfo }    from './handlers/manage-info.js';
@@ -49,6 +50,7 @@ function route(method: string, path: string, handler: Handler): Route {
 }
 
 const ROUTES: Route[] = [
+  route('GET',  '/api/health',                   handleHealth),
   route('GET',  '/api/slots',                    handleGetSlots),
   route('POST', '/api/bookings/pay-now',         handlePayNow),
   route('POST', '/api/bookings/pay-later',       handlePayLater),
