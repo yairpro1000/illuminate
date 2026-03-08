@@ -23,13 +23,13 @@ export class ResendEmailProvider implements IEmailProvider {
     this.resend = new Resend(apiKey);
   }
 
-  private async sendEmail(to: string, kind: string, subject: string, body: string): Promise<SendResult> {
+  private async sendEmail(to: string, kind: string, subject: string, body: string, replyTo?: string): Promise<SendResult> {
     const requestPayload = {
       from: EMAIL_FROM,
       to,
       subject,
       text: body,
-      reply_to: EMAIL_REPLY_TO,
+      reply_to: replyTo ?? EMAIL_REPLY_TO,
     };
 
     try {
@@ -92,12 +92,9 @@ export class ResendEmailProvider implements IEmailProvider {
     return this.sendEmail(
       'hello@yairb.ch',
       'contact_message',
-      `New contact message from ${name}`,
-      `Name: ${name}
-Email: ${email}
-
-Message:
-${message}`,
+      `New contact form message from ${name}`,
+      `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
+      email,
     );
   }
 
