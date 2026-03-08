@@ -72,6 +72,14 @@ async function getAccessToken(env: GoogleEnv): Promise<string> {
 
   if (!res.ok) {
     const body = await res.text();
+    console.error(JSON.stringify({
+      level:  'error',
+      tag:    'calendar:google',
+      step:   'token_exchange',
+      status: res.status,
+      body:   body.slice(0, 2000),
+      ts:     new Date().toISOString(),
+    }));
     throw new Error(`Google token exchange failed (${res.status}): ${body}`);
   }
 
@@ -103,6 +111,15 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
     if (!res.ok) {
       const body = await res.text();
+      console.error(JSON.stringify({
+        level:    'error',
+        tag:      'calendar:google',
+        step:     'freebusy',
+        status:   res.status,
+        calendar: this.env.GOOGLE_CALENDAR_ID,
+        body:     body.slice(0, 4000),
+        ts:       new Date().toISOString(),
+      }));
       throw new Error(`Google freeBusy failed (${res.status}): ${body}`);
     }
 

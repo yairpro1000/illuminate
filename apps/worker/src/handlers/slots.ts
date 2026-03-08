@@ -31,7 +31,11 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
     try {
       busyTimes = await ctx.providers.calendar.getBusyTimes(from, to);
     } catch (err) {
-      ctx.logger.error('slots: calendar.getBusyTimes failed', { err: String(err) });
+      ctx.logger.error('slots: calendar.getBusyTimes failed', {
+        err: err instanceof Error
+          ? { message: err.message, stack: err.stack }
+          : String(err),
+      });
       throw internalError('Calendar provider unavailable.');
     }
 
@@ -39,7 +43,11 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
     try {
       heldSlots = await ctx.providers.repository.getHeldSlots(from, to);
     } catch (err) {
-      ctx.logger.error('slots: repository.getHeldSlots failed', { err: String(err) });
+      ctx.logger.error('slots: repository.getHeldSlots failed', {
+        err: err instanceof Error
+          ? { message: err.message, stack: err.stack }
+          : String(err),
+      });
       throw internalError('Repository provider unavailable.');
     }
 
