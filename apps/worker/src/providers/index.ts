@@ -7,6 +7,7 @@ import type { IAntiBotProvider } from './antibot/interface.js';
 
 import { MockRepository } from './repository/mock.js';
 import { MockEmailProvider } from './email/mock.js';
+import { ResendEmailProvider } from './email/resend.js';
 import { MockCalendarProvider } from './calendar/mock.js';
 import { GoogleCalendarProvider } from './calendar/google.js';
 import { MockPaymentsProvider } from './payments/mock.js';
@@ -45,9 +46,7 @@ export function createProviders(env: Env): Providers {
   // email
   let email: IEmailProvider;
   if (env.EMAIL_MODE === 'resend') {
-    // const { ResendEmailProvider } = await import('./email/resend.js');
-    // email = new ResendEmailProvider(env.RESEND_API_KEY);
-    throw new Error('Resend email provider not yet implemented.');
+    email = new ResendEmailProvider(env.RESEND_API_KEY);
   } else {
     email = new MockEmailProvider();
   }

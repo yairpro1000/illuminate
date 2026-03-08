@@ -11,6 +11,7 @@ import { handleManageCancel }  from './handlers/manage-cancel.js';
 import { handleManageReschedule } from './handlers/manage-reschedule.js';
 import { handleGetEvents, handleGetEvent } from './handlers/events.js';
 import { handleEventRegister } from './handlers/registrations.js';
+import { handleContact } from './handlers/contact.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
 import { handleJobTrigger }    from './handlers/jobs.js';
 import {
@@ -61,6 +62,7 @@ const ROUTES: Route[] = [
   route('GET',  '/api/events',                   handleGetEvents),
   route('GET',  '/api/events/:slug',             handleGetEvent),
   route('POST', '/api/events/:slug/register',    handleEventRegister),
+  route('POST', '/api/contact',                  handleContact),
   route('POST', '/api/stripe/webhook',           handleStripeWebhook),
   route('POST', '/api/jobs/:name',               handleJobTrigger),
   // Dev-only

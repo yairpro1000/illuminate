@@ -1,6 +1,9 @@
-import { mockState } from '../mock-state.js';
+import { Resend } from 'resend';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event, EventRegistration } from '../../types.js';
+
+const EMAIL_FROM     = 'bookings@letsilluminate.co';
+const EMAIL_REPLY_TO = 'hello@yairb.ch';
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -9,16 +12,61 @@ function fmt(iso: string): string {
   });
 }
 
-export class MockEmailProvider implements IEmailProvider {
-  private send(to: string, kind: string, subject: string, body: string): SendResult {
-    const messageId = `mock_msg_${crypto.randomUUID()}`;
-    mockState.sentEmails.push({ to, subject, kind, body, sentAt: new Date().toISOString() });
-    console.log(`[email:mock] → ${to} | ${kind} | ${subject}`);
-    return { messageId };
+export class ResendEmailProvider implements IEmailProvider {
+  private readonly resend: Resend;
+
+  constructor(apiKey: string) {
+    if (!apiKey?.trim()) {
+      throw new Error('RESEND_API_KEY is not set');
+    }
+    this.resend = new Resend(apiKey);
+  }
+
+  private async sendEmail(to: string, kind: string, subject: string, body: string): Promise<SendResult> {
+    try {
+      const { data, error } = await (this.resend.emails.send as (payload: unknown) => Promise<{
+        data?: { id?: string } | null;
+        error?: { message: string; name?: string } | null;
+      }>)({
+        from:     EMAIL_FROM,
+        to,
+        subject,
+        text:     body,
+        reply_to: EMAIL_REPLY_TO,
+      });
+
+      if (error) {
+        console.error('[email:resend] send failed', {
+          kind,
+          to,
+          subject,
+          error: error.message,
+          code:  error.name,
+        });
+        throw new Error(`Resend error: ${error.message}`);
+      }
+
+      const messageId = data?.id;
+      if (!messageId) {
+        console.error('[email:resend] missing message id', { kind, to, subject });
+        throw new Error('Resend response missing message id');
+      }
+
+      console.log('[email:resend] sent', { kind, to, subject, messageId });
+      return { messageId };
+    } catch (err) {
+      console.error('[email:resend] exception', {
+        kind,
+        to,
+        subject,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
   }
 
   async sendContactMessage(name: string, email: string, message: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       'hello@yairb.ch',
       'contact_message',
       `New contact message from ${name}`,
@@ -31,7 +79,7 @@ ${message}`,
   }
 
   async sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_confirm_request',
       'Please confirm your booking – ILLUMINATE',
@@ -50,7 +98,7 @@ This link expires in 60 minutes. If you did not request this booking, you can ig
   }
 
   async sendBookingPaymentDue(booking: Booking, payUrl: string, manageUrl: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_payment_due',
       'Your session is reserved – payment due',
@@ -71,7 +119,7 @@ ${manageUrl}`,
   }
 
   async sendBookingConfirmation(booking: Booking, manageUrl: string, invoiceUrl: string | null): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_confirmation',
       'Your session is confirmed – ILLUMINATE',
@@ -89,7 +137,7 @@ ${manageUrl}`,
   }
 
   async sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_payment_reminder',
       'Reminder: payment due for your session',
@@ -106,7 +154,7 @@ ${payUrl}`,
   }
 
   async sendBookingReminder24h(booking: Booking, manageUrl: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_reminder_24h',
       'Your session is tomorrow – ILLUMINATE',
@@ -124,7 +172,7 @@ ${manageUrl}`,
   }
 
   async sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_followup',
       'Did you mean to book a session?',
@@ -140,7 +188,7 @@ ${confirmUrl}`,
   }
 
   async sendBookingCancellation(booking: Booking): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       booking.client_email,
       'booking_cancellation',
       'Your booking has been cancelled',
@@ -157,7 +205,7 @@ If you'd like to rebook, visit the website anytime.`,
     event: Event,
     confirmUrl: string,
   ): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       registration.primary_email,
       'registration_confirm_request',
       `Please confirm your spot – ${event.title}`,
@@ -183,7 +231,7 @@ This link expires in 15 minutes.`,
     manageUrl: string,
     invoiceUrl: string | null,
   ): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       registration.primary_email,
       'registration_confirmation',
       `You're registered – ${event.title}`,
@@ -207,7 +255,7 @@ ${manageUrl}`,
     event: Event,
     manageUrl: string,
   ): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       registration.primary_email,
       'registration_reminder_24h',
       `Tomorrow: ${event.title} – ILLUMINATE`,
@@ -230,7 +278,7 @@ ${manageUrl}`,
     event: Event,
     actionUrl: string,
   ): Promise<SendResult> {
-    return this.send(
+    return this.sendEmail(
       registration.primary_email,
       'registration_followup',
       `Still interested in ${event.title}?`,

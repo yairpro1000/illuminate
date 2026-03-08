@@ -5,6 +5,9 @@ export interface SendResult {
 }
 
 export interface IEmailProvider {
+  /** Generic website contact message. */
+  sendContactMessage(name: string, email: string, message: string): Promise<SendResult>;
+
   /**
    * Pay-later booking: ask user to confirm their email address.
    * confirmUrl points to /confirm?type=booking&token=...&id=...

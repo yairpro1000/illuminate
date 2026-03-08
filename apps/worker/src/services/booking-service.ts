@@ -70,6 +70,7 @@ export async function createPayNowBooking(
     reminder_email_opt_in:         input.reminderEmailOptIn,
     reminder_whatsapp_opt_in:      input.reminderWhatsappOptIn,
     reminder_24h_scheduled_at:     null,
+    reminder_24h_sent_at:          null,
     google_event_id:               null,
   });
 
@@ -168,6 +169,7 @@ export async function createPayLaterBooking(
     reminder_email_opt_in:         input.reminderEmailOptIn,
     reminder_whatsapp_opt_in:      input.reminderWhatsappOptIn,
     reminder_24h_scheduled_at:     null,
+    reminder_24h_sent_at:          null,
     google_event_id:               null,
   });
 
@@ -430,5 +432,4 @@ function buildConfirmUrl(siteUrl: string, type: string, rawToken: string, id: st
 function buildManageUrl(siteUrl: string, type: string, rawToken: string, id: string): string {
   return `${siteUrl}/manage?type=${type}&token=${encodeURIComponent(rawToken)}&id=${encodeURIComponent(id)}`;
 }
-
 

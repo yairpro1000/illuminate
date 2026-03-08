@@ -1,0 +1,253 @@
+/* ============================================================
+   ILLUMINATE — Contact page styles
+   Extends main.css and book.css (form elements).
+   ============================================================ */
+
+/* ── Hero ────────────────────────────────────────────────── */
+
+.contact-hero {
+  padding-top: calc(var(--section-py) + 5rem); /* clear fixed nav */
+  padding-bottom: calc(var(--section-py) * 0.75);
+  text-align: center;
+}
+
+.contact-hero__inner {
+  max-width: 38rem;
+  margin-inline: auto;
+}
+
+.contact-hero__title {
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--color-text);
+  margin-bottom: 1.25rem;
+}
+
+.contact-hero__subtitle {
+  font-size: clamp(1rem, 1.75vw, 1.125rem);
+  line-height: 1.75;
+  color: var(--color-text-muted);
+  margin-bottom: 0.875rem;
+}
+
+.contact-hero__note {
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  font-style: italic;
+}
+
+/* ── Main two-column grid ────────────────────────────────── */
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 4rem 5rem;
+  align-items: start;
+  margin-bottom: 4rem;
+}
+
+/* ── Left column ─────────────────────────────────────────── */
+
+.contact-left__heading {
+  font-size: clamp(1.25rem, 2.5vw, 1.625rem);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+  margin-bottom: 1.25rem;
+}
+
+.contact-left__text {
+  font-size: 0.9375rem;
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  margin-bottom: 1rem;
+}
+
+.contact-bullets {
+  list-style: none;
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.contact-bullets li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.contact-bullets li::before {
+  content: '';
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-lake-light);
+  flex-shrink: 0;
+}
+
+/* ── Right column — form ─────────────────────────────────── */
+
+/* Select arrow */
+.contact-select {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2359a0b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  padding-right: 2.5rem;
+}
+
+/* Textarea */
+.contact-textarea {
+  resize: vertical;
+  min-height: 8rem;
+}
+
+/* Submit button full-width */
+.contact-submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+/* Consent text */
+.contact-consent {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+  line-height: 1.6;
+  margin-top: 0.875rem;
+  text-align: center;
+}
+
+/* Submit-level error */
+.contact-submit-error {
+  font-size: 0.875rem;
+  color: oklch(65% 0.16 25);
+  background: oklch(60% 0.18 25 / 0.08);
+  border: 1px solid oklch(60% 0.18 25 / 0.2);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.contact-submit-error a {
+  color: oklch(70% 0.14 25);
+  text-decoration: underline;
+}
+
+/* ── Success state ───────────────────────────────────────── */
+
+.contact-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  gap: 1rem;
+}
+
+.contact-success__icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  color: var(--color-lake-light);
+  margin-bottom: 0.25rem;
+}
+
+.contact-success__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.contact-success__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.contact-success__text {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+  line-height: 1.7;
+  max-width: 22rem;
+}
+
+/* ── Direct email section ────────────────────────────────── */
+
+.contact-email-alt {
+  border-top: 1px solid var(--color-border);
+  padding-top: 2.5rem;
+  text-align: center;
+}
+
+.contact-email-alt__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-lake-light);
+  margin-bottom: 0.5rem;
+}
+
+.contact-email-alt__address {
+  font-size: 0.9375rem;
+  color: var(--color-text-muted);
+}
+
+.contact-email-alt__link {
+  color: var(--color-lake-light);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+
+.contact-email-alt__link:hover {
+  color: var(--color-lake);
+}
+
+/* ── Sending state (button) ──────────────────────────────── */
+
+.contact-submit[aria-busy="true"] {
+  opacity: 0.7;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Light mode overrides ────────────────────────────────── */
+
+body.theme-light .contact-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23345f7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
+}
+
+body.theme-light .contact-email-alt {
+  border-top-color: oklch(59% 0.160 200 / 0.15);
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 52rem) {
+  .contact-grid {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+  }
+
+  .contact-hero {
+    text-align: left;
+  }
+
+  .contact-hero__inner {
+    max-width: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .contact-hero {
+    padding-top: calc(var(--section-py) + 4rem);
+  }
+}

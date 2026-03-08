@@ -11,7 +11,7 @@ routes = [
 [vars]
 # Switch each provider independently: 'mock' or its real value ('supabase'/'resend'/'google'/'stripe'/'turnstile')
 REPOSITORY_MODE = "mock"
-EMAIL_MODE      = "mock"
+EMAIL_MODE      = "resend"
 CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"
