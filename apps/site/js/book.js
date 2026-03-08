@@ -39,6 +39,7 @@ function parseBookingContext() {
 }
 
 const CTX = parseBookingContext();
+const SLOT_WINDOW_MONTHS = 4;
 
 // Analytics — log booking context on page load
 console.log('[Book] Booking context:', CTX);
@@ -249,7 +250,7 @@ function buildCalendar() {
   const now = new Date();
   const canPrev = year > now.getFullYear()
     || (year === now.getFullYear() && month > now.getMonth());
-  const maxDate = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + SLOT_WINDOW_MONTHS + 1, 1);
   const canNext = new Date(year, month + 1, 1) < maxDate;
 
   const DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -947,10 +948,10 @@ async function submitEventRegistration() {
 
 async function init() {
   if (CTX.source !== 'evening') {
-    // Fetch 6 weeks of available slots for the calendar
+    // Fetch 4 months of available slots for the calendar
     const from = toYMD(new Date());
     const future = new Date();
-    future.setDate(future.getDate() + 42);
+    future.setMonth(future.getMonth() + SLOT_WINDOW_MONTHS);
     const to = toYMD(future);
 
     try {
