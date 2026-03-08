@@ -10,10 +10,10 @@
 /* ── Slot availability ───────────────────────────────────── */
 
 /**
- * GET /api/slots?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...
+ * GET /api/slots?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...&type=intro|session
  */
-function getSlots(from, to, tz = 'Europe/Zurich') {
-  const params = new URLSearchParams({ from, to, tz });
+function getSlots(from, to, type, tz = 'Europe/Zurich') {
+  const params = new URLSearchParams({ from, to, type, tz });
   return _get('/api/slots?' + params.toString());
 }
 

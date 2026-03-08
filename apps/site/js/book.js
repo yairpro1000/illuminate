@@ -952,9 +952,8 @@ async function init() {
     const to = toYMD(future);
 
     try {
-      const data = await getSlots(from, to);
-      const filtered = data.slots.filter(slot => slot.type === CTX.slotType);
-      S.slots = filtered;
+      const data = await getSlots(from, to, CTX.slotType);
+      S.slots = data.slots;
       S.slotsByDate = {};
       filtered.forEach(slot => {
         const day = slot.start.slice(0, 10);
