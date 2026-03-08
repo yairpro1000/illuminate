@@ -21,6 +21,13 @@ export interface Env {
   GOOGLE_OAUTH_REFRESH_TOKEN: string;
   GOOGLE_CALENDAR_ID: string;
 
+  // Service account credentials (used by GoogleCalendarProvider)
+  GOOGLE_CLIENT_EMAIL: string;
+  GOOGLE_PRIVATE_KEY: string;
+  GOOGLE_TOKEN_URI: string;
+
+  TIMEZONE: string; // e.g. 'Europe/Zurich'
+
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PUBLISHABLE_KEY: string;

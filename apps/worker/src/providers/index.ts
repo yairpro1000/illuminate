@@ -8,6 +8,7 @@ import type { IAntiBotProvider } from './antibot/interface.js';
 import { MockRepository } from './repository/mock.js';
 import { MockEmailProvider } from './email/mock.js';
 import { MockCalendarProvider } from './calendar/mock.js';
+import { GoogleCalendarProvider } from './calendar/google.js';
 import { MockPaymentsProvider } from './payments/mock.js';
 import { MockAntiBotProvider } from './antibot/mock.js';
 
@@ -54,9 +55,7 @@ export function createProviders(env: Env): Providers {
   // calendar
   let calendar: ICalendarProvider;
   if (env.CALENDAR_MODE === 'google') {
-    // const { GoogleCalendarProvider } = await import('./calendar/google.js');
-    // calendar = new GoogleCalendarProvider(env);
-    throw new Error('Google Calendar provider not yet implemented.');
+    calendar = new GoogleCalendarProvider(env);
   } else {
     calendar = new MockCalendarProvider();
   }

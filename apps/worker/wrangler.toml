@@ -6,12 +6,15 @@ compatibility_date = "2024-09-23"
 # Switch each provider independently: 'mock' or its real value ('supabase'/'resend'/'google'/'stripe'/'turnstile')
 REPOSITORY_MODE = "mock"
 EMAIL_MODE      = "resend"
-CALENDAR_MODE   = "mock"
+CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"
 SITE_URL = "http://localhost:8080"
 SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
 SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
+GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
+GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
+TIMEZONE           = "Europe/Zurich"
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL
@@ -20,7 +23,8 @@ SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
 # GOOGLE_OAUTH_CLIENT_ID
 # GOOGLE_OAUTH_CLIENT_SECRET
 # GOOGLE_OAUTH_REFRESH_TOKEN
-# GOOGLE_CALENDAR_ID
+# GOOGLE_CLIENT_EMAIL         ← service account email
+# GOOGLE_PRIVATE_KEY          ← service account private key (PEM)
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
 # TURNSTILE_SECRET_KEY
