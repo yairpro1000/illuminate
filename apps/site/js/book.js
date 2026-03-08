@@ -14,11 +14,11 @@
 
 function parseBookingContext() {
   const p = new URLSearchParams(window.location.search);
-  const source = p.get('source') || 'generic';
+  const source = p.get('source') || '1_on_1';
 
-  if (source === 'event') {
+  if (source === 'evening') {
     return {
-      source:       'event',
+      source:       'evening',
       eventSlug:    p.get('eventSlug')    || '',
       eventTitle:   p.get('eventTitle')   || 'ILLUMINATE Evening',
       eventDate:    p.get('eventDate')    || '',
@@ -31,7 +31,9 @@ function parseBookingContext() {
     };
   }
 
-  return { source: 'generic' };
+  // 'type' controls which slot kind is shown: 'intro' | 'session'
+  // Defaults to 'intro' — all current CTAs are for intro conversations.
+  return { source: '1_on_1', slotType: p.get('type') || 'intro' };
 }
 
 const CTX = parseBookingContext();
@@ -40,7 +42,7 @@ const CTX = parseBookingContext();
 console.log('[Book] Booking context:', CTX);
 console.log(
   '[Book] Source:',
-  CTX.source === 'event'
+  CTX.source === 'evening'
     ? 'event — ' + CTX.eventTitle + ' (' + CTX.eventDate + ')'
     : 'generic (1:1 booking)'
 );
@@ -148,7 +150,7 @@ function render() {
 }
 
 function buildShell() {
-  const isEvent    = CTX.source === 'event';
+  const isEvent    = CTX.source === 'evening';
   const totalSteps = isEvent ? 3 : 5;
   const isFinal    = (isEvent && S.step === 3) || (!isEvent && S.step === 5);
 
@@ -601,7 +603,7 @@ function buildEventReview() {
 /* ── Confirmation screen (both flows, final step) ────────── */
 
 function buildConfirmation() {
-  const isEvent = CTX.source === 'event';
+  const isEvent = CTX.source === 'evening';
   const isPaid  = isEvent ? CTX.isPaid : S.paymentMethod === 'pay-now';
 
   // Non-paid flows — simple success
@@ -817,7 +819,7 @@ function attachListeners() {
    ══════════════════════════════════════════════════════════ */
 
 function handleNext() {
-  const isEvent = CTX.source === 'event';
+  const isEvent = CTX.source === 'evening';
   let errs = {};
 
   if (isEvent && S.step === 1) {
@@ -845,7 +847,7 @@ function handleBack() {
   S.step--;
 
   // Going back to calendar (Flow A step 1): restore day view if slot was selected
-  if (!CTX.source || CTX.source === 'generic') {
+  if (!CTX.source || CTX.source === '1_on_1') {
     if (S.step === 1 && S.selectedSlot) {
       const d = new Date(S.selectedSlot.start);
       S.calViewDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -871,7 +873,7 @@ async function handleSubmit() {
 
   try {
     let checkoutUrl = null;
-    if (CTX.source === 'event') {
+    if (CTX.source === 'evening') {
       const result = await submitEventRegistration();
       checkoutUrl = result.checkout_url || null;
     } else {
@@ -942,7 +944,7 @@ async function submitEventRegistration() {
    ══════════════════════════════════════════════════════════ */
 
 async function init() {
-  if (CTX.source !== 'event') {
+  if (CTX.source !== 'evening') {
     // Fetch 6 weeks of available slots for the calendar
     const from = toYMD(new Date());
     const future = new Date();
@@ -951,9 +953,10 @@ async function init() {
 
     try {
       const data = await getSlots(from, to);
-      S.slots = data.slots;
+      const filtered = data.slots.filter(slot => slot.type === CTX.slotType);
+      S.slots = filtered;
       S.slotsByDate = {};
-      data.slots.forEach(slot => {
+      filtered.forEach(slot => {
         const day = slot.start.slice(0, 10);
         if (!S.slotsByDate[day]) S.slotsByDate[day] = [];
         S.slotsByDate[day].push(slot);

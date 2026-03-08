@@ -27,7 +27,7 @@
 
   function bookingUrl(event) {
     const params = new URLSearchParams({
-      source:        'event',
+      source:        'evening',
       eventSlug:     event.id,
       eventTitle:    event.title,
       eventDate:     event.date_iso,
