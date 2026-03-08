@@ -53,19 +53,20 @@ function eventRegister(slug, payload) {
 /* ── Base URL ─────────────────────────────────────────────
    In production (Cloudflare Pages + Worker on same domain)
    relative paths work fine — leave as empty string.
-   In local dev, set this to the Worker's address so the
-   site on :8080 can reach the Worker on :8787.
+   In local dev, default to the Worker's address so the
+   site on :5500/:8080 can reach the Worker on :8787.
    Override via: localStorage.setItem('API_BASE', 'http://localhost:8787')
    ──────────────────────────────────────────────────────── */
 
+const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const API_BASE = localStorage.getItem('API_BASE') ||
-  (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
+  (LOCAL_DEV_HOSTS.has(location.hostname) ? 'http://localhost:8787' : '');
 
 /* ── Internal fetch helpers ──────────────────────────────── */
 
 async function _get(path) {
   const res = await fetch(API_BASE + path);
-  const data = await res.json();
+  const data = await parseApiResponseBody(res);
   if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
   return data;
 }
@@ -76,7 +77,24 @@ async function _post(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(body),
   });
-  const data = await res.json();
+  const data = await parseApiResponseBody(res);
   if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
   return data;
+}
+
+async function parseApiResponseBody(res) {
+  const contentType = (res.headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) return res.json();
+
+  const text = await res.text();
+  const trimmed = text.trim();
+  const looksLikeJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+  if (looksLikeJson) {
+    try { return JSON.parse(text); } catch (_) { /* handled below */ }
+  }
+
+  throw Object.assign(
+    new Error('API returned non-JSON response (likely wrong API host or route).'),
+    { status: res.status, data: { message: text.slice(0, 180) } },
+  );
 }

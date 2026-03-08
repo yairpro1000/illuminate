@@ -15,12 +15,16 @@ EMAIL_MODE      = "resend"
 CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"
-SITE_URL = "http://localhost:8080"
+SITE_URL = "https://letsilluminate.co"
 SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
 SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
+
+# Local-only overrides (used by `wrangler dev --env local`)
+[env.local.vars]
+SITE_URL = "http://localhost:8080"
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL
