@@ -14,7 +14,8 @@
       "WebFetch(domain:issues.chromium.org)",
       "WebFetch(domain:dev.to)",
       "WebFetch(domain:developers.cloudflare.com)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npx wrangler:*)"
     ]
   }
 }

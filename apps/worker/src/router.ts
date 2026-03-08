@@ -85,6 +85,8 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     return jsonResponse({ error: 'NOT_FOUND', message: 'Not found' }, 404);
   }
 
+  console.log(`[router] ${request.method} ${url.pathname}`);
+
   for (const r of ROUTES) {
     const match = r.pattern.exec(url.pathname);
     if (!match) continue;
@@ -93,13 +95,16 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
       return origin ? addCors(res, origin) : res;
     }
 
+    console.log(`[router] matched → ${r.method} ${r.pattern}`);
     const params: Record<string, string> = {};
     r.keys.forEach((k, i) => { params[k] = match[i + 1] ?? ''; });
 
     const res = await r.handler(request, ctx, params);
+    console.log(`[router] response status ${res.status}`);
     return origin ? addCors(res, origin) : res;
   }
 
+  console.log(`[router] no route matched for ${url.pathname}`);
   const res = jsonResponse({ error: 'NOT_FOUND', message: 'Not found' }, 404);
   return origin ? addCors(res, origin) : res;
 }
