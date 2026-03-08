@@ -17,17 +17,23 @@ type SlotType = 'intro' | 'session';
 
 export async function handleGetSlots(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    const url  = new URL(request.url);
-    const from = url.searchParams.get('from');
-    const to   = url.searchParams.get('to');
-    const tz   = url.searchParams.get('tz') ?? ctx.env.TIMEZONE ?? 'Europe/Zurich';
+    const url      = new URL(request.url);
+    const from     = url.searchParams.get('from');
+    const to       = url.searchParams.get('to');
+    const tz       = url.searchParams.get('tz') ?? ctx.env.TIMEZONE ?? 'Europe/Zurich';
+    const typeParam = url.searchParams.get('type');
 
     if (!from || !to) throw badRequest('from and to query params are required');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
       throw badRequest('from and to must be YYYY-MM-DD');
     }
+    if (!typeParam) throw badRequest('type query param is required');
+    if (typeParam !== 'intro' && typeParam !== 'session') {
+      throw badRequest('type must be "intro" or "session"');
+    }
+    const slotType = typeParam as SlotType;
 
-    console.log('slots request', { from, to, tz });
+    console.log('slots request', { from, to, tz, type: slotType });
 
     let busyTimes: Array<{ start: string; end: string }>;
     try {
@@ -57,11 +63,14 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
       if (dow !== 0 && dow !== 6) { // Mon–Fri only
         const ymd = cur.toISOString().slice(0, 10);
 
-        for (const h of INTRO_STARTS) {
-          addCandidate('intro', ymd, h, INTRO_DURATION_MS, tz, allBusy, slots);
-        }
-        for (const h of SESSION_STARTS) {
-          addCandidate('session', ymd, h, SESSION_DURATION_MS, tz, allBusy, slots);
+        if (slotType === 'intro') {
+          for (const h of INTRO_STARTS) {
+            addCandidate('intro', ymd, h, INTRO_DURATION_MS, tz, allBusy, slots);
+          }
+        } else {
+          for (const h of SESSION_STARTS) {
+            addCandidate('session', ymd, h, SESSION_DURATION_MS, tz, allBusy, slots);
+          }
         }
       }
       cur.setUTCDate(cur.getUTCDate() + 1);
