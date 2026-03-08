@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { EmailProviderError } from './interface.js';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event, EventRegistration } from '../../types.js';
 
@@ -23,45 +24,67 @@ export class ResendEmailProvider implements IEmailProvider {
   }
 
   private async sendEmail(to: string, kind: string, subject: string, body: string): Promise<SendResult> {
+    const requestPayload = {
+      from: EMAIL_FROM,
+      to,
+      subject,
+      text: body,
+      reply_to: EMAIL_REPLY_TO,
+    };
+
     try {
       const { data, error } = await (this.resend.emails.send as (payload: unknown) => Promise<{
         data?: { id?: string } | null;
         error?: { message: string; name?: string } | null;
-      }>)({
-        from:     EMAIL_FROM,
-        to,
-        subject,
-        text:     body,
-        reply_to: EMAIL_REPLY_TO,
-      });
+      }>)(requestPayload);
 
       if (error) {
-        console.error('[email:resend] send failed', {
+        const providerDebug = {
+          provider: 'resend',
           kind,
-          to,
-          subject,
-          error: error.message,
-          code:  error.name,
-        });
-        throw new Error(`Resend error: ${error.message}`);
+          request: requestPayload,
+          response: { data: data ?? null, error },
+        };
+        console.error('[email:resend] send failed', providerDebug);
+        throw new EmailProviderError(`Resend error: ${error.message}`, providerDebug);
       }
 
       const messageId = data?.id;
       if (!messageId) {
-        console.error('[email:resend] missing message id', { kind, to, subject });
-        throw new Error('Resend response missing message id');
+        const providerDebug = {
+          provider: 'resend',
+          kind,
+          request: requestPayload,
+          response: { data: data ?? null, error: null },
+          issue: 'missing_message_id',
+        };
+        console.error('[email:resend] missing message id', providerDebug);
+        throw new EmailProviderError('Resend response missing message id', providerDebug);
       }
 
       console.log('[email:resend] sent', { kind, to, subject, messageId });
-      return { messageId };
+      return {
+        messageId,
+        debug: {
+          provider: 'resend',
+          kind,
+          request: requestPayload,
+          response: { data: data ?? null, error: null },
+        },
+      };
     } catch (err) {
-      console.error('[email:resend] exception', {
+      if (err instanceof EmailProviderError) throw err;
+
+      const providerDebug = {
+        provider: 'resend',
         kind,
-        to,
-        subject,
-        err: err instanceof Error ? err.message : String(err),
+        request: requestPayload,
+        exception: err instanceof Error ? err.message : String(err),
+      };
+      console.error('[email:resend] exception', {
+        ...providerDebug,
       });
-      throw err;
+      throw new EmailProviderError('Resend exception while sending email', providerDebug);
     }
   }
 

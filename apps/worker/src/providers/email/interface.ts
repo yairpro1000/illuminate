@@ -2,6 +2,17 @@ import type { Booking, Event, EventRegistration } from '../../types.js';
 
 export interface SendResult {
   messageId: string;
+  debug?: Record<string, unknown>;
+}
+
+export class EmailProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly debug: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'EmailProviderError';
+  }
 }
 
 export interface IEmailProvider {

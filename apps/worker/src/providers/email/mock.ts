@@ -14,7 +14,14 @@ export class MockEmailProvider implements IEmailProvider {
     const messageId = `mock_msg_${crypto.randomUUID()}`;
     mockState.sentEmails.push({ to, subject, kind, body, sentAt: new Date().toISOString() });
     console.log(`[email:mock] → ${to} | ${kind} | ${subject}`);
-    return { messageId };
+    return {
+      messageId,
+      debug: {
+        provider: 'mock',
+        kind,
+        request: { to, subject, body },
+      },
+    };
   }
 
   async sendContactMessage(name: string, email: string, message: string): Promise<SendResult> {
