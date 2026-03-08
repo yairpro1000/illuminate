@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, internalError, errorResponse } from '../lib/errors.js';
+import { badRequest, errorResponse, jsonResponse } from '../lib/errors.js';
 
 // ── Slot rules ────────────────────────────────────────────────────────────────
 
@@ -27,28 +27,22 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
       throw badRequest('from and to must be YYYY-MM-DD');
     }
 
+    console.log('slots request', { from, to, tz });
+
     let busyTimes: Array<{ start: string; end: string }>;
     try {
       busyTimes = await ctx.providers.calendar.getBusyTimes(from, to);
     } catch (err) {
-      ctx.logger.error('slots: calendar.getBusyTimes failed', {
-        err: err instanceof Error
-          ? { message: err.message, stack: err.stack }
-          : String(err),
-      });
-      throw internalError('Calendar provider unavailable.');
+      console.error('slots: calendar unavailable', err instanceof Error ? err.message : String(err));
+      return jsonResponse({ ok: false, message: 'Calendar temporarily unavailable' }, 500);
     }
 
     let heldSlots: Array<{ start: string; end: string }>;
     try {
       heldSlots = await ctx.providers.repository.getHeldSlots(from, to);
     } catch (err) {
-      ctx.logger.error('slots: repository.getHeldSlots failed', {
-        err: err instanceof Error
-          ? { message: err.message, stack: err.stack }
-          : String(err),
-      });
-      throw internalError('Repository provider unavailable.');
+      console.error('slots: repository unavailable', err instanceof Error ? err.message : String(err));
+      return jsonResponse({ ok: false, message: 'Calendar temporarily unavailable' }, 500);
     }
 
     const allBusy = [...busyTimes, ...heldSlots];
@@ -76,7 +70,7 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
     // Sort chronologically (ISO strings sort correctly within the same offset)
     slots.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-    return ok({ timezone: tz, slots });
+    return jsonResponse({ ok: true, timezone: tz, slots });
   } catch (err) {
     return errorResponse(err);
   }
