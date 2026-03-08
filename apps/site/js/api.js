@@ -13,7 +13,10 @@
  * GET /api/slots?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...&type=intro|session
  */
 function getSlots(from, to, type, tz = 'Europe/Zurich') {
-  const params = new URLSearchParams({ from, to, type, tz });
+  // Always send a valid type; backend requires it.
+  const slotType = type === 'session' ? 'session' : 'intro';
+  const params = new URLSearchParams({ from, to, tz });
+  params.set('type', slotType);
   return _get('/api/slots?' + params.toString());
 }
 

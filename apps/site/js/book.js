@@ -32,8 +32,10 @@ function parseBookingContext() {
   }
 
   // 'type' controls which slot kind is shown: 'intro' | 'session'
-  // Defaults to 'intro' — all current CTAs are for intro conversations.
-  return { source: '1_on_1', slotType: p.get('type') || 'intro' };
+  // Default safely to 'intro' for unknown/missing values.
+  const rawType = (p.get('type') || '').toLowerCase();
+  const slotType = rawType === 'session' ? 'session' : 'intro';
+  return { source: '1_on_1', slotType };
 }
 
 const CTX = parseBookingContext();
@@ -953,9 +955,9 @@ async function init() {
 
     try {
       const data = await getSlots(from, to, CTX.slotType);
-      S.slots = data.slots;
+      S.slots = Array.isArray(data.slots) ? data.slots : [];
       S.slotsByDate = {};
-      filtered.forEach(slot => {
+      S.slots.forEach(slot => {
         const day = slot.start.slice(0, 10);
         if (!S.slotsByDate[day]) S.slotsByDate[day] = [];
         S.slotsByDate[day].push(slot);
