@@ -3,18 +3,26 @@
    Extends main.css and book.css (form elements).
    ============================================================ */
 
-/* ── Hero ────────────────────────────────────────────────── */
+/* ── Section ─────────────────────────────────────────────── */
 
-.contact-hero {
+.contact-section {
   padding-top: calc(var(--section-py) + 5rem); /* clear fixed nav */
-  padding-bottom: calc(var(--section-py) * 0.75);
-  text-align: center;
+  padding-bottom: var(--section-py);
 }
 
-.contact-hero__inner {
+/* ── Panel (unified hero + form container) ───────────────── */
+
+.contact-panel {
   max-width: 38rem;
   margin-inline: auto;
 }
+
+.contact-panel__header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+/* ── Hero text ───────────────────────────────────────────── */
 
 .contact-hero__title {
   font-size: clamp(2.25rem, 5vw, 3.5rem);
@@ -28,72 +36,18 @@
 .contact-hero__subtitle {
   font-size: clamp(1rem, 1.75vw, 1.125rem);
   line-height: 1.75;
-  color: var(--color-text-muted);
+  color: var(--color-lake-light);
   margin-bottom: 0.875rem;
 }
 
 .contact-hero__note {
   font-size: 0.875rem;
-  color: var(--color-text-subtle);
+  color: var(--color-lake-light);
   font-style: italic;
 }
 
-/* ── Main two-column grid ────────────────────────────────── */
+/* ── Select arrow ────────────────────────────────────────── */
 
-.contact-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 4rem 5rem;
-  align-items: start;
-  margin-bottom: 4rem;
-}
-
-/* ── Left column ─────────────────────────────────────────── */
-
-.contact-left__heading {
-  font-size: clamp(1.25rem, 2.5vw, 1.625rem);
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  color: var(--color-text);
-  margin-bottom: 1.25rem;
-}
-
-.contact-left__text {
-  font-size: 0.9375rem;
-  line-height: 1.8;
-  color: var(--color-text-muted);
-  margin-bottom: 1rem;
-}
-
-.contact-bullets {
-  list-style: none;
-  margin-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.contact-bullets li {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.contact-bullets li::before {
-  content: '';
-  display: block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-lake-light);
-  flex-shrink: 0;
-}
-
-/* ── Right column — form ─────────────────────────────────── */
-
-/* Select arrow */
 .contact-select {
   cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2359a0b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
@@ -102,20 +56,23 @@
   padding-right: 2.5rem;
 }
 
-/* Textarea */
+/* ── Textarea ────────────────────────────────────────────── */
+
 .contact-textarea {
   resize: vertical;
   min-height: 8rem;
 }
 
-/* Submit button full-width */
+/* ── Submit button full-width ────────────────────────────── */
+
 .contact-submit {
   width: 100%;
   justify-content: center;
   margin-top: 0.25rem;
 }
 
-/* Consent text */
+/* ── Consent text ────────────────────────────────────────── */
+
 .contact-consent {
   font-size: 0.75rem;
   color: var(--color-text-subtle);
@@ -124,7 +81,8 @@
   text-align: center;
 }
 
-/* Submit-level error */
+/* ── Submit-level error ──────────────────────────────────── */
+
 .contact-submit-error {
   font-size: 0.875rem;
   color: oklch(65% 0.16 25);
@@ -142,6 +100,8 @@
 }
 
 /* ── Success state ───────────────────────────────────────── */
+
+.contact-success[hidden] { display: none; }
 
 .contact-success {
   display: flex;
@@ -183,6 +143,7 @@
 .contact-email-alt {
   border-top: 1px solid var(--color-border);
   padding-top: 2.5rem;
+  margin-top: 3rem;
   text-align: center;
 }
 
@@ -222,32 +183,35 @@
 /* ── Light mode overrides ────────────────────────────────── */
 
 body.theme-light .contact-select {
+  background-color: oklch(99% 0 0 / 0.7);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23345f7a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
 }
 
 body.theme-light .contact-email-alt {
   border-top-color: oklch(59% 0.160 200 / 0.15);
 }
 
-/* ── Responsive ──────────────────────────────────────────── */
-
-@media (max-width: 52rem) {
-  .contact-grid {
-    grid-template-columns: 1fr;
-    gap: 3rem;
-  }
-
-  .contact-hero {
-    text-align: left;
-  }
-
-  .contact-hero__inner {
-    max-width: none;
-  }
+/* Glass panel for legibility over the background image */
+body.theme-light .contact-panel {
+  background: oklch(99% 0.005 195 / 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 2.5rem;
+  box-shadow: 0 4px 20px oklch(14% 0.025 210 / 0.06);
 }
 
+/* ── Responsive ──────────────────────────────────────────── */
+
 @media (max-width: 30rem) {
-  .contact-hero {
+  .contact-section {
     padding-top: calc(var(--section-py) + 4rem);
+  }
+
+  body.theme-light .contact-panel {
+    padding: 1.5rem;
   }
 }
