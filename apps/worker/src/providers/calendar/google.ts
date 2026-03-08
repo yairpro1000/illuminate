@@ -28,8 +28,10 @@ async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
 
   const signingInput = `${header64}.${payload64}`;
 
-  // Strip PEM headers/footers and whitespace to get raw base64 DER
+  // Strip PEM headers/footers and whitespace to get raw base64 DER.
+  // Cloudflare secrets often store newlines as literal \n — normalise first.
   const pemBody = env.GOOGLE_PRIVATE_KEY
+    .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
     .replace(/\s+/g, '');

@@ -2,6 +2,11 @@ name = "yairb-pa-api"
 main = "src/index.ts"
 compatibility_date = "2026-03-05"
 
+# Serve the PA API under the PA subdomain. The PA frontend calls `/api/*` on its own origin.
+routes = [
+  { pattern = "pa.letsilluminate.co/api/*", zone_name = "letsilluminate.co" }
+]
+
 [observability]
 enabled = false
 head_sampling_rate = 1
