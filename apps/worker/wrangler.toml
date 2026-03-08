@@ -1,10 +1,7 @@
-name = "illuminate"
+name = "yairb-booking"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
-routes = [
-  { pattern = "letsilluminate.co/api/*", zone_name = "letsilluminate.co" }
-]
 
 [vars]
 # Switch each provider independently: 'mock' or its real value ('supabase'/'resend'/'google'/'stripe'/'turnstile')
@@ -34,9 +31,5 @@ TIMEZONE           = "Europe/Zurich"
 # TURNSTILE_SECRET_KEY
 # JOB_SECRET
 
-[triggers]
-# checkout-expiry runs every 5 min
-# followups + cancellations run every 15 min
-# payment-due reminders run every 30 min
-# 24h reminders run every hour
-crons = ["*/5 * * * *", "*/15 * * * *", "*/30 * * * *", "0 * * * *"]
+# [triggers] — re-enable when moving to production (requires paid plan for >5 crons account-wide)
+# crons = ["*/5 * * * *", "*/15 * * * *", "*/30 * * * *", "0 * * * *"]

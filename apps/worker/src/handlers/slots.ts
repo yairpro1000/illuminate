@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ok, badRequest, internalError, errorResponse } from '../lib/errors.js';
 
 // ── Slot rules ────────────────────────────────────────────────────────────────
 
@@ -27,10 +27,21 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
       throw badRequest('from and to must be YYYY-MM-DD');
     }
 
-    const [busyTimes, heldSlots] = await Promise.all([
-      ctx.providers.calendar.getBusyTimes(from, to),
-      ctx.providers.repository.getHeldSlots(from, to),
-    ]);
+    let busyTimes: Array<{ start: string; end: string }>;
+    try {
+      busyTimes = await ctx.providers.calendar.getBusyTimes(from, to);
+    } catch (err) {
+      ctx.logger.error('slots: calendar.getBusyTimes failed', { err: String(err) });
+      throw internalError('Calendar provider unavailable.');
+    }
+
+    let heldSlots: Array<{ start: string; end: string }>;
+    try {
+      heldSlots = await ctx.providers.repository.getHeldSlots(from, to);
+    } catch (err) {
+      ctx.logger.error('slots: repository.getHeldSlots failed', { err: String(err) });
+      throw internalError('Repository provider unavailable.');
+    }
 
     const allBusy = [...busyTimes, ...heldSlots];
 

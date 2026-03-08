@@ -3,6 +3,9 @@
   "name": "yairb-pa-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-03-05",
+  "routes": [
+    { "pattern": "pa.letsilluminate.co/api/*", "zone_name": "letsilluminate.co" }
+  ],
   "vars": {
     "PA_API_PORT": "8788",
     "PA_ADMIN_USER": "admin",
@@ -12,6 +15,7 @@
     "PA_LOG_CONSOLE_MAX": "20000",
     "SUPABASE_URL": "https://ljblpufziablobrhtpfz.supabase.co"
   },
+  "ai": { "binding": "AI" },
   "observability": {
     "enabled": false,
     "head_sampling_rate": 1,
