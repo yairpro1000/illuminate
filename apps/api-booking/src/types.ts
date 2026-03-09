@@ -9,6 +9,16 @@ export type BookingStatus =
   | 'cancelled'
   | 'expired';
 
+// New top-level lifecycle status
+export type BookingLifecycleStatus = 'pending' | 'confirmed' | 'cancelled' | 'expired';
+
+// New orthogonal sub-statuses
+export type PaymentMode = 'free' | 'pay_now' | 'pay_later';
+export type PaymentSubStatus = 'not_required' | 'pending' | 'paid';
+export type EmailSubStatus = 'not_required' | 'pending_confirmation' | 'confirmed' | 'expired';
+export type CalendarSubStatus = 'not_required' | 'pending' | 'created' | 'removed';
+export type SlotSubStatus = 'reserved' | 'released';
+
 export type SessionType = 'intro' | 'session';
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
 export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
@@ -44,6 +54,13 @@ export interface Booking {
   client_id: string;
   source: BookingSource;
   status: BookingStatus;
+  // New lifecycle model (additive, backward compatible)
+  booking_status?: BookingLifecycleStatus | null;
+  payment_mode?: PaymentMode | null;
+  payment_status_v2?: PaymentSubStatus | null;
+  email_status?: EmailSubStatus | null;
+  calendar_status?: CalendarSubStatus | null;
+  slot_status?: SlotSubStatus | null;
   event_id: string | null;
   session_type: SessionType | null;
   starts_at: string;
@@ -59,6 +76,8 @@ export interface Booking {
   checkout_session_id: string | null;
   checkout_hold_expires_at: string | null;
   payment_due_at: string | null;
+  hold_expires_at?: string | null; // mirrors checkout_hold_expires_at for unified terminology
+  payment_due_at_v2?: string | null; // alias if needed
   payment_due_reminder_scheduled_at: string | null;
   payment_due_reminder_sent_at: string | null;
   followup_scheduled_at: string | null;
@@ -68,6 +87,16 @@ export interface Booking {
   reminder_24h_scheduled_at: string | null;
   reminder_24h_sent_at: string | null;
   google_event_id: string | null;
+  // Derived milestone timestamps
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+  cancelled_at?: string | null;
+  expired_at?: string | null;
+  reminder_36h_sent_at?: string | null;
+  last_payment_link_sent_at?: string | null;
+  expired_reason?: 'hold_timeout' | 'payment_timeout' | 'email_confirmation_timeout' | null;
+  cancel_reason?: 'user_cancelled' | 'admin_cancelled' | 'payment_deadline_missed' | null;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 
@@ -249,6 +278,23 @@ export type BookingUpdate = Partial<
     | 'reminder_24h_scheduled_at'
     | 'reminder_24h_sent_at'
     | 'google_event_id'
+    | 'booking_status'
+    | 'payment_mode'
+    | 'payment_status_v2'
+    | 'email_status'
+    | 'calendar_status'
+    | 'slot_status'
+    | 'hold_expires_at'
+    | 'payment_due_at_v2'
+    | 'email_confirmed_at'
+    | 'confirmed_at'
+    | 'cancelled_at'
+    | 'expired_at'
+    | 'reminder_36h_sent_at'
+    | 'last_payment_link_sent_at'
+    | 'expired_reason'
+    | 'cancel_reason'
+    | 'metadata'
   >
 >;
 

@@ -31,6 +31,26 @@ export const mockState = {
   payments: new Map<string, Payment>(),
   failureLogs: [] as FailureLog[],
   sentEmails: [] as SentEmail[],
+  // booking audit/events recorded by the mock repository
+  bookingEvents: [] as Array<{
+    id: string;
+    booking_id: string;
+    event_type: string;
+    source: string;
+    payload?: Record<string, unknown> | null;
+    created_at: string;
+  }> ,
+  // simple outbox for side-effects (emails, calendar ops, etc.)
+  sideEffects: [] as Array<{
+    id: string;
+    booking_id: string;
+    effect_type: string;
+    payload: Record<string, unknown> | null;
+    status: 'pending' | 'processing' | 'done' | 'failed';
+    error_message?: string | null;
+    created_at: string;
+    updated_at?: string | null;
+  }>,
 };
 
 const nowIso = '2026-01-01T00:00:00Z';

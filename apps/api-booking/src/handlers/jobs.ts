@@ -14,6 +14,7 @@ import {
   send24hBookingReminder,
   sendPendingBookingFollowup,
 } from '../services/booking-service.js';
+import { buildManageUrl } from '../services/booking-service.js';
 
 export interface JobContext {
   providers: Providers;
@@ -60,6 +61,7 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
   switch (cron) {
     case '*/5 * * * *':
       await runCheckoutExpiry(ctx);
+      await runSideEffectsOutbox(ctx);
       await runCalendarSyncRetries(ctx);
       break;
     case '*/15 * * * *':
@@ -143,7 +145,7 @@ function logJobCompleted(ctx: JobContext, jobName: string, summary: JobSummary):
 
 // ── Job: expire checkout holds ──────────────────────────────────────────────
 
-async function runCheckoutExpiry(ctx: JobContext): Promise<void> {
+export async function runCheckoutExpiry(ctx: JobContext): Promise<void> {
   const { providers, logger } = ctx;
   const jobName = 'checkout-expiry';
   logJobStarted(ctx, jobName);
@@ -283,7 +285,7 @@ async function runUnconfirmedFollowups(ctx: JobContext): Promise<void> {
 
 // ── Job: payment-due reminders ──────────────────────────────────────────────
 
-async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
+export async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
   const { providers, env } = ctx;
   const jobName = 'payment-due-reminders';
   logJobStarted(ctx, jobName);
@@ -294,13 +296,11 @@ async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
 
   for (const b of bookings) {
     try {
-      const payment = await providers.repository.getPaymentByBookingId(b.id);
-      const payUrl = payment?.checkout_url;
-      if (!payUrl) {
-        throw new Error('No checkout URL available for payment reminder');
-      }
-      await providers.email.sendBookingPaymentReminder(b, payUrl);
-      await providers.repository.updateBooking(b.id, { payment_due_reminder_sent_at: new Date().toISOString() });
+      await providers.repository.enqueueSideEffect({
+        booking_id: b.id,
+        effect_type: 'email.payment_reminder.session',
+        payload: {},
+      });
       succeeded++;
     } catch (err) {
       failed++;
@@ -325,7 +325,7 @@ async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
 
 // ── Job: payment-due cancellations ──────────────────────────────────────────
 
-async function runPaymentDueCancellations(ctx: JobContext): Promise<void> {
+export async function runPaymentDueCancellations(ctx: JobContext): Promise<void> {
   const { providers, logger } = ctx;
   const jobName = 'payment-due-cancellations';
   logJobStarted(ctx, jobName);
@@ -366,7 +366,7 @@ async function runPaymentDueCancellations(ctx: JobContext): Promise<void> {
 
 // ── Job: 24h reminders ─────────────────────────────────────────────────────
 
-async function run24hReminders(ctx: JobContext): Promise<void> {
+export async function run24hReminders(ctx: JobContext): Promise<void> {
   const { providers } = ctx;
   const jobName = '24h-reminders';
   logJobStarted(ctx, jobName);
@@ -377,11 +377,10 @@ async function run24hReminders(ctx: JobContext): Promise<void> {
 
   for (const b of bookings) {
     try {
-      await send24hBookingReminder(b, {
-        providers,
-        env: ctx.env,
-        logger: ctx.logger,
-        requestId: ctx.requestId,
+      await providers.repository.enqueueSideEffect({
+        booking_id: b.id,
+        effect_type: b.source === 'session' ? 'email.reminder24h.session' : 'email.reminder24h.event',
+        payload: {},
       });
       succeeded++;
     } catch (err) {
@@ -400,6 +399,120 @@ async function run24hReminders(ctx: JobContext): Promise<void> {
   logJobCompleted(ctx, jobName, {
     items_found: bookings.length,
     items_processed: bookings.length,
+    items_succeeded: succeeded,
+    items_failed: failed,
+  });
+}
+
+// ── Job: side-effects outbox dispatcher ─────────────────────────────────────
+
+export async function runSideEffectsOutbox(ctx: JobContext): Promise<void> {
+  const { providers, env } = ctx;
+  const jobName = 'side-effects-dispatcher';
+  logJobStarted(ctx, jobName);
+
+  const effects = await providers.repository.getPendingSideEffects(50);
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const eff of effects) {
+    try {
+      await providers.repository.markSideEffect(eff.id, 'processing', null);
+      const booking = await providers.repository.getBookingById(eff.booking_id);
+      if (!booking) {
+        await providers.repository.markSideEffect(eff.id, 'failed', 'booking not found');
+        failed++;
+        continue;
+      }
+
+      const payload = eff.payload || {};
+      switch (eff.effect_type) {
+        case 'email.confirm_request.session': {
+          const confirmUrl = String(payload['confirm_url'] || '');
+          await providers.email.sendBookingConfirmRequest(booking, confirmUrl);
+          break;
+        }
+        case 'email.confirm_request.event': {
+          if (!booking.event_id) throw new Error('event_id missing');
+          const event = await providers.repository.getEventById(booking.event_id);
+          if (!event) throw new Error('event not found');
+          const confirmUrl = String(payload['confirm_url'] || '');
+          await providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
+          break;
+        }
+        case 'email.payment_due.session': {
+          const payment = await providers.repository.getPaymentByBookingId(booking.id);
+          const payUrl = payment?.checkout_url;
+          if (!payUrl) throw new Error('no checkout url');
+          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
+          await providers.email.sendBookingPaymentDue(booking, payUrl, manageUrl);
+          break;
+        }
+        case 'email.payment_reminder.session': {
+          const payment = await providers.repository.getPaymentByBookingId(booking.id);
+          const payUrl = payment?.checkout_url;
+          if (!payUrl) throw new Error('no checkout url');
+          await providers.email.sendBookingPaymentReminder(booking, payUrl);
+          await providers.repository.updateBooking(booking.id, { payment_due_reminder_sent_at: new Date().toISOString(), reminder_36h_sent_at: new Date().toISOString() });
+          break;
+        }
+        case 'email.confirmed.session': {
+          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
+          const invoiceUrl = typeof payload['invoice_url'] === 'string' ? payload['invoice_url'] : null;
+          await providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl);
+          break;
+        }
+        case 'email.confirmed.event': {
+          if (!booking.event_id) throw new Error('event_id missing');
+          const event = await providers.repository.getEventById(booking.event_id);
+          if (!event) throw new Error('event not found');
+          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
+          const invoiceUrl = typeof payload['invoice_url'] === 'string' ? payload['invoice_url'] : null;
+          await providers.email.sendEventConfirmation(booking, event, manageUrl, invoiceUrl);
+          break;
+        }
+        case 'email.cancellation.session': {
+          await providers.email.sendBookingCancellation(booking);
+          break;
+        }
+        case 'email.reminder24h.session': {
+          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
+          await providers.email.sendBookingReminder24h(booking, manageUrl);
+          await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
+          break;
+        }
+        case 'email.reminder24h.event': {
+          if (!booking.event_id) throw new Error('event_id missing');
+          const event = await providers.repository.getEventById(booking.event_id);
+          if (!event) throw new Error('event not found');
+          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
+          await providers.email.sendEventReminder24h(booking, event, manageUrl);
+          await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
+          break;
+        }
+        default:
+          throw new Error(`unknown effect_type: ${eff.effect_type}`);
+      }
+
+      await providers.repository.markSideEffect(eff.id, 'done', null);
+      succeeded++;
+    } catch (err) {
+      failed++;
+      await providers.repository.markSideEffect(eff.id, 'failed', String(err));
+      await providers.repository.logFailure({
+        source: 'job',
+        operation: 'side-effects-dispatcher',
+        booking_id: eff.booking_id,
+        request_id: ctx.requestId,
+        error_message: String(err),
+        context: { job_name: jobName, trigger_source: ctx.triggerSource, effect_type: eff.effect_type },
+      });
+    }
+  }
+
+  logJobCompleted(ctx, jobName, {
+    items_found: effects.length,
+    items_processed: effects.length,
     items_succeeded: succeeded,
     items_failed: failed,
   });

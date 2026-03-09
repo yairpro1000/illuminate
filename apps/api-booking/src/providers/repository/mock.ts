@@ -446,6 +446,64 @@ export class MockRepository implements IRepository {
     return mockState.failureLogs.slice(-limit).reverse();
   }
 
+  // ── Booking events / side-effects outbox ─────────────────────────────────
+
+  async createBookingEvent(data: {
+    booking_id: string;
+    event_type: string;
+    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
+    payload?: Record<string, unknown>;
+  }): Promise<void> {
+    const ev = {
+      id: crypto.randomUUID(),
+      booking_id: data.booking_id,
+      event_type: data.event_type,
+      source: data.source,
+      payload: data.payload ?? null,
+      created_at: now(),
+    };
+    mockState.bookingEvents.push(ev);
+  }
+
+  async enqueueSideEffect(data: {
+    booking_id: string;
+    effect_type: string;
+    payload?: Record<string, unknown>;
+  }): Promise<{ id: string } | null> {
+    const id = crypto.randomUUID();
+    const item = {
+      id,
+      booking_id: data.booking_id,
+      effect_type: data.effect_type,
+      payload: data.payload ?? null,
+      status: 'pending' as const,
+      created_at: now(),
+      updated_at: null,
+    };
+    mockState.sideEffects.push(item);
+    return { id };
+  }
+
+  async markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void> {
+    const item = mockState.sideEffects.find((s) => s.id === id);
+    if (!item) return;
+    item.status = status;
+    item.error_message = error_message ?? null;
+    item.updated_at = now();
+  }
+
+  async getPendingSideEffects(limit: number): Promise<Array<{
+    id: string;
+    booking_id: string;
+    effect_type: string;
+    payload: Record<string, unknown> | null;
+  }>> {
+    return mockState.sideEffects
+      .filter((s) => s.status === 'pending')
+      .slice(0, Math.max(1, limit))
+      .map((s) => ({ id: s.id, booking_id: s.booking_id, effect_type: s.effect_type, payload: s.payload }));
+  }
+
   // ── Calendar sync retry queue ────────────────────────────────────────────
 
   async recordCalendarSyncFailure(input: {

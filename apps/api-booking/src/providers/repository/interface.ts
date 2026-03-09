@@ -105,6 +105,28 @@ export interface IRepository {
   logFailure(data: NewFailureLog): Promise<void>;
   getRecentFailureLogs(limit: number): Promise<FailureLog[]>;
 
+  // ── Booking audit/events ──────────────────────────────────────────────────
+  createBookingEvent(data: {
+    booking_id: string;
+    event_type: string;
+    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
+    payload?: Record<string, unknown>;
+  }): Promise<void>;
+
+  // ── Optional side-effects outbox ─────────────────────────────────────────
+  enqueueSideEffect(data: {
+    booking_id: string;
+    effect_type: string;
+    payload?: Record<string, unknown>;
+  }): Promise<{ id: string } | null>;
+  markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void>;
+  getPendingSideEffects(limit: number): Promise<Array<{
+    id: string;
+    booking_id: string;
+    effect_type: string;
+    payload: Record<string, unknown> | null;
+  }>>;
+
   // ── Calendar sync retry queue (backed by failure_logs) ────────────────────
 
   recordCalendarSyncFailure(input: {

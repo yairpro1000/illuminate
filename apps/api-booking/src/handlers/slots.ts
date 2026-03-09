@@ -10,7 +10,8 @@ const INTRO_DURATION_MS = 30 * 60 * 1000;
 // Other sessions (60–90 min) — use 90 min for conflict detection, Mon–Fri only
 const SESSION_STARTS = [9, 11, 14, 16, 18];
 const SESSION_DURATION_MS = 90 * 60 * 1000;
-const SLOT_LEAD_TIME_MS = 15 * 60 * 1000;
+// Enforce 24h minimum lead time for visible/available slots
+const SLOT_LEAD_TIME_MS = 24 * 60 * 60 * 1000;
 
 type SlotType = 'intro' | 'session';
 

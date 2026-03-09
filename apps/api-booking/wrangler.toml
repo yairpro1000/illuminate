@@ -61,4 +61,9 @@ ADMIN_DEV_EMAIL    = "dev@localhost"
 enabled = true
 
 [triggers]
+# Cron triggers:
+# - */5  minutes: expire pending holds + calendar sync retries
+# - */15 minutes: pay-later payment-deadline cancellations + unconfirmed followups
+# - */30 minutes: pay-later 36h reminders
+# - 0 *   hourly: 24h reminders
 crons = ["*/5 * * * *", "*/15 * * * *", "*/30 * * * *", "0 * * * *"]

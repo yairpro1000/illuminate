@@ -5,10 +5,14 @@
   "scripts": {
     "dev": "wrangler dev --env local --port 8787",
     "deploy": "wrangler deploy --env \"\"",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240605.0",
+    "@vitest/coverage-v8": "^2.0.5",
+    "vitest": "^2.0.5",
     "typescript": "^5.5.0",
     "wrangler": "^4.71.0"
   },

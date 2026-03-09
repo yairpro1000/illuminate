@@ -138,10 +138,10 @@ export class SupabaseRepository implements IRepository {
   }
 
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
-    const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at' | 'status' | 'checkout_hold_expires_at' | 'payment_due_at'>>>(
+    const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at' | 'status' | 'checkout_hold_expires_at' | 'payment_due_at' | 'confirm_expires_at'>>>(
       this.db
         .from('bookings')
-        .select('starts_at, ends_at, status, checkout_hold_expires_at, payment_due_at')
+        .select('starts_at, ends_at, status, checkout_hold_expires_at, payment_due_at, confirm_expires_at')
         .eq('source', 'session')
         .lte('starts_at', endOfDayIso(to))
         .gte('ends_at', startOfDayIso(from)),
@@ -152,9 +152,16 @@ export class SupabaseRepository implements IRepository {
     return rows
       .filter((row) => {
         if (row.status === 'confirmed' || row.status === 'cash_ok') return true;
-        if (row.status !== 'pending_payment') return false;
-        if (!row.checkout_hold_expires_at) return true;
-        return new Date(row.checkout_hold_expires_at).getTime() > nowMs;
+        if (row.status === 'pending_payment') {
+          if (!row.checkout_hold_expires_at) return true;
+          return new Date(row.checkout_hold_expires_at).getTime() > nowMs;
+        }
+        if (row.status === 'pending_email') {
+          if (!row.confirm_expires_at && !row.checkout_hold_expires_at) return false;
+          const dl = row.checkout_hold_expires_at ?? row.confirm_expires_at!;
+          return new Date(dl).getTime() > nowMs;
+        }
+        return false;
       })
       .map((row) => ({ start: row.starts_at, end: row.ends_at }));
   }
@@ -338,12 +345,14 @@ export class SupabaseRepository implements IRepository {
   }
 
   async getExpiredBookingHolds(): Promise<Booking[]> {
+    // Use new lifecycle fields primarily; also include legacy fallback
     return this.getBookingList((query) =>
       query
-        .eq('status', 'pending_payment')
-        .not('checkout_hold_expires_at', 'is', null)
-        .is('payment_due_at', null)
-        .lte('checkout_hold_expires_at', nowIso()),
+        .or(
+          'and(booking_status.eq.pending,not.hold_expires_at.is.null,hold_expires_at.lte.' + nowIso() + '),' +
+          'and(status.eq.pending_payment,not.checkout_hold_expires_at.is.null,payment_due_at.is.null,checkout_hold_expires_at.lte.' + nowIso() + ')' +
+          ''
+        )
     );
   }
 
@@ -360,31 +369,30 @@ export class SupabaseRepository implements IRepository {
   async getPaymentDueRemindersDue(): Promise<Booking[]> {
     return this.getBookingList((query) =>
       query
-        .eq('status', 'pending_payment')
-        .not('payment_due_at', 'is', null)
-        .is('payment_due_reminder_sent_at', null)
-        .not('payment_due_reminder_scheduled_at', 'is', null)
-        .lte('payment_due_reminder_scheduled_at', nowIso()),
+        .or(
+          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,not.payment_due_reminder_scheduled_at.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null),' +
+          'and(status.eq.pending_payment,not.payment_due_at.is.null,not.payment_due_reminder_scheduled_at.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null)'
+        )
     );
   }
 
   async getPaymentDueCancellationsDue(): Promise<Booking[]> {
     return this.getBookingList((query) =>
       query
-        .eq('status', 'pending_payment')
-        .not('payment_due_at', 'is', null)
-        .lte('payment_due_at', nowIso()),
+        .or(
+          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,not.payment_due_at.is.null,payment_due_at.lte.' + nowIso() + '),' +
+          'and(status.eq.pending_payment,not.payment_due_at.is.null,payment_due_at.lte.' + nowIso() + ')'
+        )
     );
   }
 
   async get24hBookingRemindersDue(): Promise<Booking[]> {
     return this.getBookingList((query) =>
       query
-        .in('status', ['confirmed', 'cash_ok'])
-        .eq('reminder_email_opt_in', true)
-        .is('reminder_24h_sent_at', null)
-        .not('reminder_24h_scheduled_at', 'is', null)
-        .lte('reminder_24h_scheduled_at', nowIso()),
+        .or(
+          'and(booking_status.eq.confirmed,reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,not.reminder_24h_scheduled_at.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + '),' +
+          'and(status.in.(confirmed,cash_ok),reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,not.reminder_24h_scheduled_at.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + ')'
+        )
     );
   }
 
@@ -428,6 +436,73 @@ export class SupabaseRepository implements IRepository {
       'Failed to load recent failure logs',
     );
     return rows;
+  }
+
+  async createBookingEvent(data: {
+    booking_id: string;
+    event_type: string;
+    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
+    payload?: Record<string, unknown>;
+  }): Promise<void> {
+    await requireData(
+      this.db
+        .from('booking_events')
+        .insert({
+          booking_id: data.booking_id,
+          event_type: data.event_type,
+          source: data.source,
+          payload: data.payload ?? {},
+        })
+        .select('id'),
+      'Failed to persist booking event',
+    );
+  }
+
+  async enqueueSideEffect(data: { booking_id: string; effect_type: string; payload?: Record<string, unknown> }): Promise<{ id: string } | null> {
+    const exists = await this.db.from('booking_side_effects').select('id').limit(1).maybeSingle();
+    if (exists.error && exists.error.code === 'PGRST116') return null; // table missing — feature disabled
+    const row = await requireSingle<{ id: string }>(
+      this.db
+        .from('booking_side_effects')
+        .insert({
+          booking_id: data.booking_id,
+          effect_type: data.effect_type,
+          status: 'pending',
+          payload: data.payload ?? {},
+        })
+        .select('id')
+        .single(),
+      'Failed to enqueue side effect',
+    );
+    return row;
+  }
+
+  async markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void> {
+    const exists = await this.db.from('booking_side_effects').select('id').eq('id', id).maybeSingle();
+    if (exists.error && exists.error.code === 'PGRST116') return; // table missing
+    await requireData(
+      this.db
+        .from('booking_side_effects')
+        .update({ status, error_message: error_message ?? null, updated_at: nowIso() })
+        .eq('id', id)
+        .select('id'),
+      'Failed to update side-effect status',
+    );
+  }
+
+  async getPendingSideEffects(limit: number): Promise<Array<{ id: string; booking_id: string; effect_type: string; payload: Record<string, unknown> | null }>> {
+    const exists = await this.db.from('booking_side_effects').select('id').limit(1).maybeSingle();
+    if (exists.error && exists.error.code === 'PGRST116') return [];
+    const rows = await requireData<Array<{ id: string; booking_id: string; effect_type: string; payload: any }>>(
+      this.db
+        .from('booking_side_effects')
+        .select('id, booking_id, effect_type, payload')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(Math.max(1, limit)),
+      'Failed to load pending side effects',
+    );
+    return rows.map(r => ({ id: r.id, booking_id: r.booking_id, effect_type: r.effect_type, payload: r.payload ?? null }));
   }
 
   async recordCalendarSyncFailure(input: {
@@ -601,6 +676,12 @@ function toBooking(row: BookingRow): Booking {
     client_id: row.client_id,
     source: row.source,
     status: row.status,
+    booking_status: (row as any).booking_status ?? null,
+    payment_mode: (row as any).payment_mode ?? null,
+    payment_status_v2: (row as any).payment_status_v2 ?? null,
+    email_status: (row as any).email_status ?? null,
+    calendar_status: (row as any).calendar_status ?? null,
+    slot_status: (row as any).slot_status ?? null,
     event_id: row.event_id,
     session_type: row.session_type,
     starts_at: row.starts_at,
@@ -615,7 +696,9 @@ function toBooking(row: BookingRow): Booking {
     manage_token_hash: row.manage_token_hash,
     checkout_session_id: row.checkout_session_id,
     checkout_hold_expires_at: row.checkout_hold_expires_at,
+    hold_expires_at: (row as any).hold_expires_at ?? null,
     payment_due_at: row.payment_due_at,
+    payment_due_at_v2: (row as any).payment_due_at_v2 ?? null,
     payment_due_reminder_scheduled_at: row.payment_due_reminder_scheduled_at,
     payment_due_reminder_sent_at: row.payment_due_reminder_sent_at,
     followup_scheduled_at: row.followup_scheduled_at,
@@ -625,6 +708,15 @@ function toBooking(row: BookingRow): Booking {
     reminder_24h_scheduled_at: row.reminder_24h_scheduled_at,
     reminder_24h_sent_at: row.reminder_24h_sent_at,
     google_event_id: row.google_event_id,
+    email_confirmed_at: (row as any).email_confirmed_at ?? null,
+    confirmed_at: (row as any).confirmed_at ?? null,
+    cancelled_at: (row as any).cancelled_at ?? null,
+    expired_at: (row as any).expired_at ?? null,
+    reminder_36h_sent_at: (row as any).reminder_36h_sent_at ?? null,
+    last_payment_link_sent_at: (row as any).last_payment_link_sent_at ?? null,
+    expired_reason: (row as any).expired_reason ?? null,
+    cancel_reason: (row as any).cancel_reason ?? null,
+    metadata: (row as any).metadata ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
     client_first_name: row.client?.first_name,

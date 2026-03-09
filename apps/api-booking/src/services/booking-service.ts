@@ -6,6 +6,7 @@ import type { CalendarEvent } from '../providers/calendar/interface.js';
 import { generateToken, hashToken, hashesEqual } from './token-service.js';
 import { computePaymentDueReminderTime, compute24hReminderTime } from './reminder-service.js';
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
+import { syncStateFromLegacy, setLifecycle, recordEvent } from './booking-transition.js';
 
 const CALENDAR_SYNC_MAX_ATTEMPTS = 5;
 const CHECKOUT_HOLD_MINUTES = 15;
@@ -188,6 +189,15 @@ export async function createPayNowBooking(
 
   logger.info('pay-now booking created', { bookingId: booking.id, clientId: client.id });
 
+  // Record domain event + sync new lifecycle fields
+  try {
+    await recordEvent(ctx, booking.id, 'BOOKING_CREATED', 'ui', { payment_mode: 'pay_now' });
+    await ctx.providers.repository.updateBooking(booking.id, { hold_expires_at: holdExpiresAt });
+    await syncStateFromLegacy(booking, ctx, 'ui', 'BOOKING_CREATED', { payment_mode: 'pay_now' });
+  } catch (err) {
+    logger.warn?.('state-sync failure after createPayNowBooking', { bookingId: booking.id, err: String(err) });
+  }
+
   return {
     bookingId: booking.id,
     checkoutUrl: session.checkoutUrl,
@@ -217,6 +227,7 @@ export async function createPayLaterBooking(
   const manageTokenHash = await hashToken(generateToken());
 
   const confirmExpiresAt = new Date(Date.now() + BOOKING_CONFIRM_WINDOW_MINUTES * 60_000).toISOString();
+  const holdExpiresAt = new Date(Date.now() + BOOKING_CONFIRM_WINDOW_MINUTES * 60_000).toISOString();
   const followupScheduledAt = new Date(Date.now() + FOLLOWUP_DELAY_HOURS * 60 * 60_000).toISOString();
 
   const booking = await providers.repository.createBooking({
@@ -236,7 +247,8 @@ export async function createPayLaterBooking(
     confirm_expires_at: confirmExpiresAt,
     manage_token_hash: manageTokenHash,
     checkout_session_id: null,
-    checkout_hold_expires_at: null,
+    checkout_hold_expires_at: holdExpiresAt,
+    hold_expires_at: holdExpiresAt,
     payment_due_at: null,
     payment_due_reminder_scheduled_at: null,
     payment_due_reminder_sent_at: null,
@@ -250,21 +262,19 @@ export async function createPayLaterBooking(
   });
 
   const confirmUrl = buildConfirmUrl(env.SITE_URL, confirmToken);
-
-  try {
-    await providers.email.sendBookingConfirmRequest(booking, confirmUrl);
-  } catch (err) {
-    logger.error('Failed to send booking confirm email', { bookingId: booking.id, err: String(err) });
-    await providers.repository.logFailure({
-      source: 'email',
-      operation: 'sendBookingConfirmRequest',
-      booking_id: booking.id,
-      request_id: ctx.requestId,
-      error_message: String(err),
-    });
-  }
+  await providers.repository.enqueueSideEffect({
+    booking_id: booking.id,
+    effect_type: 'email.confirm_request.session',
+    payload: { confirm_url: confirmUrl },
+  });
 
   logger.info('pay-later booking created', { bookingId: booking.id, clientId: client.id });
+  try {
+    await recordEvent(ctx, booking.id, 'BOOKING_CREATED', 'ui', { payment_mode: 'pay_later' });
+    await syncStateFromLegacy(booking, ctx, 'ui', 'BOOKING_CREATED', { payment_mode: 'pay_later' });
+  } catch (err) {
+    logger.warn?.('state-sync failure after createPayLaterBooking', { bookingId: booking.id, err: String(err) });
+  }
   return { bookingId: booking.id, status: 'pending_email' };
 }
 
@@ -470,13 +480,22 @@ export async function confirmBookingEmail(
         forceUpdate: true,
       })).booking;
 
-      const manageUrl = await buildManageUrl(env.SITE_URL, updated);
-      await sendEmailBestEffort(
-        ctx,
-        updated,
-        'sendBookingConfirmation',
-        () => providers.email.sendBookingConfirmation(updated, manageUrl, null),
-      );
+      await ctx.providers.repository.enqueueSideEffect({
+        booking_id: updated.id,
+        effect_type: 'email.confirmed.session',
+        payload: { invoice_url: null },
+      });
+      try {
+        updated = await setLifecycle(updated, {
+          booking_status: 'confirmed',
+          payment_mode: 'free',
+          payment_status_v2: 'not_required',
+          email_status: 'confirmed',
+          slot_status: 'reserved',
+          confirmed_at: new Date().toISOString(),
+          email_confirmed_at: new Date().toISOString(),
+        }, ctx, 'ui', 'EMAIL_CONFIRMED');
+      } catch {}
       return updated;
     }
 
@@ -496,15 +515,22 @@ export async function confirmBookingEmail(
     updated = (await syncSessionBookingCalendar(updated, ctx, { operation: 'confirm_email' })).booking;
 
     const ensured = await ensureSessionCheckout(updated, ctx);
-    const payUrl = ensured.checkoutUrl;
-    const manageUrl = await buildManageUrl(env.SITE_URL, ensured.booking);
-    await sendEmailBestEffort(
-      ctx,
-      ensured.booking,
-      'sendBookingPaymentDue',
-      () => providers.email.sendBookingPaymentDue(ensured.booking, payUrl, manageUrl),
-    );
-    return ensured.booking;
+    await ctx.providers.repository.enqueueSideEffect({
+      booking_id: ensured.booking.id,
+      effect_type: 'email.payment_due.session',
+      payload: {},
+    });
+    try {
+      updated = await setLifecycle(ensured.booking, {
+        booking_status: 'confirmed',
+        payment_mode: 'pay_later',
+        payment_status_v2: 'pending',
+        email_status: 'confirmed',
+        slot_status: 'reserved',
+        payment_due_at: paymentDueAt.toISOString(),
+      }, ctx, 'ui', 'EMAIL_CONFIRMED');
+    } catch {}
+    return updated;
   }
 
   const event = booking.event_id ? await providers.repository.getEventById(booking.event_id) : null;
@@ -517,13 +543,22 @@ export async function confirmBookingEmail(
     reminder_24h_scheduled_at: booking.reminder_email_opt_in ? reminder24h?.toISOString() ?? null : null,
   });
 
-  const manageUrl = await buildManageUrl(env.SITE_URL, updated);
-  await sendEmailBestEffort(
-    ctx,
-    updated,
-    'sendEventConfirmation',
-    () => providers.email.sendEventConfirmation(updated, event, manageUrl, null),
-  );
+  await ctx.providers.repository.enqueueSideEffect({
+    booking_id: updated.id,
+    effect_type: 'email.confirmed.event',
+    payload: { invoice_url: null },
+  });
+  try {
+    await setLifecycle(updated, {
+      booking_status: 'confirmed',
+      payment_mode: 'free',
+      payment_status_v2: 'not_required',
+      email_status: 'confirmed',
+      slot_status: 'reserved',
+      confirmed_at: new Date().toISOString(),
+      email_confirmed_at: new Date().toISOString(),
+    }, ctx, 'ui', 'EMAIL_CONFIRMED', { event_id: booking.event_id });
+  } catch {}
   return updated;
 }
 
@@ -558,6 +593,18 @@ export async function confirmBookingPayment(
     return;
   }
 
+  // New rule: do not revive expired/cancelled bookings on late payment
+  if (booking.status === 'expired' || booking.status === 'cancelled') {
+    logger.warn('Late payment for inactive booking — not reviving', { bookingId: booking.id, status: booking.status });
+    await recordEvent(ctx, booking.id, 'PAYMENT_SUCCEEDED', 'webhook', {
+      late: true,
+      prior_status: booking.status,
+      payment_intent_id: stripeData.paymentIntentId,
+      invoice_id: stripeData.invoiceId,
+    });
+    return;
+  }
+
   if (booking.source === 'session') {
     const reminder24h = compute24hReminderTime(new Date(booking.starts_at));
 
@@ -572,13 +619,22 @@ export async function confirmBookingPayment(
       forceUpdate: true,
     })).booking;
 
-    const manageUrl = await buildManageUrl(env.SITE_URL, updated);
-    await sendEmailBestEffort(
-      ctx,
-      updated,
-      'sendBookingConfirmation',
-      () => providers.email.sendBookingConfirmation(updated, manageUrl, stripeData.invoiceUrl),
-    );
+    await ctx.providers.repository.enqueueSideEffect({
+      booking_id: updated.id,
+      effect_type: 'email.confirmed.session',
+      payload: { invoice_url: stripeData.invoiceUrl },
+    });
+    try {
+      await setLifecycle(updated, {
+        booking_status: 'confirmed',
+        payment_mode: 'pay_now',
+        payment_status_v2: 'paid',
+        email_status: 'not_required',
+        slot_status: 'reserved',
+        hold_expires_at: null,
+        confirmed_at: new Date().toISOString(),
+      }, ctx, 'webhook', 'PAYMENT_SUCCEEDED', { invoice_url: stripeData.invoiceUrl });
+    } catch {}
     return;
   }
 
@@ -593,13 +649,22 @@ export async function confirmBookingPayment(
     reminder_24h_scheduled_at: booking.reminder_email_opt_in ? reminder24h?.toISOString() ?? null : null,
   });
 
-  const manageUrl = await buildManageUrl(env.SITE_URL, updated);
-  await sendEmailBestEffort(
-    ctx,
-    updated,
-    'sendEventConfirmation',
-    () => providers.email.sendEventConfirmation(updated, event, manageUrl, stripeData.invoiceUrl),
-  );
+  await ctx.providers.repository.enqueueSideEffect({
+    booking_id: updated.id,
+    effect_type: 'email.confirmed.event',
+    payload: { invoice_url: stripeData.invoiceUrl },
+  });
+  try {
+    await setLifecycle(updated, {
+      booking_status: 'confirmed',
+      payment_mode: 'pay_now',
+      payment_status_v2: 'paid',
+      email_status: 'not_required',
+      slot_status: 'reserved',
+      hold_expires_at: null,
+      confirmed_at: new Date().toISOString(),
+    }, ctx, 'webhook', 'PAYMENT_SUCCEEDED', { invoice_url: stripeData.invoiceUrl, event_id: event.id });
+  } catch {}
 }
 
 // ── Manage-token resolution ─────────────────────────────────────────────────
@@ -644,12 +709,20 @@ export async function cancelBooking(
   updated = (await syncSessionBookingCalendar(updated, ctx, { operation: 'cancel_booking' })).booking;
 
   if (updated.source === 'session') {
-    try {
-      await ctx.providers.email.sendBookingCancellation(updated);
-    } catch (err) {
-      ctx.logger.error('Failed to send booking cancellation email', { bookingId: updated.id, err: String(err) });
-    }
+    await ctx.providers.repository.enqueueSideEffect({
+      booking_id: updated.id,
+      effect_type: 'email.cancellation.session',
+      payload: {},
+    });
   }
+  try {
+    await setLifecycle(updated, {
+      booking_status: 'cancelled',
+      slot_status: 'released',
+      cancelled_at: new Date().toISOString(),
+      cancel_reason: 'user_cancelled',
+    }, ctx, 'ui', 'USER_CANCELLED');
+  } catch {}
 }
 
 export async function expireBooking(
@@ -661,6 +734,15 @@ export async function expireBooking(
     checkout_hold_expires_at: null,
   });
   updated = (await syncSessionBookingCalendar(updated, ctx, { operation: 'expire_booking' })).booking;
+  try {
+    updated = await setLifecycle(updated, {
+      booking_status: 'expired',
+      slot_status: 'released',
+      expired_at: new Date().toISOString(),
+      expired_reason: updated.status === 'pending_payment' ? 'payment_timeout' : 'email_confirmation_timeout',
+      hold_expires_at: null,
+    }, ctx, 'cron', 'HOLD_EXPIRED');
+  } catch {}
   return updated;
 }
 
@@ -691,6 +773,9 @@ export async function rescheduleBooking(
     operation: 'reschedule_booking',
     forceUpdate: true,
   })).booking;
+  try {
+    await recordEvent(ctx, updated.id, 'USER_RESCHEDULED', 'ui', { from: { start: booking.starts_at, end: booking.ends_at }, to: { start: updated.starts_at, end: updated.ends_at } });
+  } catch {}
   return updated;
 }
 
@@ -1022,11 +1107,11 @@ function splitFullName(name: string): { firstName: string; lastName: string | nu
   };
 }
 
-function buildConfirmUrl(siteUrl: string, rawToken: string): string {
+export function buildConfirmUrl(siteUrl: string, rawToken: string): string {
   return `${siteUrl}/confirm.html?token=${encodeURIComponent(rawToken)}`;
 }
 
-async function buildManageUrl(siteUrl: string, booking: Booking): Promise<string> {
+export async function buildManageUrl(siteUrl: string, booking: Booking): Promise<string> {
   const token = await buildStableManageToken(booking.id, booking.manage_token_hash);
   return `${siteUrl}/manage.html?token=${encodeURIComponent(token)}`;
 }
