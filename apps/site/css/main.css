@@ -416,17 +416,18 @@ ul, ol { list-style: none; }
   background: oklch(13% 0.025 209 / 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid transparent;
   padding-inline: 1.5rem; /* fixed side padding — not var(--container) which is a width */
   padding-block: 0;       /* collapsed by default */
   overflow: hidden;
   max-height: 0;
-  transition: max-height 0.4s var(--ease), padding-block 0.3s;
+  transition: max-height 0.4s var(--ease), padding-block 0.3s, border-color 0.3s;
 }
 
 .nav__mobile.open {
   max-height: 400px;
   padding-block: 1.5rem;
+  border-top-color: var(--color-border);
 }
 
 .nav__mobile a {
@@ -1549,6 +1550,14 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   .nav__links,
   .nav__cta { display: none; }
   .nav__hamburger { display: flex; }
+  .nav__inner { padding-block-end: 0.35rem; }
+  .theme-toggle { width: 2.1rem; height: 2.1rem; order: -1; }
+  .nav__logo { order: 0; }
+  .nav__hamburger { order: 1; }
+  /* Tooltip anchored left on mobile (button is on left side) */
+  .theme-toggle__tip { left: 0; right: auto; transform: translateX(0) translateY(-4px); }
+  .theme-toggle--hint .theme-toggle__tip { transform: translateX(0) translateY(0); }
+  .theme-toggle__tip::before, .theme-toggle__tip::after { left: 1rem; right: auto; transform: none; }
 
   .hero__content { padding-block: 4rem 3rem; }
   .hero__actions { flex-direction: column; align-items: stretch; }
@@ -1676,13 +1685,17 @@ body {
 /* ============================================================
    THEME TOGGLE BUTTON
    ============================================================ */
+/* ── Theme toggle: inline in nav ── */
+@keyframes theme-pulse {
+  0%, 100% { box-shadow: var(--shadow-card); }
+  50%       { box-shadow: 0 0 24px var(--color-lake-glow), var(--shadow-card); }
+}
+
 .theme-toggle {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  z-index: 200;
-  width: 3rem;
-  height: 3rem;
+  position: relative;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
   border-radius: 50%;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -1700,7 +1713,7 @@ body {
     transform 0.3s var(--ease-spring),
     box-shadow 0.3s var(--ease),
     color 0.3s var(--ease);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .theme-toggle:hover {
@@ -1711,10 +1724,64 @@ body {
 
 .theme-toggle:active { transform: scale(0.95); }
 
+/* Pulse animation — runs 3× on first visit */
+.theme-toggle--pulse {
+  animation: theme-pulse 0.4s ease-in-out 3;
+}
+
+/* Tooltip */
+.theme-toggle__tip {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: oklch(from var(--color-bg-card) l c h / 0.55);
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  padding: 0.3em 0.65em;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), visibility 0s 0.35s;
+  z-index: 300;
+}
+
+/* Small upward-pointing arrow */
+.theme-toggle__tip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--color-border);
+}
+.theme-toggle__tip::after {
+  content: '';
+  position: absolute;
+  bottom: calc(100% - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--color-bg-card);
+}
+
+.theme-toggle--hint .theme-toggle__tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), visibility 0s 0s;
+}
+
 /* Icons inside the toggle */
 .theme-toggle svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.75;

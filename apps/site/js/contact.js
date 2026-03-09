@@ -1,11 +1,12 @@
 /* ============================================================
    ILLUMINATE — Contact form
-   POST /api/contact  { name, email, message, turnstile_token }
+   POST /api/contact  { first_name, last_name?, email, topic?, message, turnstile_token }
    ============================================================ */
 
 'use strict';
 
 (function () {
+  const OBS = window.siteObservability || null;
 
   const form       = document.getElementById('contact-form');
   const formWrap   = document.getElementById('contact-form-wrap');
@@ -42,16 +43,16 @@
   function validate() {
     let ok = true;
 
-    const name    = getField('name').value.trim();
-    const email   = getField('email').value.trim();
-    const message = getField('message').value.trim();
+    const firstName = getField('first_name').value.trim();
+    const email     = getField('email').value.trim();
+    const message   = getField('message').value.trim();
 
-    clearError('name');
+    clearError('first_name');
     clearError('email');
     clearError('message');
 
-    if (!name) {
-      showError('name', 'Please enter your name.');
+    if (!firstName) {
+      showError('first_name', 'Please enter your first name.');
       ok = false;
     }
 
@@ -73,7 +74,7 @@
 
   /* ── Inline error clearing on input ─────────────────────── */
 
-  ['name', 'email', 'message'].forEach(function (name) {
+  ['first_name', 'email', 'message'].forEach(function (name) {
     const el = getField(name);
     if (el) el.addEventListener('input', function () { clearError(name); });
   });
@@ -92,33 +93,45 @@
       return;
     }
 
-    const name    = getField('name').value.trim();
-    const email   = getField('email').value.trim();
-    const topic   = getField('topic').value;
-    const rawMsg  = getField('message').value.trim();
-
-    // Prepend topic to the message so the backend can include it
-    const message = topic
-      ? 'Topic: ' + topic + '\n\n' + rawMsg
-      : rawMsg;
+    const firstName = getField('first_name').value.trim();
+    const lastName  = getField('last_name').value.trim();
+    const email     = getField('email').value.trim();
+    const topic     = getField('topic').value;
+    const message   = getField('message').value.trim();
 
     submitBtn.setAttribute('aria-busy', 'true');
     submitBtn.textContent = 'Sending…';
+    if (OBS && OBS.startFlow) OBS.startFlow('contact_flow_started');
+    if (OBS) OBS.logMilestone('contact_submission_started', { flow: 'site_contact_form' });
 
     try {
       await _post('/api/contact', {
-        name,
+        first_name: firstName,
+        last_name:  lastName || null,
         email,
+        topic: topic || null,
         message,
         turnstile_token: 'placeholder',
       });
 
       // Show success
+      if (OBS) OBS.logMilestone('contact_message_submitted', { flow: 'site_contact_form' });
       formWrap.hidden = true;
       successEl.hidden = false;
       successEl.focus();
 
     } catch (err) {
+      if (OBS) {
+        OBS.logError({
+          eventType: 'handled_exception',
+          message: 'Contact form submission failed',
+          error: {
+            errorName: err && err.name || 'Error',
+            stackTrace: err && err.stack || null,
+            extra: { flow: 'site_contact_form' },
+          },
+        });
+      }
       submitErr.hidden = false;
       submitErr.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } finally {

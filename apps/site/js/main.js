@@ -3,6 +3,128 @@
    Dual canvas animations · Theme switcher · Scroll reveal · Nav
    ============================================================ */
 
+/* ── Shared site observability ─────────────────────────────── */
+const OBS_API_PATH = '/api/observability/frontend';
+function makeObsId(prefix) {
+  return (crypto.randomUUID && crypto.randomUUID()) || (prefix + '_' + Date.now().toString(36));
+}
+function safeRoute() {
+  return location.pathname;
+}
+
+function getSiteSessionId() {
+  const key = 'site_observability_session_id';
+  try {
+    let value = localStorage.getItem(key);
+    if (!value) {
+      value = (crypto.randomUUID && crypto.randomUUID()) || ('sid_' + Date.now().toString(36));
+      localStorage.setItem(key, value);
+    }
+    return value;
+  } catch (_) {
+    return 'site_session_unavailable';
+  }
+}
+
+function truncatePreview(value, max = 1200) {
+  const text = String(value == null ? '' : value);
+  return text.length <= max ? text : text.slice(0, max) + '…';
+}
+
+function createSiteObservability() {
+  const sessionId = getSiteSessionId();
+  let currentFlowId = makeObsId('cid');
+
+  function emit(level, payload) {
+    const requestId = payload.requestId || makeObsId('rid');
+    const event = {
+      level,
+      eventType: payload.eventType || 'frontend_event',
+      message: payload.message || null,
+      errorCode: payload.errorCode || null,
+      requestId,
+      correlationId: payload.correlationId || currentFlowId,
+      sessionId,
+      route: payload.route || safeRoute(),
+      context: Object.assign({
+        user_agent: navigator.userAgent,
+      }, payload.context || {}),
+      api: payload.api || undefined,
+      apiFailure: payload.apiFailure || undefined,
+      error: payload.error || undefined,
+    };
+
+    try {
+      fetch(OBS_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-correlation-id': event.correlationId, 'x-request-id': requestId },
+        body: JSON.stringify(event),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_) {}
+
+    const line = JSON.stringify(event);
+    if (level === 'error' || level === 'fatal') console.error('[site-observability]', line);
+    else if (level === 'warn') console.warn('[site-observability]', line);
+    else console.log('[site-observability]', line);
+    return requestId;
+  }
+
+  return {
+    sessionId: sessionId,
+    getCorrelationId: function () { return currentFlowId; },
+    startFlow: function (name) {
+      currentFlowId = makeObsId('cid');
+      emit('info', {
+        eventType: 'flow_milestone',
+        correlationId: currentFlowId,
+        message: name || 'flow_started',
+        context: { milestone: name || 'flow_started', temporary_debug: true },
+      });
+      return currentFlowId;
+    },
+    logInfo: function (payload) { return emit('info', payload || {}); },
+    logWarn: function (payload) { return emit('warn', payload || {}); },
+    logError: function (payload) { return emit('error', payload || {}); },
+    logMilestone: function (name, context) {
+      return emit('info', {
+        eventType: 'flow_milestone',
+        message: name,
+        context: Object.assign({ milestone: name, temporary_debug: true }, context || {}),
+      });
+    },
+  };
+}
+
+window.siteObservability = window.siteObservability || createSiteObservability();
+window.addEventListener('error', function (event) {
+  window.siteObservability.logError({
+    eventType: 'uncaught_exception',
+    message: event.message || 'Unhandled window error',
+    error: {
+      errorName: event.error && event.error.name || 'Error',
+      stackTrace: event.error && event.error.stack || null,
+      file: event.filename || null,
+      lineNumber: event.lineno || null,
+      columnNumber: event.colno || null,
+      extra: { source: 'window.onerror' },
+    },
+  });
+});
+window.addEventListener('unhandledrejection', function (event) {
+  const reason = event.reason;
+  window.siteObservability.logError({
+    eventType: 'uncaught_exception',
+    message: 'Unhandled promise rejection',
+    error: {
+      errorName: reason && reason.name || 'UnhandledRejection',
+      stackTrace: reason && reason.stack || null,
+      extra: { reason: truncatePreview(reason && reason.message || reason) },
+    },
+  });
+});
+window.siteObservability.logMilestone('page_loaded', { title: document.title });
+
 /* ── Canvas & animation state ──────────────────────────────── */
 const canvas = document.getElementById('background-waves');
 const ctx    = canvas ? canvas.getContext('2d') : null;
@@ -332,6 +454,8 @@ function setTheme(theme, save = true) {
       'aria-label',
       theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'
     );
+    const tip = btn.querySelector('.theme-toggle__tip');
+    if (tip) tip.textContent = theme === 'light' ? 'dark mode' : 'light mode';
   }
 }
 
@@ -341,6 +465,9 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleBtn.addEventListener('click', () => {
       const isLight = document.body.classList.contains('theme-light');
       setTheme(isLight ? 'dark' : 'light');
+      // Dismiss hint on click
+      toggleBtn.classList.remove('theme-toggle--hint');
+      localStorage.setItem('yb-theme-hint-seen', '1');
     });
   }
 
@@ -348,6 +475,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // but also initialise here in case script order differs)
   const saved = localStorage.getItem('yb-theme') || 'light';
   setTheme(saved, false);
+
+  // First-visit: pulse + tooltip
+  if (toggleBtn && !localStorage.getItem('yb-theme-hint-seen')) {
+    const tip = toggleBtn.querySelector('.theme-toggle__tip');
+    const isLight = document.body.classList.contains('theme-light');
+    if (tip) tip.textContent = isLight ? 'dark mode' : 'light mode';
+
+    // Small delay so the page settles before drawing attention
+    setTimeout(() => {
+      toggleBtn.classList.add('theme-toggle--pulse', 'theme-toggle--hint');
+
+      // Auto-dismiss tooltip after 4s
+      setTimeout(() => {
+        toggleBtn.classList.remove('theme-toggle--hint');
+        localStorage.setItem('yb-theme-hint-seen', '1');
+      }, 1000);
+    }, 1200);
+  }
 });
 
 /* ── 6. Section background fade-in ─────────────────────────── */

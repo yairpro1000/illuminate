@@ -1,5 +1,6 @@
 import React from "react";
 import { api } from "../api";
+import { logFrontendMilestone } from "../observability";
 import { Main } from "./Main";
 
 export function App() {
@@ -34,8 +35,15 @@ export function App() {
   React.useEffect(() => {
     refresh();
     loadConfig();
+    void logFrontendMilestone("auth_resolved", { stage: "bootstrap_started" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    if (me?.user?.email) {
+      void logFrontendMilestone("auth_resolved");
+    }
+  }, [me]);
 
   const llmLabel =
     config?.llmProvider && config.llmModel

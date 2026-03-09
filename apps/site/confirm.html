@@ -47,9 +47,7 @@
   const API_BASE = localStorage.getItem('API_BASE') ||
     (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
   const params  = new URLSearchParams(window.location.search);
-  const type    = params.get('type');
   const token   = params.get('token');
-  const id      = params.get('id');
   const card    = document.getElementById('confirm-card');
 
   function show(icon, title, msg, linkHref, linkText) {
@@ -73,13 +71,13 @@
     <circle cx="32" cy="46" r="2.5" fill="oklch(55% 0.18 25)"/>
   </svg>`;
 
-  if (!type || !token || !id) {
+  if (!token) {
     show(warnSvg, 'Invalid link', 'This confirmation link is missing required information.', 'index.html', '← Homepage');
     return;
   }
 
   try {
-    const url = `${API_BASE}/api/confirm?type=${encodeURIComponent(type)}&token=${encodeURIComponent(token)}&id=${encodeURIComponent(id)}`;
+    const url = `${API_BASE}/api/bookings/confirm?token=${encodeURIComponent(token)}`;
     const res  = await fetch(url);
     const data = await res.json();
 
@@ -97,13 +95,13 @@
       return;
     }
 
-    const noun = type === 'booking' ? 'booking' : 'registration';
+    const isEvent = data.source === 'event';
     show(
       checkSvg,
       'Confirmed!',
-      type === 'booking'
-        ? 'Your booking is confirmed. We\'ve sent the next steps to your email.'
-        : 'Your registration is confirmed. See you soon!',
+      isEvent
+        ? 'Your event booking is confirmed. See you soon!'
+        : 'Your booking is confirmed. We\'ve sent the next steps to your email.',
       'index.html',
       '← Back to homepage',
     );

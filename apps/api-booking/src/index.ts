@@ -1,0 +1,48 @@
+import type { Env } from './env.js';
+import { createProviders } from './providers/index.js';
+import { handleRequest }   from './router.js';
+import { createCronObservability, createWorkerObservability } from './lib/logger.js';
+import { runCron }         from './handlers/jobs.js';
+import { jsonResponse } from './lib/errors.js';
+
+export default {
+  async fetch(request: Request, env: Env, executionCtx: ExecutionContext): Promise<Response> {
+    const { logger, requestId, correlationId } = createWorkerObservability(env, request, executionCtx);
+
+    try {
+      const providers = createProviders(env, logger);
+      return await handleRequest(request, { providers, env, logger, requestId, correlationId, executionCtx });
+    } catch (error) {
+      logger.captureException({
+        eventType: 'uncaught_exception',
+        message: 'Worker fetch entrypoint failed',
+        error,
+        context: {
+          method: request.method,
+          path: new URL(request.url).pathname,
+        },
+      });
+      return jsonResponse({ error: 'INTERNAL_ERROR', message: 'Internal server error', request_id: requestId }, 500);
+    }
+  },
+
+  async scheduled(event: ScheduledEvent, env: Env, executionCtx: ExecutionContext): Promise<void> {
+    const { logger, requestId } = createCronObservability(env, event.cron, executionCtx);
+    const providers = createProviders(env, logger);
+
+    logger.logMilestone('cron_started', { cron: event.cron, request_id: requestId });
+
+    try {
+      await runCron(event.cron, { providers, env, logger, requestId, triggerSource: 'cron' });
+      logger.logMilestone('cron_completed', { cron: event.cron, request_id: requestId });
+    } catch (err) {
+      logger.captureException({
+        eventType: 'uncaught_exception',
+        message: 'Cron run failed',
+        error: err,
+        source: 'cron',
+        context: { cron: event.cron },
+      });
+    }
+  },
+};

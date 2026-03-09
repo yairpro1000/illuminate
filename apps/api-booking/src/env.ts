@@ -1,0 +1,41 @@
+export interface Env {
+  // Per-provider mode flags — each defaults to 'mock' in wrangler.toml
+  REPOSITORY_MODE: string; // 'mock' | 'supabase'
+  EMAIL_MODE:      string; // 'mock' | 'resend'
+  CALENDAR_MODE:   string; // 'mock' | 'google'
+  PAYMENTS_MODE:   string; // 'mock' | 'stripe'
+  ANTIBOT_MODE:    string; // 'mock' | 'turnstile'
+
+  SITE_URL: string;       // e.g. https://yairb.com (no trailing slash)
+  SESSION_ADDRESS: string;
+  SESSION_MAPS_URL: string;
+  API_ALLOWED_ORIGINS?: string;
+  ADMIN_ALLOWED_EMAILS?: string;
+  ADMIN_DEV_EMAIL?: string;
+
+  // Set as secrets in prod — may be undefined in mock mode
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
+
+  RESEND_API_KEY: string;
+
+  GOOGLE_OAUTH_CLIENT_ID: string;
+  GOOGLE_OAUTH_CLIENT_SECRET: string;
+  GOOGLE_OAUTH_REFRESH_TOKEN: string;
+  GOOGLE_CALENDAR_ID: string;
+
+  // Service account credentials (used by GoogleCalendarProvider)
+  GOOGLE_CLIENT_EMAIL: string;
+  GOOGLE_PRIVATE_KEY: string;
+  GOOGLE_TOKEN_URI: string;
+
+  TIMEZONE: string; // e.g. 'Europe/Zurich'
+
+  STRIPE_SECRET_KEY: string;
+  STRIPE_WEBHOOK_SECRET: string;
+  STRIPE_PUBLISHABLE_KEY: string;
+
+  TURNSTILE_SECRET_KEY: string;
+
+  JOB_SECRET: string; // Bearer token required on POST /api/jobs/:name
+}

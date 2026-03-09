@@ -1,142 +1,192 @@
 /* ============================================================
-   ILLUMINATE Evenings — Event card renderer
-   Fetches data/events_data.json and renders cards into #events-grid.
-   Auto-sorts by date_iso ascending.
+   ILLUMINATE Evenings — Event renderer (API-driven)
    ============================================================ */
 
 (function initEventCards() {
-
   const grid = document.getElementById('events-grid');
   if (!grid) return;
 
-  /* ── Helpers ────────────────────────────────────────────── */
-
-  function formatDuration(minutes) {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (m === 0) return `${h}h`;
-    return `${h}h ${m}m`;
+  function formatDateLabel(iso) {
+    return new Date(iso).toLocaleString('en-GB', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
-  function eventEndIso(event) {
-    const [h, m] = event.start_time.split(':').map(Number);
-    const total  = h * 60 + m + event.duration_minutes;
-    const pad    = n => String(n).padStart(2, '0');
-    return event.date_iso + 'T' + pad(Math.floor(total / 60)) + ':' + pad(total % 60) + ':00';
+  function formatPrice(event) {
+    if (!event.is_paid) return 'Free';
+    const cents = Number(event.price_per_person_cents || 0);
+    const currency = event.currency || 'CHF';
+    return `${currency} ${(cents / 100).toFixed(2)}`;
   }
 
   function bookingUrl(event) {
     const params = new URLSearchParams({
-      source:        'evening',
-      eventSlug:     event.id,
-      eventTitle:    event.title,
-      eventDate:     event.date_iso,
-      eventDisplay:  event.date_display,
-      eventStart:    event.date_iso + 'T' + event.start_time + ':00',
-      eventEnd:      eventEndIso(event),
-      eventLocation: event.location,
-      isPaid:        'false',
+      source: 'evening',
+      eventSlug: event.slug,
+      eventTitle: event.title,
+      eventDate: event.starts_at.slice(0, 10),
+      eventDisplay: formatDateLabel(event.starts_at),
+      eventStart: event.starts_at,
+      eventEnd: event.ends_at,
+      eventLocation: event.address_line,
+      isPaid: String(Boolean(event.is_paid)),
+      price: String(Number(event.price_per_person_cents || 0)),
     });
-    return 'book?' + params.toString();
+
+    return 'book.html?' + params.toString();
   }
 
-  function dateBadge(dateIso) {
-    const [, , day] = dateIso.split('-');
-    const mon = new Date(dateIso + 'T12:00:00').toLocaleString('en-GB', { month: 'short' });
-    return { day: parseInt(day, 10), mon };
+  function reminderForm(eventId) {
+    return `
+      <form class="event-reminder-form" data-reminder-form="${eventId}" hidden>
+        <label class="visually-hidden" for="reminder-email-${eventId}">Email</label>
+        <input id="reminder-email-${eventId}" type="email" name="email" placeholder="your@email.com" required />
+        <input type="text" name="first_name" placeholder="First name (optional)" />
+        <input type="text" name="last_name" placeholder="Last name (optional)" />
+        <button type="submit" class="btn btn-primary">Join reminders</button>
+        <p class="event-reminder-msg" data-reminder-msg="${eventId}" aria-live="polite"></p>
+      </form>
+    `;
   }
 
-  /* ── Card template ──────────────────────────────────────── */
+  function renderCard(event, isPast) {
+    const render = event.render || {};
+    const soldOut = Boolean(render.sold_out);
+    const publicOpen = Boolean(render.public_registration_open);
+    const showReminder = Boolean(render.show_reminder_signup_cta);
 
-  function renderCard(event, index) {
-    const badge   = dateBadge(event.date_iso);
-    const dur     = formatDuration(event.duration_minutes);
-    const url     = bookingUrl(event);
-    const delay   = Math.min(index + 1, 5);
-    const atcDesc = event.teaser + ' ' + event.description;
+    const badge = soldOut
+      ? '<span class="event-tag">Sold out</span>'
+      : isPast
+        ? '<span class="event-tag">Past event</span>'
+        : '<span class="event-tag">Upcoming</span>';
 
-    const tags = event.tags
-      .map(t => `<span class="event-tag">${t}</span>`)
-      .join('');
+    let actionHtml = '';
+    if (publicOpen) {
+      actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary">Book your spot</a>`;
+    } else if (showReminder) {
+      actionHtml = `<button class="btn btn-primary" data-open-reminder="${event.id}">Join reminders list</button>`;
+    } else {
+      actionHtml = '<span class="btn btn-ghost" aria-disabled="true">Registration closed</span>';
+    }
 
-    const atcWidget = typeof buildAtcWidget === 'function'
+    const atcWidget = (!isPast && typeof buildAtcWidget === 'function')
       ? buildAtcWidget({
-          title:       event.title + ' — ILLUMINATE Evening',
-          start:       event.date_iso + 'T' + event.start_time + ':00',
-          end:         eventEndIso(event),
-          location:    event.location,
-          description: atcDesc,
+          title: `${event.title} — ILLUMINATE Evening`,
+          start: event.starts_at,
+          end: event.ends_at,
+          location: event.address_line,
+          description: event.description,
         })
       : '';
 
     return `
-      <article class="event-card fade-up fade-up--delay-${delay}" id="${event.id}" data-date="${event.date_iso}">
-
-        <div class="event-card__image event-card__image--placeholder">
-          <div class="event-card__date-badge">
-            <span class="event-card__day">${badge.day}</span>
-            <span class="event-card__month">${badge.mon}</span>
-          </div>
-        </div>
-
+      <article class="event-card fade-up" id="${event.slug}">
         <div class="event-card__body">
-          <div class="event-card__tags">${tags}</div>
-
+          <div class="event-card__tags">${badge}</div>
           <h3 class="event-card__title">${event.title}</h3>
-          <p class="event-card__teaser">${event.teaser}</p>
-          <p class="event-card__desc">${event.description}</p>
+          <p class="event-card__teaser">${event.description}</p>
 
           <dl class="event-card__meta">
-            <div class="event-card__meta-row">
-              <dt>When</dt>
-              <dd>${event.date_display} · ${event.start_time} (${dur})</dd>
-            </div>
-            <div class="event-card__meta-row">
-              <dt>Where</dt>
-              <dd>${event.location}</dd>
-            </div>
-            <div class="event-card__meta-row">
-              <dt>Format</dt>
-              <dd>${event.format}</dd>
-            </div>
+            <div class="event-card__meta-row"><dt>When</dt><dd>${formatDateLabel(event.starts_at)}</dd></div>
+            <div class="event-card__meta-row"><dt>Where</dt><dd>${event.address_line}</dd></div>
+            <div class="event-card__meta-row"><dt>Price</dt><dd>${formatPrice(event)}</dd></div>
+            <div class="event-card__meta-row"><dt>Capacity</dt><dd>${event.stats?.active_bookings ?? 0}/${event.stats?.capacity ?? event.capacity}</dd></div>
           </dl>
 
           <div class="event-card__actions">
-            <a href="${url}" class="btn btn-primary">${event.cta_text}</a>
+            ${actionHtml}
             ${atcWidget}
           </div>
-        </div>
 
-      </article>`;
+          ${showReminder ? reminderForm(event.id) : ''}
+        </div>
+      </article>
+    `;
   }
 
-  /* ── Fetch & render ─────────────────────────────────────── */
-
-  fetch('data/events_data.json')
-    .then(r => r.json())
-    .then(({ events }) => {
-      // Sort ascending by date
-      events.sort((a, b) => a.date_iso.localeCompare(b.date_iso));
-
-      grid.innerHTML = events.map(renderCard).join('');
-
-      // Wire up Add to Calendar widgets injected above
-      if (typeof initAddToCalendar === 'function') initAddToCalendar(grid);
-
-      // Scroll-reveal for dynamically added cards (main.js observer ran before these existed)
-      const revealObserver = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            entry.target.classList.toggle('is-visible', entry.isIntersecting);
-          });
-        },
-        { threshold: 0.15, rootMargin: '0px 0px -40px 0px' }
-      );
-      grid.querySelectorAll('.fade-up').forEach(el => revealObserver.observe(el));
-    })
-    .catch(err => {
-      console.error('[evenings.js] Could not load events_data.json:', err);
-      grid.innerHTML = '<p class="events-error">Could not load upcoming events. Please try again later.</p>';
+  function attachReminderHandlers(container) {
+    container.querySelectorAll('[data-open-reminder]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const eventId = btn.getAttribute('data-open-reminder');
+        const form = container.querySelector(`[data-reminder-form="${eventId}"]`);
+        if (!form) return;
+        form.hidden = !form.hidden;
+      });
     });
 
+    container.querySelectorAll('[data-reminder-form]').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const eventId = form.getAttribute('data-reminder-form');
+        const msg = container.querySelector(`[data-reminder-msg="${eventId}"]`);
+        const fd = new FormData(form);
+        const payload = {
+          email: String(fd.get('email') || '').trim(),
+          first_name: String(fd.get('first_name') || '').trim() || null,
+          last_name: String(fd.get('last_name') || '').trim() || null,
+          event_family: 'illuminate_evenings',
+        };
+
+        try {
+          if (typeof createEventReminderSubscription === 'function') {
+            await createEventReminderSubscription(payload);
+          } else {
+            await fetch('/api/events/reminder-subscriptions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+          if (msg) msg.textContent = 'You are on the reminders list.';
+          form.reset();
+        } catch (err) {
+          if (msg) msg.textContent = 'Could not save reminder signup. Please try again.';
+        }
+      });
+    });
+  }
+
+  function renderSections(events) {
+    const future = events.filter((e) => !(e.render && e.render.is_past));
+    const past = events.filter((e) => Boolean(e.render && e.render.is_past));
+
+    const parts = [];
+
+    parts.push(`<div class="events-section"><h3 class="heading-md">Upcoming</h3>${future.length ? future.map((e) => renderCard(e, false)).join('') : '<p>No upcoming evenings yet.</p>'}</div>`);
+    parts.push(`<div class="events-section" style="margin-top:2rem"><h3 class="heading-md">Past Evenings</h3>${past.length ? past.map((e) => renderCard(e, true)).join('') : '<p>No past evenings yet.</p>'}</div>`);
+
+    grid.innerHTML = parts.join('');
+
+    if (typeof initAddToCalendar === 'function') initAddToCalendar(grid);
+
+    const revealObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          entry.target.classList.toggle('is-visible', entry.isIntersecting);
+        });
+      },
+      { threshold: 0.15, rootMargin: '0px 0px -40px 0px' },
+    );
+    grid.querySelectorAll('.fade-up').forEach((el) => revealObserver.observe(el));
+
+    attachReminderHandlers(grid);
+  }
+
+  fetch('/api/events')
+    .then((r) => r.json())
+    .then((data) => {
+      const events = Array.isArray(data.events) ? data.events : [];
+      events.sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
+      renderSections(events);
+    })
+    .catch((err) => {
+      console.error('[evenings.js] Could not load events:', err);
+      grid.innerHTML = '<p class="events-error">Could not load events. Please try again later.</p>';
+    });
 })();

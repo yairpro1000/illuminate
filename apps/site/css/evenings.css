@@ -21,7 +21,8 @@ body.theme-light .evenings-hero::after {
 /* ── Hero body text block ───────────────────────────────────── */
 .evenings-body {
   max-width: 38rem;
-  width: 100%;
+  width: min(38rem, 100% - 3rem);
+  margin-inline: auto;
   text-align: left;
 }
 

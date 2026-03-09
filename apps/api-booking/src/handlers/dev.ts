@@ -1,0 +1,148 @@
+/**
+ * Development-only endpoints. Only active when REPOSITORY_MODE !== 'supabase'
+ * (i.e. the in-memory mock repository is in use).
+ */
+
+import type { AppContext } from '../router.js';
+import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { mockState } from '../providers/mock-state.js';
+import { confirmBookingPayment } from '../services/booking-service.js';
+
+function guardMockOnly(ctx: AppContext): void {
+  if (ctx.env.REPOSITORY_MODE === 'supabase') {
+    throw badRequest('Dev endpoints are not available when using real providers');
+  }
+}
+
+function summarizeFailureLog(log: typeof mockState.failureLogs[number]) {
+  return {
+    id: log.id,
+    source: log.source,
+    operation: log.operation,
+    severity: log.severity,
+    status: log.status,
+    request_id: log.request_id,
+    booking_id: log.booking_id,
+    payment_id: log.payment_id,
+    retryable: log.retryable,
+    attempts: log.attempts,
+    next_retry_at: log.next_retry_at,
+    resolved_at: log.resolved_at,
+    created_at: log.created_at,
+    updated_at: log.updated_at,
+  };
+}
+
+// POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
+export async function handleSimulatePayment(request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    guardMockOnly(ctx);
+
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get('session_id');
+    const result = url.searchParams.get('result');
+
+    if (!sessionId || !result) throw badRequest('session_id and result are required');
+
+    const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
+    if (!payment) throw badRequest('Payment not found for session_id');
+    if (payment.status === 'succeeded') return ok({ already: 'succeeded' });
+
+    if (result === 'failure') {
+      await ctx.providers.repository.updatePayment(payment.id, { status: 'failed' });
+      return ok({ status: 'failed' });
+    }
+
+    if (result !== 'success') throw badRequest('result must be success or failure');
+
+    await confirmBookingPayment(
+      {
+        id: payment.id,
+        booking_id: payment.booking_id,
+        provider_payment_id: payment.provider_payment_id,
+      },
+      {
+        paymentIntentId: `mock_pi_${crypto.randomUUID()}`,
+        invoiceId: `mock_inv_${crypto.randomUUID()}`,
+        invoiceUrl: `${ctx.env.SITE_URL}/mock-invoice/${sessionId}.pdf`,
+      },
+      {
+        providers: ctx.providers,
+        env: ctx.env,
+        logger: ctx.logger,
+        requestId: ctx.requestId,
+      },
+    );
+
+    return ok({ status: 'succeeded' });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// GET /api/__dev/emails
+export async function handleDevEmails(_request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    guardMockOnly(ctx);
+    const emails = mockState.sentEmails.slice(-50).reverse().map((email) => ({
+      to: email.to,
+      subject: email.subject,
+      kind: email.kind,
+      sentAt: email.sentAt,
+    }));
+    return ok({ emails });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// GET /api/__dev/failures
+export async function handleDevFailures(_request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    guardMockOnly(ctx);
+    const logs = await ctx.providers.repository.getRecentFailureLogs(50);
+    return ok({ failure_logs: logs.map(summarizeFailureLog) });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// GET /api/__dev/bookings
+export async function handleDevBookings(_request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    guardMockOnly(ctx);
+    const bookings = [...mockState.bookings.values()].map((booking) => ({
+      id: booking.id,
+      client_id: booking.client_id,
+      source: booking.source,
+      status: booking.status,
+      event_id: booking.event_id,
+      session_type: booking.session_type,
+      starts_at: booking.starts_at,
+      ends_at: booking.ends_at,
+      timezone: booking.timezone,
+      payment_due_at: booking.payment_due_at,
+      google_event_id: booking.google_event_id,
+      reminder_24h_scheduled_at: booking.reminder_24h_scheduled_at,
+      created_at: booking.created_at,
+      updated_at: booking.updated_at,
+    }));
+    const clients = [...mockState.clients.values()];
+    const payments = [...mockState.payments.values()].map((payment) => ({
+      id: payment.id,
+      booking_id: payment.booking_id,
+      provider: payment.provider,
+      provider_payment_id: payment.provider_payment_id,
+      amount_cents: payment.amount_cents,
+      currency: payment.currency,
+      status: payment.status,
+      invoice_url: payment.invoice_url,
+      paid_at: payment.paid_at,
+      created_at: payment.created_at,
+      updated_at: payment.updated_at,
+    }));
+    return ok({ bookings, clients, payments });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}

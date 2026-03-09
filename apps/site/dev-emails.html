@@ -136,13 +136,6 @@
 
   const content = document.getElementById('content');
 
-  // Linkify plain-text URLs in email body
-  function linkify(text) {
-    return text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
-  }
-
   function formatTime(iso) {
     const d = new Date(iso);
     return d.toLocaleTimeString('en-GB', {
@@ -172,7 +165,7 @@
               <span class="email-to">To: ${e.to}</span>
               <span class="email-time">${formatTime(e.sentAt)}</span>
             </div>
-            <div class="email-body">${linkify(e.body)}</div>
+            <div class="email-body">Preview redacted in dev summary. Open the mail provider mock or logs if you need full content.</div>
           </div>
         `).join('') +
         '</div>';

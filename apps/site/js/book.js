@@ -7,6 +7,7 @@
    ============================================================ */
 
 'use strict';
+const BOOK_OBS = window.siteObservability || null;
 
 /* ══════════════════════════════════════════════════════════
    1. BOOKING CONTEXT — parsed from URL query params
@@ -15,11 +16,14 @@
 function parseBookingContext() {
   const p = new URLSearchParams(window.location.search);
   const source = p.get('source') || '1_on_1';
+  const mode = p.get('mode') === 'reschedule' ? 'reschedule' : 'new';
 
   if (source === 'evening') {
     return {
       source:       'evening',
+      mode:         'new',
       eventSlug:    p.get('eventSlug')    || '',
+      eventAccessToken: p.get('access')   || '',
       eventTitle:   p.get('eventTitle')   || 'ILLUMINATE Evening',
       eventDate:    p.get('eventDate')    || '',
       eventDisplay: p.get('eventDisplay') || '',
@@ -35,7 +39,13 @@ function parseBookingContext() {
   // Default safely to 'intro' for unknown/missing values.
   const rawType = (p.get('type') || '').toLowerCase();
   const slotType = rawType === 'session' ? 'session' : 'intro';
-  return { source: '1_on_1', slotType };
+  return {
+    source: '1_on_1',
+    slotType,
+    mode,
+    manageToken: p.get('token') || '',
+    bookingId: p.get('id') || '',
+  };
 }
 
 const CTX = parseBookingContext();
@@ -57,7 +67,8 @@ console.log(
 const S = {
   // Shared
   step: 1,
-  name:  '',
+  firstName: '',
+  lastName:  '',
   email: '',
   phone: '',
   errors: {},
@@ -74,12 +85,14 @@ const S = {
 
   // Flow A — Payment
   paymentMethod: null,                   // 'pay-now' | 'pay-later'
-
-  // Flow B — Attendees
-  additionalAttendees: [],               // array of name strings (up to 4)
+  submissionStatus: null,                // API status from latest submit
 
   // Payment simulation (paid flows only)
   paymentResult: null,                   // null | 'success' | 'failure'
+
+  // Reschedule mode
+  currentBooking: null,                  // { starts_at, ends_at, status, ... }
+  rescheduleUpdated: null,               // { starts_at, ends_at }
 };
 
 /* ══════════════════════════════════════════════════════════
@@ -114,8 +127,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validateFields(fields) {
   const errs = {};
-  if (fields.name && !S.name.trim())
-    errs.name = 'Please enter your name.';
+  if (fields.name) {
+    if (!S.firstName.trim()) errs.firstName = 'Please enter your first name.';
+    if (!S.lastName.trim())  errs.lastName  = 'Please enter your last name.';
+  }
   if (fields.email) {
     if (!S.email.trim())              errs.email = 'Please enter your email.';
     else if (!EMAIL_RE.test(S.email)) errs.email = 'Please enter a valid email address.';
@@ -154,8 +169,12 @@ function render() {
 
 function buildShell() {
   const isEvent    = CTX.source === 'evening';
-  const totalSteps = isEvent ? 3 : 5;
-  const isFinal    = (isEvent && S.step === 3) || (!isEvent && S.step === 5);
+  const isReschedule = CTX.mode === 'reschedule';
+  const totalSteps = isEvent ? 3 : (isReschedule ? 4 : 5);
+  const isFinal =
+    (isEvent && S.step === 3) ||
+    (!isEvent && isReschedule && S.step === 4) ||
+    (!isEvent && !isReschedule && S.step === 5);
 
   return `
     <div class="booking-card">
@@ -167,6 +186,7 @@ function buildShell() {
         </header>
       ` : ''}
       <div class="booking-body">
+        ${S.errors.global ? `<p class="form-error" role="alert">${escHtml(S.errors.global)}</p>` : ''}
         ${isEvent ? buildEventFlow() : buildBookingFlow()}
       </div>
     </div>
@@ -207,6 +227,16 @@ function buildProgress(total) {
 /* ── Step routing ─────────────────────────────────────────── */
 
 function buildBookingFlow() {
+  if (CTX.mode === 'reschedule') {
+    switch (S.step) {
+      case 1: return buildCalendar();
+      case 2: return buildContactForm(false);
+      case 3: return buildRescheduleReview();
+      case 4: return buildConfirmation();
+      default: return '';
+    }
+  }
+
   switch (S.step) {
     case 1: return buildCalendar();
     case 2: return buildContactForm(false);
@@ -292,6 +322,7 @@ function buildCalendar() {
 
   return `
     <div class="cal-step">
+      ${buildCurrentBookingPanel()}
       <p class="step-eyebrow">Choose a date</p>
       <div class="calendar">
         <div class="cal-header">
@@ -332,6 +363,7 @@ function buildDaySlots() {
 
   return `
     <div class="cal-step">
+      ${buildCurrentBookingPanel()}
       <button class="cal-back-btn" data-cal-back-month>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.5"
@@ -353,6 +385,26 @@ function buildDaySlots() {
   `;
 }
 
+function buildCurrentBookingPanel() {
+  if (CTX.mode !== 'reschedule' || !S.currentBooking) return '';
+  const current = S.currentBooking;
+  const nextStart = S.selectedSlot?.start || S.rescheduleUpdated?.starts_at || null;
+  return `
+    <div class="reschedule-current">
+      <p class="reschedule-current__label">Current booking</p>
+      <p class="reschedule-current__row">${formatDateLong(current.starts_at)} · ${formatTime(current.starts_at)}</p>
+      <p class="reschedule-current__meta">
+        Status: ${escHtml(String(current.status || '—').replace('_', ' '))}
+      </p>
+      ${nextStart ? `
+        <p class="reschedule-current__next">
+          New slot: ${formatDateLong(nextStart)} · ${formatTime(nextStart)}
+        </p>
+      ` : ''}
+    </div>
+  `;
+}
+
 /* ── Contact form (Flow A, Step 2) ──────────────────────── */
 
 function buildContactForm(requirePhone) {
@@ -368,15 +420,25 @@ function buildContactForm(requirePhone) {
 
   return `
     <div class="form-step">
+      ${buildCurrentBookingPanel()}
       ${slotLine}
       <p class="step-eyebrow">Your details</p>
 
-      <div class="form-group">
-        <label class="form-label" for="f-name">Name <span class="required-star" aria-hidden="true">*</span></label>
-        <input id="f-name" class="form-input ${S.errors.name ? 'form-input--error' : ''}"
-               type="text" placeholder="Your full name" autocomplete="name"
-               value="${escHtml(S.name)}" data-field="name" />
-        ${S.errors.name ? `<p class="form-error" role="alert">${escHtml(S.errors.name)}</p>` : ''}
+      <div class="form-name-row">
+        <div class="form-group">
+          <label class="form-label" for="f-first-name">First name <span class="required-star" aria-hidden="true">*</span></label>
+          <input id="f-first-name" class="form-input ${S.errors.firstName ? 'form-input--error' : ''}"
+                 type="text" placeholder="First name" autocomplete="given-name"
+                 value="${escHtml(S.firstName)}" data-field="firstName" />
+          ${S.errors.firstName ? `<p class="form-error" role="alert">${escHtml(S.errors.firstName)}</p>` : ''}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="f-last-name">Last name <span class="required-star" aria-hidden="true">*</span></label>
+          <input id="f-last-name" class="form-input ${S.errors.lastName ? 'form-input--error' : ''}"
+                 type="text" placeholder="Last name" autocomplete="family-name"
+                 value="${escHtml(S.lastName)}" data-field="lastName" />
+          ${S.errors.lastName ? `<p class="form-error" role="alert">${escHtml(S.errors.lastName)}</p>` : ''}
+        </div>
       </div>
 
       <div class="form-group">
@@ -403,6 +465,31 @@ function buildContactForm(requirePhone) {
       <div class="step-footer">
         <button class="btn btn-ghost" data-back>← Back</button>
         <button class="btn btn-primary" data-next>Continue →</button>
+      </div>
+    </div>
+  `;
+}
+
+function buildRescheduleReview() {
+  const slot = S.selectedSlot;
+  const rows = [
+    ['Current slot', S.currentBooking ? `${formatDateLong(S.currentBooking.starts_at)} · ${formatTime(S.currentBooking.starts_at)}` : '—'],
+    ['New slot', slot ? `${formatDateLong(slot.start)} · ${formatTime(slot.start)}` : '—'],
+    ['Name', [S.firstName, S.lastName].filter(Boolean).join(' ')],
+    ['Email', S.email],
+    S.phone ? ['Phone', S.phone] : null,
+  ].filter(Boolean);
+
+  return `
+    <div class="form-step">
+      ${buildCurrentBookingPanel()}
+      <p class="step-eyebrow">Review your reschedule</p>
+      ${buildReviewTable(rows)}
+      <div class="step-footer">
+        <button class="btn btn-ghost" data-back>← Back</button>
+        <button class="btn btn-primary" data-submit ${S.submitting ? 'disabled' : ''}>
+          ${S.submitting ? 'Updating…' : 'Confirm New Time'}
+        </button>
       </div>
     </div>
   `;
@@ -460,7 +547,7 @@ function buildBookingReview() {
   const slot = S.selectedSlot;
   const rows = [
     ['Date & time', slot ? formatDateLong(slot.start) + ' · ' + formatTime(slot.start) : '—'],
-    ['Name',        S.name],
+    ['Name',        [S.firstName, S.lastName].filter(Boolean).join(' ')],
     ['Email',       S.email],
     S.phone ? ['Phone', S.phone] : null,
     ['Payment',     S.paymentMethod === 'pay-now'
@@ -487,50 +574,25 @@ function buildBookingReview() {
 function buildEventContactForm() {
   const isPaid = CTX.isPaid;
 
-  const attendeesBlock = isPaid ? `
-    <p class="form-section-title">
-      Additional guests
-      <span class="form-optional">(optional, up to 4)</span>
-    </p>
-    <div class="attendees-list">
-      ${S.additionalAttendees.map((name, i) => `
-        <div class="attendee-row">
-          <input class="form-input" type="text"
-                 placeholder="Guest ${i + 1} name"
-                 value="${escHtml(name)}"
-                 data-attendee="${i}"
-                 aria-label="Guest ${i + 1} name" />
-          <button class="attendee-remove-btn" data-remove-attendee="${i}"
-                  aria-label="Remove guest ${i + 1}">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
-              <path d="M1.5 1.5l10 10M11.5 1.5l-10 10" stroke="currentColor"
-                    stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
-      `).join('')}
-    </div>
-    ${S.additionalAttendees.length < 4
-      ? `<button class="btn-add-attendee" data-add-attendee>+ Add another guest</button>`
-      : ''}
-    ${S.additionalAttendees.length > 0 && isPaid && CTX.price
-      ? `<p class="attendee-total">
-          Total: ${1 + S.additionalAttendees.length} guests ·
-          CHF ${((1 + S.additionalAttendees.length) * CTX.price / 100).toFixed(2)}
-         </p>`
-      : ''}
-  ` : '';
-
   return `
     <div class="form-step">
       <p class="step-eyebrow">Your details</p>
 
-      <div class="form-group">
-        <label class="form-label" for="f-name">Name <span class="required-star" aria-hidden="true">*</span></label>
-        <input id="f-name" class="form-input ${S.errors.name ? 'form-input--error' : ''}"
-               type="text" placeholder="Your full name" autocomplete="name"
-               value="${escHtml(S.name)}" data-field="name" />
-        ${S.errors.name ? `<p class="form-error" role="alert">${escHtml(S.errors.name)}</p>` : ''}
+      <div class="form-name-row">
+        <div class="form-group">
+          <label class="form-label" for="f-first-name">First name <span class="required-star" aria-hidden="true">*</span></label>
+          <input id="f-first-name" class="form-input ${S.errors.firstName ? 'form-input--error' : ''}"
+                 type="text" placeholder="First name" autocomplete="given-name"
+                 value="${escHtml(S.firstName)}" data-field="firstName" />
+          ${S.errors.firstName ? `<p class="form-error" role="alert">${escHtml(S.errors.firstName)}</p>` : ''}
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="f-last-name">Last name <span class="required-star" aria-hidden="true">*</span></label>
+          <input id="f-last-name" class="form-input ${S.errors.lastName ? 'form-input--error' : ''}"
+                 type="text" placeholder="Last name" autocomplete="family-name"
+                 value="${escHtml(S.lastName)}" data-field="lastName" />
+          ${S.errors.lastName ? `<p class="form-error" role="alert">${escHtml(S.errors.lastName)}</p>` : ''}
+        </div>
       </div>
 
       <div class="form-group">
@@ -557,8 +619,6 @@ function buildEventContactForm() {
           : ''}
       </div>
 
-      ${attendeesBlock}
-
       <div class="step-footer">
         <div></div>
         <button class="btn btn-primary" data-next>Continue →</button>
@@ -570,20 +630,14 @@ function buildEventContactForm() {
 /* ── Event review (Flow B, Step 2) ──────────────────────── */
 
 function buildEventReview() {
-  const isPaid    = CTX.isPaid;
-  const total     = 1 + S.additionalAttendees.length;
-  const guests    = S.additionalAttendees.filter(Boolean);
+  const isPaid = CTX.isPaid;
 
   const rows = [
     ['Event',   CTX.eventTitle],
     CTX.eventDisplay ? ['Date', CTX.eventDisplay] : null,
-    ['Name',    S.name],
+    ['Name',    [S.firstName, S.lastName].filter(Boolean).join(' ')],
     ['Email',   S.email],
     S.phone  ? ['Phone', S.phone]  : null,
-    guests.length ? ['Guests', guests.join(', ')] : null,
-    isPaid && CTX.price
-      ? ['Total', `${total} guest${total > 1 ? 's' : ''} · CHF ${(total * CTX.price / 100).toFixed(2)}`]
-      : null,
     ['Type', isPaid
       ? 'Paid — Stripe checkout'
       : 'Free — email confirmation required'],
@@ -607,11 +661,33 @@ function buildEventReview() {
 
 function buildConfirmation() {
   const isEvent = CTX.source === 'evening';
+  const isReschedule = CTX.mode === 'reschedule';
   const isPaid  = isEvent ? CTX.isPaid : S.paymentMethod === 'pay-now';
+
+  if (isReschedule) {
+    const startsAt = S.rescheduleUpdated?.starts_at || S.selectedSlot?.start || S.currentBooking?.starts_at;
+    return `
+      <div class="confirmation">
+        <div class="confirmation__icon" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="30" stroke="var(--color-lake)" stroke-width="1.25"/>
+            <polyline points="18,32 28,42 46,22" stroke="var(--color-lake-light)"
+                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 class="confirmation__title">Booking rescheduled</h2>
+        <p class="confirmation__message">
+          Your new session time is <strong>${startsAt ? `${escHtml(formatDateLong(startsAt))} · ${escHtml(formatTime(startsAt))}` : 'saved'}</strong>.
+        </p>
+        <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
+      </div>
+    `;
+  }
 
   // Non-paid flows — simple success
   if (!isPaid) {
-    const noun   = isEvent ? 'registration' : 'booking';
+    const isConfirmedNow = S.submissionStatus === 'confirmed';
+    const noun = isEvent ? 'registration' : 'booking';
     const widget = _buildConfirmationWidget(isEvent);
     return `
       <div class="confirmation">
@@ -622,10 +698,18 @@ function buildConfirmation() {
                       stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <h2 class="confirmation__title">${isEvent ? 'Registration received!' : 'Booking received!'}</h2>
+        <h2 class="confirmation__title">${
+          isConfirmedNow
+            ? (isEvent ? 'Registration confirmed!' : 'Booking confirmed!')
+            : (isEvent ? 'Registration received!' : 'Booking received!')
+        }</h2>
         <p class="confirmation__message">
-          A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.
-          Please confirm your ${noun} within 15 minutes.
+          ${
+            isConfirmedNow
+              ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.`
+              : `A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.
+          Please confirm your ${noun} within 15 minutes.`
+          }
         </p>
         ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}
         <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
@@ -775,34 +859,6 @@ function attachListeners() {
     });
   });
 
-  // Add attendee
-  const addAttendee = app.querySelector('[data-add-attendee]');
-  if (addAttendee) addAttendee.addEventListener('click', () => {
-    if (S.additionalAttendees.length < 4) {
-      S.additionalAttendees.push('');
-      render();
-      setTimeout(() => {
-        const inputs = document.querySelectorAll('[data-attendee]');
-        if (inputs.length) inputs[inputs.length - 1].focus();
-      }, 50);
-    }
-  });
-
-  // Attendee name inputs
-  app.querySelectorAll('[data-attendee]').forEach(input => {
-    input.addEventListener('input', e => {
-      S.additionalAttendees[Number(e.target.dataset.attendee)] = e.target.value;
-    });
-  });
-
-  // Remove attendee
-  app.querySelectorAll('[data-remove-attendee]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      S.additionalAttendees.splice(Number(btn.dataset.removeAttendee), 1);
-      render();
-    });
-  });
-
   // Navigation buttons
   const nextBtn   = app.querySelector('[data-next]');
   const backBtn   = app.querySelector('[data-back]');
@@ -823,13 +879,14 @@ function attachListeners() {
 
 function handleNext() {
   const isEvent = CTX.source === 'evening';
+  const isReschedule = CTX.mode === 'reschedule';
   let errs = {};
 
   if (isEvent && S.step === 1) {
     errs = validateFields({ name: true, email: true, phone: !CTX.isPaid });
   } else if (!isEvent) {
     if (S.step === 2) errs = validateFields({ name: true, email: true });
-    if (S.step === 3) errs = validateFields({ paymentMethod: true });
+    if (!isReschedule && S.step === 3) errs = validateFields({ paymentMethod: true });
     // Step 1 (calendar): "Continue" only appears once a slot is selected — no extra guard needed
   }
 
@@ -875,27 +932,57 @@ async function handleSubmit() {
   render();
 
   try {
+    const flowId = BOOK_OBS && BOOK_OBS.startFlow ? BOOK_OBS.startFlow(
+      CTX.source === 'evening' ? 'registration_flow_started' : (CTX.mode === 'reschedule' ? 'reschedule_flow_started' : 'booking_flow_started')
+    ) : null;
+    if (BOOK_OBS) {
+      BOOK_OBS.logMilestone('business_event', {
+        correlationId: flowId || BOOK_OBS.getCorrelationId(),
+        flow: CTX.source === 'evening' ? 'event_registration' : (CTX.mode === 'reschedule' ? 'booking_reschedule' : 'booking_checkout'),
+        step: S.step,
+        source: CTX.source,
+      });
+    }
     let checkoutUrl = null;
-    if (CTX.source === 'evening') {
+    let status = null;
+    if (CTX.mode === 'reschedule') {
+      const result = await submitReschedule();
+      S.rescheduleUpdated = { starts_at: result.starts_at, ends_at: result.ends_at };
+    } else if (CTX.source === 'evening') {
       const result = await submitEventRegistration();
       checkoutUrl = result.checkout_url || null;
+      status = result.status || null;
     } else {
       const result = await submitBooking();
       checkoutUrl = result.checkout_url || null;
+      status = result.status || null;
     }
 
     S.submitting    = false;
     S.paymentResult = null;
+    S.submissionStatus = status;
     S.step++;
     render();
     scrollToApp();
 
     if (checkoutUrl) {
+      if (BOOK_OBS) BOOK_OBS.logMilestone('provider_result_persisted', { flow: 'checkout_redirect', checkout_created: true });
       // Show "Redirecting to payment…" briefly then navigate
       setTimeout(() => { window.location.href = checkoutUrl; }, 400);
     }
   } catch (err) {
     console.error('[Book] Submission error:', err);
+    if (BOOK_OBS) {
+      BOOK_OBS.logError({
+        eventType: 'handled_exception',
+        message: 'Booking form submission failed',
+        error: {
+          errorName: err && err.name || 'Error',
+          stackTrace: err && err.stack || null,
+          extra: { source: CTX.source, mode: CTX.mode },
+        },
+      });
+    }
     S.submitting = false;
     render();
   }
@@ -906,7 +993,8 @@ async function submitBooking() {
     slot_start:              S.selectedSlot.start,
     slot_end:                S.selectedSlot.end,
     timezone:                'Europe/Zurich',
-    client_name:             S.name.trim(),
+    type:                    CTX.slotType,
+    client_name:             [S.firstName, S.lastName].filter(Boolean).join(' '),
     client_email:            S.email.trim(),
     client_phone:            S.phone.trim() || null,
     reminder_email_opt_in:   true,
@@ -916,30 +1004,74 @@ async function submitBooking() {
 
   let result;
   if (S.paymentMethod === 'pay-now') {
+    if (BOOK_OBS) BOOK_OBS.logMilestone('checkout_started', { flow: 'site_booking_pay_now', slot_start: payload.slot_start });
     result = await bookingPayNow(payload);
   } else {
+    if (BOOK_OBS) BOOK_OBS.logMilestone('confirmation_email_requested', { flow: 'site_booking_pay_later', slot_start: payload.slot_start });
     result = await bookingPayLater(payload);
   }
 
   console.log('[Book] Booking result:', result);
+  if (BOOK_OBS) BOOK_OBS.logMilestone('booking_created', { booking_id: result.booking_id, payment_method: S.paymentMethod });
+  return result;
+}
+
+async function submitReschedule() {
+  if (!S.selectedSlot) throw new Error('Please choose a new slot.');
+  if (!CTX.manageToken || !CTX.bookingId) throw new Error('Missing reschedule token.');
+
+  const payload = {
+    token:     CTX.manageToken,
+    new_start: S.selectedSlot.start,
+    new_end:   S.selectedSlot.end,
+    timezone:  'Europe/Zurich',
+  };
+
+  if (BOOK_OBS) BOOK_OBS.logMilestone('checkout_started', { flow: 'site_reschedule', booking_id: CTX.bookingId });
+  const result = await bookingReschedule(payload);
+  console.log('[Book] Reschedule result:', result);
+  if (BOOK_OBS) BOOK_OBS.logMilestone('booking_rescheduled', { booking_id: result.booking_id });
   return result;
 }
 
 async function submitEventRegistration() {
   const payload = {
-    primary_name:             S.name.trim(),
-    primary_email:            S.email.trim(),
-    primary_phone:            S.phone.trim() || null,
-    attendees:                S.additionalAttendees.filter(Boolean),
+    first_name:               S.firstName.trim(),
+    last_name:                S.lastName.trim() || null,
+    email:                    S.email.trim(),
+    phone:                    S.phone.trim() || null,
     reminder_email_opt_in:    true,
     reminder_whatsapp_opt_in: false,
     turnstile_token:          'placeholder',
-    _isPaid:                  CTX.isPaid,
   };
 
-  const result = await eventRegister(CTX.eventSlug, payload);
+  if (BOOK_OBS) BOOK_OBS.logMilestone('registration_started', { event_slug: CTX.eventSlug });
+  const result = CTX.eventAccessToken
+    ? await eventBookWithAccess(CTX.eventSlug, Object.assign({ access_token: CTX.eventAccessToken }, payload))
+    : await eventBook(CTX.eventSlug, payload);
   console.log('[Book] Event registration result:', result);
+  if (BOOK_OBS) BOOK_OBS.logMilestone('registration_created', { booking_id: result.booking_id, event_slug: CTX.eventSlug });
   return result;
+}
+
+async function loadRescheduleContext() {
+  if (CTX.mode !== 'reschedule') return;
+  if (!CTX.manageToken || !CTX.bookingId) throw new Error('Invalid reschedule link.');
+
+  const params = new URLSearchParams({ token: CTX.manageToken });
+  const data = await _get('/api/bookings/manage?' + params.toString());
+  S.currentBooking = data;
+  S.firstName = data.client?.first_name || '';
+  S.lastName  = data.client?.last_name || '';
+  S.email = data.client?.email || '';
+  S.phone = data.client?.phone || '';
+
+  if (data.starts_at && data.ends_at) {
+    const existing = { start: data.starts_at, end: data.ends_at };
+    S.selectedSlot = existing;
+    const d = new Date(existing.start);
+    S.calViewDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -947,6 +1079,20 @@ async function submitEventRegistration() {
    ══════════════════════════════════════════════════════════ */
 
 async function init() {
+  if (BOOK_OBS) {
+    BOOK_OBS.logMilestone('page_loaded', {
+      page: 'book',
+      source: CTX.source,
+      mode: CTX.mode,
+    });
+  }
+  try {
+    await loadRescheduleContext();
+  } catch (err) {
+    console.error('[Book] Failed to load reschedule context:', err);
+    S.errors = { global: 'This reschedule link is invalid or expired.' };
+  }
+
   if (CTX.source !== 'evening') {
     // Fetch 4 months of available slots for the calendar
     const from = toYMD(new Date());

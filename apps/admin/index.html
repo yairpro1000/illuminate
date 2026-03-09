@@ -3,20 +3,635 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Admin</title>
+    <title>ILLUMINATE Admin</title>
     <meta name="robots" content="noindex, nofollow" />
     <style>
-      :root { color-scheme: light dark; }
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 48px auto; padding: 0 16px; line-height: 1.45; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-      pre { overflow: auto; padding: 12px; border: 1px solid rgba(127,127,127,.35); border-radius: 10px; }
+      :root {
+        --bg: #f7f6f2;
+        --card: #ffffff;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --accent: #0d9488;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "Segoe UI", Tahoma, sans-serif;
+      }
+      main {
+        width: min(1180px, 96vw);
+        margin: 22px auto 44px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 1.4rem;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: end;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+      .hidden { display: none !important; }
+      .small {
+        font-size: 0.85rem;
+      }
+      .status {
+        margin-top: 8px;
+        min-height: 1.4em;
+      }
+      label {
+        display: block;
+        font-size: 0.82rem;
+        margin-bottom: 4px;
+        color: var(--muted);
+      }
+      input, select, textarea, button {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #fff;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      a {
+        color: var(--accent);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+      }
+      th, td {
+        text-align: left;
+        border-bottom: 1px solid var(--line);
+        padding: 8px;
+        font-size: 0.9rem;
+      }
+      th {
+        font-size: 0.8rem;
+        color: var(--muted);
+        text-transform: uppercase;
+      }
+      tbody tr.clickable {
+        cursor: pointer;
+      }
+      tbody tr.clickable:hover {
+        background: #f8fafc;
+      }
+      .ok {
+        color: #047857;
+      }
+      .err {
+        color: var(--danger);
+        white-space: pre-wrap;
+      }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      .modal {
+        width: min(760px, 94vw);
+        max-height: min(92vh, 880px);
+        overflow: auto;
+      }
+      .btnrow {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      @media (max-width: 760px) {
+        main {
+          width: min(96vw, 96vw);
+        }
+        th:nth-child(4), td:nth-child(4) {
+          display: none;
+        }
+      }
     </style>
   </head>
   <body>
-    <h1>Admin</h1>
-    <p>
-      This is a placeholder admin site. The deployed Personal Assistant UI lives under <code>apps/pa</code> and is built for
-      Cloudflare Pages.
-    </p>
+    <main>
+      <section class="card">
+        <h1>Organizer Admin</h1>
+        <p class="muted">Backend: <code id="apiBaseLabel"></code></p>
+        <div class="row">
+          <div class="col">
+            <label for="apiBase">API base</label>
+            <input id="apiBase" size="42" placeholder="/api" />
+          </div>
+          <div class="col">
+            <button id="saveBase" type="button" class="secondary">Save API base</button>
+          </div>
+          <div class="col">
+            <button id="testAuth" type="button" class="secondary">Test admin auth</button>
+          </div>
+        </div>
+        <div id="status" class="status muted"></div>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <div class="col" style="min-width: 180px;">
+            <label for="source">Source</label>
+            <select id="source">
+              <option value="event">Event</option>
+              <option value="session">Session</option>
+            </select>
+          </div>
+          <div id="eventWrap" class="col" style="min-width: 260px;">
+            <label for="eventId">Event</label>
+            <select id="eventId">
+              <option value="">All events</option>
+            </select>
+          </div>
+          <div id="dateWrap" class="col hidden" style="min-width: 190px;">
+            <label for="date">Session date</label>
+            <input id="date" type="date" />
+          </div>
+          <div id="clientWrap" class="col hidden" style="min-width: 260px;">
+            <label for="clientId">Client ID</label>
+            <input id="clientId" placeholder="optional" />
+          </div>
+          <div class="col">
+            <button id="loadRows" type="button">Load bookings</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="eventActionsCard">
+        <div class="row" style="align-items: end;">
+          <div class="col">
+            <label>Late-access link</label>
+            <button id="rotateLateAccess" type="button">Rotate late-access</button>
+          </div>
+          <div class="col" style="flex: 1 1 300px;">
+            <div id="lateAccessInfo" class="small muted">Select an event to generate late-access URL.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="row" style="align-items: end;">
+          <div class="col" style="min-width: 260px;">
+            <label for="reminderEmail">Reminder signup email</label>
+            <input id="reminderEmail" type="email" placeholder="email" />
+          </div>
+          <div class="col">
+            <button id="saveReminder" type="button" class="secondary">Add reminder</button>
+          </div>
+          <div id="reminderMsg" class="small muted"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>When</th>
+              <th>Client</th>
+              <th>Email</th>
+              <th>Status</th>
+              <th>Attended</th>
+            </tr>
+          </thead>
+          <tbody id="rowsBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <div id="editOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <h1 id="editTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit booking</h1>
+        <div class="row">
+          <div class="col" style="flex: 1 1 200px;">
+            <label for="editFirstName">First name</label>
+            <input id="editFirstName" />
+          </div>
+          <div class="col" style="flex: 1 1 200px;">
+            <label for="editLastName">Last name</label>
+            <input id="editLastName" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 10px;">
+          <div class="col" style="flex: 1 1 260px;">
+            <label for="editEmail">Email</label>
+            <input id="editEmail" type="email" />
+          </div>
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="editPhone">Phone</label>
+            <input id="editPhone" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 10px;">
+          <div class="col" style="min-width: 180px;">
+            <label for="editAttended">Attended</label>
+            <select id="editAttended">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </div>
+          <div class="col" style="flex: 1 1 320px;">
+            <label for="editNotes">Notes</label>
+            <textarea id="editNotes"></textarea>
+          </div>
+        </div>
+
+        <div id="editMsg" class="status muted"></div>
+
+        <div class="btnrow" style="margin-top: 10px;">
+          <button id="editClose" type="button" class="secondary">Close</button>
+          <button id="editSave" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const STORAGE_KEY = "admin_api_base";
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = (params.get("apiBase") || "").trim();
+        if (fromQuery) localStorage.setItem(STORAGE_KEY, fromQuery.replace(/\/+$/g, ""));
+        let apiBase = (localStorage.getItem(STORAGE_KEY) || "/api").replace(/\/+$/g, "");
+
+        const state = {
+          rows: [],
+          editing: null,
+          saving: false,
+          loadingRows: false,
+          rotatingLateAccess: false,
+        };
+
+        const apiBaseInput = document.getElementById("apiBase");
+        const apiBaseLabel = document.getElementById("apiBaseLabel");
+        const statusEl = document.getElementById("status");
+        const sourceEl = document.getElementById("source");
+        const eventWrapEl = document.getElementById("eventWrap");
+        const dateWrapEl = document.getElementById("dateWrap");
+        const clientWrapEl = document.getElementById("clientWrap");
+        const eventActionsCardEl = document.getElementById("eventActionsCard");
+        const eventEl = document.getElementById("eventId");
+        const dateEl = document.getElementById("date");
+        const clientIdEl = document.getElementById("clientId");
+        const rowsBody = document.getElementById("rowsBody");
+        const reminderEmailEl = document.getElementById("reminderEmail");
+        const reminderMsgEl = document.getElementById("reminderMsg");
+        const lateAccessInfoEl = document.getElementById("lateAccessInfo");
+        const rotateLateAccessEl = document.getElementById("rotateLateAccess");
+
+        const editOverlayEl = document.getElementById("editOverlay");
+        const editFirstNameEl = document.getElementById("editFirstName");
+        const editLastNameEl = document.getElementById("editLastName");
+        const editEmailEl = document.getElementById("editEmail");
+        const editPhoneEl = document.getElementById("editPhone");
+        const editAttendedEl = document.getElementById("editAttended");
+        const editNotesEl = document.getElementById("editNotes");
+        const editMsgEl = document.getElementById("editMsg");
+        const editSaveEl = document.getElementById("editSave");
+
+        function setStatus(text, isError) {
+          statusEl.className = isError ? "status err" : "status ok";
+          statusEl.textContent = text || "";
+        }
+
+        function setReminderMessage(text, isError) {
+          reminderMsgEl.className = isError ? "small err" : "small ok";
+          reminderMsgEl.textContent = text || "";
+        }
+
+        function setEditMessage(text, isError) {
+          editMsgEl.className = isError ? "status err" : "status muted";
+          editMsgEl.textContent = text || "";
+        }
+
+        function resolveUrl(path) {
+          return path.startsWith("http") ? path : `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
+        }
+
+        async function api(path, init) {
+          const res = await fetch(resolveUrl(path), {
+            method: "GET",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            ...init,
+          });
+          const text = await res.text();
+          let body = {};
+          try {
+            body = text ? JSON.parse(text) : {};
+          } catch {
+            body = { raw: text };
+          }
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(body)}`);
+          return body;
+        }
+
+        function createCell(text) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          return td;
+        }
+
+        function renderRows() {
+          rowsBody.innerHTML = "";
+          if (!Array.isArray(state.rows) || state.rows.length === 0) {
+            const tr = document.createElement("tr");
+            const td = document.createElement("td");
+            td.colSpan = 6;
+            td.className = "muted";
+            td.textContent = "No rows.";
+            tr.appendChild(td);
+            rowsBody.appendChild(tr);
+            return;
+          }
+
+          for (const row of state.rows) {
+            const tr = document.createElement("tr");
+            tr.className = "clickable";
+            const fullName = [row.client_first_name || "", row.client_last_name || ""].join(" ").trim();
+            tr.appendChild(createCell(row.source === "event" ? (row.event_title || "Event") : "Session"));
+            tr.appendChild(createCell(new Date(row.starts_at).toLocaleString()));
+            tr.appendChild(createCell(fullName));
+            tr.appendChild(createCell(row.client_email || ""));
+            tr.appendChild(createCell(row.status || ""));
+            tr.appendChild(createCell(row.attended ? "yes" : "no"));
+            tr.addEventListener("click", () => openEditModal(row));
+            rowsBody.appendChild(tr);
+          }
+        }
+
+        function syncSourceMode() {
+          const source = sourceEl.value;
+          const isEvent = source === "event";
+          eventWrapEl.classList.toggle("hidden", !isEvent);
+          eventActionsCardEl.classList.toggle("hidden", !isEvent);
+          dateWrapEl.classList.toggle("hidden", isEvent);
+          clientWrapEl.classList.toggle("hidden", isEvent);
+          rotateLateAccessEl.disabled = !isEvent || !eventEl.value || state.rotatingLateAccess;
+          if (!isEvent) {
+            lateAccessInfoEl.textContent = "Late-access links are available for event mode.";
+            lateAccessInfoEl.className = "small muted";
+          } else if (!eventEl.value) {
+            lateAccessInfoEl.textContent = "Select an event to generate late-access URL.";
+            lateAccessInfoEl.className = "small muted";
+          }
+        }
+
+        async function loadEvents() {
+          const data = await api("/admin/events");
+          const events = Array.isArray(data.events) ? data.events : [];
+          const current = eventEl.value;
+          eventEl.innerHTML = "";
+          const allOption = document.createElement("option");
+          allOption.value = "";
+          allOption.textContent = "All events";
+          eventEl.appendChild(allOption);
+          for (const ev of events) {
+            const opt = document.createElement("option");
+            opt.value = ev.id;
+            const date = ev.starts_at ? new Date(ev.starts_at).toLocaleDateString() : "";
+            opt.textContent = `${ev.title} ${date ? `(${date})` : ""}`;
+            eventEl.appendChild(opt);
+          }
+          if (current && events.some((ev) => ev.id === current)) {
+            eventEl.value = current;
+          }
+          syncSourceMode();
+        }
+
+        async function loadRows() {
+          state.loadingRows = true;
+          try {
+            const p = new URLSearchParams();
+            const source = sourceEl.value;
+            p.set("source", source);
+            if (source === "event" && eventEl.value) p.set("event_id", eventEl.value);
+            if (source === "session" && dateEl.value) p.set("date", dateEl.value);
+            if (source === "session" && clientIdEl.value.trim()) p.set("client_id", clientIdEl.value.trim());
+
+            const data = await api(`/admin/bookings?${p.toString()}`);
+            state.rows = Array.isArray(data.rows) ? data.rows : [];
+            renderRows();
+            setStatus(`Loaded ${state.rows.length} bookings.`, false);
+          } catch (err) {
+            state.rows = [];
+            renderRows();
+            setStatus(String(err), true);
+          } finally {
+            state.loadingRows = false;
+          }
+        }
+
+        async function rotateLateAccess() {
+          if (!eventEl.value || state.rotatingLateAccess) return;
+          state.rotatingLateAccess = true;
+          rotateLateAccessEl.disabled = true;
+          lateAccessInfoEl.className = "small muted";
+          lateAccessInfoEl.textContent = "Generating late-access URL...";
+          try {
+            const data = await api(`/admin/events/${encodeURIComponent(eventEl.value)}/late-access-links`, {
+              method: "POST",
+            });
+            lateAccessInfoEl.className = "small";
+            lateAccessInfoEl.innerHTML = `<a href="${data.url}" target="_blank" rel="noreferrer">Open late-access link</a> · Expires ${new Date(data.expires_at).toLocaleString()}`;
+            setStatus("Late-access link rotated.", false);
+          } catch (err) {
+            lateAccessInfoEl.className = "small err";
+            lateAccessInfoEl.textContent = String(err);
+            setStatus(String(err), true);
+          } finally {
+            state.rotatingLateAccess = false;
+            syncSourceMode();
+          }
+        }
+
+        async function saveReminderSubscription() {
+          const email = reminderEmailEl.value.trim();
+          if (!email) return;
+          setReminderMessage("", false);
+          try {
+            await api("/admin/reminder-subscriptions", {
+              method: "POST",
+              body: JSON.stringify({
+                email,
+                event_family: "illuminate_evenings",
+              }),
+            });
+            reminderEmailEl.value = "";
+            setReminderMessage("Saved.", false);
+          } catch (err) {
+            setReminderMessage(String(err), true);
+          }
+        }
+
+        function openEditModal(row) {
+          state.editing = row;
+          editFirstNameEl.value = row.client_first_name || "";
+          editLastNameEl.value = row.client_last_name || "";
+          editEmailEl.value = row.client_email || "";
+          editPhoneEl.value = row.client_phone || "";
+          editAttendedEl.value = row.attended ? "yes" : "no";
+          editNotesEl.value = row.notes || "";
+          setEditMessage("", false);
+          editOverlayEl.classList.remove("hidden");
+          editOverlayEl.setAttribute("aria-hidden", "false");
+        }
+
+        function closeEditModal() {
+          state.editing = null;
+          setEditMessage("", false);
+          editOverlayEl.classList.add("hidden");
+          editOverlayEl.setAttribute("aria-hidden", "true");
+        }
+
+        async function saveEdit() {
+          if (!state.editing || state.saving) return;
+          state.saving = true;
+          editSaveEl.disabled = true;
+          setEditMessage("Saving...", false);
+
+          try {
+            await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                client: {
+                  first_name: editFirstNameEl.value.trim(),
+                  last_name: editLastNameEl.value.trim() || null,
+                  email: editEmailEl.value.trim(),
+                  phone: editPhoneEl.value.trim() || null,
+                },
+                booking: {
+                  attended: editAttendedEl.value === "yes",
+                  notes: editNotesEl.value || null,
+                },
+              }),
+            });
+
+            setEditMessage("Saved.", false);
+            closeEditModal();
+            await loadRows();
+          } catch (err) {
+            setEditMessage(String(err), true);
+          } finally {
+            state.saving = false;
+            editSaveEl.disabled = false;
+          }
+        }
+
+        document.getElementById("saveBase").addEventListener("click", () => {
+          apiBase = (apiBaseInput.value || "/api").trim().replace(/\/+$/g, "");
+          localStorage.setItem(STORAGE_KEY, apiBase);
+          apiBaseLabel.textContent = apiBase;
+          setStatus("API base saved.", false);
+        });
+
+        document.getElementById("testAuth").addEventListener("click", async () => {
+          try {
+            await api("/admin/events");
+            setStatus("Admin API reachable.", false);
+          } catch (err) {
+            setStatus(String(err), true);
+          }
+        });
+
+        sourceEl.addEventListener("change", () => {
+          syncSourceMode();
+          void loadRows();
+        });
+
+        eventEl.addEventListener("change", () => {
+          syncSourceMode();
+          void loadRows();
+        });
+
+        document.getElementById("loadRows").addEventListener("click", () => {
+          void loadRows();
+        });
+
+        document.getElementById("rotateLateAccess").addEventListener("click", () => {
+          void rotateLateAccess();
+        });
+
+        document.getElementById("saveReminder").addEventListener("click", () => {
+          void saveReminderSubscription();
+        });
+
+        reminderEmailEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void saveReminderSubscription();
+          }
+        });
+
+        document.getElementById("editClose").addEventListener("click", closeEditModal);
+        document.getElementById("editSave").addEventListener("click", () => {
+          void saveEdit();
+        });
+
+        editOverlayEl.addEventListener("click", (e) => {
+          if (e.target === editOverlayEl) closeEditModal();
+        });
+
+        window.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && !editOverlayEl.classList.contains("hidden")) {
+            closeEditModal();
+          }
+        });
+
+        apiBaseInput.value = apiBase;
+        apiBaseLabel.textContent = apiBase;
+
+        syncSourceMode();
+        loadEvents()
+          .then(() => loadRows())
+          .then(() => setStatus("Ready.", false))
+          .catch((err) => setStatus(String(err), true));
+      })();
+    </script>
   </body>
 </html>

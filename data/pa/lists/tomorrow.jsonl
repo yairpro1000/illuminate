@@ -1,7 +1,0 @@
-{"id":"9a576e17-65e5-4fc8-8170-52d0aa6d0a32","createdAt":"2026-03-04T00:18:44.135Z","text":"deploy cloudflare page website","priority":3,"color":null,"order":3,"topic":"website","status":"todo","archivedAt":null}
-{"id":"bcaf3429-48d0-41c1-ad13-d19cf0a6451a","createdAt":"2026-03-04T01:03:48.480Z","text":"upload app code to git","priority":1,"color":"#ff3b30","order":0,"topic":null,"status":"done","archivedAt":"2026-03-04T18:33:50.834Z"}
-{"id":"4731485e-923a-47ec-b5a6-0f082885daa2","createdAt":"2026-03-05T01:06:24.795Z","text":"work with gpt on where I find the supabase url and keys","priority":3,"color":null,"order":0,"topic":null,"status":"done","archivedAt":"2026-03-05T17:29:53.231Z"}
-{"id":"94a7182b-15a1-4f8a-998f-eb076f36f372","createdAt":"2026-03-05T01:30:21.796Z","text":"run seeding supabase from lists data","priority":3,"color":null,"order":1,"topic":null,"status":"todo","archivedAt":null}
-{"id":"92556930-3f15-43f5-90f3-bf436e5b6997","createdAt":"2026-03-05T01:32:59.593Z","text":"run PA locally with new refactoring and vs. supabase DB","priority":3,"color":null,"order":2,"topic":null,"status":"todo","archivedAt":null}
-{"id":"33b3f431-3ecd-43a0-a522-5e2676ee0abd","createdAt":"2026-03-05T01:33:30.142Z","text":"Run claude booking flow plan","priority":3,"color":null,"order":4,"topic":null,"status":"done","archivedAt":"2026-03-05T03:32:51.833Z"}
-{"id":"c6247cfe-f86c-455d-ad55-cc6c00c6c181","createdAt":"2026-03-05T03:33:54.439Z","text":"deploy cloudflare workers","priority":3,"color":null,"order":5,"topic":null,"status":"todo","archivedAt":null}

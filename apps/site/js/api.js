@@ -38,16 +38,38 @@ function bookingPayLater(payload) {
   return _post('/api/bookings/pay-later', payload);
 }
 
-/* ── Event registrations ─────────────────────────────────── */
+/**
+ * POST /api/bookings/reschedule
+ * Returns: { ok, booking_id, status, starts_at, ends_at, timezone }
+ */
+function bookingReschedule(payload) {
+  return _post('/api/bookings/reschedule', payload);
+}
+
+/* ── Event bookings ──────────────────────────────────────── */
 
 /**
- * POST /api/events/:slug/register
- * Returns: { ok, registration_id, status, checkout_url? }
+ * POST /api/events/:slug/book
+ * Returns: { booking_id, status, checkout_url? }
  */
-function eventRegister(slug, payload) {
-  // Strip internal-only fields before sending
-  const { _isPaid, ...body } = payload;
-  return _post('/api/events/' + encodeURIComponent(slug) + '/register', body);
+function eventBook(slug, payload) {
+  return _post('/api/events/' + encodeURIComponent(slug) + '/book', payload);
+}
+
+/**
+ * POST /api/events/:slug/book-with-access
+ * Returns: { booking_id, status, checkout_url? }
+ */
+function eventBookWithAccess(slug, payload) {
+  return _post('/api/events/' + encodeURIComponent(slug) + '/book-with-access', payload);
+}
+
+/**
+ * POST /api/events/reminder-subscriptions
+ * Returns: { id, email, event_family }
+ */
+function createEventReminderSubscription(payload) {
+  return _post('/api/events/reminder-subscriptions', payload);
 }
 
 /* ── Base URL ─────────────────────────────────────────────
@@ -61,23 +83,93 @@ function eventRegister(slug, payload) {
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const API_BASE = localStorage.getItem('API_BASE') ||
   (LOCAL_DEV_HOSTS.has(location.hostname) ? 'http://localhost:8787' : '');
+const OBS = window.siteObservability || null;
 
 /* ── Internal fetch helpers ──────────────────────────────── */
 
 async function _get(path) {
-  const res = await fetch(API_BASE + path);
-  const data = await parseApiResponseBody(res);
-  if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
-  return data;
+  return requestJson('GET', path);
 }
 
 async function _post(path, body) {
+  return requestJson('POST', path, body);
+}
+
+async function requestJson(method, path, body) {
+  const url = API_BASE + path;
+  const requestId = (crypto.randomUUID && crypto.randomUUID()) || ('rid_' + Date.now().toString(36));
+  const correlationId = OBS && OBS.getCorrelationId ? OBS.getCorrelationId() : requestId;
+  const startedAt = Date.now();
   const res = await fetch(API_BASE + path, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
+    method:  method,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-request-id': requestId,
+      'x-correlation-id': correlationId,
+    },
+    body:    body === undefined ? undefined : JSON.stringify(body),
   });
-  const data = await parseApiResponseBody(res);
+  let data;
+  try {
+    data = await parseApiResponseBody(res);
+  } catch (error) {
+    if (OBS) {
+      OBS.logError({
+        eventType: 'request_failure',
+        message: method + ' ' + path,
+        requestId: requestId,
+        correlationId: correlationId,
+        api: {
+          direction: 'outbound',
+          provider: 'site_api',
+          method: method,
+          url: url,
+          path: path,
+          statusCode: res.status,
+          durationMs: Date.now() - startedAt,
+          success: false,
+          requestSizeBytes: body ? JSON.stringify(body).length : 0,
+        },
+        apiFailure: {
+          responseBody: String(error && error.message || error),
+          redactionNote: 'Frontend previews are truncated and secret headers are omitted.',
+        },
+      });
+    }
+    throw error;
+  }
+
+  const durationMs = Date.now() - startedAt;
+  if (OBS) {
+    const success = res.ok;
+    const payload = {
+      eventType: success ? 'request' : 'request_failure',
+      message: method + ' ' + path,
+      requestId: requestId,
+      correlationId: correlationId,
+      api: {
+        direction: 'outbound',
+        provider: 'site_api',
+        method: method,
+        url: url,
+        path: path,
+        statusCode: res.status,
+        durationMs: durationMs,
+        success: success,
+        requestSizeBytes: body ? JSON.stringify(body).length : 0,
+        responseSizeBytes: JSON.stringify(data || {}).length,
+      },
+    };
+
+    if (success) OBS.logInfo(payload);
+    else OBS.logError(Object.assign({}, payload, {
+      apiFailure: {
+        responseBody: data,
+        redactionNote: 'Frontend previews are truncated and secret headers are omitted.',
+      },
+    }));
+  }
+
   if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
   return data;
 }

@@ -15,7 +15,8 @@
       "WebFetch(domain:dev.to)",
       "WebFetch(domain:developers.cloudflare.com)",
       "Bash(git checkout:*)",
-      "Bash(npx wrangler:*)"
+      "Bash(npx wrangler:*)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -1,0 +1,63 @@
+name = "letsilluminate-api-booking"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+workers_dev = true
+preview_urls = true
+
+routes = [
+  { pattern = "letsilluminate.co/api/*", zone_name = "letsilluminate.co" },
+  { pattern = "admin.letsilluminate.co/api/*", zone_name = "letsilluminate.co" }
+]
+
+[vars]
+# Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
+# unless intentionally overridden for a focused integration test.
+REPOSITORY_MODE = "mock"
+EMAIL_MODE      = "mock"
+CALENDAR_MODE   = "mock"
+PAYMENTS_MODE   = "mock"
+ANTIBOT_MODE    = "mock"
+SITE_URL = "https://letsilluminate.co"
+SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
+SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
+API_ALLOWED_ORIGINS = "https://letsilluminate.co,https://admin.letsilluminate.co"
+GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
+GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
+TIMEZONE           = "Europe/Zurich"
+
+# Local-only overrides (used by `wrangler dev --env local`)
+[env.local.vars]
+REPOSITORY_MODE = "mock"
+EMAIL_MODE      = "mock"
+CALENDAR_MODE   = "mock"
+PAYMENTS_MODE   = "mock"
+ANTIBOT_MODE    = "mock"
+SITE_URL = "http://localhost:8080"
+SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
+SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
+API_ALLOWED_ORIGINS = "http://localhost:8080,http://localhost:8788,http://localhost:5173"
+GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
+GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
+TIMEZONE           = "Europe/Zurich"
+
+# Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
+# SUPABASE_URL
+# SUPABASE_SERVICE_ROLE_KEY
+# RESEND_API_KEY
+# GOOGLE_OAUTH_CLIENT_ID
+# GOOGLE_OAUTH_CLIENT_SECRET
+# GOOGLE_OAUTH_REFRESH_TOKEN
+# GOOGLE_CLIENT_EMAIL         ← service account email
+# GOOGLE_PRIVATE_KEY          ← service account private key (PEM)
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET
+# TURNSTILE_SECRET_KEY
+# JOB_SECRET
+# ADMIN_ALLOWED_EMAILS
+# ADMIN_DEV_EMAIL
+
+[observability.logs]
+enabled = true
+
+[triggers]
+crons = ["*/5 * * * *", "*/15 * * * *", "*/30 * * * *", "0 * * * *"]

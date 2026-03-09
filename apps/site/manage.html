@@ -80,9 +80,7 @@
   const API_BASE = localStorage.getItem('API_BASE') ||
     (location.hostname === 'localhost' ? 'http://localhost:8787' : '');
   const params = new URLSearchParams(window.location.search);
-  const type   = params.get('type');
   const token  = params.get('token');
-  const id     = params.get('id');
   const card   = document.getElementById('manage-card');
 
   function statusBadge(status) {
@@ -102,14 +100,14 @@
     });
   }
 
-  if (!type || !token || !id) {
+  if (!token) {
     card.innerHTML = '<p style="color:oklch(50% 0.15 25)">Invalid manage link. Please use the link from your email.</p>';
     return;
   }
 
   let data;
   try {
-    const res = await fetch(`${API_BASE}/api/manage?type=${encodeURIComponent(type)}&token=${encodeURIComponent(token)}&id=${encodeURIComponent(id)}`);
+    const res = await fetch(`${API_BASE}/api/bookings/manage?token=${encodeURIComponent(token)}`);
     data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Error');
   } catch (err) {
@@ -117,8 +115,10 @@
     return;
   }
 
-  const isBooking = data.type === 'booking';
+  const isBooking = data.source === 'session';
   const cancellable = ['pending_email','pending_payment','confirmed','cash_ok'].includes(data.status);
+  const reschedulable = Boolean(data.actions && data.actions.can_reschedule);
+  const rescheduleHref = `book.html?type=${encodeURIComponent(data.session_type || 'intro')}&mode=reschedule&token=${encodeURIComponent(token)}&id=${encodeURIComponent(data.booking_id)}`;
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],
@@ -127,22 +127,21 @@
     data.payment_due_at ? ['Payment due', formatDt(data.payment_due_at)] : null,
   ].filter(Boolean) : [
     ['Status',      statusBadge(data.status)],
-    ['Event',       data.event_title || '—'],
-    ['Date',        formatDt(data.event_starts_at)],
-    ['Attendees',   String(data.attendee_count)],
-    data.attendees?.length ? ['Guests', data.attendees.join(', ')] : null,
+    ['Event',       data.title || data.event?.title || '—'],
+    ['Date',        formatDt(data.starts_at)],
   ].filter(Boolean);
 
   card.innerHTML = `
-    <h1 class="manage-title">${isBooking ? 'Your Booking' : 'Your Registration'}</h1>
-    <p class="manage-subtitle">${isBooking ? data.client_name : data.primary_name}</p>
+    <h1 class="manage-title">${isBooking ? 'Your Booking' : 'Your Event Booking'}</h1>
+    <p class="manage-subtitle">${[data.client?.first_name || '', data.client?.last_name || ''].filter(Boolean).join(' ')}</p>
     <table class="detail-table" aria-label="Booking details">
       <tbody>
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
     <div class="manage-actions">
-      ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel ${isBooking ? 'booking' : 'registration'}</button>` : ''}
+      ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
+      ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel ${isBooking ? 'booking' : 'event booking'}</button>` : ''}
       <a href="index.html" class="btn btn-ghost">← Homepage</a>
     </div>
   `;
@@ -158,17 +157,17 @@
       document.getElementById('cancel-yes').textContent = 'Cancelling…';
       document.getElementById('cancel-yes').disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/api/manage/cancel`, {
+        const res = await fetch(`${API_BASE}/api/bookings/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, token, id }),
+          body: JSON.stringify({ token }),
         });
         const result = await res.json();
         if (!res.ok) throw new Error(result.message || 'Error');
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
-          <p class="manage-subtitle">Your ${isBooking ? 'booking' : 'registration'} has been cancelled.</p>
+          <p class="manage-subtitle">Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.</p>
           <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {
