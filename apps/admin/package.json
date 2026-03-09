@@ -1,7 +1,0 @@
-{
-  "name": "admin",
-  "private": true,
-  "scripts": {
-    "build": "echo ok"
-  }
-}
