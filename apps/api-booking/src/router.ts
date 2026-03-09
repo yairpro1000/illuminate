@@ -19,6 +19,7 @@ import {
   handleCreateEventReminderSubscription,
 } from './handlers/events.js';
 import { handleContact } from './handlers/contact.js';
+import { handleAdminUploadImage } from './handlers/upload.js';
 import { handleFrontendObservability } from './handlers/observability.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
 import { handleJobTrigger } from './handlers/jobs.js';
@@ -40,6 +41,12 @@ import {
 
 import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
 import { ApiError, jsonResponse } from './lib/errors.js';
+import {
+  handleGetSessionTypes,
+  handleAdminGetSessionTypes,
+  handleAdminCreateSessionType,
+  handleAdminUpdateSessionType,
+} from './handlers/session-types.js';
 
 export interface AppContext {
   providers: Providers;
@@ -88,6 +95,8 @@ const ROUTES: Route[] = [
   route('POST', '/api/events/:slug/book-with-access', handleEventBookWithAccess),
   route('POST', '/api/events/reminder-subscriptions', handleCreateEventReminderSubscription),
 
+  route('GET', '/api/session-types', handleGetSessionTypes),
+
   route('POST', '/api/contact', handleContact),
   route('GET', '/api/admin/events', handleAdminGetEvents),
   route('GET', '/api/admin/bookings', handleAdminGetBookings),
@@ -96,6 +105,10 @@ const ROUTES: Route[] = [
   route('POST', '/api/admin/reminder-subscriptions', handleAdminCreateReminderSubscription),
   route('GET',  '/api/admin/config', handleAdminGetConfig),
   route('PATCH', '/api/admin/config', handleAdminPatchConfig),
+  route('POST', '/api/admin/upload-image', handleAdminUploadImage),
+  route('GET', '/api/admin/session-types', handleAdminGetSessionTypes),
+  route('POST', '/api/admin/session-types', handleAdminCreateSessionType),
+  route('PATCH', '/api/admin/session-types/:id', handleAdminUpdateSessionType),
   route('POST', '/api/stripe/webhook', handleStripeWebhook),
   route('POST', '/api/jobs/:name', handleJobTrigger),
 

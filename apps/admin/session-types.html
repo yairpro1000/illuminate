@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ILLUMINATE Admin — Session Types</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <style>
+      :root {
+        --bg: #f7f6f2;
+        --card: #ffffff;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --accent: #0d9488;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", Tahoma, sans-serif; }
+      main { width: min(1180px, 96vw); margin: 22px auto 44px; }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+      h1 { margin: 0 0 10px; font-size: 1.4rem; }
+      .muted { color: var(--muted); font-size: 0.92rem; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+      .col { display: flex; flex-direction: column; }
+      .hidden { display: none !important; }
+      .small { font-size: 0.85rem; }
+      .status { margin-top: 8px; min-height: 1.4em; }
+      label { display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--muted); }
+      input, select, textarea, button { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; }
+      textarea { min-height: 90px; resize: vertical; }
+      button { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
+      button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      a { color: var(--accent); }
+      table { width: 100%; border-collapse: collapse; background: #fff; }
+      th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px; font-size: 0.9rem; }
+      th { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; }
+      tbody tr.clickable { cursor: pointer; }
+      tbody tr.clickable:hover { background: #f8fafc; }
+      .ok { color: #047857; }
+      .err { color: var(--danger); white-space: pre-wrap; }
+      .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+      .modal { width: min(900px, 96vw); max-height: min(94vh, 900px); overflow: auto; }
+      .btnrow { display: flex; gap: 8px; justify-content: flex-end; }
+      .grid2 { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 10px; }
+      .thumb { width: 100%; max-width: 220px; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+      @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>Session Types</h1>
+        <div class="row" style="justify-content: space-between; align-items: center;">
+          <div class="col">
+            <div id="status" class="status muted">Loading…</div>
+          </div>
+          <div class="col">
+            <button id="newBtn" type="button">New session type</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Price</th>
+              <th>Duration</th>
+              <th>Status</th>
+              <th>Sort</th>
+            </tr>
+          </thead>
+          <tbody id="rowsBody"></tbody>
+        </table>
+      </section>
+    </main>
+
+    <div id="editOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <h1 id="editTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit session type</h1>
+        <div class="grid2">
+          <div class="col">
+            <label for="fTitle">Title</label>
+            <input id="fTitle" />
+          </div>
+          <div class="col">
+            <label for="fSlug">Slug</label>
+            <input id="fSlug" />
+          </div>
+          <div class="col">
+            <label for="fShort">Short description</label>
+            <input id="fShort" />
+          </div>
+          <div class="col">
+            <label for="fDuration">Duration (minutes)</label>
+            <input id="fDuration" type="number" min="1" />
+          </div>
+          <div class="col">
+            <label for="fPrice">Price (CHF cents)</label>
+            <input id="fPrice" type="number" min="0" />
+          </div>
+          <div class="col">
+            <label for="fCurrency">Currency</label>
+            <input id="fCurrency" value="CHF" />
+          </div>
+          <div class="col">
+            <label for="fStatus">Status</label>
+            <select id="fStatus">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="hidden">hidden</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="fSort">Sort order</label>
+            <input id="fSort" type="number" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="fDesc">Description</label>
+            <textarea id="fDesc"></textarea>
+          </div>
+          <div class="col">
+            <label for="fImage">Image</label>
+            <input id="fImage" type="file" accept="image/*" />
+            <div class="small muted" id="imgMsg"></div>
+            <img id="imgPreview" class="thumb hidden" alt="Preview" />
+          </div>
+          <div class="col">
+            <label for="fAlt">Image alt</label>
+            <input id="fAlt" />
+          </div>
+        </div>
+        <div id="editMsg" class="status muted"></div>
+        <div class="btnrow" style="margin-top: 10px;">
+          <button id="editClose" type="button" class="secondary">Close</button>
+          <button id="editSave" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        const STORAGE_KEY = 'admin_api_base';
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = (params.get('apiBase') || '').trim();
+        if (fromQuery) localStorage.setItem(STORAGE_KEY, fromQuery.replace(/\/+$/g, ''));
+        let apiBase = (localStorage.getItem(STORAGE_KEY) || '/api').replace(/\/+$/g, '');
+
+        const state = { rows: [], editing: null, saving: false, uploading: false };
+        const rowsBody = document.getElementById('rowsBody');
+        const statusEl = document.getElementById('status');
+        const editOverlayEl = document.getElementById('editOverlay');
+        const editMsgEl = document.getElementById('editMsg');
+
+        const fTitle = document.getElementById('fTitle');
+        const fSlug = document.getElementById('fSlug');
+        const fShort = document.getElementById('fShort');
+        const fDesc = document.getElementById('fDesc');
+        const fDuration = document.getElementById('fDuration');
+        const fPrice = document.getElementById('fPrice');
+        const fCurrency = document.getElementById('fCurrency');
+        const fStatus = document.getElementById('fStatus');
+        const fSort = document.getElementById('fSort');
+        const fImage = document.getElementById('fImage');
+        const fAlt = document.getElementById('fAlt');
+        const imgMsg = document.getElementById('imgMsg');
+        const imgPreview = document.getElementById('imgPreview');
+        const editSaveEl = document.getElementById('editSave');
+
+        function resolveUrl(path) {
+          return path.startsWith('http') ? path : `${apiBase}${path.startsWith('/') ? path : `/${path}`}`;
+        }
+        async function api(path, init) {
+          const res = await fetch(resolveUrl(path), { method: 'GET', credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
+          const text = await res.text();
+          let body = {};
+          try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+          if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(body)}`);
+          return body;
+        }
+
+        function render() {
+          rowsBody.innerHTML = '';
+          if (!state.rows.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 5; td.className = 'muted'; td.textContent = 'No rows.';
+            tr.appendChild(td); rowsBody.appendChild(tr); return;
+          }
+          for (const r of state.rows) {
+            const tr = document.createElement('tr'); tr.className = 'clickable';
+            tr.appendChild(cell(r.title));
+            tr.appendChild(cell(`${(r.price/100).toFixed(2)} ${r.currency}`));
+            tr.appendChild(cell(`${r.duration_minutes} min`));
+            tr.appendChild(cell(r.status));
+            tr.appendChild(cell(String(r.sort_order || 0)));
+            tr.addEventListener('click', () => openEdit(r));
+            rowsBody.appendChild(tr);
+          }
+        }
+        function cell(text) { const td = document.createElement('td'); td.textContent = text; return td; }
+        function msg(el, text, isErr) { el.className = isErr ? 'status err' : 'status muted'; el.textContent = text || ''; }
+
+        async function load() {
+          msg(statusEl, 'Loading…');
+          try { const data = await api('/admin/session-types'); state.rows = data.session_types || []; render(); msg(statusEl, 'Ready.'); }
+          catch (e) { msg(statusEl, String(e), true); }
+        }
+
+        function openEdit(row) {
+          state.editing = row ? { ...row } : { title: '', slug: '', short_description: '', description: '', duration_minutes: 60, price: 0, currency: 'CHF', status: 'draft', sort_order: 0, image_key: null, image_alt: null, drive_file_id: null };
+          fTitle.value = state.editing.title || '';
+          fSlug.value = state.editing.slug || '';
+          fShort.value = state.editing.short_description || '';
+          fDesc.value = state.editing.description || '';
+          fDuration.value = state.editing.duration_minutes || 60;
+          fPrice.value = state.editing.price || 0;
+          fCurrency.value = state.editing.currency || 'CHF';
+          fStatus.value = state.editing.status || 'draft';
+          fSort.value = state.editing.sort_order || 0;
+          fAlt.value = state.editing.image_alt || '';
+          if (state.editing.url) { imgPreview.src = state.editing.url; imgPreview.classList.remove('hidden'); } else { imgPreview.classList.add('hidden'); }
+          fImage.value = '';
+          msg(editMsgEl, ''); msg(imgMsg, '');
+          editOverlayEl.classList.remove('hidden'); editOverlayEl.setAttribute('aria-hidden', 'false');
+        }
+
+        async function save() {
+          if (state.saving) return; state.saving = true; editSaveEl.disabled = true; msg(editMsgEl, 'Saving…');
+          try {
+            const payload = {
+              title: fTitle.value.trim(), slug: fSlug.value.trim(), short_description: fShort.value.trim() || null,
+              description: fDesc.value, duration_minutes: Number(fDuration.value)||0, price: Number(fPrice.value)||0,
+              currency: fCurrency.value.trim() || 'CHF', status: fStatus.value, sort_order: Number(fSort.value)||0,
+              image_key: state.editing.image_key || null, image_alt: fAlt.value.trim() || null, drive_file_id: state.editing.drive_file_id || null,
+            };
+            if (state.editing.id) {
+              await api(`/admin/session-types/${encodeURIComponent(state.editing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+            } else {
+              await api('/admin/session-types', { method: 'POST', body: JSON.stringify(payload) });
+            }
+            msg(editMsgEl, 'Saved.');
+            editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden', 'true');
+            await load();
+          } catch (e) {
+            msg(editMsgEl, String(e), true);
+          } finally { state.saving = false; editSaveEl.disabled = false; }
+        }
+
+        async function uploadImage(file) {
+          if (!file || state.uploading) return; state.uploading = true; msg(imgMsg, 'Uploading image…');
+          try {
+            const fd = new FormData(); fd.append('file', file); fd.append('entity_type', 'session');
+            const res = await fetch(resolveUrl('/admin/upload-image'), { method: 'POST', body: fd, credentials: 'include' });
+            const data = await res.json(); if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(data)}`);
+            state.editing.image_key = data.image_key || null; state.editing.drive_file_id = data.drive_file_id || null; const url = data.url || '';
+            if (url) { imgPreview.src = url; imgPreview.classList.remove('hidden'); }
+            msg(imgMsg, 'Uploaded.');
+          } catch (e) { msg(imgMsg, String(e), true); }
+          finally { state.uploading = false; }
+        }
+
+        document.getElementById('newBtn').addEventListener('click', () => openEdit(null));
+        document.getElementById('editClose').addEventListener('click', () => { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); });
+        document.getElementById('editSave').addEventListener('click', () => { void save(); });
+        document.getElementById('fImage').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) void uploadImage(f); });
+        editOverlayEl.addEventListener('click', (e) => { if (e.target === editOverlayEl) { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); } });
+        window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !editOverlayEl.classList.contains('hidden')) { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); } });
+
+        void load();
+      })();
+    </script>
+  </body>
+</html>

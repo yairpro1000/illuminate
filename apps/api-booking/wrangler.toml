@@ -24,6 +24,11 @@ API_ALLOWED_ORIGINS = "https://letsilluminate.co,https://admin.letsilluminate.co
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
+IMAGE_BASE_URL     = "https://assets.letsilluminate.co" # Optional CDN/public origin for R2 objects
+
+[[r2_buckets]]
+binding = "IMAGES_BUCKET"
+bucket_name = "letsilluminate-images"
 
 # Local-only overrides (used by `wrangler dev --env local`)
 [env.local.vars]
@@ -40,6 +45,7 @@ GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
 ADMIN_DEV_EMAIL    = "dev@localhost"
+IMAGE_BASE_URL     = "http://localhost:8787/images" # dev placeholder; map via local proxy if needed
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL

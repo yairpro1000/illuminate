@@ -38,4 +38,12 @@ export interface Env {
   TURNSTILE_SECRET_KEY: string;
 
   JOB_SECRET: string; // Bearer token required on POST /api/jobs/:name
+
+  // R2 images
+  IMAGES_BUCKET: R2Bucket;
+  IMAGE_BASE_URL?: string; // e.g. https://assets.example.com
+
+  // Google Drive backup (service account)
+  GOOGLE_DRIVE_FOLDER_ID?: string;
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string; // optional; overrides GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY
 }

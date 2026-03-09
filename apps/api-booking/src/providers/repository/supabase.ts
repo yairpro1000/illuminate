@@ -22,6 +22,9 @@ import type {
   Payment,
   PaymentUpdate,
   TimeSlot,
+  SessionTypeRecord,
+  NewSessionType,
+  SessionTypeUpdate,
 } from '../../types.js';
 
 const CALENDAR_SYNC_OPERATION = 'calendar_sync';
@@ -667,6 +670,48 @@ export class SupabaseRepository implements IRepository {
     const booking = await this.getBookingById(id);
     if (!booking) throw new Error(`Booking ${id} not found after write`);
     return booking;
+  }
+
+  // ── Session types (offers) ───────────────────────────────────────────────
+  async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
+    const rows = await requireData<SessionTypeRecord[]>(
+      this.db
+        .from('session_types')
+        .select('*')
+        .eq('status', 'active')
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      'Failed to load public session_types',
+    );
+    return rows;
+  }
+
+  async getAllSessionTypes(): Promise<SessionTypeRecord[]> {
+    const rows = await requireData<SessionTypeRecord[]>(
+      this.db
+        .from('session_types')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      'Failed to load session_types',
+    );
+    return rows;
+  }
+
+  async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
+    const row = await requireSingle<SessionTypeRecord>(
+      this.db.from('session_types').insert(data).select('*').single(),
+      'Failed to create session_type',
+    );
+    return row;
+  }
+
+  async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
+    const row = await requireSingle<SessionTypeRecord>(
+      this.db.from('session_types').update({ ...updates, updated_at: nowIso() }).eq('id', id).select('*').single(),
+      `Failed to update session_type ${id}`,
+    );
+    return row;
   }
 }
 

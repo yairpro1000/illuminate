@@ -142,4 +142,10 @@ export interface IRepository {
     resolution?: 'resolved' | 'ignored',
     note?: string | null,
   ): Promise<void>;
+
+  // ── Session types (offers) ────────────────────────────────────────────────
+  getPublicSessionTypes(): Promise<import('../../types.js').SessionTypeRecord[]>;
+  getAllSessionTypes(): Promise<import('../../types.js').SessionTypeRecord[]>;
+  createSessionType(data: import('../../types.js').NewSessionType): Promise<import('../../types.js').SessionTypeRecord>;
+  updateSessionType(id: string, updates: import('../../types.js').SessionTypeUpdate): Promise<import('../../types.js').SessionTypeRecord>;
 }
