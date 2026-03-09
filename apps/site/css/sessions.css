@@ -1,0 +1,61 @@
+/* ============================================================
+   ILLUMINATE 1:1 Sessions — Page-specific styles
+   Extends main.css and evenings.css without modifying them.
+   ============================================================ */
+
+/* ── Sessions page hero: no opening screen, content starts immediately ── */
+
+/* hero__content normally has padding-block: 5rem 5rem from main.css.
+   We add top padding here to clear the fixed nav bar (~5rem). */
+.sessions-hero .hero__content {
+  padding-top: 9rem;
+}
+
+/* In light mode, main.css sets hero::after to start at top: 100svh
+   (below the opening screen). Since there is no opening screen here,
+   override it to cover the section from the very top. */
+body.theme-light .sessions-hero::after {
+  top: 0;
+}
+
+/* ── Hero body text block ───────────────────────────────────── */
+.sessions-body {
+  max-width: 38rem;
+  width: min(38rem, 100% - 3rem);
+  margin-inline: auto;
+  text-align: left;
+}
+
+.sessions-intro {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.sessions-closing {
+  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin-top: 1.5rem;
+}
+
+/* ── Section header ─────────────────────────────────────────── */
+.sessions__header {
+  text-align: center;
+  margin-bottom: 3.5rem;
+}
+
+/* ── Session card CTA row ───────────────────────────────────── */
+.session-card__actions {
+  margin-top: auto;
+  padding-top: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.session-card__actions .btn {
+  flex: 1;
+  text-align: center;
+}
