@@ -4,7 +4,7 @@
 
 Frontend: Cloudflare Pages (static)\
 API Layer: Cloudflare Workers\
-Database: mock repository by default in dev; Supabase/Postgres remains the planned persistent backing store\
+Database: Supabase/Postgres for PA and booking persistence; booking can still fall back to a mock repository only for isolated dev overrides\
 Payments: Stripe\
 Calendar: Google Calendar API\
 Email: Transactional email provider\
@@ -51,5 +51,5 @@ Jobs → Scheduler → Internal API endpoints
 
 -   PA UI is served from Cloudflare Pages and is protected by Cloudflare Access.
 -   PA API runs in a Cloudflare Worker and is protected by Cloudflare Access (same-origin `/api/*` routes).
--   Only the Worker talks to Supabase using `SUPABASE_SECRET_KEY` (server-only).
+-   Only the Worker talks to Supabase using a server-only secret (`SUPABASE_SECRET_KEY`).
 -   The PA frontend does **not** use a Supabase publishable/browser key in this architecture.

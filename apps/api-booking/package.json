@@ -13,6 +13,7 @@
     "wrangler": "^4.71.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.98.0",
     "resend": "^4.8.0"
   }
 }

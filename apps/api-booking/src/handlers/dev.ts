@@ -1,6 +1,7 @@
 /**
- * Development-only endpoints. Only active when REPOSITORY_MODE !== 'supabase'
- * (i.e. the in-memory mock repository is in use).
+ * Development-only endpoints. Some depend on the in-memory mock repository,
+ * while others remain useful with a live database as long as the relevant
+ * provider is still mocked.
  */
 
 import type { AppContext } from '../router.js';
@@ -8,9 +9,21 @@ import { ok, badRequest, errorResponse } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
 import { confirmBookingPayment } from '../services/booking-service.js';
 
-function guardMockOnly(ctx: AppContext): void {
+function guardMockRepository(ctx: AppContext): void {
   if (ctx.env.REPOSITORY_MODE === 'supabase') {
-    throw badRequest('Dev endpoints are not available when using real providers');
+    throw badRequest('This dev endpoint is only available with the in-memory mock repository');
+  }
+}
+
+function guardMockPayments(ctx: AppContext): void {
+  if (ctx.env.PAYMENTS_MODE !== 'mock') {
+    throw badRequest('This dev endpoint is only available when payments are mocked');
+  }
+}
+
+function guardMockEmail(ctx: AppContext): void {
+  if (ctx.env.EMAIL_MODE !== 'mock') {
+    throw badRequest('This dev endpoint is only available when email is mocked');
   }
 }
 
@@ -36,7 +49,7 @@ function summarizeFailureLog(log: typeof mockState.failureLogs[number]) {
 // POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
 export async function handleSimulatePayment(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    guardMockOnly(ctx);
+    guardMockPayments(ctx);
 
     const url = new URL(request.url);
     const sessionId = url.searchParams.get('session_id');
@@ -83,7 +96,7 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
 // GET /api/__dev/emails
 export async function handleDevEmails(_request: Request, ctx: AppContext): Promise<Response> {
   try {
-    guardMockOnly(ctx);
+    guardMockEmail(ctx);
     const emails = mockState.sentEmails.slice(-50).reverse().map((email) => ({
       to: email.to,
       subject: email.subject,
@@ -99,7 +112,6 @@ export async function handleDevEmails(_request: Request, ctx: AppContext): Promi
 // GET /api/__dev/failures
 export async function handleDevFailures(_request: Request, ctx: AppContext): Promise<Response> {
   try {
-    guardMockOnly(ctx);
     const logs = await ctx.providers.repository.getRecentFailureLogs(50);
     return ok({ failure_logs: logs.map(summarizeFailureLog) });
   } catch (err) {
@@ -110,7 +122,7 @@ export async function handleDevFailures(_request: Request, ctx: AppContext): Pro
 // GET /api/__dev/bookings
 export async function handleDevBookings(_request: Request, ctx: AppContext): Promise<Response> {
   try {
-    guardMockOnly(ctx);
+    guardMockRepository(ctx);
     const bookings = [...mockState.bookings.values()].map((booking) => ({
       id: booking.id,
       client_id: booking.client_id,

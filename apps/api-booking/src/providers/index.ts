@@ -9,12 +9,14 @@ import { errorMessage } from '../../../shared/observability/backend.js';
 import { getOverride } from '../lib/config-overrides.js';
 
 import { MockRepository } from './repository/mock.js';
+import { SupabaseRepository } from './repository/supabase.js';
 import { MockEmailProvider } from './email/mock.js';
 import { ResendEmailProvider } from './email/resend.js';
 import { MockCalendarProvider } from './calendar/mock.js';
 import { GoogleCalendarProvider } from './calendar/google.js';
 import { MockPaymentsProvider } from './payments/mock.js';
 import { MockAntiBotProvider } from './antibot/mock.js';
+import { makeSupabase } from '../repo/supabase.js';
 
 export interface Providers {
   repository: IRepository;
@@ -26,10 +28,18 @@ export interface Providers {
 
 // Singletons — created once per isolate lifetime
 let _mockRepository: MockRepository | null = null;
+let _supabaseRepository: SupabaseRepository | null = null;
 
 function getMockRepository(): MockRepository {
   if (!_mockRepository) _mockRepository = new MockRepository();
   return _mockRepository;
+}
+
+function getSupabaseRepository(env: Env): SupabaseRepository {
+  if (!_supabaseRepository) {
+    _supabaseRepository = new SupabaseRepository(makeSupabase(env));
+  }
+  return _supabaseRepository;
 }
 
 function wrapProvider<T extends object>(providerName: string, provider: T, logger?: Logger): T {
@@ -85,9 +95,7 @@ export function createProviders(env: Env, logger?: Logger): Providers {
   // repository
   let repository: IRepository;
   if (repoMode === 'supabase') {
-    // const { SupabaseRepository } = await import('./repository/supabase.js');
-    // repository = new SupabaseRepository(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-    throw new Error('Supabase repository is intentionally not wired in this dev-stage worker yet.');
+    repository = getSupabaseRepository(env);
   } else {
     repository = getMockRepository();
   }

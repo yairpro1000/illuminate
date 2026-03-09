@@ -49,7 +49,7 @@ function scheduleWith(ctx?: ExecutionContext | null) {
 function makeSink(env: Env): SupabaseObservabilitySink {
   return new SupabaseObservabilitySink({
     supabaseUrl: env.SUPABASE_URL,
-    serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    secretKey: env.SUPABASE_SECRET_KEY,
     consoleTag: "[worker-observability]",
   });
 }

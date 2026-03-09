@@ -13,6 +13,7 @@
 
 ## Dev-stage rules
 
+- Booking persistence is live against Supabase in `apps/api-booking`.
 - Payments are explicitly mock-first.
 - Anti-bot is explicitly mock-first.
 - Public/admin contracts must still remain stable even while those providers are mocked.

@@ -38,7 +38,7 @@ export interface FrontendLogPayload {
 function makeSink(env: Env): SupabaseObservabilitySink {
   return new SupabaseObservabilitySink({
     supabaseUrl: env.SUPABASE_URL,
-    serviceRoleKey: env.SUPABASE_SECRET_KEY,
+    secretKey: env.SUPABASE_SECRET_KEY,
     consoleTag: "[api-observability]",
   });
 }

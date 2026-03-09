@@ -496,7 +496,7 @@ export function normalizeFrontendLogInput(payload: unknown): {
 
 export interface SupabaseObservabilitySinkOptions {
   supabaseUrl?: string | null;
-  serviceRoleKey?: string | null;
+  secretKey?: string | null;
   schema?: string;
   fetchFn?: typeof fetch;
   consoleTag?: string;
@@ -504,21 +504,21 @@ export interface SupabaseObservabilitySinkOptions {
 
 export class SupabaseObservabilitySink {
   private readonly supabaseUrl: string;
-  private readonly serviceRoleKey: string;
+  private readonly secretKey: string;
   private readonly schema: string;
   private readonly fetchFn: typeof fetch;
   private readonly consoleTag: string;
 
   constructor(opts: SupabaseObservabilitySinkOptions) {
     this.supabaseUrl = String(opts.supabaseUrl ?? "").replace(/\/+$/g, "");
-    this.serviceRoleKey = String(opts.serviceRoleKey ?? "");
+    this.secretKey = String(opts.secretKey ?? "");
     this.schema = opts.schema ?? "observability";
     this.fetchFn = opts.fetchFn ?? fetch;
     this.consoleTag = opts.consoleTag ?? "[observability]";
   }
 
   isConfigured(): boolean {
-    return Boolean(this.supabaseUrl && this.serviceRoleKey);
+    return Boolean(this.supabaseUrl && this.secretKey);
   }
 
   async capture(event: PersistedLogEvent): Promise<void> {
@@ -595,8 +595,8 @@ export class SupabaseObservabilitySink {
       const res = await this.fetchFn(`${this.supabaseUrl}/rest/v1/${table}`, {
         method: "POST",
         headers: {
-          apikey: this.serviceRoleKey,
-          Authorization: `Bearer ${this.serviceRoleKey}`,
+          apikey: this.secretKey,
+          Authorization: `Bearer ${this.secretKey}`,
           "Content-Type": "application/json",
           Accept: "application/json",
           Prefer: "return=representation",

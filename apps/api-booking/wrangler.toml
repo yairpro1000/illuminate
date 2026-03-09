@@ -12,9 +12,9 @@ routes = [
 [vars]
 # Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
 # unless intentionally overridden for a focused integration test.
-REPOSITORY_MODE = "mock"
-EMAIL_MODE      = "mock"
-CALENDAR_MODE   = "mock"
+REPOSITORY_MODE = "supabase"
+EMAIL_MODE      = "resend"
+CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"
 SITE_URL = "https://letsilluminate.co"
@@ -27,7 +27,7 @@ TIMEZONE           = "Europe/Zurich"
 
 # Local-only overrides (used by `wrangler dev --env local`)
 [env.local.vars]
-REPOSITORY_MODE = "mock"
+REPOSITORY_MODE = "supabase"
 EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "mock"
 PAYMENTS_MODE   = "mock"
@@ -43,7 +43,7 @@ ADMIN_DEV_EMAIL    = "dev@localhost"
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL
-# SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_SECRET_KEY
 # RESEND_API_KEY
 # GOOGLE_OAUTH_CLIENT_ID
 # GOOGLE_OAUTH_CLIENT_SECRET

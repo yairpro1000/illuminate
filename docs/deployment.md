@@ -47,20 +47,20 @@ It owns only PA/backoffice routes. It must not serve public booking or organizer
 
 ## Dev-Stage Provider Defaults
 
-`apps/api-booking` is currently configured mock-first:
+`apps/api-booking` now persists to Supabase by default. The remaining provider defaults stay explicit:
 
-- `REPOSITORY_MODE=mock`
-- `EMAIL_MODE=mock`
-- `CALENDAR_MODE=mock`
+- `REPOSITORY_MODE=supabase`
 - `PAYMENTS_MODE=mock`
 - `ANTIBOT_MODE=mock`
 
-This is intentional for test-readiness in the current stage.
+For local `wrangler dev --env local`, email and calendar also remain mocked by default.
 
 ## Required Secrets / Vars
 
 ### Booking worker
 
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
 - `JOB_SECRET`
 - `ADMIN_ALLOWED_EMAILS` or `ADMIN_DEV_EMAIL` for organizer access
 - optional real-provider secrets only if intentionally testing non-mock paths

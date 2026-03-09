@@ -41,9 +41,10 @@ There is intentionally no second backend serving the public booking or organizer
 
 The current repo target is coherence and testability, not production hardening.
 
+- Booking persistence is live against Supabase by default in `apps/api-booking`.
 - Payments are mock-first.
 - Anti-bot is mock-first.
-- Booking worker provider modes default to mock in `apps/api-booking/wrangler.toml`.
+- Local booking-worker dev keeps email/calendar/payments/antibot mocked unless you explicitly override them.
 - Real email/calendar integrations may still exist behind explicit provider switches, but they are not the default architecture for this stage.
 
 ## Local Dev Ports

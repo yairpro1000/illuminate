@@ -15,7 +15,7 @@ export interface Env {
 
   // Set as secrets in prod — may be undefined in mock mode
   SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
+  SUPABASE_SECRET_KEY: string;
 
   RESEND_API_KEY: string;
 
