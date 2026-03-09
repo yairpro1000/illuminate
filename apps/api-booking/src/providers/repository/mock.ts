@@ -21,6 +21,9 @@ import type {
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
+  SessionTypeRecord,
+  NewSessionType,
+  SessionTypeUpdate,
   TimeSlot,
 } from '../../types.js';
 
@@ -625,6 +628,34 @@ export class MockRepository implements IRepository {
     active.updated_at = now();
   }
 
+  // ── Session types (offers) ────────────────────────────────────────────────
+
+  async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
+    return MOCK_SESSION_TYPES.filter((s) => s.status === 'active');
+  }
+
+  async getAllSessionTypes(): Promise<SessionTypeRecord[]> {
+    return [...MOCK_SESSION_TYPES];
+  }
+
+  async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
+    const record: SessionTypeRecord = {
+      ...data,
+      id: 'mock-' + Date.now().toString(36),
+      created_at: now(),
+      updated_at: now(),
+    };
+    MOCK_SESSION_TYPES.push(record);
+    return record;
+  }
+
+  async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
+    const idx = MOCK_SESSION_TYPES.findIndex((s) => s.id === id);
+    if (idx === -1) throw new Error(`Session type ${id} not found`);
+    MOCK_SESSION_TYPES[idx] = { ...MOCK_SESSION_TYPES[idx]!, ...updates, updated_at: now() };
+    return MOCK_SESSION_TYPES[idx]!;
+  }
+
   private hydrateBooking(booking: Booking): Booking {
     const client = mockState.clients.get(booking.client_id);
     const event = booking.event_id ? mockState.events.get(booking.event_id) : null;
@@ -639,6 +670,77 @@ export class MockRepository implements IRepository {
     };
   }
 }
+
+const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
+  {
+    id: 'mock-st-1',
+    title: 'Introductory Clarity Conversation',
+    slug: 'intro-clarity-conversation',
+    short_description: 'A space to assess alignment — no commitment required.',
+    description: 'We meet to assess alignment. No commitment required. A space to explore whether this is the right fit for you. Format: Online or in person · Lugano.',
+    duration_minutes: 45,
+    price: 0,
+    currency: 'CHF',
+    status: 'active',
+    sort_order: 1,
+    image_key: null,
+    drive_file_id: null,
+    image_alt: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'mock-st-2',
+    title: 'First Clarity Session',
+    slug: 'first-clarity-session',
+    short_description: 'Where your story, values, and patterns come fully into view.',
+    description: 'An extended session to map where you are, what is blocking you, and what you truly want. This becomes the foundation everything else is built on. Format: Online or in person · Lugano.',
+    duration_minutes: 90,
+    price: 150,
+    currency: 'CHF',
+    status: 'active',
+    sort_order: 2,
+    image_key: null,
+    drive_file_id: null,
+    image_alt: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'mock-st-3',
+    title: 'Cycle Session',
+    slug: 'cycle-session',
+    short_description: 'Focused, structured work within an ongoing Clarity Cycle.',
+    description: 'Seven sessions per cycle, each building on the last — unpacking what is stuck and practicing the new you. On the final session we reassess whether to pause or begin a new cycle. Format: Online or in person · Lugano.',
+    duration_minutes: 60,
+    price: 120,
+    currency: 'CHF',
+    status: 'active',
+    sort_order: 3,
+    image_key: null,
+    drive_file_id: null,
+    image_alt: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'mock-st-4',
+    title: 'Clarity from your Guardian Angels',
+    slug: 'clarity-from-guardian-angels',
+    short_description: 'A fresh perspective from the eyes of unconditional love.',
+    description: 'In this session we will connect with your guardian angels and translate their messages to illuminate your current situation with new clarity and remind you they are always here for you. Format: Online or in person · Lugano.',
+    duration_minutes: 90,
+    price: 150,
+    currency: 'CHF',
+    status: 'active',
+    sort_order: 4,
+    image_key: null,
+    drive_file_id: null,
+    image_alt: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+];
 
 function toCalendarSyncFailure(log: FailureLog): CalendarSyncFailure {
   const op = String(log.context?.['calendar_operation'] ?? 'update');

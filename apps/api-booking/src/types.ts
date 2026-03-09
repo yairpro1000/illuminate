@@ -148,6 +148,46 @@ export interface EventReminderSubscription {
   created_at: string;
 }
 
+// ── Session Types (offers) ──────────────────────────────────────────────────
+
+export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
+
+export interface SessionTypeRecord {
+  id: string;
+  title: string;
+  slug: string;
+  short_description: string | null;
+  description: string;
+  duration_minutes: number;
+  price: number; // cents
+  currency: string;
+  status: SessionTypeStatus;
+  sort_order: number;
+  image_key: string | null;
+  drive_file_id: string | null;
+  image_alt: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type NewSessionType = Omit<SessionTypeRecord, 'id' | 'created_at' | 'updated_at'>;
+export type SessionTypeUpdate = Partial<
+  Pick<SessionTypeRecord,
+    | 'title'
+    | 'slug'
+    | 'short_description'
+    | 'description'
+    | 'duration_minutes'
+    | 'price'
+    | 'currency'
+    | 'status'
+    | 'sort_order'
+    | 'image_key'
+    | 'drive_file_id'
+    | 'image_alt'
+  >
+>;
+
 export interface ContactMessage {
   id: string;
   client_id: string | null;

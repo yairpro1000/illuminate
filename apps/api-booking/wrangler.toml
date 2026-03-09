@@ -32,7 +32,7 @@ bucket_name = "letsilluminate-images"
 
 # Local-only overrides (used by `wrangler dev --env local`)
 [env.local.vars]
-REPOSITORY_MODE = "supabase"
+REPOSITORY_MODE = "mock"
 EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "mock"
 PAYMENTS_MODE   = "mock"

@@ -7,6 +7,16 @@
 
 'use strict';
 
+/* ── Session types ───────────────────────────────────────── */
+
+/**
+ * GET /api/session-types
+ * Returns: { session_types: SessionType[] }
+ */
+function getSessionTypes() {
+  return _get('/api/session-types');
+}
+
 /* ── Slot availability ───────────────────────────────────── */
 
 /**

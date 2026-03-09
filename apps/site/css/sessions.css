@@ -23,7 +23,7 @@ body.theme-light .sessions-hero::after {
   max-width: 38rem;
   width: min(38rem, 100% - 3rem);
   margin-inline: auto;
-  text-align: left;
+  text-align: center;
 }
 
 .sessions-intro {
@@ -45,6 +45,11 @@ body.theme-light .sessions-hero::after {
 .sessions__header {
   text-align: center;
   margin-bottom: 3.5rem;
+}
+
+/* ── Meta row: align all values to the same column ─────────── */
+.event-card .event-card__meta-row dt {
+  min-width: 5.5rem;
 }
 
 /* ── Session card CTA row ───────────────────────────────────── */

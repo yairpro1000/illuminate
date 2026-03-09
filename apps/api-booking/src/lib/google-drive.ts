@@ -1,4 +1,4 @@
-import { instrumentFetch } from '../../../../shared/observability/backend.js';
+import { instrumentFetch } from '../../../shared/observability/backend.js';
 import type { Logger } from '../lib/logger.js';
 
 interface GoogleSaConfig {
