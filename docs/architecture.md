@@ -4,7 +4,7 @@
 
 Frontend: Cloudflare Pages (static)\
 API Layer: Cloudflare Workers\
-Database: Supabase (Postgres)\
+Database: mock repository by default in dev; Supabase/Postgres remains the planned persistent backing store\
 Payments: Stripe\
 Calendar: Google Calendar API\
 Email: Transactional email provider\
@@ -15,7 +15,7 @@ Anti-bot: Turnstile
 ## 2. Responsibility Separation
 
 Stripe → payment state authority\
-Supabase → booking & registration lifecycle state\
+Repository layer → booking lifecycle state\
 Google Calendar → schedule truth\
 Email provider → notification delivery
 
@@ -45,7 +45,7 @@ Jobs → Scheduler → Internal API endpoints
 -   Token hashing for confirm/manage links.
 -   Stripe webhook signature verification.
 -   No secrets exposed client-side.
--   Admin auth via Supabase.
+-   Admin auth via Cloudflare Access headers on the booking/admin worker.
 
 ### PA (Personal Assistant) app security + data access
 

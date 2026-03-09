@@ -101,6 +101,34 @@ const REDACTED_KEYS = new Set([
   "signature",
 ]);
 
+const PII_KEYS = new Set([
+  "email",
+  "phone",
+  "message",
+  "text",
+  "body",
+  "notes",
+  "attendee",
+  "attendees",
+  "attendeeemail",
+  "attendeename",
+  "reply_to",
+  "replyto",
+  "recipient",
+  "recipients",
+  "to",
+  "cc",
+  "bcc",
+  "first_name",
+  "lastname",
+  "last_name",
+  "firstname",
+  "full_name",
+  "client_email",
+  "client_phone",
+  "client_name",
+]);
+
 const MAX_TEXT_PREVIEW = 4_000;
 const MAX_JSON_DEPTH = 6;
 const MAX_JSON_KEYS = 50;
@@ -134,6 +162,20 @@ function isSensitiveKey(key: string): boolean {
     normalized.includes("key") ||
     normalized.includes("signature") ||
     normalized.includes("assertion")
+  );
+}
+
+function isPiiKey(key: string): boolean {
+  const normalized = normalizeKey(key).replace(/[^a-z0-9_]/g, "");
+  return (
+    PII_KEYS.has(normalized) ||
+    normalized.includes("email") ||
+    normalized.includes("phone") ||
+    normalized.includes("attendee") ||
+    normalized.includes("replyto") ||
+    normalized.includes("recipient") ||
+    normalized.includes("clientemail") ||
+    normalized.includes("clientphone")
   );
 }
 
@@ -214,6 +256,10 @@ function sanitizeUnknown(value: unknown, depth = 0): JsonValue {
       const key = String(rawKey);
       if (isSensitiveKey(key)) {
         out[key] = maskSecret(rawValue);
+        continue;
+      }
+      if (isPiiKey(key)) {
+        out[key] = "[redacted]";
         continue;
       }
       out[key] = sanitizeUnknown(rawValue, depth + 1);

@@ -27,7 +27,7 @@ export class MockEmailProvider implements IEmailProvider {
       debug: {
         provider: 'mock',
         kind,
-        request: { to, subject, body },
+        preview: 'omitted',
       },
     };
   }

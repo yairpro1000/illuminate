@@ -100,10 +100,12 @@
       checkSvg,
       'Confirmed!',
       isEvent
-        ? 'Your event booking is confirmed. See you soon!'
-        : 'Your booking is confirmed. We\'ve sent the next steps to your email.',
-      'index.html',
-      '← Back to homepage',
+        ? 'Your event booking is confirmed.'
+        : (data.status === 'pending_payment'
+          ? 'Your booking is confirmed and awaiting payment.'
+          : 'Your booking is confirmed.'),
+      data.next_action_url || 'index.html',
+      data.next_action_label || '← Back to homepage',
     );
   } catch (err) {
     show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', '', '');

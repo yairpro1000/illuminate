@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ mode }) => {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const env = loadEnv(mode, repoRoot, "");
-  const apiPort = env.PA_API_PORT || process.env.PA_API_PORT || "8787";
+  const apiBase = env.VITE_API_BASE || process.env.VITE_API_BASE || "http://127.0.0.1:8788";
 
   return {
     root: __dirname,
@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         "/api": {
-          target: `http://127.0.0.1:${apiPort}`,
+          target: apiBase,
           changeOrigin: true,
         },
       },

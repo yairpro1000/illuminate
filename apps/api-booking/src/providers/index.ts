@@ -6,6 +6,7 @@ import type { IPaymentsProvider } from './payments/interface.js';
 import type { IAntiBotProvider } from './antibot/interface.js';
 import type { Logger } from '../lib/observability.js';
 import { errorMessage } from '../../../shared/observability/backend.js';
+import { getOverride } from '../lib/config-overrides.js';
 
 import { MockRepository } from './repository/mock.js';
 import { MockEmailProvider } from './email/mock.js';
@@ -74,9 +75,16 @@ export function createProviders(env: Env, logger?: Logger): Providers {
   // Each provider is switched independently via its own env var.
   // Set e.g. EMAIL_MODE=resend in wrangler.toml while keeping the rest as mock.
 
+  // Resolve effective modes: runtime override takes precedence over env var.
+  const repoMode     = getOverride('repository') ?? env.REPOSITORY_MODE;
+  const emailMode    = getOverride('email')      ?? env.EMAIL_MODE;
+  const calendarMode = getOverride('calendar')   ?? env.CALENDAR_MODE;
+  const paymentsMode = getOverride('payments')   ?? env.PAYMENTS_MODE;
+  const antibotMode  = getOverride('antibot')    ?? env.ANTIBOT_MODE;
+
   // repository
   let repository: IRepository;
-  if (env.REPOSITORY_MODE === 'supabase') {
+  if (repoMode === 'supabase') {
     // const { SupabaseRepository } = await import('./repository/supabase.js');
     // repository = new SupabaseRepository(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
     throw new Error('Supabase repository is intentionally not wired in this dev-stage worker yet.');
@@ -86,7 +94,7 @@ export function createProviders(env: Env, logger?: Logger): Providers {
 
   // email
   let email: IEmailProvider;
-  if (env.EMAIL_MODE === 'resend') {
+  if (emailMode === 'resend') {
     email = new ResendEmailProvider(env.RESEND_API_KEY);
   } else {
     email = new MockEmailProvider();
@@ -94,7 +102,7 @@ export function createProviders(env: Env, logger?: Logger): Providers {
 
   // calendar
   let calendar: ICalendarProvider;
-  if (env.CALENDAR_MODE === 'google') {
+  if (calendarMode === 'google') {
     calendar = new GoogleCalendarProvider(env, logger);
   } else {
     calendar = new MockCalendarProvider();
@@ -102,7 +110,7 @@ export function createProviders(env: Env, logger?: Logger): Providers {
 
   // payments
   let payments: IPaymentsProvider;
-  if (env.PAYMENTS_MODE === 'stripe') {
+  if (paymentsMode === 'stripe') {
     // const { StripePaymentsProvider } = await import('./payments/stripe.js');
     // payments = new StripePaymentsProvider(env.STRIPE_SECRET_KEY);
     throw new Error('Stripe payments are intentionally mocked in this dev-stage worker.');
@@ -112,7 +120,7 @@ export function createProviders(env: Env, logger?: Logger): Providers {
 
   // antibot
   let antibot: IAntiBotProvider;
-  if (env.ANTIBOT_MODE === 'turnstile') {
+  if (antibotMode === 'turnstile') {
     // const { TurnstileAntiBotProvider } = await import('./antibot/turnstile.js');
     // antibot = new TurnstileAntiBotProvider(env.TURNSTILE_SECRET_KEY);
     throw new Error('Turnstile verification is intentionally mocked in this dev-stage worker.');

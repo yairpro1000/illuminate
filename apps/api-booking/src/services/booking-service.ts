@@ -94,6 +94,14 @@ export interface CalendarSyncResult {
   calendarSynced: boolean;
 }
 
+export interface BookingPublicActionInfo {
+  booking: Booking;
+  checkoutUrl: string | null;
+  manageUrl: string | null;
+  nextActionUrl: string | null;
+  nextActionLabel: 'Complete Payment' | 'Manage Booking' | null;
+}
+
 // ── Session flow: Pay Now ───────────────────────────────────────────────────
 
 export async function createPayNowBooking(
@@ -101,6 +109,10 @@ export async function createPayNowBooking(
   ctx: BookingContext,
 ): Promise<PayNowResult> {
   const { providers, env, logger } = ctx;
+
+  if (input.sessionType === 'intro') {
+    throw badRequest('Intro conversations are free and do not support pay-now checkout.');
+  }
 
   await providers.antibot.verify(input.turnstileToken, input.remoteIp);
   await assertSlotAvailable(input.slotStart, input.slotEnd, providers);
@@ -111,8 +123,7 @@ export async function createPayNowBooking(
     providers,
   );
 
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
+  const manageTokenHash = await hashToken(generateToken());
   const holdExpiresAt = new Date(Date.now() + CHECKOUT_HOLD_MINUTES * 60_000).toISOString();
 
   const booking = await providers.repository.createBooking({
@@ -203,8 +214,7 @@ export async function createPayLaterBooking(
 
   const confirmToken = generateToken();
   const confirmTokenHash = await hashToken(confirmToken);
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
+  const manageTokenHash = await hashToken(generateToken());
 
   const confirmExpiresAt = new Date(Date.now() + BOOKING_CONFIRM_WINDOW_MINUTES * 60_000).toISOString();
   const followupScheduledAt = new Date(Date.now() + FOLLOWUP_DELAY_HOURS * 60 * 60_000).toISOString();
@@ -297,8 +307,7 @@ async function createEventBookingInternal(
     providers,
   );
 
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
+  const manageTokenHash = await hashToken(generateToken());
   const followupScheduledAt = new Date(Date.now() + FOLLOWUP_DELAY_HOURS * 60 * 60_000).toISOString();
 
   // Free events require email confirmation unless booked via late-access.
@@ -341,7 +350,7 @@ async function createEventBookingInternal(
     });
 
     if (options.viaLateAccess) {
-      const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
+      const manageUrl = await buildManageUrl(env.SITE_URL, booking);
       await providers.email.sendEventConfirmation(booking, input.event, manageUrl, null);
       return { bookingId: booking.id, status: 'confirmed' };
     }
@@ -374,7 +383,7 @@ async function createEventBookingInternal(
     payment_due_at: null,
     payment_due_reminder_scheduled_at: null,
     payment_due_reminder_sent_at: null,
-    followup_scheduled_at: followupScheduledAt,
+    followup_scheduled_at: null,
     followup_sent_at: null,
     reminder_email_opt_in: input.reminderEmailOptIn,
     reminder_whatsapp_opt_in: input.reminderWhatsappOptIn,
@@ -431,16 +440,46 @@ export async function confirmBookingEmail(
   const tokenHash = await hashToken(rawToken);
   const booking = await providers.repository.getBookingByConfirmTokenHash(tokenHash);
   if (!booking) throw notFound('Booking not found');
-  if (booking.status !== 'pending_email') throw gone('This confirmation link is no longer valid');
+
+  if (booking.status !== 'pending_email') {
+    if (booking.source === 'session' && ['pending_payment', 'confirmed', 'cash_ok'].includes(booking.status)) {
+      return ensureSessionRecoveryState(booking, ctx);
+    }
+    if (booking.source === 'event' && booking.status === 'confirmed') {
+      return booking;
+    }
+    throw gone('This confirmation link is no longer valid');
+  }
 
   if (booking.confirm_expires_at && new Date(booking.confirm_expires_at) < new Date()) {
     throw gone('This confirmation link has expired');
   }
 
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
-
   if (booking.source === 'session') {
+    if (booking.session_type === 'intro') {
+      const reminder24h = compute24hReminderTime(new Date(booking.starts_at));
+
+      let updated = await providers.repository.updateBooking(booking.id, {
+        status: 'confirmed',
+        confirm_expires_at: null,
+        reminder_24h_scheduled_at: booking.reminder_email_opt_in ? reminder24h?.toISOString() ?? null : null,
+      });
+
+      updated = (await syncSessionBookingCalendar(updated, ctx, {
+        operation: 'confirm_email_intro',
+        forceUpdate: true,
+      })).booking;
+
+      const manageUrl = await buildManageUrl(env.SITE_URL, updated);
+      await sendEmailBestEffort(
+        ctx,
+        updated,
+        'sendBookingConfirmation',
+        () => providers.email.sendBookingConfirmation(updated, manageUrl, null),
+      );
+      return updated;
+    }
+
     const startsAt = new Date(booking.starts_at);
     const paymentDueAt = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
     const reminderTime = computePaymentDueReminderTime(paymentDueAt, booking.timezone);
@@ -448,9 +487,7 @@ export async function confirmBookingEmail(
 
     let updated = await providers.repository.updateBooking(booking.id, {
       status: 'pending_payment',
-      confirm_token_hash: null,
       confirm_expires_at: null,
-      manage_token_hash: manageTokenHash,
       payment_due_at: paymentDueAt.toISOString(),
       payment_due_reminder_scheduled_at: reminderTime.toISOString(),
       reminder_24h_scheduled_at: reminder24h?.toISOString() ?? null,
@@ -458,10 +495,16 @@ export async function confirmBookingEmail(
 
     updated = (await syncSessionBookingCalendar(updated, ctx, { operation: 'confirm_email' })).booking;
 
-    const payUrl = `${env.SITE_URL}/book.html?mode=pay&id=${booking.id}`;
-    const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
-    await providers.email.sendBookingPaymentDue(updated, payUrl, manageUrl);
-    return updated;
+    const ensured = await ensureSessionCheckout(updated, ctx);
+    const payUrl = ensured.checkoutUrl;
+    const manageUrl = await buildManageUrl(env.SITE_URL, ensured.booking);
+    await sendEmailBestEffort(
+      ctx,
+      ensured.booking,
+      'sendBookingPaymentDue',
+      () => providers.email.sendBookingPaymentDue(ensured.booking, payUrl, manageUrl),
+    );
+    return ensured.booking;
   }
 
   const event = booking.event_id ? await providers.repository.getEventById(booking.event_id) : null;
@@ -470,14 +513,17 @@ export async function confirmBookingEmail(
   const reminder24h = compute24hReminderTime(new Date(event.starts_at));
   const updated = await providers.repository.updateBooking(booking.id, {
     status: 'confirmed',
-    confirm_token_hash: null,
     confirm_expires_at: null,
-    manage_token_hash: manageTokenHash,
     reminder_24h_scheduled_at: booking.reminder_email_opt_in ? reminder24h?.toISOString() ?? null : null,
   });
 
-  const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
-  await providers.email.sendEventConfirmation(updated, event, manageUrl, null);
+  const manageUrl = await buildManageUrl(env.SITE_URL, updated);
+  await sendEmailBestEffort(
+    ctx,
+    updated,
+    'sendEventConfirmation',
+    () => providers.email.sendEventConfirmation(updated, event, manageUrl, null),
+  );
   return updated;
 }
 
@@ -514,13 +560,10 @@ export async function confirmBookingPayment(
 
   if (booking.source === 'session') {
     const reminder24h = compute24hReminderTime(new Date(booking.starts_at));
-    const manageToken = generateToken();
-    const manageTokenHash = await hashToken(manageToken);
 
     let updated = await providers.repository.updateBooking(booking.id, {
       status: 'confirmed',
       checkout_hold_expires_at: null,
-      manage_token_hash: manageTokenHash,
       reminder_24h_scheduled_at: booking.reminder_24h_scheduled_at ?? reminder24h?.toISOString() ?? null,
     });
 
@@ -529,27 +572,34 @@ export async function confirmBookingPayment(
       forceUpdate: true,
     })).booking;
 
-    const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
-    await providers.email.sendBookingConfirmation(updated, manageUrl, stripeData.invoiceUrl);
+    const manageUrl = await buildManageUrl(env.SITE_URL, updated);
+    await sendEmailBestEffort(
+      ctx,
+      updated,
+      'sendBookingConfirmation',
+      () => providers.email.sendBookingConfirmation(updated, manageUrl, stripeData.invoiceUrl),
+    );
     return;
   }
 
   const event = booking.event_id ? await providers.repository.getEventById(booking.event_id) : null;
   if (!event) throw notFound('Event not found');
 
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
   const reminder24h = compute24hReminderTime(new Date(event.starts_at));
 
   const updated = await providers.repository.updateBooking(booking.id, {
     status: 'confirmed',
     checkout_hold_expires_at: null,
-    manage_token_hash: manageTokenHash,
     reminder_24h_scheduled_at: booking.reminder_email_opt_in ? reminder24h?.toISOString() ?? null : null,
   });
 
-  const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
-  await providers.email.sendEventConfirmation(updated, event, manageUrl, stripeData.invoiceUrl);
+  const manageUrl = await buildManageUrl(env.SITE_URL, updated);
+  await sendEmailBestEffort(
+    ctx,
+    updated,
+    'sendEventConfirmation',
+    () => providers.email.sendEventConfirmation(updated, event, manageUrl, stripeData.invoiceUrl),
+  );
 }
 
 // ── Manage-token resolution ─────────────────────────────────────────────────
@@ -558,6 +608,18 @@ export async function resolveBookingByManageToken(
   rawToken: string,
   repository: Providers['repository'],
 ): Promise<Booking> {
+  const stableToken = parseStableManageToken(rawToken);
+  if (stableToken) {
+    const booking = await repository.getBookingById(stableToken.bookingId);
+    if (!booking) throw notFound('Booking not found');
+
+    const expectedSignature = await buildStableManageSignature(booking.id, booking.manage_token_hash);
+    if (!hashesEqual(expectedSignature, stableToken.signature)) {
+      throw notFound('Booking not found');
+    }
+    return booking;
+  }
+
   const tokenHash = await hashToken(rawToken);
   const booking = await repository.getBookingByManageTokenHash(tokenHash);
   if (!booking) throw notFound('Booking not found');
@@ -663,42 +725,77 @@ export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingC
   const event = booking.event_id ? await providers.repository.getEventById(booking.event_id) : null;
   if (!event) return;
 
-  if (booking.status === 'pending_email') {
-    const confirmToken = generateToken();
-    const confirmTokenHash = await hashToken(confirmToken);
-    const updated = await providers.repository.updateBooking(booking.id, {
-      confirm_token_hash: confirmTokenHash,
-      confirm_expires_at: new Date(Date.now() + EVENT_CONFIRM_WINDOW_MINUTES * 60_000).toISOString(),
-    });
-    const confirmUrl = buildConfirmUrl(env.SITE_URL, confirmToken);
-    await providers.email.sendEventFollowup(updated, event, confirmUrl);
-  } else {
-    const payUrl = `${env.SITE_URL}/book.html?mode=pay&id=${booking.id}`;
-    await providers.email.sendEventFollowup(booking, event, payUrl);
-  }
+  if (booking.status !== 'pending_email') return;
+
+  const confirmToken = generateToken();
+  const confirmTokenHash = await hashToken(confirmToken);
+  const updated = await providers.repository.updateBooking(booking.id, {
+    confirm_token_hash: confirmTokenHash,
+    confirm_expires_at: new Date(Date.now() + EVENT_CONFIRM_WINDOW_MINUTES * 60_000).toISOString(),
+  });
+  const confirmUrl = buildConfirmUrl(env.SITE_URL, confirmToken);
+  await providers.email.sendEventFollowup(updated, event, confirmUrl);
 
   await providers.repository.updateBooking(booking.id, { followup_sent_at: new Date().toISOString() });
 }
 
 export async function send24hBookingReminder(booking: Booking, ctx: BookingContext): Promise<void> {
   const { providers, env } = ctx;
-  const manageToken = generateToken();
-  const manageTokenHash = await hashToken(manageToken);
-  const updated = await providers.repository.updateBooking(booking.id, {
-    manage_token_hash: manageTokenHash,
-  });
-  const manageUrl = buildManageUrl(env.SITE_URL, manageToken);
+  const manageUrl = await buildManageUrl(env.SITE_URL, booking);
 
-  if (updated.source === 'session') {
-    await providers.email.sendBookingReminder24h(updated, manageUrl);
-    await providers.repository.updateBooking(updated.id, { reminder_24h_sent_at: new Date().toISOString() });
+  if (booking.source === 'session') {
+    await providers.email.sendBookingReminder24h(booking, manageUrl);
+    await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
     return;
   }
 
-  const event = updated.event_id ? await providers.repository.getEventById(updated.event_id) : null;
+  const event = booking.event_id ? await providers.repository.getEventById(booking.event_id) : null;
   if (!event) return;
-  await providers.email.sendEventReminder24h(updated, event, manageUrl);
-  await providers.repository.updateBooking(updated.id, { reminder_24h_sent_at: new Date().toISOString() });
+  await providers.email.sendEventReminder24h(booking, event, manageUrl);
+  await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
+}
+
+export async function getBookingPublicActionInfo(
+  booking: Booking,
+  ctx: BookingContext,
+): Promise<BookingPublicActionInfo> {
+  const manageUrl = ['pending_payment', 'confirmed', 'cash_ok'].includes(booking.status)
+    ? await buildManageUrl(ctx.env.SITE_URL, booking)
+    : null;
+  const checkoutUrl = booking.status === 'pending_payment'
+    ? await getCheckoutUrlForBooking(booking.id, ctx.providers.repository)
+    : null;
+
+  if (booking.status === 'pending_payment' && checkoutUrl) {
+    return {
+      booking,
+      checkoutUrl,
+      manageUrl,
+      nextActionUrl: checkoutUrl,
+      nextActionLabel: 'Complete Payment',
+    };
+  }
+
+  return {
+    booking,
+    checkoutUrl,
+    manageUrl,
+    nextActionUrl: manageUrl,
+    nextActionLabel: manageUrl ? 'Manage Booking' : null,
+  };
+}
+
+export async function getBookingPublicActionInfoByPaymentSession(
+  sessionId: string,
+  ctx: BookingContext,
+): Promise<BookingPublicActionInfo> {
+  const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
+  if (!payment) throw notFound('Payment session not found');
+
+  const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
+  if (!booking) throw notFound('Booking not found');
+
+  return getBookingPublicActionInfo(booking, ctx);
 }
 
 export async function ensureEventPublicBookable(event: Event): Promise<void> {
@@ -929,6 +1026,139 @@ function buildConfirmUrl(siteUrl: string, rawToken: string): string {
   return `${siteUrl}/confirm.html?token=${encodeURIComponent(rawToken)}`;
 }
 
-function buildManageUrl(siteUrl: string, rawToken: string): string {
-  return `${siteUrl}/manage.html?token=${encodeURIComponent(rawToken)}`;
+async function buildManageUrl(siteUrl: string, booking: Booking): Promise<string> {
+  const token = await buildStableManageToken(booking.id, booking.manage_token_hash);
+  return `${siteUrl}/manage.html?token=${encodeURIComponent(token)}`;
+}
+
+async function ensureSessionRecoveryState(booking: Booking, ctx: BookingContext): Promise<Booking> {
+  if (booking.source !== 'session') return booking;
+  if (booking.status === 'pending_payment' && booking.session_type !== 'intro') {
+    const synced = await syncSessionBookingCalendar(booking, ctx, {
+      operation: 'confirm_email_reentry',
+      forceUpdate: true,
+    });
+    const ensured = await ensureSessionCheckout(synced.booking, ctx);
+    return ensured.booking;
+  }
+  if (booking.status === 'confirmed' || booking.status === 'cash_ok') {
+    return (await syncSessionBookingCalendar(booking, ctx, {
+      operation: 'confirm_email_reentry',
+      forceUpdate: true,
+    })).booking;
+  }
+  return booking;
+}
+
+async function ensureSessionCheckout(
+  booking: Booking,
+  ctx: BookingContext,
+): Promise<{ booking: Booking; checkoutUrl: string }> {
+  const existing = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  if (existing?.checkout_url) {
+    return { booking, checkoutUrl: existing.checkout_url };
+  }
+
+  const amountCents = booking.session_type === 'session' ? 18000 : 0;
+  const session = await ctx.providers.payments.createCheckoutSession({
+    lineItems: [{
+      name: `ILLUMINATE 1:1 ${booking.session_type === 'session' ? 'Session' : 'Intro'}`,
+      amountCents,
+      currency: 'CHF',
+      quantity: 1,
+    }],
+    bookingId: booking.id,
+    successUrl: `${ctx.env.SITE_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${ctx.env.SITE_URL}/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+  });
+
+  const updatedBooking = booking.checkout_session_id === session.sessionId
+    ? booking
+    : await ctx.providers.repository.updateBooking(booking.id, {
+        checkout_session_id: session.sessionId,
+      });
+
+  if (!existing) {
+    await ctx.providers.repository.createPayment({
+      booking_id: booking.id,
+      provider: 'stripe',
+      provider_payment_id: session.sessionId,
+      amount_cents: session.amountCents,
+      currency: session.currency,
+      status: 'pending',
+      checkout_url: session.checkoutUrl,
+      invoice_url: null,
+      raw_payload: null,
+      paid_at: null,
+    });
+  }
+
+  return {
+    booking: updatedBooking,
+    checkoutUrl: session.checkoutUrl,
+  };
+}
+
+async function getCheckoutUrlForBooking(
+  bookingId: string,
+  repository: Providers['repository'],
+): Promise<string | null> {
+  const payment = await repository.getPaymentByBookingId(bookingId);
+  return payment?.checkout_url ?? null;
+}
+
+async function sendEmailBestEffort(
+  ctx: BookingContext,
+  booking: Booking,
+  operation: string,
+  send: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await send();
+  } catch (err) {
+    ctx.logger.error('Email delivery failed after state transition', {
+      bookingId: booking.id,
+      operation,
+      err: String(err),
+    });
+    try {
+      await ctx.providers.repository.logFailure({
+        source: 'email',
+        operation,
+        booking_id: booking.id,
+        request_id: ctx.requestId,
+        error_message: String(err),
+        retryable: false,
+        context: {
+          booking_status: booking.status,
+          booking_source: booking.source,
+          email_delivery_mode: 'best_effort_dev_stage',
+        },
+      });
+    } catch (failureLogError) {
+      ctx.logger.error('Failed to persist email delivery failure', {
+        bookingId: booking.id,
+        operation,
+        err: String(failureLogError),
+      });
+    }
+  }
+}
+
+async function buildStableManageSignature(bookingId: string, manageTokenHash: string): Promise<string> {
+  return hashToken(`m1:${bookingId}:${manageTokenHash}`);
+}
+
+async function buildStableManageToken(bookingId: string, manageTokenHash: string): Promise<string> {
+  const signature = await buildStableManageSignature(bookingId, manageTokenHash);
+  return `m1.${bookingId}.${signature}`;
+}
+
+function parseStableManageToken(rawToken: string): { bookingId: string; signature: string } | null {
+  const parts = rawToken.split('.');
+  if (parts.length !== 3 || parts[0] !== 'm1') return null;
+  const bookingId = parts[1] ?? '';
+  const signature = parts[2] ?? '';
+  if (!bookingId || !signature) return null;
+  return { bookingId, signature };
 }

@@ -36,6 +36,8 @@ export function getAllowedOrigin(
   request: Request,
   siteUrl: string,
   configuredOrigins?: string,
+  /** When true (ADMIN_DEV_EMAIL is set), all origins are permitted — dev only. */
+  devMode = false,
 ): string | null {
   const origin = request.headers.get('Origin');
   if (!origin) return null;
@@ -60,5 +62,6 @@ export function getAllowedOrigin(
   if (host === 'letsilluminate.co' || host.endsWith('.letsilluminate.co')) return normalizedOrigin;
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return normalizedOrigin;
   if (normalizedConfigured.has(normalizedOrigin)) return normalizedOrigin;
+  if (devMode) return normalizedOrigin;
   return null;
 }

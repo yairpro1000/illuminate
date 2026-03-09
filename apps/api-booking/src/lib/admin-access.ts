@@ -44,7 +44,7 @@ export function requireAdminAccess(request: Request, env: Env): { email: string 
   }
 
   const devEmail = env.ADMIN_DEV_EMAIL?.trim();
-  if (devEmail && isLocalhostRequest(request)) {
+  if (devEmail) {
     const normalized = normalizeEmail(devEmail);
     if (allowlist.size === 0 || allowlist.has(normalized)) {
       return { email: normalized };

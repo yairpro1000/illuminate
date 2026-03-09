@@ -294,7 +294,11 @@ async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
 
   for (const b of bookings) {
     try {
-      const payUrl = `${env.SITE_URL}/book.html?mode=pay&id=${b.id}`;
+      const payment = await providers.repository.getPaymentByBookingId(b.id);
+      const payUrl = payment?.checkout_url;
+      if (!payUrl) {
+        throw new Error('No checkout URL available for payment reminder');
+      }
       await providers.email.sendBookingPaymentReminder(b, payUrl);
       await providers.repository.updateBooking(b.id, { payment_due_reminder_sent_at: new Date().toISOString() });
       succeeded++;

@@ -7,6 +7,7 @@ import { handleGetSlots } from './handlers/slots.js';
 import { handleHealth } from './handlers/health.js';
 import { handlePayNow, handlePayLater } from './handlers/bookings.js';
 import { handleConfirm } from './handlers/confirm.js';
+import { handlePaymentStatus } from './handlers/payment-status.js';
 import { handleManageInfo } from './handlers/manage-info.js';
 import { handleManageCancel } from './handlers/manage-cancel.js';
 import { handleManageReschedule } from './handlers/manage-reschedule.js';
@@ -27,6 +28,8 @@ import {
   handleAdminUpdateBooking,
   handleAdminCreateLateAccessLink,
   handleAdminCreateReminderSubscription,
+  handleAdminGetConfig,
+  handleAdminPatchConfig,
 } from './handlers/admin.js';
 import {
   handleSimulatePayment,
@@ -74,6 +77,7 @@ const ROUTES: Route[] = [
   route('POST', '/api/bookings/pay-now', handlePayNow),
   route('POST', '/api/bookings/pay-later', handlePayLater),
   route('GET', '/api/bookings/confirm', handleConfirm),
+  route('GET', '/api/bookings/payment-status', handlePaymentStatus),
   route('GET', '/api/bookings/manage', handleManageInfo),
   route('POST', '/api/bookings/cancel', handleManageCancel),
   route('POST', '/api/bookings/reschedule', handleManageReschedule),
@@ -90,6 +94,8 @@ const ROUTES: Route[] = [
   route('PATCH', '/api/admin/bookings/:bookingId', handleAdminUpdateBooking),
   route('POST', '/api/admin/events/:eventId/late-access-links', handleAdminCreateLateAccessLink),
   route('POST', '/api/admin/reminder-subscriptions', handleAdminCreateReminderSubscription),
+  route('GET',  '/api/admin/config', handleAdminGetConfig),
+  route('PATCH', '/api/admin/config', handleAdminPatchConfig),
   route('POST', '/api/stripe/webhook', handleStripeWebhook),
   route('POST', '/api/jobs/:name', handleJobTrigger),
 
@@ -101,7 +107,7 @@ const ROUTES: Route[] = [
 
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
-  const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS);
+  const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS, !!ctx.env.ADMIN_DEV_EMAIL);
   const requestSizeBytes = headerByteLength(request.headers);
 
   if (request.method === 'OPTIONS') {
@@ -129,21 +135,13 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     path: url.pathname,
   });
 
+  let patternMatched = false;
   for (const r of ROUTES) {
     const match = r.pattern.exec(url.pathname);
     if (!match) continue;
     if (r.method !== '*' && r.method !== request.method) {
-      const res = jsonResponse({ error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' }, 405);
-      ctx.logger.logRequest({
-        method: request.method,
-        url: request.url,
-        path: url.pathname,
-        statusCode: 405,
-        durationMs: 0,
-        success: false,
-        requestSizeBytes,
-      });
-      return origin ? addCors(res, origin) : res;
+      patternMatched = true;
+      continue; // keep scanning — another route may match with the right method
     }
 
     const params: Record<string, string> = {};
@@ -211,12 +209,15 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     }
   }
 
-  const res = jsonResponse({ error: 'NOT_FOUND', message: 'Not found' }, 404);
+  const statusCode = patternMatched ? 405 : 404;
+  const res = patternMatched
+    ? jsonResponse({ error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' }, 405)
+    : jsonResponse({ error: 'NOT_FOUND', message: 'Not found' }, 404);
   ctx.logger.logRequest({
     method: request.method,
     url: request.url,
     path: url.pathname,
-    statusCode: 404,
+    statusCode,
     durationMs: 0,
     success: false,
     requestSizeBytes,

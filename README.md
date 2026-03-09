@@ -46,6 +46,12 @@ The current repo target is coherence and testability, not production hardening.
 - Booking worker provider modes default to mock in `apps/api-booking/wrangler.toml`.
 - Real email/calendar integrations may still exist behind explicit provider switches, but they are not the default architecture for this stage.
 
+## Local Dev Ports
+
+- `apps/api-booking`: `8787`
+- `apps/api-pa`: `8788`
+- `apps/pa`: `5173`
+
 ## Migrations and Docs
 
 - Booking/admin schema migrations: `apps/api-booking/migrations/`

@@ -27,6 +27,8 @@ Returns available 1:1 slots.
 
 ### `POST /api/bookings/pay-now`
 
+Valid only for paid 1:1 sessions (`type: "session"`). `intro` is free and should use the standard confirmation flow.
+
 Request:
 
 ```json
@@ -34,7 +36,7 @@ Request:
   "slot_start": "2026-03-10T10:00:00+01:00",
   "slot_end": "2026-03-10T11:00:00+01:00",
   "timezone": "Europe/Zurich",
-  "type": "intro",
+  "type": "session",
   "client_name": "Alice Example",
   "client_email": "alice@example.com",
   "client_phone": "+41790000000",
@@ -56,7 +58,7 @@ Response:
 
 ### `POST /api/bookings/pay-later`
 
-Same input shape as pay-now.
+Same input shape as pay-now, but `type` may be `intro` or `session`.
 
 Response:
 
@@ -69,7 +71,7 @@ Response:
 
 ### `GET /api/bookings/confirm?token=...`
 
-Confirms a pay-later or free-event email link.
+Confirms a pay-later or free-event email link and returns the next public action so the frontend does not depend on email arrival.
 
 Response:
 
@@ -77,7 +79,27 @@ Response:
 {
   "booking_id": "uuid",
   "status": "pending_payment",
-  "source": "session"
+  "source": "session",
+  "checkout_url": "https://mock-checkout.example/...",
+  "manage_url": "https://letsilluminate.co/manage.html?token=...",
+  "next_action_url": "https://mock-checkout.example/...",
+  "next_action_label": "Complete Payment"
+}
+```
+
+### `GET /api/bookings/payment-status?session_id=...`
+
+Returns a public-safe recovery view for a completed checkout session.
+
+```json
+{
+  "booking_id": "uuid",
+  "status": "confirmed",
+  "source": "event",
+  "checkout_url": null,
+  "manage_url": "https://letsilluminate.co/manage.html?token=...",
+  "next_action_url": "https://letsilluminate.co/manage.html?token=...",
+  "next_action_label": "Manage Booking"
 }
 ```
 

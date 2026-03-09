@@ -10,6 +10,7 @@ const INTRO_DURATION_MS = 30 * 60 * 1000;
 // Other sessions (60–90 min) — use 90 min for conflict detection, Mon–Fri only
 const SESSION_STARTS = [9, 11, 14, 16, 18];
 const SESSION_DURATION_MS = 90 * 60 * 1000;
+const SLOT_LEAD_TIME_MS = 15 * 60 * 1000;
 
 type SlotType = 'intro' | 'session';
 
@@ -99,6 +100,10 @@ function addCandidate(
   const startIso = localTimeToISO(ymd, h, 0, tz);
   const startMs  = new Date(startIso).getTime();
   const endMs    = startMs + durationMs;
+
+  if (startMs < Date.now() + SLOT_LEAD_TIME_MS) {
+    return;
+  }
 
   const overlaps = allBusy.some(b => {
     const bStart = new Date(b.start).getTime();

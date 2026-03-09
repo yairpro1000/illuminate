@@ -39,6 +39,7 @@ API_ALLOWED_ORIGINS = "http://localhost:8080,http://localhost:8788,http://localh
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
+ADMIN_DEV_EMAIL    = "dev@localhost"
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL

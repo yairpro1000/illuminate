@@ -178,6 +178,15 @@ export const DeleteListActionZ = ActionBaseZ.extend({
   target: z.string().min(1).optional(),
 }).strict();
 
+export const TranslateIntentActionZ = z
+  .object({
+    type: z.literal("translate_intent"),
+    valid: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    input: z.string(),
+  })
+  .strict();
+
 const ParsedActionUnionZ = z.discriminatedUnion("type", [
   AppendItemActionZ,
   UpdateItemActionZ,
@@ -188,6 +197,7 @@ const ParsedActionUnionZ = z.discriminatedUnion("type", [
   MoveItemActionZ,
   BatchActionZ,
   DeleteListActionZ,
+  TranslateIntentActionZ,
 ]);
 
 export const ParsedActionZ = ParsedActionUnionZ.superRefine((val, ctx) => {
@@ -195,6 +205,7 @@ export const ParsedActionZ = ParsedActionUnionZ.superRefine((val, ctx) => {
   if (val.type === "move_item") return;
   if (val.type === "batch") return;
   if (val.type === "delete_list") return;
+  if (val.type === "translate_intent") return;
   const hasTarget = Boolean((val as any).listId || (val as any).target);
   if (!hasTarget) {
     ctx.addIssue({

@@ -123,6 +123,14 @@
         color: var(--danger);
         white-space: pre-wrap;
       }
+      td.notes-cell {
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
       .overlay {
         position: fixed;
         inset: 0;
@@ -149,29 +157,14 @@
         th:nth-child(4), td:nth-child(4) {
           display: none;
         }
+        th:nth-child(7), td:nth-child(7) {
+          display: none;
+        }
       }
     </style>
   </head>
   <body>
     <main>
-      <section class="card">
-        <h1>Organizer Admin</h1>
-        <p class="muted">Backend: <code id="apiBaseLabel"></code></p>
-        <div class="row">
-          <div class="col">
-            <label for="apiBase">API base</label>
-            <input id="apiBase" size="42" placeholder="/api" />
-          </div>
-          <div class="col">
-            <button id="saveBase" type="button" class="secondary">Save API base</button>
-          </div>
-          <div class="col">
-            <button id="testAuth" type="button" class="secondary">Test admin auth</button>
-          </div>
-        </div>
-        <div id="status" class="status muted"></div>
-      </section>
-
       <section class="card">
         <div class="row">
           <div class="col" style="min-width: 180px;">
@@ -191,14 +184,17 @@
             <label for="date">Session date</label>
             <input id="date" type="date" />
           </div>
-          <div id="clientWrap" class="col hidden" style="min-width: 260px;">
-            <label for="clientId">Client ID</label>
-            <input id="clientId" placeholder="optional" />
+          <div id="clientWrap" class="col hidden" style="min-width: 200px;">
+            <label for="clientName">Client</label>
+            <select id="clientName">
+              <option value="">All clients</option>
+            </select>
           </div>
           <div class="col">
             <button id="loadRows" type="button">Load bookings</button>
           </div>
         </div>
+        <div id="status" class="status muted"></div>
       </section>
 
       <section class="card" id="eventActionsCard">
@@ -214,19 +210,6 @@
       </section>
 
       <section class="card">
-        <div class="row" style="align-items: end;">
-          <div class="col" style="min-width: 260px;">
-            <label for="reminderEmail">Reminder signup email</label>
-            <input id="reminderEmail" type="email" placeholder="email" />
-          </div>
-          <div class="col">
-            <button id="saveReminder" type="button" class="secondary">Add reminder</button>
-          </div>
-          <div id="reminderMsg" class="small muted"></div>
-        </div>
-      </section>
-
-      <section class="card">
         <table>
           <thead>
             <tr>
@@ -236,6 +219,7 @@
               <th>Email</th>
               <th>Status</th>
               <th>Attended</th>
+              <th>Notes</th>
             </tr>
           </thead>
           <tbody id="rowsBody"></tbody>
@@ -300,6 +284,7 @@
         let apiBase = (localStorage.getItem(STORAGE_KEY) || "/api").replace(/\/+$/g, "");
 
         const state = {
+          allRows: [],
           rows: [],
           editing: null,
           saving: false,
@@ -307,8 +292,6 @@
           rotatingLateAccess: false,
         };
 
-        const apiBaseInput = document.getElementById("apiBase");
-        const apiBaseLabel = document.getElementById("apiBaseLabel");
         const statusEl = document.getElementById("status");
         const sourceEl = document.getElementById("source");
         const eventWrapEl = document.getElementById("eventWrap");
@@ -317,10 +300,8 @@
         const eventActionsCardEl = document.getElementById("eventActionsCard");
         const eventEl = document.getElementById("eventId");
         const dateEl = document.getElementById("date");
-        const clientIdEl = document.getElementById("clientId");
+        const clientNameEl = document.getElementById("clientName");
         const rowsBody = document.getElementById("rowsBody");
-        const reminderEmailEl = document.getElementById("reminderEmail");
-        const reminderMsgEl = document.getElementById("reminderMsg");
         const lateAccessInfoEl = document.getElementById("lateAccessInfo");
         const rotateLateAccessEl = document.getElementById("rotateLateAccess");
 
@@ -337,11 +318,6 @@
         function setStatus(text, isError) {
           statusEl.className = isError ? "status err" : "status ok";
           statusEl.textContent = text || "";
-        }
-
-        function setReminderMessage(text, isError) {
-          reminderMsgEl.className = isError ? "small err" : "small ok";
-          reminderMsgEl.textContent = text || "";
         }
 
         function setEditMessage(text, isError) {
@@ -371,10 +347,46 @@
           return body;
         }
 
-        function createCell(text) {
+        function createCell(text, className) {
           const td = document.createElement("td");
           td.textContent = text;
+          if (className) td.className = className;
           return td;
+        }
+
+        function populateClientDropdown() {
+          const selected = clientNameEl.value;
+          const clients = new Map();
+          for (const row of state.allRows) {
+            const id = row.client_id || "";
+            if (id && !clients.has(id)) {
+              const name = [row.client_first_name || "", row.client_last_name || ""].join(" ").trim() || id;
+              clients.set(id, name);
+            }
+          }
+          const sorted = [...clients.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+          clientNameEl.innerHTML = "";
+          const allOpt = document.createElement("option");
+          allOpt.value = "";
+          allOpt.textContent = "All clients";
+          clientNameEl.appendChild(allOpt);
+          for (const [id, name] of sorted) {
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = name;
+            clientNameEl.appendChild(opt);
+          }
+          if (selected && [...clientNameEl.options].some((o) => o.value === selected)) {
+            clientNameEl.value = selected;
+          }
+        }
+
+        function applyClientFilter() {
+          const selectedId = clientNameEl.value;
+          state.rows = selectedId
+            ? state.allRows.filter((r) => r.client_id === selectedId)
+            : [...state.allRows];
+          renderRows();
         }
 
         function renderRows() {
@@ -382,7 +394,7 @@
           if (!Array.isArray(state.rows) || state.rows.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 6;
+            td.colSpan = 7;
             td.className = "muted";
             td.textContent = "No rows.";
             tr.appendChild(td);
@@ -400,6 +412,7 @@
             tr.appendChild(createCell(row.client_email || ""));
             tr.appendChild(createCell(row.status || ""));
             tr.appendChild(createCell(row.attended ? "yes" : "no"));
+            tr.appendChild(createCell(row.notes || "", "notes-cell"));
             tr.addEventListener("click", () => openEditModal(row));
             rowsBody.appendChild(tr);
           }
@@ -452,13 +465,14 @@
             p.set("source", source);
             if (source === "event" && eventEl.value) p.set("event_id", eventEl.value);
             if (source === "session" && dateEl.value) p.set("date", dateEl.value);
-            if (source === "session" && clientIdEl.value.trim()) p.set("client_id", clientIdEl.value.trim());
 
             const data = await api(`/admin/bookings?${p.toString()}`);
-            state.rows = Array.isArray(data.rows) ? data.rows : [];
-            renderRows();
-            setStatus(`Loaded ${state.rows.length} bookings.`, false);
+            state.allRows = Array.isArray(data.rows) ? data.rows : [];
+            if (source === "session") populateClientDropdown();
+            applyClientFilter();
+            setStatus(`Loaded ${state.allRows.length} bookings.`, false);
           } catch (err) {
+            state.allRows = [];
             state.rows = [];
             renderRows();
             setStatus(String(err), true);
@@ -487,25 +501,6 @@
           } finally {
             state.rotatingLateAccess = false;
             syncSourceMode();
-          }
-        }
-
-        async function saveReminderSubscription() {
-          const email = reminderEmailEl.value.trim();
-          if (!email) return;
-          setReminderMessage("", false);
-          try {
-            await api("/admin/reminder-subscriptions", {
-              method: "POST",
-              body: JSON.stringify({
-                email,
-                event_family: "illuminate_evenings",
-              }),
-            });
-            reminderEmailEl.value = "";
-            setReminderMessage("Saved.", false);
-          } catch (err) {
-            setReminderMessage(String(err), true);
           }
         }
 
@@ -563,22 +558,6 @@
           }
         }
 
-        document.getElementById("saveBase").addEventListener("click", () => {
-          apiBase = (apiBaseInput.value || "/api").trim().replace(/\/+$/g, "");
-          localStorage.setItem(STORAGE_KEY, apiBase);
-          apiBaseLabel.textContent = apiBase;
-          setStatus("API base saved.", false);
-        });
-
-        document.getElementById("testAuth").addEventListener("click", async () => {
-          try {
-            await api("/admin/events");
-            setStatus("Admin API reachable.", false);
-          } catch (err) {
-            setStatus(String(err), true);
-          }
-        });
-
         sourceEl.addEventListener("change", () => {
           syncSourceMode();
           void loadRows();
@@ -589,23 +568,16 @@
           void loadRows();
         });
 
+        clientNameEl.addEventListener("change", () => {
+          applyClientFilter();
+        });
+
         document.getElementById("loadRows").addEventListener("click", () => {
           void loadRows();
         });
 
         document.getElementById("rotateLateAccess").addEventListener("click", () => {
           void rotateLateAccess();
-        });
-
-        document.getElementById("saveReminder").addEventListener("click", () => {
-          void saveReminderSubscription();
-        });
-
-        reminderEmailEl.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void saveReminderSubscription();
-          }
         });
 
         document.getElementById("editClose").addEventListener("click", closeEditModal);
@@ -623,8 +595,23 @@
           }
         });
 
-        apiBaseInput.value = apiBase;
-        apiBaseLabel.textContent = apiBase;
+        // DEV: inject one test row so the table and edit modal can be verified locally
+        state.allRows = [{
+          booking_id: "test-001",
+          source: "session",
+          starts_at: new Date(Date.now() + 86400000).toISOString(),
+          client_id: "client-001",
+          client_first_name: "Jane",
+          client_last_name: "Doe",
+          client_email: "jane@example.com",
+          client_phone: "+1 555 0100",
+          status: "confirmed",
+          attended: false,
+          notes: "Bring portfolio to session",
+          event_title: null,
+        }];
+        state.rows = [...state.allRows];
+        renderRows();
 
         syncSourceMode();
         loadEvents()

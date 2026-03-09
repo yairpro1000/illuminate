@@ -68,7 +68,8 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
         error_message: String(err),
         context: sanitizeContext({
           flow: 'contact_form',
-          providerDebug: providerDebug ?? null,
+          provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
+          kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
         }),
       });
     } catch (logErr) {

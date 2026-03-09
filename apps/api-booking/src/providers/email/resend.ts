@@ -56,8 +56,7 @@ export class ResendEmailProvider implements IEmailProvider {
         throw new EmailProviderError(`Resend error: ${error?.message ?? 'missing message id'}`, {
           provider: 'resend',
           kind,
-          request: payload,
-          response: { data: data ?? null, error: error ?? null },
+          response: { message_id: data?.id ?? null, error_name: error?.name ?? null },
         });
       }
 

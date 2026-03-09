@@ -46,7 +46,6 @@ function speak(text: string, lang: string) {
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(s);
       u.voice = match;
-      u.voiceURI = match.voiceURI;
       u.lang = match.lang;
       window.speechSynthesis.speak(u);
     } catch {
@@ -377,4 +376,3 @@ export function TranslateModal(props: {
     </>
   );
 }
-

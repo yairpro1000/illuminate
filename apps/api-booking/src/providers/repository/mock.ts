@@ -267,6 +267,13 @@ export class MockRepository implements IRepository {
     return payment;
   }
 
+  async getPaymentByBookingId(bookingId: string): Promise<Payment | null> {
+    const matches = [...mockState.payments.values()]
+      .filter((payment) => payment.booking_id === bookingId)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return matches[0] ?? null;
+  }
+
   async getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null> {
     for (const p of mockState.payments.values()) {
       if (p.provider_payment_id === sessionId) return p;

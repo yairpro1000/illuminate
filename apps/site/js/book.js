@@ -51,6 +51,14 @@ function parseBookingContext() {
 const CTX = parseBookingContext();
 const SLOT_WINDOW_MONTHS = 4;
 
+function isIntroFlow() {
+  return CTX.source !== 'evening' && CTX.mode !== 'reschedule' && CTX.slotType === 'intro';
+}
+
+function isSessionPayNowFlow() {
+  return CTX.source !== 'evening' && CTX.mode !== 'reschedule' && CTX.slotType === 'session' && S.paymentMethod === 'pay-now';
+}
+
 // Analytics — log booking context on page load
 console.log('[Book] Booking context:', CTX);
 console.log(
@@ -170,7 +178,7 @@ function render() {
 function buildShell() {
   const isEvent    = CTX.source === 'evening';
   const isReschedule = CTX.mode === 'reschedule';
-  const totalSteps = isEvent ? 3 : (isReschedule ? 4 : 5);
+  const totalSteps = isEvent ? 3 : (isReschedule ? 4 : (isIntroFlow() ? 4 : 5));
   const isFinal =
     (isEvent && S.step === 3) ||
     (!isEvent && isReschedule && S.step === 4) ||
@@ -232,6 +240,16 @@ function buildBookingFlow() {
       case 1: return buildCalendar();
       case 2: return buildContactForm(false);
       case 3: return buildRescheduleReview();
+      case 4: return buildConfirmation();
+      default: return '';
+    }
+  }
+
+  if (isIntroFlow()) {
+    switch (S.step) {
+      case 1: return buildCalendar();
+      case 2: return buildContactForm(false);
+      case 3: return buildBookingReview();
       case 4: return buildConfirmation();
       default: return '';
     }
@@ -550,9 +568,11 @@ function buildBookingReview() {
     ['Name',        [S.firstName, S.lastName].filter(Boolean).join(' ')],
     ['Email',       S.email],
     S.phone ? ['Phone', S.phone] : null,
-    ['Payment',     S.paymentMethod === 'pay-now'
-      ? 'Pay now via Stripe'
-      : 'Pay later — invoice sent 24h before'],
+    ['Payment', isIntroFlow()
+      ? 'Free intro — email confirmation required'
+      : (S.paymentMethod === 'pay-now'
+        ? 'Pay now via Stripe'
+        : 'Pay later — payment due 24h before')],
   ].filter(Boolean);
 
   return `
@@ -662,7 +682,7 @@ function buildEventReview() {
 function buildConfirmation() {
   const isEvent = CTX.source === 'evening';
   const isReschedule = CTX.mode === 'reschedule';
-  const isPaid  = isEvent ? CTX.isPaid : S.paymentMethod === 'pay-now';
+  const isPaid  = isEvent ? CTX.isPaid : isSessionPayNowFlow();
 
   if (isReschedule) {
     const startsAt = S.rescheduleUpdated?.starts_at || S.selectedSlot?.start || S.currentBooking?.starts_at;
@@ -688,6 +708,7 @@ function buildConfirmation() {
   if (!isPaid) {
     const isConfirmedNow = S.submissionStatus === 'confirmed';
     const noun = isEvent ? 'registration' : 'booking';
+    const confirmWindowMinutes = isEvent ? 15 : 60;
     const widget = _buildConfirmationWidget(isEvent);
     return `
       <div class="confirmation">
@@ -708,7 +729,7 @@ function buildConfirmation() {
             isConfirmedNow
               ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.`
               : `A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.
-          Please confirm your ${noun} within 15 minutes.`
+          Please confirm your ${noun} within ${confirmWindowMinutes} minutes.`
           }
         </p>
         ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}
@@ -886,7 +907,7 @@ function handleNext() {
     errs = validateFields({ name: true, email: true, phone: !CTX.isPaid });
   } else if (!isEvent) {
     if (S.step === 2) errs = validateFields({ name: true, email: true });
-    if (!isReschedule && S.step === 3) errs = validateFields({ paymentMethod: true });
+    if (!isReschedule && !isIntroFlow() && S.step === 3) errs = validateFields({ paymentMethod: true });
     // Step 1 (calendar): "Continue" only appears once a slot is selected — no extra guard needed
   }
 
@@ -1003,7 +1024,10 @@ async function submitBooking() {
   };
 
   let result;
-  if (S.paymentMethod === 'pay-now') {
+  if (isIntroFlow()) {
+    if (BOOK_OBS) BOOK_OBS.logMilestone('confirmation_email_requested', { flow: 'site_booking_intro', slot_start: payload.slot_start });
+    result = await bookingPayLater(payload);
+  } else if (S.paymentMethod === 'pay-now') {
     if (BOOK_OBS) BOOK_OBS.logMilestone('checkout_started', { flow: 'site_booking_pay_now', slot_start: payload.slot_start });
     result = await bookingPayNow(payload);
   } else {

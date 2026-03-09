@@ -1,8 +1,16 @@
 import type { AppContext } from '../router.js';
+import type { Env } from '../env.js';
 import type { OrganizerBookingFilters } from '../providers/repository/interface.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { generateToken, hashToken } from '../services/token-service.js';
+import {
+  SERVICE_MODES,
+  getAllOverrides,
+  setOverride,
+  clearOverride,
+  type ServiceKey,
+} from '../lib/config-overrides.js';
 
 function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
@@ -198,6 +206,69 @@ export async function handleAdminCreateLateAccessLink(
   } catch (err) {
     return errorResponse(err);
   }
+}
+
+// GET /api/admin/config
+export async function handleAdminGetConfig(request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    requireAdminAccess(request, ctx.env);
+    const overrides = getAllOverrides();
+    const services = SERVICE_MODES.map(({ key, label, modes }) => {
+      const envMode = getEnvMode(key, ctx.env);
+      const overrideMode = overrides[key] ?? null;
+      const effectiveMode = overrideMode ?? envMode;
+      return { key, label, effective_mode: effectiveMode, env_mode: envMode, override_mode: overrideMode, modes };
+    });
+    return ok({ services });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// PATCH /api/admin/config
+export async function handleAdminPatchConfig(request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    requireAdminAccess(request, ctx.env);
+    const body = await request.json() as Record<string, unknown>;
+    const key = typeof body.key === 'string' ? body.key as ServiceKey : null;
+    const mode = typeof body.mode === 'string' ? body.mode : null;
+    if (!key || !mode) throw badRequest('key and mode are required');
+
+    const serviceDef = SERVICE_MODES.find((s) => s.key === key);
+    if (!serviceDef) throw badRequest(`Unknown service: ${key}`);
+
+    const modeDef = serviceDef.modes.find((m) => m.value === mode);
+    if (!modeDef) throw badRequest(`Unknown mode '${mode}' for service '${key}'`);
+    if (!modeDef.wired) throw badRequest(`Mode '${mode}' is not yet wired for '${key}'`);
+
+    if (mode === getEnvMode(key, ctx.env)) {
+      clearOverride(key);
+    } else {
+      setOverride(key, mode);
+    }
+
+    const overrides = getAllOverrides();
+    const envMode = getEnvMode(key, ctx.env);
+    return ok({
+      key,
+      effective_mode: overrides[key] ?? envMode,
+      env_mode: envMode,
+      override_mode: overrides[key] ?? null,
+    });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+function getEnvMode(key: ServiceKey, env: Env): string {
+  const map: Record<ServiceKey, string> = {
+    repository: env.REPOSITORY_MODE,
+    email:      env.EMAIL_MODE,
+    calendar:   env.CALENDAR_MODE,
+    payments:   env.PAYMENTS_MODE,
+    antibot:    env.ANTIBOT_MODE,
+  };
+  return map[key];
 }
 
 // POST /api/admin/reminder-subscriptions

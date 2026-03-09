@@ -41,4 +41,4 @@ payments + booking state.
 
 -   Duplicate webhook events ignored safely.
 -   If calendar creation fails, retry with job.
--   If email fails, retry via job queue.
+-   Email delivery is best-effort in this dev stage; public confirmation and checkout-success pages must expose the next action directly.

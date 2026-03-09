@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest, errorResponse } from '../lib/errors.js';
-import { confirmBookingEmail } from '../services/booking-service.js';
+import { confirmBookingEmail, getBookingPublicActionInfo } from '../services/booking-service.js';
 
 // GET /api/bookings/confirm?token=<raw>
 export async function handleConfirm(request: Request, ctx: AppContext): Promise<Response> {
@@ -15,8 +15,22 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
       logger: ctx.logger,
       requestId: ctx.requestId,
     });
+    const actionInfo = await getBookingPublicActionInfo(booking, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    });
 
-    return ok({ booking_id: booking.id, status: booking.status, source: booking.source });
+    return ok({
+      booking_id: booking.id,
+      status: booking.status,
+      source: booking.source,
+      checkout_url: actionInfo.checkoutUrl,
+      manage_url: actionInfo.manageUrl,
+      next_action_url: actionInfo.nextActionUrl,
+      next_action_label: actionInfo.nextActionLabel,
+    });
   } catch (err) {
     return errorResponse(err);
   }

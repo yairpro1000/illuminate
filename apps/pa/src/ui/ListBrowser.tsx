@@ -287,13 +287,14 @@ export function ListBrowser(props: {
     if (!listId) return;
     if (!activeList) return;
     let cancelled = false;
+    const activeRevision = activeList.meta?.revision;
 
     async function poll() {
       try {
         const data = await api<{ lists: ListInfo[] }>("/lists", { method: "GET" });
         if (cancelled) return;
         const dbRev = data.lists.find((l) => l.id === listId)?.meta?.revision;
-        const curRev = activeList.meta?.revision;
+        const curRev = activeRevision;
         if (typeof dbRev === "number" && typeof curRev === "number" && dbRev !== curRev) {
           setStale({ current: curRev, db: dbRev });
         }
