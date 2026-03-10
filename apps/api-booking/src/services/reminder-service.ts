@@ -1,10 +1,10 @@
 /**
- * Computes the time to send a payment-due reminder for a pay-later booking.
+ * Computes the time to send a payment reminder for a pay-later booking.
  *
- * Rules (from state_machines.md):
- *   preferred = payment_due_at - 6h
- *   if preferred falls in 22:00–08:00 local → use 18:00 day before payment_due_at
- *   if 18:00 day before has already passed   → use 08:00 next reasonable morning
+ * Rules:
+ *   preferred = payment-due-threshold - 6h
+ *   if preferred falls in 22:00–08:00 local -> use 18:00 day before threshold
+ *   if 18:00 day before has already passed  -> use 08:00 next reasonable morning
  */
 export function computePaymentDueReminderTime(
   paymentDueAt: Date,
@@ -17,7 +17,7 @@ export function computePaymentDueReminderTime(
     return preferred;
   }
 
-  // Try 18:00 the day before payment_due_at
+  // Try 18:00 the day before the threshold.
   const dayBefore = new Date(paymentDueAt);
   dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
   const at18 = setLocalHour(dayBefore, 18, 0, timezone);

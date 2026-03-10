@@ -10,21 +10,66 @@
 
 /* ── Date helpers ────────────────────────────────────────── */
 
+const DEFAULT_ATC_TIMEZONE = 'Europe/Zurich';
+
+function _toWallClockParts(isoStr, timeZone) {
+  const date = new Date(isoStr);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  if (!map.year || !map.month || !map.day || !map.hour || !map.minute || !map.second) return null;
+
+  return {
+    year: map.year,
+    month: map.month,
+    day: map.day,
+    hour: map.hour,
+    minute: map.minute,
+    second: map.second,
+  };
+}
+
 /**
- * "2026-03-20T19:00:00+01:00" → "20260320T190000"
- * Strips dashes and colons from the local-time portion only (first 19 chars).
+ * Converts an ISO string into local wall-clock format for the chosen timezone.
+ * Falls back to the first 19 chars for malformed inputs.
  */
-function _calStr(isoStr) {
-  return isoStr.slice(0, 19).replace(/[-:]/g, '');
+function _calStr(isoStr, timeZone) {
+  const wall = _toWallClockParts(isoStr, timeZone);
+  if (wall) {
+    return `${wall.year}${wall.month}${wall.day}T${wall.hour}${wall.minute}${wall.second}`;
+  }
+  return String(isoStr || '').slice(0, 19).replace(/[-:]/g, '');
+}
+
+function _localIsoNoOffset(isoStr, timeZone) {
+  const wall = _toWallClockParts(isoStr, timeZone);
+  if (wall) {
+    return `${wall.year}-${wall.month}-${wall.day}T${wall.hour}:${wall.minute}:${wall.second}`;
+  }
+  return String(isoStr || '').slice(0, 19);
 }
 
 /* ── URL / blob builders ─────────────────────────────────── */
 
 function _googleUrl(d) {
+  const timeZone = d.timezone || DEFAULT_ATC_TIMEZONE;
   const p = new URLSearchParams({
     action:   'TEMPLATE',
     text:     d.title,
-    dates:    _calStr(d.start) + '/' + _calStr(d.end),
+    dates:    _calStr(d.start, timeZone) + '/' + _calStr(d.end, timeZone),
+    ctz:      timeZone,
     details:  d.description || '',
     location: d.location    || '',
   });
@@ -32,12 +77,13 @@ function _googleUrl(d) {
 }
 
 function _outlookUrl(d) {
+  const timeZone = d.timezone || DEFAULT_ATC_TIMEZONE;
   const p = new URLSearchParams({
     path:     '/calendar/action/compose',
     rru:      'addevent',
     subject:  d.title,
-    startdt:  d.start.slice(0, 19),
-    enddt:    d.end.slice(0, 19),
+    startdt:  _localIsoNoOffset(d.start, timeZone),
+    enddt:    _localIsoNoOffset(d.end, timeZone),
     body:     d.description || '',
     location: d.location    || '',
   });
@@ -45,6 +91,7 @@ function _outlookUrl(d) {
 }
 
 function _makeIcsBlob(d) {
+  const timeZone = d.timezone || DEFAULT_ATC_TIMEZONE;
   const uid  = 'illuminate-' + Date.now() + Math.random().toString(36).slice(2) + '@yairbendavid.com';
   const now  = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15) + 'Z';
   const esc  = s => (s || '').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
@@ -57,8 +104,8 @@ function _makeIcsBlob(d) {
     'BEGIN:VEVENT',
     'UID:'          + uid,
     'DTSTAMP:'      + now,
-    'DTSTART;TZID=Europe/Zurich:' + _calStr(d.start),
-    'DTEND;TZID=Europe/Zurich:'   + _calStr(d.end),
+    'DTSTART;TZID=' + timeZone + ':' + _calStr(d.start, timeZone),
+    'DTEND;TZID=' + timeZone + ':' + _calStr(d.end, timeZone),
     'SUMMARY:'      + esc(d.title),
     'DESCRIPTION:'  + esc(d.description || ''),
     'LOCATION:'     + esc(d.location    || ''),
@@ -82,7 +129,7 @@ function _downloadIcs(d) {
 
 /**
  * Returns an HTML string for the widget.
- * @param {{ title, start, end, location?, description? }} opts
+ * @param {{ title, start, end, location?, description?, timezone? }} opts
  *   start / end must be ISO 8601 strings with local datetime
  */
 function buildAtcWidget(opts) {
@@ -93,7 +140,8 @@ function buildAtcWidget(opts) {
          data-atc-start="${e(opts.start)}"
          data-atc-end="${e(opts.end)}"
          data-atc-location="${e(opts.location || '')}"
-         data-atc-desc="${e(opts.description || '')}">
+         data-atc-desc="${e(opts.description || '')}"
+         data-atc-timezone="${e(opts.timezone || DEFAULT_ATC_TIMEZONE)}">
       <button class="atc-trigger" type="button"
               aria-haspopup="true" aria-expanded="false">
         <svg class="atc-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -171,6 +219,7 @@ function initAddToCalendar(root) {
       end:         widget.dataset.atcEnd      || '',
       location:    widget.dataset.atcLocation || '',
       description: widget.dataset.atcDesc     || '',
+      timezone:    widget.dataset.atcTimezone || DEFAULT_ATC_TIMEZONE,
     };
 
     // Pre-build external URLs

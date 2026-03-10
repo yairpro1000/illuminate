@@ -1,5 +1,2 @@
--- Remove stale logging schema remnants from earlier job-run tracking.
--- Safe to run multiple times.
-
-alter table if exists failure_logs
-  drop column if exists job_run_id;
+-- Cleanup folded into 010_booking_centric_schema.sql fresh baseline.
+-- Intentionally no-op.

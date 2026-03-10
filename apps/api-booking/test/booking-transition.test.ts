@@ -1,66 +1,80 @@
-import { describe, it, expect } from 'vitest';
-import type { Booking } from '../src/types.js';
-import { mapLegacyToState } from '../src/domain/booking-domain.js';
+import { describe, expect, it } from 'vitest';
+import { currentStatusForEvent, getEffectsForEvent, shouldReserveSlotForTransition } from '../src/domain/booking-effect-policy.js';
 
-function baseBooking(partial: Partial<Booking>): Booking {
-  return {
-    id: 'b',
-    client_id: 'c',
-    source: 'session',
-    status: 'pending_email',
-    event_id: null,
-    session_type: 'session',
-    starts_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(),
-    timezone: 'Europe/Zurich',
-    address_line: 'addr',
-    maps_url: 'maps',
-    attended: false,
-    notes: null,
-    confirm_token_hash: null,
-    confirm_expires_at: null,
-    manage_token_hash: 'm',
-    checkout_session_id: null,
-    checkout_hold_expires_at: null,
-    payment_due_at: null,
-    payment_due_reminder_scheduled_at: null,
-    payment_due_reminder_sent_at: null,
-    followup_scheduled_at: null,
-    followup_sent_at: null,
-    reminder_email_opt_in: false,
-    reminder_whatsapp_opt_in: false,
-    reminder_24h_scheduled_at: null,
-    reminder_24h_sent_at: null,
-    google_event_id: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    ...partial,
-  };
-}
+describe('booking effect policy', () => {
+  it('maps pay-now submission to checkout + expire intents', () => {
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b1',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'PENDING_CONFIRMATION',
+      },
+      eventType: 'BOOKING_FORM_SUBMITTED_PAY_NOW',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentMode: 'pay_now',
+    });
 
-describe('mapLegacyToState', () => {
-  it('maps pay_now pending to pending lifecycle with reserved hold', () => {
-    const b = baseBooking({ status: 'pending_payment', checkout_hold_expires_at: new Date(Date.now() + 10_000).toISOString() });
-    const s = mapLegacyToState(b);
-    expect(s.booking_status).toBe('pending');
-    expect(s.payment_mode).toBe('pay_now');
-    expect(s.payment_status_v2).toBe('pending');
-    expect(s.slot_status).toBe('reserved');
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'create_stripe_checkout',
+      'expire_booking',
+    ]);
+
+    expect(effects[0]?.expires_at).toBe('2026-03-10T10:45:00.000Z');
   });
 
-  it('maps pay_later confirmed (legacy pending_payment with payment_due_at) to confirmed lifecycle', () => {
-    const b = baseBooking({ status: 'pending_payment', payment_due_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), checkout_hold_expires_at: null });
-    const s = mapLegacyToState(b);
-    expect(s.booking_status).toBe('confirmed');
-    expect(s.payment_mode).toBe('pay_later');
-    expect(s.payment_status_v2).toBe('pending');
+  it('maps slot-confirmed pay-later to date reminder + payment reminder', () => {
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b2',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'SLOT_CONFIRMED',
+      },
+      eventType: 'SLOT_CONFIRMED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentMode: 'pay_later',
+    });
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'send_date_reminder',
+      'send_payment_reminder',
+    ]);
+    expect(effects[1]?.expires_at).toBe('2026-03-19T10:00:00.000Z');
   });
 
-  it('maps free intro after confirmation to confirmed with not_required payment', () => {
-    const b = baseBooking({ session_type: 'intro', status: 'confirmed' });
-    const s = mapLegacyToState(b);
-    expect(s.booking_status).toBe('confirmed');
-    expect(s.payment_mode).toBe('free');
-    expect(s.payment_status_v2).toBe('not_required');
+  it('maps payment settled to PAID cached status', () => {
+    const next = currentStatusForEvent('PAYMENT_SETTLED', 'PENDING_CONFIRMATION', 'pay_now');
+    expect(next).toBe('PAID');
+  });
+
+  it('reserves on finalized transitions, not on submission', () => {
+    expect(shouldReserveSlotForTransition({
+      booking: { event_id: null },
+      eventType: 'BOOKING_FORM_SUBMITTED_PAY_NOW',
+      previousStatus: 'PENDING_CONFIRMATION',
+      nextStatus: 'PENDING_CONFIRMATION',
+    })).toBe(false);
+
+    expect(shouldReserveSlotForTransition({
+      booking: { event_id: null },
+      eventType: 'EMAIL_CONFIRMED',
+      previousStatus: 'PENDING_CONFIRMATION',
+      nextStatus: 'SLOT_CONFIRMED',
+    })).toBe(true);
+
+    expect(shouldReserveSlotForTransition({
+      booking: { event_id: null },
+      eventType: 'PAYMENT_SETTLED',
+      previousStatus: 'PENDING_CONFIRMATION',
+      nextStatus: 'PAID',
+    })).toBe(true);
+
+    expect(shouldReserveSlotForTransition({
+      booking: { event_id: 'evt_1' },
+      eventType: 'EMAIL_CONFIRMED',
+      previousStatus: 'PENDING_CONFIRMATION',
+      nextStatus: 'SLOT_CONFIRMED',
+    })).toBe(false);
   });
 });

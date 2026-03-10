@@ -79,11 +79,60 @@ body.theme-light .evenings-hero::after {
   margin-bottom: 3.5rem;
 }
 
+/* ── Events tabs ────────────────────────────────────────────── */
+.events-tabs__nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.events-tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+
+.events-tabs__tab:hover {
+  color: var(--color-text);
+}
+
+.events-tabs__tab.is-active {
+  color: var(--color-lake-light);
+  border-bottom-color: var(--color-lake-light);
+}
+
+.events-tabs__count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--color-lake-mist);
+  color: var(--color-lake-light);
+  border-radius: 99px;
+  padding: 0.1rem 0.45rem;
+}
+
 /* ── Events grid ────────────────────────────────────────────── */
 .events-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
   gap: 2rem;
+}
+
+/* ── Empty state ─────────────────────────────────────────────── */
+.events-empty {
+  color: var(--color-text-subtle);
+  font-size: 0.9375rem;
+  grid-column: 1 / -1;
 }
 
 /* ── Event card ─────────────────────────────────────────────── */

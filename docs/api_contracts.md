@@ -53,7 +53,7 @@ Response:
 {
   "booking_id": "uuid",
   "checkout_url": "https://mock-checkout.example/...",
-  "checkout_hold_expires_at": "2026-03-09T12:15:00Z"
+  "checkout_hold_expires_at": "2026-03-09T12:45:00Z"
 }
 ```
 
@@ -66,7 +66,7 @@ Response:
 ```json
 {
   "booking_id": "uuid",
-  "status": "pending_email"
+  "status": "PENDING_CONFIRMATION"
 }
 ```
 
@@ -79,7 +79,7 @@ Response:
 ```json
 {
   "booking_id": "uuid",
-  "status": "pending_payment",
+  "status": "SLOT_CONFIRMED",
   "source": "session",
   "checkout_url": "https://mock-checkout.example/...",
   "manage_url": "https://letsilluminate.co/manage.html?token=...",
@@ -95,7 +95,7 @@ Returns a public-safe recovery view for a completed checkout session.
 ```json
 {
   "booking_id": "uuid",
-  "status": "confirmed",
+  "status": "PAID",
   "source": "event",
   "checkout_url": null,
   "manage_url": "https://letsilluminate.co/manage.html?token=...",
@@ -106,7 +106,7 @@ Returns a public-safe recovery view for a completed checkout session.
 
 ### `GET /api/bookings/manage?token=...`
 
-Public/manage-safe booking lookup. Organizer-only fields such as `notes` and `attended` must not appear here.
+Public/manage-safe booking lookup.
 
 Response:
 
@@ -114,14 +114,13 @@ Response:
 {
   "booking_id": "uuid",
   "source": "session",
-  "status": "confirmed",
-  "session_type": "intro",
+  "status": "SLOT_CONFIRMED",
+  "session_type_id": "uuid",
   "starts_at": "2026-03-10T10:00:00+01:00",
   "ends_at": "2026-03-10T11:00:00+01:00",
   "timezone": "Europe/Zurich",
   "address_line": "Via Example 1, 6900 Lugano",
   "maps_url": "https://maps.google.com/?q=Lugano+Switzerland",
-  "payment_due_at": null,
   "client": {
     "first_name": "Alice",
     "last_name": "Example",
@@ -194,7 +193,7 @@ Free event response:
 ```json
 {
   "booking_id": "uuid",
-  "status": "pending_email"
+  "status": "PENDING_CONFIRMATION"
 }
 ```
 
@@ -203,9 +202,9 @@ Paid event response:
 ```json
 {
   "booking_id": "uuid",
-  "status": "pending_payment",
+  "status": "PENDING_CONFIRMATION",
   "checkout_url": "https://mock-checkout.example/...",
-  "checkout_hold_expires_at": "2026-03-19T12:15:00Z"
+  "checkout_hold_expires_at": "2026-03-19T12:45:00Z"
 }
 ```
 
@@ -268,7 +267,8 @@ Query params:
 - `client_id=...`
 - `status=...`
 
-Response rows include organizer-only fields such as `attended` and `notes`.
+`status` maps to `bookings.current_status`.
+Response rows include `current_status` and organizer-only `notes`.
 
 ### `PATCH /api/admin/bookings/:bookingId`
 
@@ -283,7 +283,6 @@ Request:
     "phone": "+41790000000"
   },
   "booking": {
-    "attended": true,
     "notes": "Organizer-only note"
   }
 }

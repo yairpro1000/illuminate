@@ -1,166 +1,167 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runCron, runPaymentDueReminders, runPaymentDueCancellations, runCheckoutExpiry, runSideEffectsOutbox } from '../src/handlers/jobs.js';
+import { runCron, runSideEffectsOutbox } from '../src/handlers/jobs.js';
 
 function makeCtx(overrides: any = {}) {
+  const repository = {
+    markStaleProcessingSideEffectsAsPending: vi.fn().mockResolvedValue(0),
+    getPendingBookingSideEffects: vi.fn().mockResolvedValue([]),
+    updateBookingSideEffect: vi.fn().mockResolvedValue(undefined),
+    getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue(null),
+    createBookingSideEffectAttempt: vi.fn().mockResolvedValue(undefined),
+    getBookingById: vi.fn().mockResolvedValue({ id: 'b1', event_id: null, current_status: 'SLOT_CONFIRMED' }),
+    getBookingEventById: vi.fn().mockResolvedValue({ payload: {} }),
+    getPaymentByBookingId: vi.fn().mockResolvedValue({ checkout_url: 'https://checkout.local' }),
+    createBookingEvent: vi.fn().mockResolvedValue(undefined),
+    updateBooking: vi.fn().mockResolvedValue(undefined),
+    logFailure: vi.fn().mockResolvedValue(undefined),
+    getEventById: vi.fn().mockResolvedValue(null),
+    listBookingEvents: vi.fn().mockResolvedValue([]),
+    getCalendarSyncFailuresDue: vi.fn().mockResolvedValue([]),
+    resolveCalendarSyncFailure: vi.fn().mockResolvedValue(undefined),
+    recordCalendarSyncFailure: vi.fn().mockResolvedValue(undefined),
+  };
+
   const providers = {
-    repository: {
-      getPaymentDueRemindersDue: vi.fn().mockResolvedValue([]),
-      getPaymentDueCancellationsDue: vi.fn().mockResolvedValue([]),
-      getExpiredBookingHolds: vi.fn().mockResolvedValue([]),
-      getUnconfirmedBookingFollowupsDue: vi.fn().mockResolvedValue([]),
-      get24hBookingRemindersDue: vi.fn().mockResolvedValue([]),
-      getCalendarSyncFailuresDue: vi.fn().mockResolvedValue([]),
-      resolveCalendarSyncFailure: vi.fn().mockResolvedValue(undefined),
-      enqueueSideEffect: vi.fn().mockResolvedValue({ id: 'se1' }),
-      markSideEffect: vi.fn().mockResolvedValue(undefined),
-      getPendingSideEffects: vi.fn().mockResolvedValue([]),
-      updateBooking: vi.fn().mockResolvedValue({ id: 'b1' }),
-      getBookingById: vi.fn().mockResolvedValue(null),
-      logFailure: vi.fn().mockResolvedValue(undefined),
-      getEventById: vi.fn().mockResolvedValue(null),
-      getPaymentByBookingId: vi.fn().mockResolvedValue({ checkout_url: 'https://checkout' }),
-    },
+    repository,
     email: {
       sendBookingPaymentReminder: vi.fn().mockResolvedValue(undefined),
       sendBookingCancellation: vi.fn().mockResolvedValue(undefined),
       sendBookingConfirmRequest: vi.fn().mockResolvedValue(undefined),
+      sendEventConfirmRequest: vi.fn().mockResolvedValue(undefined),
+      sendBookingPaymentDue: vi.fn().mockResolvedValue(undefined),
+      sendEventFollowup: vi.fn().mockResolvedValue(undefined),
+      sendBookingReminder24h: vi.fn().mockResolvedValue(undefined),
+      sendEventReminder24h: vi.fn().mockResolvedValue(undefined),
     },
     calendar: {
       createEvent: vi.fn().mockResolvedValue({ eventId: 'g1' }),
       updateEvent: vi.fn().mockResolvedValue(undefined),
       deleteEvent: vi.fn().mockResolvedValue(undefined),
-      getBusyTimes: vi.fn().mockResolvedValue([]),
     },
   };
-  const mergedRepo = { ...providers.repository, ...((overrides.providers && overrides.providers.repository) || {}) };
-  const mergedProviders = { ...providers, ...(overrides.providers || {}), repository: mergedRepo };
+
   const ctx = {
-    providers: mergedProviders,
+    providers: {
+      ...providers,
+      ...(overrides.providers || {}),
+      repository: {
+        ...repository,
+        ...((overrides.providers && overrides.providers.repository) || {}),
+      },
+    },
     env: { SITE_URL: 'https://example.com' },
-    logger: { logInfo: vi.fn(), logWarn: vi.fn(), logError: vi.fn(), error: vi.fn(), warn: vi.fn() },
+    logger: {
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logError: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
     requestId: 'req',
     triggerSource: 'manual',
   } as any;
+
   return ctx;
 }
 
-describe('Jobs and outbox', () => {
-  it('enqueues 36h payment reminder side effects', async () => {
-    const b = { id: 'b1', source: 'session' } as any;
-    const ctx = makeCtx({ providers: { repository: { getPaymentDueRemindersDue: vi.fn().mockResolvedValue([b]) } } });
-    await runPaymentDueReminders(ctx);
-    expect(ctx.providers.repository.enqueueSideEffect).toHaveBeenCalledWith(expect.objectContaining({
+describe('Jobs and side-effect dispatcher', () => {
+  it('records success attempt and marks side effect success', async () => {
+    const effect = {
+      id: 'se1',
       booking_id: 'b1',
-      effect_type: 'email.payment_reminder.session',
-    }));
-  });
+      booking_event_id: 'be1',
+      effect_intent: 'send_payment_reminder',
+      entity: 'email',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
-  it('expires pending holds by calling updateBooking via expireBooking', async () => {
-    const b = { id: 'b2' } as any;
-    const ctx = makeCtx({ providers: { repository: { getExpiredBookingHolds: vi.fn().mockResolvedValue([b]) } } });
-    await expect(runCheckoutExpiry(ctx)).resolves.toBeUndefined();
-    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalled();
-  });
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
 
-  it('enqueues side effects and dispatches them', async () => {
-    const b = { id: 'b3', source: 'session', manage_token_hash: 'h' } as any;
-    const eff = { id: 'e1', booking_id: 'b3', effect_type: 'email.payment_reminder.session', payload: {} };
-    const ctx = makeCtx({ providers: { repository: {
-      getPendingSideEffects: vi.fn().mockResolvedValue([eff]),
-      getBookingById: vi.fn().mockResolvedValue(b),
-      updateBooking: vi.fn().mockResolvedValue(b),
-    } } });
     await runSideEffectsOutbox(ctx);
-    expect(ctx.providers.repository.markSideEffect).toHaveBeenCalledWith('e1', 'done', null);
+
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'success', attempt_num: 1 }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
+      'se1',
+      expect.objectContaining({ status: 'success' }),
+    );
   });
 
-  it('cancels pay-later at deadline', async () => {
-    const b = { id: 'b4' } as any;
-    const ctx = makeCtx({ providers: { repository: { getPaymentDueCancellationsDue: vi.fn().mockResolvedValue([b]) } } });
-    await expect(runPaymentDueCancellations(ctx)).resolves.toBeUndefined();
-    expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalled();
+  it('marks side effect dead when max attempts is reached', async () => {
+    const effect = {
+      id: 'se2',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'send_payment_reminder',
+      entity: 'email',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 2,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue({ attempt_num: 1 }),
+        },
+        email: {
+          sendBookingPaymentReminder: vi.fn().mockRejectedValue(new Error('smtp down')),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se2', status: 'fail', attempt_num: 2 }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
+      'se2',
+      expect.objectContaining({ status: 'dead' }),
+    );
+    expect(ctx.providers.repository.logFailure).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'side-effects-dispatcher', booking_id: 'b1' }),
+    );
   });
 
   it('runs unified cron sweep for supported expression', async () => {
     const ctx = makeCtx();
     await expect(runCron('* * * * *', ctx)).resolves.toBeUndefined();
 
-    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getUnconfirmedBookingFollowupsDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPaymentDueRemindersDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.get24hBookingRemindersDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPendingSideEffects).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPendingBookingSideEffects).toHaveBeenCalled();
     expect(ctx.providers.repository.getCalendarSyncFailuresDue).toHaveBeenCalledWith(100);
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_dispatch_decision',
-      context: expect.objectContaining({
-        received_cron_expression: '* * * * *',
-        branch_taken: 'run_unified_sweep_known_expression',
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'cron_dispatch_decision',
+        context: expect.objectContaining({ branch_taken: 'run_unified_sweep_known_expression' }),
       }),
-    }));
+    );
   });
 
-  it('maps legacy cron expression to the unified sweep', async () => {
-    const ctx = makeCtx();
-    await expect(runCron('*/5 * * * *', ctx)).resolves.toBeUndefined();
-
-    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_dispatch_compatibility_mode',
-      context: expect.objectContaining({
-        received_cron_expression: '*/5 * * * *',
-      }),
-    }));
-  });
-
-  it('runs unknown cron expressions via unified fallback and logs the reason', async () => {
+  it('logs fallback branch for unknown cron expression', async () => {
     const ctx = makeCtx();
     await expect(runCron('*/10 * * * *', ctx)).resolves.toBeUndefined();
 
-    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
-    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_dispatch_fallback',
-      context: expect.objectContaining({
-        received_cron_expression: '*/10 * * * *',
-        fallback_reason: 'unknown_cron_expression',
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'cron_dispatch_fallback',
+        context: expect.objectContaining({ fallback_reason: 'unknown_cron_expression' }),
       }),
-    }));
-  });
-
-  it('continues unified sweep after a step failure and emits partial-failure diagnostics', async () => {
-    const ctx = makeCtx({
-      providers: {
-        repository: {
-          getExpiredBookingHolds: vi.fn().mockRejectedValue(new Error('db unavailable')),
-        },
-      },
-    });
-
-    await expect(runCron('* * * * *', ctx)).rejects.toThrow(/checkout-expiry/);
-
-    // Ensure later sweep steps still ran despite checkout-expiry failure.
-    expect(ctx.providers.repository.getUnconfirmedBookingFollowupsDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPaymentDueRemindersDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.get24hBookingRemindersDue).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getPendingSideEffects).toHaveBeenCalledTimes(1);
-    expect(ctx.providers.repository.getCalendarSyncFailuresDue).toHaveBeenCalledWith(100);
-
-    expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_sweep_step',
-      context: expect.objectContaining({
-        job_name: 'checkout-expiry',
-        status: 'failed',
-      }),
-    }));
-    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_sweep_completed',
-      context: expect.objectContaining({
-        status: 'partial_failure',
-        failed_steps: 1,
-        failed_job_names: ['checkout-expiry'],
-      }),
-    }));
+    );
   });
 });

@@ -1,17 +1,23 @@
 import { mockState } from '../mock-state.js';
 import type { OrganizerBookingFilters, IRepository } from './interface.js';
+import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
 import type {
   Booking,
+  BookingEventRecord,
+  BookingSideEffect,
+  BookingSideEffectAttempt,
   BookingUpdate,
+  CalendarSyncFailure,
   Client,
   ClientUpdate,
   ContactMessage,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
-  CalendarSyncFailure,
   FailureLog,
   NewBooking,
+  NewBookingSideEffect,
+  NewBookingSideEffectAttempt,
   NewClient,
   NewContactMessage,
   NewEventLateAccessLink,
@@ -55,8 +61,8 @@ export class MockRepository implements IRepository {
 
   async getClientByEmail(email: string): Promise<Client | null> {
     const normalized = normalizeEmail(email);
-    for (const c of mockState.clients.values()) {
-      if (normalizeEmail(c.email) === normalized) return c;
+    for (const client of mockState.clients.values()) {
+      if (normalizeEmail(client.email) === normalized) return client;
     }
     return null;
   }
@@ -77,7 +83,12 @@ export class MockRepository implements IRepository {
   // ── Bookings ──────────────────────────────────────────────────────────────
 
   async createBooking(data: NewBooking): Promise<Booking> {
-    const booking: Booking = { ...data, id: crypto.randomUUID(), created_at: now(), updated_at: now() };
+    const booking: Booking = {
+      ...data,
+      id: crypto.randomUUID(),
+      created_at: now(),
+      updated_at: now(),
+    };
     mockState.bookings.set(booking.id, booking);
     return this.hydrateBooking(booking);
   }
@@ -88,23 +99,23 @@ export class MockRepository implements IRepository {
   }
 
   async getBookingByConfirmTokenHash(hash: string): Promise<Booking | null> {
-    for (const b of mockState.bookings.values()) {
-      if (b.confirm_token_hash === hash) return this.hydrateBooking(b);
-    }
-    return null;
-  }
+    const matchingEvent = [...mockState.bookingEvents]
+      .reverse()
+      .find((event) => event.payload?.['confirm_token_hash'] === hash);
 
-  async getBookingByManageTokenHash(hash: string): Promise<Booking | null> {
-    for (const b of mockState.bookings.values()) {
-      if (b.manage_token_hash === hash) return this.hydrateBooking(b);
-    }
-    return null;
+    if (!matchingEvent) return null;
+    const booking = mockState.bookings.get(matchingEvent.booking_id);
+    return booking ? this.hydrateBooking(booking) : null;
   }
 
   async updateBooking(id: string, updates: BookingUpdate): Promise<Booking> {
     const existing = mockState.bookings.get(id);
     if (!existing) throw new Error(`Booking ${id} not found`);
-    const updated: Booking = { ...existing, ...updates, updated_at: now() };
+    const updated: Booking = {
+      ...existing,
+      ...updates,
+      updated_at: now(),
+    };
     mockState.bookings.set(id, updated);
     return this.hydrateBooking(updated);
   }
@@ -112,48 +123,166 @@ export class MockRepository implements IRepository {
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
     const fromMs = new Date(`${from}T00:00:00Z`).getTime();
     const toMs = new Date(`${to}T23:59:59Z`).getTime();
-    const holdNow = Date.now();
-    const slots: TimeSlot[] = [];
 
-    for (const b of mockState.bookings.values()) {
-      if (b.source !== 'session') continue;
-
-      const start = new Date(b.starts_at).getTime();
-      const end = new Date(b.ends_at).getTime();
-      if (end < fromMs || start > toMs) continue;
-
-      if (b.status === 'pending_payment') {
-        // Pay-now hold (and paid event checkout holds) only reserve while hold is active.
-        if (b.checkout_hold_expires_at) {
-          if (new Date(b.checkout_hold_expires_at).getTime() > holdNow) {
-            slots.push({ start: b.starts_at, end: b.ends_at });
-          }
-          continue;
+    return [...mockState.bookings.values()]
+      .filter((booking) => {
+        if (booking.event_id) return false;
+        if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'CLOSED') {
+          return false;
         }
-        // Pay-later bookings reserve once moved to pending_payment after email confirm.
-        slots.push({ start: b.starts_at, end: b.ends_at });
-        continue;
+        const startMs = new Date(booking.starts_at).getTime();
+        const endMs = new Date(booking.ends_at).getTime();
+        return !(endMs < fromMs || startMs > toMs);
+      })
+      .map((booking) => ({ start: booking.starts_at, end: booking.ends_at }));
+  }
+
+  // ── Booking events ────────────────────────────────────────────────────────
+
+  async createBookingEvent(data: {
+    booking_id: string;
+    event_type: BookingEventRecord['event_type'];
+    source: BookingEventRecord['source'];
+    payload?: Record<string, unknown>;
+  }): Promise<BookingEventRecord> {
+    const event: BookingEventRecord = {
+      id: crypto.randomUUID(),
+      booking_id: data.booking_id,
+      event_type: data.event_type,
+      source: data.source,
+      payload: data.payload ?? {},
+      created_at: now(),
+    };
+    mockState.bookingEvents.push(event);
+    return event;
+  }
+
+  async listBookingEvents(bookingId: string): Promise<BookingEventRecord[]> {
+    return mockState.bookingEvents
+      .filter((event) => event.booking_id === bookingId)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }
+
+  async getBookingEventById(eventId: string): Promise<BookingEventRecord | null> {
+    return mockState.bookingEvents.find((event) => event.id === eventId) ?? null;
+  }
+
+  async getLatestBookingEvent(bookingId: string): Promise<BookingEventRecord | null> {
+    const events = await this.listBookingEvents(bookingId);
+    return events.length > 0 ? events[events.length - 1]! : null;
+  }
+
+  // ── Booking side effects ─────────────────────────────────────────────────
+
+  async createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]> {
+    const rows: BookingSideEffect[] = [];
+
+    for (const effect of effects) {
+      const event = mockState.bookingEvents.find((candidate) => candidate.id === effect.booking_event_id);
+      if (!event) {
+        throw new Error(`Booking event ${effect.booking_event_id} not found`);
       }
 
-      if (b.status === 'confirmed' || b.status === 'cash_ok') {
-        slots.push({ start: b.starts_at, end: b.ends_at });
-      }
+      const row: BookingSideEffect & { booking_id: string } = {
+        id: crypto.randomUUID(),
+        booking_event_id: effect.booking_event_id,
+        booking_id: event.booking_id,
+        entity: effect.entity,
+        effect_intent: effect.effect_intent,
+        status: effect.status,
+        expires_at: effect.expires_at,
+        max_attempts: effect.max_attempts,
+        created_at: now(),
+        updated_at: now(),
+      };
+
+      mockState.sideEffects.push(row);
+      rows.push(stripBookingId(row));
     }
 
-    return slots;
+    return rows;
+  }
+
+  async getBookingSideEffectById(id: string): Promise<BookingSideEffect | null> {
+    const row = mockState.sideEffects.find((effect) => effect.id === id);
+    return row ? stripBookingId(row) : null;
+  }
+
+  async getPendingBookingSideEffects(
+    limit: number,
+    _nowIso: string,
+  ): Promise<Array<BookingSideEffect & { booking_id: string }>> {
+    return mockState.sideEffects
+      .filter((effect) => effect.status === 'pending' || effect.status === 'failed')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .slice(0, Math.max(1, limit));
+  }
+
+  async updateBookingSideEffect(
+    id: string,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+  ): Promise<BookingSideEffect> {
+    const row = mockState.sideEffects.find((effect) => effect.id === id);
+    if (!row) throw new Error(`Side effect ${id} not found`);
+
+    row.status = updates.status ?? row.status;
+    row.updated_at = updates.updated_at ?? now();
+    return stripBookingId(row);
+  }
+
+  async markStaleProcessingSideEffectsAsPending(nowIso: string): Promise<number> {
+    const thresholdMs = new Date(nowIso).getTime() - SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES * 60_000;
+    let resetCount = 0;
+
+    for (const effect of mockState.sideEffects) {
+      if (effect.status !== 'processing') continue;
+      if (new Date(effect.updated_at).getTime() > thresholdMs) continue;
+      effect.status = 'pending';
+      effect.updated_at = nowIso;
+      resetCount += 1;
+    }
+
+    return resetCount;
+  }
+
+  // ── Booking side effect attempts ─────────────────────────────────────────
+
+  async createBookingSideEffectAttempt(data: NewBookingSideEffectAttempt): Promise<BookingSideEffectAttempt> {
+    const attempt: BookingSideEffectAttempt = {
+      id: crypto.randomUUID(),
+      booking_side_effect_id: data.booking_side_effect_id,
+      attempt_num: data.attempt_num,
+      api_log_id: data.api_log_id,
+      status: data.status,
+      error_message: data.error_message,
+      created_at: now(),
+    };
+    mockState.sideEffectAttempts.push(attempt);
+    return attempt;
+  }
+
+  async listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]> {
+    return mockState.sideEffectAttempts
+      .filter((attempt) => attempt.booking_side_effect_id === sideEffectId)
+      .sort((a, b) => a.attempt_num - b.attempt_num);
+  }
+
+  async getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null> {
+    const attempts = await this.listBookingSideEffectAttempts(sideEffectId);
+    return attempts.length > 0 ? attempts[attempts.length - 1]! : null;
   }
 
   // ── Events ────────────────────────────────────────────────────────────────
 
   async getPublishedEvents(): Promise<Event[]> {
     return [...mockState.events.values()]
-      .filter((e) => e.status === 'published')
+      .filter((event) => event.status === 'published')
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   }
 
   async getEventBySlug(slug: string): Promise<Event | null> {
-    for (const e of mockState.events.values()) {
-      if (e.slug === slug) return e;
+    for (const event of mockState.events.values()) {
+      if (event.slug === slug) return event;
     }
     return null;
   }
@@ -162,23 +291,15 @@ export class MockRepository implements IRepository {
     return mockState.events.get(id) ?? null;
   }
 
-  async countEventActiveBookings(eventId: string, nowIso: string): Promise<number> {
-    const nowMs = new Date(nowIso).getTime();
+  async countEventActiveBookings(eventId: string, _nowIso: string): Promise<number> {
     let count = 0;
 
-    for (const b of mockState.bookings.values()) {
-      if (b.source !== 'event' || b.event_id !== eventId) continue;
-
-      if (b.status === 'confirmed' || b.status === 'cash_ok') {
-        count += 1;
+    for (const booking of mockState.bookings.values()) {
+      if (booking.event_id !== eventId) continue;
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'CLOSED') {
         continue;
       }
-
-      if (b.status === 'pending_payment') {
-        if (!b.checkout_hold_expires_at || new Date(b.checkout_hold_expires_at).getTime() > nowMs) {
-          count += 1;
-        }
-      }
+      count += 1;
     }
 
     return count;
@@ -265,7 +386,12 @@ export class MockRepository implements IRepository {
   // ── Payments ──────────────────────────────────────────────────────────────
 
   async createPayment(data: NewPayment): Promise<Payment> {
-    const payment: Payment = { ...data, id: crypto.randomUUID(), created_at: now(), updated_at: now() };
+    const payment: Payment = {
+      ...data,
+      id: crypto.randomUUID(),
+      created_at: now(),
+      updated_at: now(),
+    };
     mockState.payments.set(payment.id, payment);
     return payment;
   }
@@ -278,8 +404,8 @@ export class MockRepository implements IRepository {
   }
 
   async getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null> {
-    for (const p of mockState.payments.values()) {
-      if (p.provider_payment_id === sessionId) return p;
+    for (const payment of mockState.payments.values()) {
+      if (payment.provider_payment_id === sessionId) return payment;
     }
     return null;
   }
@@ -287,12 +413,16 @@ export class MockRepository implements IRepository {
   async updatePayment(id: string, updates: PaymentUpdate): Promise<Payment> {
     const existing = mockState.payments.get(id);
     if (!existing) throw new Error(`Payment ${id} not found`);
-    const updated: Payment = { ...existing, ...updates, updated_at: now() };
+    const updated: Payment = {
+      ...existing,
+      ...updates,
+      updated_at: now(),
+    };
     mockState.payments.set(id, updated);
     return updated;
   }
 
-  // ── Contact form ─────────────────────────────────────────────────────────
+  // ── Contact form ──────────────────────────────────────────────────────────
 
   async createContactMessage(data: NewContactMessage): Promise<ContactMessage> {
     const created: ContactMessage = {
@@ -305,22 +435,20 @@ export class MockRepository implements IRepository {
     return created;
   }
 
-  // ── PA organizer reads/writes ─────────────────────────────────────────────
+  // ── Organizer reads ───────────────────────────────────────────────────────
 
   async getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]> {
     const rows: OrganizerBookingRow[] = [];
 
     for (const booking of mockState.bookings.values()) {
       const hydrated = this.hydrateBooking(booking);
+      const bookingKind = hydrated.event_id ? 'event' : 'session';
 
-      if (filters.source && hydrated.source !== filters.source) continue;
+      if (filters.booking_kind && bookingKind !== filters.booking_kind) continue;
       if (filters.event_id && hydrated.event_id !== filters.event_id) continue;
       if (filters.client_id && hydrated.client_id !== filters.client_id) continue;
-      if (filters.status && hydrated.status !== filters.status) continue;
-      if (filters.date) {
-        const day = hydrated.starts_at.slice(0, 10);
-        if (day !== filters.date) continue;
-      }
+      if (filters.current_status && hydrated.current_status !== filters.current_status) continue;
+      if (filters.date && hydrated.starts_at.slice(0, 10) !== filters.date) continue;
 
       const client = mockState.clients.get(hydrated.client_id);
       if (!client) continue;
@@ -328,14 +456,14 @@ export class MockRepository implements IRepository {
 
       rows.push({
         booking_id: hydrated.id,
-        source: hydrated.source,
-        status: hydrated.status,
+        current_status: hydrated.current_status,
         event_id: hydrated.event_id,
         event_title: event?.title ?? null,
+        session_type_id: hydrated.session_type_id,
+        session_type_title: findSessionTypeTitle(hydrated.session_type_id),
         starts_at: hydrated.starts_at,
         ends_at: hydrated.ends_at,
         timezone: hydrated.timezone,
-        attended: hydrated.attended,
         notes: hydrated.notes,
         client_id: client.id,
         client_first_name: client.first_name,
@@ -349,70 +477,7 @@ export class MockRepository implements IRepository {
     return rows;
   }
 
-  // ── Scheduled job queries ────────────────────────────────────────────────
-
-  async getExpiredBookingHolds(): Promise<Booking[]> {
-    const n = Date.now();
-    return [...mockState.bookings.values()]
-      .filter((b) =>
-        b.status === 'pending_payment' &&
-        b.checkout_hold_expires_at !== null &&
-        b.payment_due_at === null &&
-        new Date(b.checkout_hold_expires_at).getTime() <= n,
-      )
-      .map((b) => this.hydrateBooking(b));
-  }
-
-  async getUnconfirmedBookingFollowupsDue(): Promise<Booking[]> {
-    const n = Date.now();
-    return [...mockState.bookings.values()]
-      .filter((b) =>
-        b.status === 'pending_email' &&
-        b.followup_sent_at === null &&
-        b.followup_scheduled_at !== null &&
-        new Date(b.followup_scheduled_at).getTime() <= n,
-      )
-      .map((b) => this.hydrateBooking(b));
-  }
-
-  async getPaymentDueRemindersDue(): Promise<Booking[]> {
-    const n = Date.now();
-    return [...mockState.bookings.values()]
-      .filter((b) =>
-        b.status === 'pending_payment' &&
-        b.payment_due_at !== null &&
-        b.payment_due_reminder_sent_at === null &&
-        b.payment_due_reminder_scheduled_at !== null &&
-        new Date(b.payment_due_reminder_scheduled_at).getTime() <= n,
-      )
-      .map((b) => this.hydrateBooking(b));
-  }
-
-  async getPaymentDueCancellationsDue(): Promise<Booking[]> {
-    const n = Date.now();
-    return [...mockState.bookings.values()]
-      .filter((b) =>
-        b.status === 'pending_payment' &&
-        b.payment_due_at !== null &&
-        new Date(b.payment_due_at).getTime() <= n,
-      )
-      .map((b) => this.hydrateBooking(b));
-  }
-
-  async get24hBookingRemindersDue(): Promise<Booking[]> {
-    const n = Date.now();
-    return [...mockState.bookings.values()]
-      .filter((b) =>
-        (b.status === 'confirmed' || b.status === 'cash_ok') &&
-        b.reminder_email_opt_in &&
-        b.reminder_24h_sent_at === null &&
-        b.reminder_24h_scheduled_at !== null &&
-        new Date(b.reminder_24h_scheduled_at).getTime() <= n,
-      )
-      .map((b) => this.hydrateBooking(b));
-  }
-
-  // ── Observability ────────────────────────────────────────────────────────
+  // ── Observability ─────────────────────────────────────────────────────────
 
   async logFailure(data: NewFailureLog): Promise<void> {
     const log: FailureLog = {
@@ -447,64 +512,6 @@ export class MockRepository implements IRepository {
 
   async getRecentFailureLogs(limit: number): Promise<FailureLog[]> {
     return mockState.failureLogs.slice(-limit).reverse();
-  }
-
-  // ── Booking events / side-effects outbox ─────────────────────────────────
-
-  async createBookingEvent(data: {
-    booking_id: string;
-    event_type: string;
-    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
-    payload?: Record<string, unknown>;
-  }): Promise<void> {
-    const ev = {
-      id: crypto.randomUUID(),
-      booking_id: data.booking_id,
-      event_type: data.event_type,
-      source: data.source,
-      payload: data.payload ?? null,
-      created_at: now(),
-    };
-    mockState.bookingEvents.push(ev);
-  }
-
-  async enqueueSideEffect(data: {
-    booking_id: string;
-    effect_type: string;
-    payload?: Record<string, unknown>;
-  }): Promise<{ id: string } | null> {
-    const id = crypto.randomUUID();
-    const item = {
-      id,
-      booking_id: data.booking_id,
-      effect_type: data.effect_type,
-      payload: data.payload ?? null,
-      status: 'pending' as const,
-      created_at: now(),
-      updated_at: null,
-    };
-    mockState.sideEffects.push(item);
-    return { id };
-  }
-
-  async markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void> {
-    const item = mockState.sideEffects.find((s) => s.id === id);
-    if (!item) return;
-    item.status = status;
-    item.error_message = error_message ?? null;
-    item.updated_at = now();
-  }
-
-  async getPendingSideEffects(limit: number): Promise<Array<{
-    id: string;
-    booking_id: string;
-    effect_type: string;
-    payload: Record<string, unknown> | null;
-  }>> {
-    return mockState.sideEffects
-      .filter((s) => s.status === 'pending')
-      .slice(0, Math.max(1, limit))
-      .map((s) => ({ id: s.id, booking_id: s.booking_id, effect_type: s.effect_type, payload: s.payload }));
   }
 
   // ── Calendar sync retry queue ────────────────────────────────────────────
@@ -628,10 +635,10 @@ export class MockRepository implements IRepository {
     active.updated_at = now();
   }
 
-  // ── Session types (offers) ────────────────────────────────────────────────
+  // ── Session types (offers) ───────────────────────────────────────────────
 
   async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
-    return MOCK_SESSION_TYPES.filter((s) => s.status === 'active');
+    return MOCK_SESSION_TYPES.filter((sessionType) => sessionType.status === 'active');
   }
 
   async getAllSessionTypes(): Promise<SessionTypeRecord[]> {
@@ -641,7 +648,7 @@ export class MockRepository implements IRepository {
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const record: SessionTypeRecord = {
       ...data,
-      id: 'mock-' + Date.now().toString(36),
+      id: `mock-${Date.now().toString(36)}`,
       created_at: now(),
       updated_at: now(),
     };
@@ -650,10 +657,14 @@ export class MockRepository implements IRepository {
   }
 
   async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
-    const idx = MOCK_SESSION_TYPES.findIndex((s) => s.id === id);
-    if (idx === -1) throw new Error(`Session type ${id} not found`);
-    MOCK_SESSION_TYPES[idx] = { ...MOCK_SESSION_TYPES[idx]!, ...updates, updated_at: now() };
-    return MOCK_SESSION_TYPES[idx]!;
+    const index = MOCK_SESSION_TYPES.findIndex((sessionType) => sessionType.id === id);
+    if (index === -1) throw new Error(`Session type ${id} not found`);
+    MOCK_SESSION_TYPES[index] = {
+      ...MOCK_SESSION_TYPES[index]!,
+      ...updates,
+      updated_at: now(),
+    };
+    return MOCK_SESSION_TYPES[index]!;
   }
 
   private hydrateBooking(booking: Booking): Booking {
@@ -667,6 +678,7 @@ export class MockRepository implements IRepository {
       client_email: client.email,
       client_phone: client.phone,
       event_title: event?.title ?? null,
+      session_type_title: findSessionTypeTitle(booking.session_type_id),
     };
   }
 }
@@ -696,7 +708,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'Where your story, values, and patterns come fully into view.',
     description: 'An extended session to map where you are, what is blocking you, and what you truly want. This becomes the foundation everything else is built on. Format: Online or in person · Lugano.',
     duration_minutes: 90,
-    price: 150,
+    price: 15000,
     currency: 'CHF',
     status: 'active',
     sort_order: 2,
@@ -713,7 +725,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'Focused, structured work within an ongoing Clarity Cycle.',
     description: 'Seven sessions per cycle, each building on the last — unpacking what is stuck and practicing the new you. On the final session we reassess whether to pause or begin a new cycle. Format: Online or in person · Lugano.',
     duration_minutes: 60,
-    price: 120,
+    price: 12000,
     currency: 'CHF',
     status: 'active',
     sort_order: 3,
@@ -730,7 +742,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'A fresh perspective from the eyes of unconditional love.',
     description: 'In this session we will connect with your guardian angels and translate their messages to illuminate your current situation with new clarity and remind you they are always here for you. Format: Online or in person · Lugano.',
     duration_minutes: 90,
-    price: 150,
+    price: 15000,
     currency: 'CHF',
     status: 'active',
     sort_order: 4,
@@ -742,11 +754,26 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
   },
 ];
 
+function stripBookingId(effect: BookingSideEffect & { booking_id: string }): BookingSideEffect {
+  const { booking_id: _bookingId, ...rest } = effect;
+  return rest;
+}
+
+function findSessionTypeTitle(sessionTypeId: string | null): string | null {
+  if (!sessionTypeId) return null;
+  const row = MOCK_SESSION_TYPES.find((sessionType) => sessionType.id === sessionTypeId);
+  return row?.title ?? null;
+}
+
 function toCalendarSyncFailure(log: FailureLog): CalendarSyncFailure {
-  const op = String(log.context?.['calendar_operation'] ?? 'update');
+  const operationFromContext = String(log.context?.['calendar_operation'] ?? 'update');
   const operation: 'create' | 'update' | 'delete' =
-    op === 'create' || op === 'delete' ? op : 'update';
+    operationFromContext === 'create' || operationFromContext === 'delete'
+      ? operationFromContext
+      : 'update';
+
   const lastError = String(log.context?.['last_error'] ?? log.error_message ?? 'calendar sync failed');
+
   return {
     id: log.id,
     booking_id: log.booking_id ?? '',

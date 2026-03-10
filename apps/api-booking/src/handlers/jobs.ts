@@ -1,5 +1,5 @@
 /**
- * Scheduled job implementations.
+ * Scheduled job implementations for the booking event/side-effect model.
  */
 
 import type { Providers } from '../providers/index.js';
@@ -8,13 +8,16 @@ import type { Logger } from '../lib/logger.js';
 import type { AppContext } from '../router.js';
 import { ok, unauthorized } from '../lib/errors.js';
 import {
-  cancelBooking,
+  buildConfirmUrl,
+  buildManageUrl,
   expireBooking,
   retryCalendarSyncForBooking,
   send24hBookingReminder,
   sendPendingBookingFollowup,
 } from '../services/booking-service.js';
-import { buildManageUrl } from '../services/booking-service.js';
+import { appendBookingEventWithEffects } from '../services/booking-transition.js';
+import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
+import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
 
 export interface JobContext {
   providers: Providers;
@@ -48,8 +51,8 @@ const CRON_SWEEP_STEPS: ReadonlyArray<{
 }> = [
   { jobName: 'checkout-expiry', run: runCheckoutExpiry },
   { jobName: 'unconfirmed-followups', run: runUnconfirmedFollowups },
-  { jobName: 'payment-due-cancellations', run: runPaymentDueCancellations },
   { jobName: 'payment-due-reminders', run: runPaymentDueReminders },
+  { jobName: 'payment-due-cancellations', run: runPaymentDueCancellations },
   { jobName: '24h-reminders', run: run24hReminders },
   { jobName: 'side-effects-dispatcher', run: runSideEffectsOutbox },
   { jobName: 'calendar-sync-retries', run: runCalendarSyncRetries },
@@ -62,6 +65,7 @@ const MANUAL_JOB_NAMES = new Set([
   'payment-due-reminders',
   'payment-due-cancellations',
   '24h-reminders',
+  'side-effects-dispatcher',
   'cron-sweep',
 ]);
 
@@ -121,7 +125,6 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
         known_cron_expressions: Array.from(KNOWN_CRON_EXPRESSIONS),
         trigger_source: ctx.triggerSource,
         fallback_reason: 'unknown_cron_expression',
-        temporary_debug: true,
       },
     });
   }
@@ -135,7 +138,6 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
         received_cron_expression: cron,
         mapped_cron_expression: PRIMARY_CRON_EXPRESSION,
         trigger_source: ctx.triggerSource,
-        temporary_debug: true,
       },
     });
   }
@@ -146,6 +148,7 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
 async function runJob(name: string, ctx: JobContext): Promise<void> {
   const requestedName = name.trim();
   const branchTaken = MANUAL_JOB_NAMES.has(requestedName) ? `run_${requestedName}` : 'unknown_job_name';
+
   ctx.logger.logInfo({
     source: jobLogSource(ctx),
     eventType: 'job_dispatch_decision',
@@ -170,6 +173,8 @@ async function runJob(name: string, ctx: JobContext): Promise<void> {
       return runPaymentDueCancellations(ctx);
     case '24h-reminders':
       return run24hReminders(ctx);
+    case 'side-effects-dispatcher':
+      return runSideEffectsOutbox(ctx);
     case 'cron-sweep':
       return runUnifiedCronSweep('manual:cron-sweep', ctx);
     default:
@@ -326,45 +331,336 @@ function logJobCompleted(ctx: JobContext, jobName: string, summary: JobSummary):
   ctx.logger.logInfo(event);
 }
 
-// ── Job: expire checkout holds ──────────────────────────────────────────────
+// ── Intent wrappers (kept for operational clarity) ─────────────────────────
 
 export async function runCheckoutExpiry(ctx: JobContext): Promise<void> {
-  const { providers, logger } = ctx;
-  const jobName = 'checkout-expiry';
+  await runSideEffectsByIntent(ctx, 'checkout-expiry', ['expire_booking']);
+}
+
+async function runUnconfirmedFollowups(ctx: JobContext): Promise<void> {
+  await runSideEffectsByIntent(ctx, 'unconfirmed-followups', ['send_slot_reservation_reminder']);
+}
+
+export async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
+  await runSideEffectsByIntent(ctx, 'payment-due-reminders', ['send_payment_reminder']);
+}
+
+export async function runPaymentDueCancellations(ctx: JobContext): Promise<void> {
+  await runSideEffectsByIntent(ctx, 'payment-due-cancellations', ['expire_booking']);
+}
+
+export async function run24hReminders(ctx: JobContext): Promise<void> {
+  await runSideEffectsByIntent(ctx, '24h-reminders', ['send_date_reminder']);
+}
+
+async function runSideEffectsByIntent(
+  ctx: JobContext,
+  jobName: string,
+  intents: BookingEffectIntent[],
+): Promise<void> {
   logJobStarted(ctx, jobName);
 
-  const bookings = await providers.repository.getExpiredBookingHolds();
+  const nowIso = new Date().toISOString();
+  const effects = await ctx.providers.repository.getPendingBookingSideEffects(100, nowIso);
+  const selected = effects.filter((effect) => intents.includes(effect.effect_intent));
+
   let succeeded = 0;
   let failed = 0;
 
-  for (const b of bookings) {
+  for (const effect of selected) {
     try {
-      await expireBooking(b, {
-        providers,
-        env: ctx.env,
-        logger,
-        requestId: ctx.requestId,
-      });
+      const outcome = await dispatchSideEffect(effect, ctx, nowIso);
+      if (outcome === 'skipped') continue;
       succeeded++;
-    } catch (err) {
+    } catch (error) {
       failed++;
-      await providers.repository.logFailure({
+      await ctx.providers.repository.logFailure({
         source: 'job',
-        operation: 'checkout-expiry',
-        booking_id: b.id,
+        operation: jobName,
+        booking_id: effect.booking_id,
         request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource },
+        error_message: String(error),
+        context: {
+          job_name: jobName,
+          trigger_source: ctx.triggerSource,
+          effect_intent: effect.effect_intent,
+          side_effect_id: effect.id,
+        },
       });
     }
   }
 
   logJobCompleted(ctx, jobName, {
-    items_found: bookings.length,
-    items_processed: bookings.length,
+    items_found: selected.length,
+    items_processed: selected.length,
     items_succeeded: succeeded,
     items_failed: failed,
   });
+}
+
+// ── Job: side-effects outbox dispatcher ─────────────────────────────────────
+
+export async function runSideEffectsOutbox(ctx: JobContext): Promise<void> {
+  const jobName = 'side-effects-dispatcher';
+  logJobStarted(ctx, jobName);
+
+  const nowIso = new Date().toISOString();
+  await ctx.providers.repository.markStaleProcessingSideEffectsAsPending(nowIso);
+
+  const effects = await ctx.providers.repository.getPendingBookingSideEffects(50, nowIso);
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const effect of effects) {
+    try {
+      const outcome = await dispatchSideEffect(effect, ctx, nowIso);
+      if (outcome === 'skipped') continue;
+      succeeded++;
+    } catch (error) {
+      failed++;
+      await ctx.providers.repository.logFailure({
+        source: 'job',
+        operation: 'side-effects-dispatcher',
+        booking_id: effect.booking_id,
+        request_id: ctx.requestId,
+        error_message: String(error),
+        context: {
+          job_name: jobName,
+          trigger_source: ctx.triggerSource,
+          effect_intent: effect.effect_intent,
+          side_effect_id: effect.id,
+        },
+      });
+    }
+  }
+
+  logJobCompleted(ctx, jobName, {
+    items_found: effects.length,
+    items_processed: effects.length,
+    items_succeeded: succeeded,
+    items_failed: failed,
+  });
+}
+
+async function dispatchSideEffect(
+  effect: BookingSideEffect & { booking_id: string },
+  ctx: JobContext,
+  nowIso: string,
+): Promise<'processed' | 'skipped'> {
+  const timing = sideEffectTiming(effect, nowIso);
+  if (timing === 'wait') return 'skipped';
+
+  const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
+  const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
+  const apiLogId = crypto.randomUUID();
+
+  if (timing === 'expired') {
+    await ctx.providers.repository.createBookingSideEffectAttempt({
+      booking_side_effect_id: effect.id,
+      attempt_num: attemptNum,
+      api_log_id: apiLogId,
+      status: 'fail',
+      error_message: 'expired_without_execution',
+    });
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'dead', updated_at: nowIso });
+    return 'processed';
+  }
+
+  await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'processing', updated_at: nowIso });
+
+  try {
+    await executeSideEffect(effect, ctx);
+
+    await ctx.providers.repository.createBookingSideEffectAttempt({
+      booking_side_effect_id: effect.id,
+      attempt_num: attemptNum,
+      api_log_id: apiLogId,
+      status: 'success',
+      error_message: null,
+    });
+
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'success', updated_at: new Date().toISOString() });
+    return 'processed';
+  } catch (error) {
+    const errorMessage = String(error);
+
+    await ctx.providers.repository.createBookingSideEffectAttempt({
+      booking_side_effect_id: effect.id,
+      attempt_num: attemptNum,
+      api_log_id: apiLogId,
+      status: 'fail',
+      error_message: errorMessage,
+    });
+
+    const nextStatus = sideEffectStatusAfterAttempt('fail', attemptNum, effect.max_attempts);
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus, updated_at: new Date().toISOString() });
+    throw error;
+  }
+}
+
+function sideEffectTiming(
+  effect: BookingSideEffect & { booking_id: string },
+  nowIso: string,
+): 'run' | 'wait' | 'expired' {
+  if (!effect.expires_at) return 'run';
+
+  const nowMs = new Date(nowIso).getTime();
+  const expiresMs = new Date(effect.expires_at).getTime();
+  const nowAfterExpiry = nowMs >= expiresMs;
+
+  switch (effect.effect_intent) {
+    case 'expire_booking':
+    case 'send_payment_reminder':
+    case 'send_date_reminder':
+    case 'send_slot_reservation_reminder':
+      return nowAfterExpiry ? 'run' : 'wait';
+    default:
+      return nowAfterExpiry ? 'expired' : 'run';
+  }
+}
+
+async function executeSideEffect(
+  effect: BookingSideEffect & { booking_id: string },
+  ctx: JobContext,
+): Promise<void> {
+  const booking = await ctx.providers.repository.getBookingById(effect.booking_id);
+  if (!booking) {
+    throw new Error(`booking_not_found:${effect.booking_id}`);
+  }
+
+  const bookingCtx = {
+    providers: ctx.providers,
+    env: ctx.env,
+    logger: ctx.logger,
+    requestId: ctx.requestId,
+  };
+
+  switch (effect.effect_intent) {
+    case 'send_email_confirmation': {
+      const bookingEvent = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
+      const confirmToken = typeof bookingEvent?.payload?.['confirm_token'] === 'string'
+        ? bookingEvent.payload['confirm_token'] as string
+        : null;
+      if (!confirmToken) {
+        throw new Error('confirm_token_missing');
+      }
+
+      const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+      if (booking.event_id) {
+        const event = await ctx.providers.repository.getEventById(booking.event_id);
+        if (!event) throw new Error('event_not_found');
+        await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
+      } else {
+        await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl);
+      }
+      return;
+    }
+
+    case 'send_slot_reservation_reminder': {
+      await sendPendingBookingFollowup(booking, bookingCtx);
+      return;
+    }
+
+    case 'send_payment_reminder': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+      const payUrl = payment?.checkout_url;
+      if (!payUrl) throw new Error('checkout_url_missing');
+
+      if (!booking.event_id) {
+        await ctx.providers.email.sendBookingPaymentReminder(booking, payUrl);
+      } else {
+        const event = await ctx.providers.repository.getEventById(booking.event_id);
+        if (!event) throw new Error('event_not_found');
+        await ctx.providers.email.sendEventFollowup(booking, event, payUrl);
+      }
+
+      await ctx.providers.repository.createBookingEvent({
+        booking_id: booking.id,
+        event_type: 'PAYMENT_REMINDER_SENT',
+        source: 'job',
+        payload: { side_effect_id: effect.id },
+      });
+      return;
+    }
+
+    case 'send_date_reminder': {
+      await send24hBookingReminder(booking, bookingCtx);
+      return;
+    }
+
+    case 'send_booking_failed_notification':
+    case 'send_booking_cancellation_confirmation': {
+      await ctx.providers.email.sendBookingCancellation(booking);
+      return;
+    }
+
+    case 'reserve_slot':
+      await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
+      return;
+
+    case 'update_reserved_slot':
+      await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
+      return;
+
+    case 'cancel_reserved_slot':
+      await retryCalendarSyncForBooking(booking, 'delete', bookingCtx);
+      return;
+
+    case 'confirm_reserved_slot': {
+      await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
+      if (!['EXPIRED', 'CANCELED', 'CLOSED'].includes(booking.current_status)) {
+        await appendBookingEventWithEffects(
+          booking.id,
+          'SLOT_CONFIRMED',
+          'system',
+          { via_effect_intent: effect.effect_intent },
+          bookingCtx,
+        );
+      }
+      return;
+    }
+
+    case 'create_stripe_checkout': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+      if (!payment?.checkout_url) {
+        throw new Error('checkout_not_initialized');
+      }
+      return;
+    }
+
+    case 'verify_stripe_payment':
+      return;
+
+    case 'send_payment_link': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+      const payUrl = payment?.checkout_url;
+      if (!payUrl) throw new Error('checkout_url_missing');
+      const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+      await ctx.providers.email.sendBookingPaymentDue(booking, payUrl, manageUrl);
+      return;
+    }
+
+    case 'expire_booking': {
+      if (booking.current_status !== 'PENDING_CONFIRMATION') return;
+      await expireBooking(booking, bookingCtx);
+      return;
+    }
+
+    case 'close_booking': {
+      if (booking.current_status === 'CLOSED') return;
+      await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CLOSED' as BookingCurrentStatus });
+      await ctx.providers.repository.createBookingEvent({
+        booking_id: booking.id,
+        event_type: 'BOOKING_CLOSED',
+        source: 'job',
+        payload: {},
+      });
+      return;
+    }
+
+    default:
+      throw new Error(`unknown_effect_intent:${effect.effect_intent}`);
+  }
 }
 
 // ── Job: retry failed calendar sync operations ──────────────────────────────
@@ -400,14 +696,14 @@ async function runCalendarSyncRetries(ctx: JobContext): Promise<void> {
 
       if (result.calendarSynced) succeeded++;
       else failed++;
-    } catch (err) {
+    } catch (error) {
       failed++;
       await providers.repository.logFailure({
         source: 'job',
         operation: 'calendar-sync-retries',
         booking_id: failure.booking_id,
         request_id: ctx.requestId,
-        error_message: String(err),
+        error_message: String(error),
         context: {
           job_name: jobName,
           trigger_source: ctx.triggerSource,
@@ -420,282 +716,6 @@ async function runCalendarSyncRetries(ctx: JobContext): Promise<void> {
   logJobCompleted(ctx, jobName, {
     items_found: failures.length,
     items_processed: failures.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
-  });
-}
-
-// ── Job: unconfirmed followups ──────────────────────────────────────────────
-
-async function runUnconfirmedFollowups(ctx: JobContext): Promise<void> {
-  const { providers } = ctx;
-  const jobName = 'unconfirmed-followups';
-  logJobStarted(ctx, jobName);
-
-  const bookings = await providers.repository.getUnconfirmedBookingFollowupsDue();
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const b of bookings) {
-    try {
-      await sendPendingBookingFollowup(b, {
-        providers,
-        env: ctx.env,
-        logger: ctx.logger,
-        requestId: ctx.requestId,
-      });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: 'unconfirmed-followups',
-        booking_id: b.id,
-        request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource },
-      });
-    }
-  }
-
-  logJobCompleted(ctx, jobName, {
-    items_found: bookings.length,
-    items_processed: bookings.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
-  });
-}
-
-// ── Job: payment-due reminders ──────────────────────────────────────────────
-
-export async function runPaymentDueReminders(ctx: JobContext): Promise<void> {
-  const { providers, env } = ctx;
-  const jobName = 'payment-due-reminders';
-  logJobStarted(ctx, jobName);
-
-  const bookings = await providers.repository.getPaymentDueRemindersDue();
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const b of bookings) {
-    try {
-      await providers.repository.enqueueSideEffect({
-        booking_id: b.id,
-        effect_type: 'email.payment_reminder.session',
-        payload: {},
-      });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: 'payment-due-reminders',
-        booking_id: b.id,
-        request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource },
-      });
-    }
-  }
-
-  logJobCompleted(ctx, jobName, {
-    items_found: bookings.length,
-    items_processed: bookings.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
-  });
-}
-
-// ── Job: payment-due cancellations ──────────────────────────────────────────
-
-export async function runPaymentDueCancellations(ctx: JobContext): Promise<void> {
-  const { providers, logger } = ctx;
-  const jobName = 'payment-due-cancellations';
-  logJobStarted(ctx, jobName);
-
-  const bookings = await providers.repository.getPaymentDueCancellationsDue();
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const b of bookings) {
-    try {
-      await cancelBooking(b, {
-        providers,
-        env: ctx.env,
-        logger,
-        requestId: ctx.requestId,
-      });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: 'payment-due-cancellations',
-        booking_id: b.id,
-        request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource },
-      });
-    }
-  }
-
-  logJobCompleted(ctx, jobName, {
-    items_found: bookings.length,
-    items_processed: bookings.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
-  });
-}
-
-// ── Job: 24h reminders ─────────────────────────────────────────────────────
-
-export async function run24hReminders(ctx: JobContext): Promise<void> {
-  const { providers } = ctx;
-  const jobName = '24h-reminders';
-  logJobStarted(ctx, jobName);
-
-  const bookings = await providers.repository.get24hBookingRemindersDue();
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const b of bookings) {
-    try {
-      await providers.repository.enqueueSideEffect({
-        booking_id: b.id,
-        effect_type: b.source === 'session' ? 'email.reminder24h.session' : 'email.reminder24h.event',
-        payload: {},
-      });
-      succeeded++;
-    } catch (err) {
-      failed++;
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: '24h-reminders',
-        booking_id: b.id,
-        request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource },
-      });
-    }
-  }
-
-  logJobCompleted(ctx, jobName, {
-    items_found: bookings.length,
-    items_processed: bookings.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
-  });
-}
-
-// ── Job: side-effects outbox dispatcher ─────────────────────────────────────
-
-export async function runSideEffectsOutbox(ctx: JobContext): Promise<void> {
-  const { providers, env } = ctx;
-  const jobName = 'side-effects-dispatcher';
-  logJobStarted(ctx, jobName);
-
-  const effects = await providers.repository.getPendingSideEffects(50);
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const eff of effects) {
-    try {
-      await providers.repository.markSideEffect(eff.id, 'processing', null);
-      const booking = await providers.repository.getBookingById(eff.booking_id);
-      if (!booking) {
-        await providers.repository.markSideEffect(eff.id, 'failed', 'booking not found');
-        failed++;
-        continue;
-      }
-
-      const payload = eff.payload || {};
-      switch (eff.effect_type) {
-        case 'email.confirm_request.session': {
-          const confirmUrl = String(payload['confirm_url'] || '');
-          await providers.email.sendBookingConfirmRequest(booking, confirmUrl);
-          break;
-        }
-        case 'email.confirm_request.event': {
-          if (!booking.event_id) throw new Error('event_id missing');
-          const event = await providers.repository.getEventById(booking.event_id);
-          if (!event) throw new Error('event not found');
-          const confirmUrl = String(payload['confirm_url'] || '');
-          await providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
-          break;
-        }
-        case 'email.payment_due.session': {
-          const payment = await providers.repository.getPaymentByBookingId(booking.id);
-          const payUrl = payment?.checkout_url;
-          if (!payUrl) throw new Error('no checkout url');
-          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
-          await providers.email.sendBookingPaymentDue(booking, payUrl, manageUrl);
-          break;
-        }
-        case 'email.payment_reminder.session': {
-          const payment = await providers.repository.getPaymentByBookingId(booking.id);
-          const payUrl = payment?.checkout_url;
-          if (!payUrl) throw new Error('no checkout url');
-          await providers.email.sendBookingPaymentReminder(booking, payUrl);
-          await providers.repository.updateBooking(booking.id, { payment_due_reminder_sent_at: new Date().toISOString(), reminder_36h_sent_at: new Date().toISOString() });
-          break;
-        }
-        case 'email.confirmed.session': {
-          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
-          const invoiceUrl = typeof payload['invoice_url'] === 'string' ? payload['invoice_url'] : null;
-          await providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl);
-          break;
-        }
-        case 'email.confirmed.event': {
-          if (!booking.event_id) throw new Error('event_id missing');
-          const event = await providers.repository.getEventById(booking.event_id);
-          if (!event) throw new Error('event not found');
-          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
-          const invoiceUrl = typeof payload['invoice_url'] === 'string' ? payload['invoice_url'] : null;
-          await providers.email.sendEventConfirmation(booking, event, manageUrl, invoiceUrl);
-          break;
-        }
-        case 'email.cancellation.session': {
-          await providers.email.sendBookingCancellation(booking);
-          break;
-        }
-        case 'email.reminder24h.session': {
-          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
-          await providers.email.sendBookingReminder24h(booking, manageUrl);
-          await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
-          break;
-        }
-        case 'email.reminder24h.event': {
-          if (!booking.event_id) throw new Error('event_id missing');
-          const event = await providers.repository.getEventById(booking.event_id);
-          if (!event) throw new Error('event not found');
-          const manageUrl = await buildManageUrl(env.SITE_URL, booking);
-          await providers.email.sendEventReminder24h(booking, event, manageUrl);
-          await providers.repository.updateBooking(booking.id, { reminder_24h_sent_at: new Date().toISOString() });
-          break;
-        }
-        default:
-          throw new Error(`unknown effect_type: ${eff.effect_type}`);
-      }
-
-      await providers.repository.markSideEffect(eff.id, 'done', null);
-      succeeded++;
-    } catch (err) {
-      failed++;
-      await providers.repository.markSideEffect(eff.id, 'failed', String(err));
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: 'side-effects-dispatcher',
-        booking_id: eff.booking_id,
-        request_id: ctx.requestId,
-        error_message: String(err),
-        context: { job_name: jobName, trigger_source: ctx.triggerSource, effect_type: eff.effect_type },
-      });
-    }
-  }
-
-  logJobCompleted(ctx, jobName, {
-    items_found: effects.length,
-    items_processed: effects.length,
     items_succeeded: succeeded,
     items_failed: failed,
   });

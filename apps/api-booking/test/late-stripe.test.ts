@@ -6,6 +6,7 @@ function makeCtx(overrides: any = {}) {
     repository: {
       updatePayment: vi.fn().mockResolvedValue(undefined),
       getBookingById: vi.fn().mockResolvedValue(null),
+      createBookingEvent: vi.fn().mockResolvedValue(undefined),
     },
     email: {},
     payments: {},
@@ -23,7 +24,7 @@ function makeCtx(overrides: any = {}) {
 
 describe('Late Stripe payment handling', () => {
   it('does not revive expired bookings', async () => {
-    const booking = { id: 'b1', status: 'expired', source: 'session' } as any;
+    const booking = { id: 'b1', current_status: 'EXPIRED', event_id: null } as any;
     const ctx = makeCtx({ providers: { repository: { getBookingById: vi.fn().mockResolvedValue(booking) } } });
     await confirmBookingPayment(
       { id: 'p1', booking_id: 'b1', provider_payment_id: 'sess' },

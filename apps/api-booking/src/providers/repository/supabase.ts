@@ -1,7 +1,11 @@
 import type { Db } from '../../repo/supabase.js';
 import type { OrganizerBookingFilters, IRepository } from './interface.js';
+import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
 import type {
   Booking,
+  BookingEventRecord,
+  BookingSideEffect,
+  BookingSideEffectAttempt,
   BookingUpdate,
   CalendarSyncFailure,
   Client,
@@ -12,6 +16,8 @@ import type {
   EventReminderSubscription,
   FailureLog,
   NewBooking,
+  NewBookingSideEffect,
+  NewBookingSideEffectAttempt,
   NewClient,
   NewContactMessage,
   NewEventLateAccessLink,
@@ -28,6 +34,7 @@ import type {
 } from '../../types.js';
 
 const CALENDAR_SYNC_OPERATION = 'calendar_sync';
+
 const BOOKING_SELECT = `
   *,
   client:clients!bookings_client_id_fkey (
@@ -39,10 +46,22 @@ const BOOKING_SELECT = `
   event:events!bookings_event_id_fkey (
     id,
     title
+  ),
+  session_type:session_types!bookings_session_type_id_fkey (
+    id,
+    title
   )
 `;
 
-type BookingRow = Omit<Booking, 'client_first_name' | 'client_last_name' | 'client_email' | 'client_phone' | 'event_title'> & {
+type BookingRow = Omit<
+  Booking,
+  | 'client_first_name'
+  | 'client_last_name'
+  | 'client_email'
+  | 'client_phone'
+  | 'event_title'
+  | 'session_type_title'
+> & {
   client?: {
     first_name: string;
     last_name: string | null;
@@ -53,10 +72,22 @@ type BookingRow = Omit<Booking, 'client_first_name' | 'client_last_name' | 'clie
     id: string;
     title: string;
   } | null;
+  session_type?: {
+    id: string;
+    title: string;
+  } | null;
+};
+
+type PendingSideEffectRow = BookingSideEffect & {
+  booking_event: {
+    booking_id: string;
+  } | null;
 };
 
 export class SupabaseRepository implements IRepository {
   constructor(private readonly db: Db) {}
+
+  // ── Clients ───────────────────────────────────────────────────────────────
 
   async createClient(data: NewClient): Promise<Client> {
     const payload = {
@@ -97,6 +128,8 @@ export class SupabaseRepository implements IRepository {
     return row;
   }
 
+  // ── Bookings ──────────────────────────────────────────────────────────────
+
   async createBooking(data: NewBooking): Promise<Booking> {
     const created = await requireSingle<{ id: string }>(
       this.db.from('bookings').insert(data).select('id').single(),
@@ -114,60 +147,222 @@ export class SupabaseRepository implements IRepository {
   }
 
   async getBookingByConfirmTokenHash(hash: string): Promise<Booking | null> {
-    const row = await maybeSingle<BookingRow>(
-      this.db.from('bookings').select(BOOKING_SELECT).eq('confirm_token_hash', hash).limit(1).maybeSingle(),
-      'Failed to load booking by confirm token',
+    const event = await maybeSingle<{ booking_id: string }>(
+      this.db
+        .from('booking_events')
+        .select('booking_id')
+        .eq('payload->>confirm_token_hash', hash)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load booking event by confirm token hash',
     );
-    return row ? toBooking(row) : null;
-  }
 
-  async getBookingByManageTokenHash(hash: string): Promise<Booking | null> {
-    const row = await maybeSingle<BookingRow>(
-      this.db.from('bookings').select(BOOKING_SELECT).eq('manage_token_hash', hash).limit(1).maybeSingle(),
-      'Failed to load booking by manage token',
-    );
-    return row ? toBooking(row) : null;
+    if (!event) return null;
+    return this.getBookingById(event.booking_id);
   }
 
   async updateBooking(id: string, updates: BookingUpdate): Promise<Booking> {
     await requireSingle<{ id: string }>(
-      this.db.from('bookings').update({
-        ...updates,
-        updated_at: nowIso(),
-      }).eq('id', id).select('id').single(),
+      this.db
+        .from('bookings')
+        .update({ ...updates, updated_at: nowIso() })
+        .eq('id', id)
+        .select('id')
+        .single(),
       `Failed to update booking ${id}`,
     );
     return this.requireBookingById(id);
   }
 
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
-    const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at' | 'status' | 'checkout_hold_expires_at' | 'payment_due_at' | 'confirm_expires_at'>>>(
+    const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at'>>>(
       this.db
         .from('bookings')
-        .select('starts_at, ends_at, status, checkout_hold_expires_at, payment_due_at, confirm_expires_at')
-        .eq('source', 'session')
+        .select('starts_at, ends_at')
+        .is('event_id', null)
+        .in('current_status', ['PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID'])
         .lte('starts_at', endOfDayIso(to))
         .gte('ends_at', startOfDayIso(from)),
       'Failed to load held slots',
     );
 
-    const nowMs = Date.now();
-    return rows
-      .filter((row) => {
-        if (row.status === 'confirmed' || row.status === 'cash_ok') return true;
-        if (row.status === 'pending_payment') {
-          if (!row.checkout_hold_expires_at) return true;
-          return new Date(row.checkout_hold_expires_at).getTime() > nowMs;
-        }
-        if (row.status === 'pending_email') {
-          if (!row.confirm_expires_at && !row.checkout_hold_expires_at) return false;
-          const dl = row.checkout_hold_expires_at ?? row.confirm_expires_at!;
-          return new Date(dl).getTime() > nowMs;
-        }
-        return false;
-      })
-      .map((row) => ({ start: row.starts_at, end: row.ends_at }));
+    return rows.map((row) => ({ start: row.starts_at, end: row.ends_at }));
   }
+
+  // ── Booking events ────────────────────────────────────────────────────────
+
+  async createBookingEvent(data: {
+    booking_id: string;
+    event_type: BookingEventRecord['event_type'];
+    source: BookingEventRecord['source'];
+    payload?: Record<string, unknown>;
+  }): Promise<BookingEventRecord> {
+    const row = await requireSingle<BookingEventRecord>(
+      this.db
+        .from('booking_events')
+        .insert({
+          booking_id: data.booking_id,
+          event_type: data.event_type,
+          source: data.source,
+          payload: data.payload ?? {},
+        })
+        .select('*')
+        .single(),
+      'Failed to persist booking event',
+    );
+    return row;
+  }
+
+  async listBookingEvents(bookingId: string): Promise<BookingEventRecord[]> {
+    const rows = await requireData<BookingEventRecord[]>(
+      this.db
+        .from('booking_events')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking events',
+    );
+    return rows;
+  }
+
+  async getBookingEventById(eventId: string): Promise<BookingEventRecord | null> {
+    return maybeSingle<BookingEventRecord>(
+      this.db.from('booking_events').select('*').eq('id', eventId).limit(1).maybeSingle(),
+      'Failed to load booking event',
+    );
+  }
+
+  async getLatestBookingEvent(bookingId: string): Promise<BookingEventRecord | null> {
+    return maybeSingle<BookingEventRecord>(
+      this.db
+        .from('booking_events')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load latest booking event',
+    );
+  }
+
+  // ── Booking side effects ─────────────────────────────────────────────────
+
+  async createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]> {
+    if (effects.length === 0) return [];
+
+    const rows = await requireData<BookingSideEffect[]>(
+      this.db.from('booking_side_effects').insert(effects).select('*'),
+      'Failed to create booking side effects',
+    );
+    return rows;
+  }
+
+  async getBookingSideEffectById(id: string): Promise<BookingSideEffect | null> {
+    return maybeSingle<BookingSideEffect>(
+      this.db.from('booking_side_effects').select('*').eq('id', id).limit(1).maybeSingle(),
+      'Failed to load booking side effect',
+    );
+  }
+
+  async getPendingBookingSideEffects(
+    limit: number,
+    _nowIso: string,
+  ): Promise<Array<BookingSideEffect & { booking_id: string }>> {
+    const rows = await requireData<PendingSideEffectRow[]>(
+      this.db
+        .from('booking_side_effects')
+        .select(`
+          *,
+          booking_event:booking_events!booking_side_effects_booking_event_id_fkey (
+            booking_id
+          )
+        `)
+        .in('status', ['pending', 'failed'])
+        .order('created_at', { ascending: true })
+        .limit(Math.max(1, limit)),
+      'Failed to load pending booking side effects',
+    );
+
+    return rows
+      .filter((row) => row.booking_event?.booking_id)
+      .map((row) => ({
+        ...row,
+        booking_id: row.booking_event!.booking_id,
+      }));
+  }
+
+  async updateBookingSideEffect(
+    id: string,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+  ): Promise<BookingSideEffect> {
+    const row = await requireSingle<BookingSideEffect>(
+      this.db
+        .from('booking_side_effects')
+        .update({
+          ...updates,
+          updated_at: updates.updated_at ?? nowIso(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
+      `Failed to update booking side effect ${id}`,
+    );
+    return row;
+  }
+
+  async markStaleProcessingSideEffectsAsPending(nowIsoValue: string): Promise<number> {
+    const threshold = new Date(new Date(nowIsoValue).getTime() - SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES * 60_000).toISOString();
+
+    const rows = await requireData<Array<{ id: string }>>(
+      this.db
+        .from('booking_side_effects')
+        .update({ status: 'pending', updated_at: nowIsoValue })
+        .eq('status', 'processing')
+        .lte('updated_at', threshold)
+        .select('id'),
+      'Failed to reset stale processing side effects',
+    );
+
+    return rows.length;
+  }
+
+  // ── Booking side effect attempts ──────────────────────────────────────────
+
+  async createBookingSideEffectAttempt(data: NewBookingSideEffectAttempt): Promise<BookingSideEffectAttempt> {
+    const row = await requireSingle<BookingSideEffectAttempt>(
+      this.db.from('booking_side_effect_attempts').insert(data).select('*').single(),
+      'Failed to create booking side effect attempt',
+    );
+    return row;
+  }
+
+  async listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]> {
+    const rows = await requireData<BookingSideEffectAttempt[]>(
+      this.db
+        .from('booking_side_effect_attempts')
+        .select('*')
+        .eq('booking_side_effect_id', sideEffectId)
+        .order('attempt_num', { ascending: true }),
+      'Failed to load booking side effect attempts',
+    );
+    return rows;
+  }
+
+  async getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null> {
+    return maybeSingle<BookingSideEffectAttempt>(
+      this.db
+        .from('booking_side_effect_attempts')
+        .select('*')
+        .eq('booking_side_effect_id', sideEffectId)
+        .order('attempt_num', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load latest booking side effect attempt',
+    );
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
 
   async getPublishedEvents(): Promise<Event[]> {
     const rows = await requireData<Event[]>(
@@ -191,36 +386,45 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
-  async countEventActiveBookings(eventId: string, nowIsoValue: string): Promise<number> {
-    const rows = await requireData<Array<Pick<Booking, 'status' | 'checkout_hold_expires_at'>>>(
-      this.db.from('bookings').select('status, checkout_hold_expires_at').eq('source', 'event').eq('event_id', eventId),
+  async countEventActiveBookings(eventId: string, _nowIso: string): Promise<number> {
+    const rows = await requireData<Array<Pick<Booking, 'current_status'>>>(
+      this.db
+        .from('bookings')
+        .select('current_status')
+        .eq('event_id', eventId)
+        .not('current_status', 'in', '(EXPIRED,CANCELED,CLOSED)'),
       'Failed to count event bookings',
     );
-    const nowMs = new Date(nowIsoValue).getTime();
 
-    return rows.filter((row) => {
-      if (row.status === 'confirmed' || row.status === 'cash_ok') return true;
-      if (row.status !== 'pending_payment') return false;
-      if (!row.checkout_hold_expires_at) return true;
-      return new Date(row.checkout_hold_expires_at).getTime() > nowMs;
-    }).length;
+    return rows.length;
   }
+
+  // ── Event reminder subscriptions ──────────────────────────────────────────
 
   async createOrUpdateEventReminderSubscription(
     data: NewEventReminderSubscription,
   ): Promise<EventReminderSubscription> {
     const row = await requireSingle<EventReminderSubscription>(
-      this.db.from('event_reminder_subscriptions').upsert({
-        ...data,
-        email: normalizeEmail(data.email),
-        event_family: data.event_family.trim() || 'illuminate_evenings',
-      }, {
-        onConflict: 'email,event_family',
-      }).select('*').single(),
+      this.db
+        .from('event_reminder_subscriptions')
+        .upsert(
+          {
+            ...data,
+            email: normalizeEmail(data.email),
+            event_family: data.event_family.trim() || 'illuminate_evenings',
+          },
+          {
+            onConflict: 'email,event_family',
+          },
+        )
+        .select('*')
+        .single(),
       'Failed to upsert event reminder subscription',
     );
     return row;
   }
+
+  // ── Event late-access links ───────────────────────────────────────────────
 
   async createEventLateAccessLink(data: NewEventLateAccessLink): Promise<EventLateAccessLink> {
     const row = await requireSingle<EventLateAccessLink>(
@@ -271,6 +475,8 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  // ── Payments ──────────────────────────────────────────────────────────────
+
   async createPayment(data: NewPayment): Promise<Payment> {
     const row = await requireSingle<Payment>(
       this.db.from('payments').insert(data).select('*').single(),
@@ -307,36 +513,47 @@ export class SupabaseRepository implements IRepository {
 
   async updatePayment(id: string, updates: PaymentUpdate): Promise<Payment> {
     const row = await requireSingle<Payment>(
-      this.db.from('payments').update({
-        ...updates,
-        updated_at: nowIso(),
-      }).eq('id', id).select('*').single(),
+      this.db
+        .from('payments')
+        .update({
+          ...updates,
+          updated_at: nowIso(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
       `Failed to update payment ${id}`,
     );
     return row;
   }
 
+  // ── Contact form ──────────────────────────────────────────────────────────
+
   async createContactMessage(data: NewContactMessage): Promise<ContactMessage> {
     const row = await requireSingle<ContactMessage>(
-      this.db.from('contact_messages').insert({
-        ...data,
-        email: normalizeEmail(data.email),
-      }).select('*').single(),
+      this.db
+        .from('contact_messages')
+        .insert({
+          ...data,
+          email: normalizeEmail(data.email),
+        })
+        .select('*')
+        .single(),
       'Failed to create contact message',
     );
     return row;
   }
 
-  async getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]> {
-    let query: any = this.db
-      .from('bookings')
-      .select(BOOKING_SELECT)
-      .order('starts_at', { ascending: true });
+  // ── Organizer reads ───────────────────────────────────────────────────────
 
-    if (filters.source) query = query.eq('source', filters.source);
+  async getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]> {
+    let query: any = this.db.from('bookings').select(BOOKING_SELECT).order('starts_at', { ascending: true });
+
     if (filters.event_id) query = query.eq('event_id', filters.event_id);
     if (filters.client_id) query = query.eq('client_id', filters.client_id);
-    if (filters.status) query = query.eq('status', filters.status);
+    if (filters.current_status) query = query.eq('current_status', filters.current_status);
+    if (filters.booking_kind === 'event') query = query.not('event_id', 'is', null);
+    if (filters.booking_kind === 'session') query = query.is('event_id', null);
     if (filters.date) {
       query = query
         .gte('starts_at', startOfDayIso(filters.date))
@@ -344,87 +561,64 @@ export class SupabaseRepository implements IRepository {
     }
 
     const rows = await requireData<BookingRow[]>(query, 'Failed to load organizer bookings');
-    return rows.map((row) => toOrganizerBookingRow(toBooking(row)));
+
+    return rows.map((row) => {
+      const booking = toBooking(row);
+      if (!booking.client_first_name || !booking.client_email) {
+        throw new Error(`Booking ${booking.id} is missing organizer join data`);
+      }
+
+      return {
+        booking_id: booking.id,
+        current_status: booking.current_status,
+        event_id: booking.event_id,
+        event_title: booking.event_title ?? null,
+        session_type_id: booking.session_type_id,
+        session_type_title: booking.session_type_title ?? null,
+        starts_at: booking.starts_at,
+        ends_at: booking.ends_at,
+        timezone: booking.timezone,
+        notes: booking.notes,
+        client_id: booking.client_id,
+        client_first_name: booking.client_first_name,
+        client_last_name: booking.client_last_name ?? null,
+        client_email: booking.client_email,
+        client_phone: booking.client_phone ?? null,
+      };
+    });
   }
 
-  async getExpiredBookingHolds(): Promise<Booking[]> {
-    // Use new lifecycle fields primarily; also include legacy fallback
-    return this.getBookingList((query) =>
-      query
-        .or(
-          'and(booking_status.eq.pending,hold_expires_at.not.is.null,hold_expires_at.lte.' + nowIso() + '),' +
-          'and(status.eq.pending_payment,checkout_hold_expires_at.not.is.null,payment_due_at.is.null,checkout_hold_expires_at.lte.' + nowIso() + ')' +
-          ''
-        )
-    );
-  }
-
-  async getUnconfirmedBookingFollowupsDue(): Promise<Booking[]> {
-    return this.getBookingList((query) =>
-      query
-        .eq('status', 'pending_email')
-        .is('followup_sent_at', null)
-        .not('followup_scheduled_at', 'is', null)
-        .lte('followup_scheduled_at', nowIso()),
-    );
-  }
-
-  async getPaymentDueRemindersDue(): Promise<Booking[]> {
-    return this.getBookingList((query) =>
-      query
-        .or(
-          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,payment_due_reminder_scheduled_at.not.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null),' +
-          'and(status.eq.pending_payment,payment_due_at.not.is.null,payment_due_reminder_scheduled_at.not.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null)'
-        )
-    );
-  }
-
-  async getPaymentDueCancellationsDue(): Promise<Booking[]> {
-    return this.getBookingList((query) =>
-      query
-        .or(
-          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,payment_due_at.not.is.null,payment_due_at.lte.' + nowIso() + '),' +
-          'and(status.eq.pending_payment,payment_due_at.not.is.null,payment_due_at.lte.' + nowIso() + ')'
-        )
-    );
-  }
-
-  async get24hBookingRemindersDue(): Promise<Booking[]> {
-    return this.getBookingList((query) =>
-      query
-        .or(
-          'and(booking_status.eq.confirmed,reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,reminder_24h_scheduled_at.not.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + '),' +
-          'and(status.in.(confirmed,cash_ok),reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,reminder_24h_scheduled_at.not.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + ')'
-        )
-    );
-  }
+  // ── Observability ─────────────────────────────────────────────────────────
 
   async logFailure(data: NewFailureLog): Promise<void> {
     await requireData(
-      this.db.from('failure_logs').insert({
-        source: data.source,
-        operation: data.operation,
-        severity: data.severity ?? 'error',
-        status: 'open',
-        request_id: data.request_id ?? null,
-        idempotency_key: data.idempotency_key ?? null,
-        booking_id: data.booking_id ?? null,
-        payment_id: data.payment_id ?? null,
-        client_id: data.client_id ?? null,
-        stripe_event_id: data.stripe_event_id ?? null,
-        stripe_checkout_session_id: data.stripe_checkout_session_id ?? null,
-        google_event_id: data.google_event_id ?? null,
-        email_provider_message_id: data.email_provider_message_id ?? null,
-        error_code: data.error_code ?? null,
-        error_message: data.error_message,
-        error_stack: data.error_stack ?? null,
-        http_status: data.http_status ?? null,
-        retryable: data.retryable ?? true,
-        context: data.context ?? {},
-        attempts: 0,
-        next_retry_at: null,
-        resolved_at: null,
-      }).select('id'),
+      this.db
+        .from('failure_logs')
+        .insert({
+          source: data.source,
+          operation: data.operation,
+          severity: data.severity ?? 'error',
+          status: 'open',
+          request_id: data.request_id ?? null,
+          idempotency_key: data.idempotency_key ?? null,
+          booking_id: data.booking_id ?? null,
+          payment_id: data.payment_id ?? null,
+          client_id: data.client_id ?? null,
+          stripe_event_id: data.stripe_event_id ?? null,
+          stripe_checkout_session_id: data.stripe_checkout_session_id ?? null,
+          google_event_id: data.google_event_id ?? null,
+          email_provider_message_id: data.email_provider_message_id ?? null,
+          error_code: data.error_code ?? null,
+          error_message: data.error_message,
+          error_stack: data.error_stack ?? null,
+          http_status: data.http_status ?? null,
+          retryable: data.retryable ?? true,
+          context: data.context ?? {},
+          attempts: 0,
+          next_retry_at: null,
+          resolved_at: null,
+        })
+        .select('id'),
       'Failed to persist failure log',
     );
   }
@@ -441,72 +635,7 @@ export class SupabaseRepository implements IRepository {
     return rows;
   }
 
-  async createBookingEvent(data: {
-    booking_id: string;
-    event_type: string;
-    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
-    payload?: Record<string, unknown>;
-  }): Promise<void> {
-    await requireData(
-      this.db
-        .from('booking_events')
-        .insert({
-          booking_id: data.booking_id,
-          event_type: data.event_type,
-          source: data.source,
-          payload: data.payload ?? {},
-        })
-        .select('id'),
-      'Failed to persist booking event',
-    );
-  }
-
-  async enqueueSideEffect(data: { booking_id: string; effect_type: string; payload?: Record<string, unknown> }): Promise<{ id: string } | null> {
-    const exists = await this.db.from('booking_side_effects').select('id').limit(1).maybeSingle();
-    if (exists.error && exists.error.code === 'PGRST116') return null; // table missing — feature disabled
-    const row = await requireSingle<{ id: string }>(
-      this.db
-        .from('booking_side_effects')
-        .insert({
-          booking_id: data.booking_id,
-          effect_type: data.effect_type,
-          status: 'pending',
-          payload: data.payload ?? {},
-        })
-        .select('id')
-        .single(),
-      'Failed to enqueue side effect',
-    );
-    return row;
-  }
-
-  async markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void> {
-    const exists = await this.db.from('booking_side_effects').select('id').eq('id', id).maybeSingle();
-    if (exists.error && exists.error.code === 'PGRST116') return; // table missing
-    await requireData(
-      this.db
-        .from('booking_side_effects')
-        .update({ status, error_message: error_message ?? null, updated_at: nowIso() })
-        .eq('id', id)
-        .select('id'),
-      'Failed to update side-effect status',
-    );
-  }
-
-  async getPendingSideEffects(limit: number): Promise<Array<{ id: string; booking_id: string; effect_type: string; payload: Record<string, unknown> | null }>> {
-    const exists = await this.db.from('booking_side_effects').select('id').limit(1).maybeSingle();
-    if (exists.error && exists.error.code === 'PGRST116') return [];
-    const rows = await requireData<Array<{ id: string; booking_id: string; effect_type: string; payload: any }>>(
-      this.db
-        .from('booking_side_effects')
-        .select('id, booking_id, effect_type, payload')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true })
-        .limit(Math.max(1, limit)),
-      'Failed to load pending side effects',
-    );
-    return rows.map(r => ({ id: r.id, booking_id: r.booking_id, effect_type: r.effect_type, payload: r.payload ?? null }));
-  }
+  // ── Calendar sync retry queue ─────────────────────────────────────────────
 
   async recordCalendarSyncFailure(input: {
     booking_id: string;
@@ -657,22 +786,8 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
-  private async getBookingList(
-    build: (query: any) => any,
-  ): Promise<Booking[]> {
-    let query: any = this.db.from('bookings').select(BOOKING_SELECT).order('starts_at', { ascending: true });
-    query = build(query);
-    const rows = await requireData<BookingRow[]>(query, 'Failed to load booking list');
-    return rows.map(toBooking);
-  }
+  // ── Session types ─────────────────────────────────────────────────────────
 
-  private async requireBookingById(id: string): Promise<Booking> {
-    const booking = await this.getBookingById(id);
-    if (!booking) throw new Error(`Booking ${id} not found after write`);
-    return booking;
-  }
-
-  // ── Session types (offers) ───────────────────────────────────────────────
   async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
     const rows = await requireData<SessionTypeRecord[]>(
       this.db
@@ -681,7 +796,7 @@ export class SupabaseRepository implements IRepository {
         .eq('status', 'active')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true }),
-      'Failed to load public session_types',
+      'Failed to load public session types',
     );
     return rows;
   }
@@ -693,7 +808,7 @@ export class SupabaseRepository implements IRepository {
         .select('*')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true }),
-      'Failed to load session_types',
+      'Failed to load session types',
     );
     return rows;
   }
@@ -701,17 +816,30 @@ export class SupabaseRepository implements IRepository {
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
       this.db.from('session_types').insert(data).select('*').single(),
-      'Failed to create session_type',
+      'Failed to create session type',
     );
     return row;
   }
 
   async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
-      this.db.from('session_types').update({ ...updates, updated_at: nowIso() }).eq('id', id).select('*').single(),
-      `Failed to update session_type ${id}`,
+      this.db
+        .from('session_types')
+        .update({ ...updates, updated_at: nowIso() })
+        .eq('id', id)
+        .select('*')
+        .single(),
+      `Failed to update session type ${id}`,
     );
     return row;
+  }
+
+  // ── Internal helpers ──────────────────────────────────────────────────────
+
+  private async requireBookingById(id: string): Promise<Booking> {
+    const booking = await this.getBookingById(id);
+    if (!booking) throw new Error(`Booking ${id} not found after write`);
+    return booking;
   }
 }
 
@@ -719,49 +847,16 @@ function toBooking(row: BookingRow): Booking {
   return {
     id: row.id,
     client_id: row.client_id,
-    source: row.source,
-    status: row.status,
-    booking_status: (row as any).booking_status ?? null,
-    payment_mode: (row as any).payment_mode ?? null,
-    payment_status_v2: (row as any).payment_status_v2 ?? null,
-    email_status: (row as any).email_status ?? null,
-    calendar_status: (row as any).calendar_status ?? null,
-    slot_status: (row as any).slot_status ?? null,
     event_id: row.event_id,
-    session_type: row.session_type,
+    session_type_id: row.session_type_id,
     starts_at: row.starts_at,
     ends_at: row.ends_at,
     timezone: row.timezone,
+    google_event_id: row.google_event_id,
     address_line: row.address_line,
     maps_url: row.maps_url,
-    attended: row.attended,
+    current_status: row.current_status,
     notes: row.notes,
-    confirm_token_hash: row.confirm_token_hash,
-    confirm_expires_at: row.confirm_expires_at,
-    manage_token_hash: row.manage_token_hash,
-    checkout_session_id: row.checkout_session_id,
-    checkout_hold_expires_at: row.checkout_hold_expires_at,
-    hold_expires_at: (row as any).hold_expires_at ?? null,
-    payment_due_at: row.payment_due_at,
-    payment_due_at_v2: (row as any).payment_due_at_v2 ?? null,
-    payment_due_reminder_scheduled_at: row.payment_due_reminder_scheduled_at,
-    payment_due_reminder_sent_at: row.payment_due_reminder_sent_at,
-    followup_scheduled_at: row.followup_scheduled_at,
-    followup_sent_at: row.followup_sent_at,
-    reminder_email_opt_in: row.reminder_email_opt_in,
-    reminder_whatsapp_opt_in: row.reminder_whatsapp_opt_in,
-    reminder_24h_scheduled_at: row.reminder_24h_scheduled_at,
-    reminder_24h_sent_at: row.reminder_24h_sent_at,
-    google_event_id: row.google_event_id,
-    email_confirmed_at: (row as any).email_confirmed_at ?? null,
-    confirmed_at: (row as any).confirmed_at ?? null,
-    cancelled_at: (row as any).cancelled_at ?? null,
-    expired_at: (row as any).expired_at ?? null,
-    reminder_36h_sent_at: (row as any).reminder_36h_sent_at ?? null,
-    last_payment_link_sent_at: (row as any).last_payment_link_sent_at ?? null,
-    expired_reason: (row as any).expired_reason ?? null,
-    cancel_reason: (row as any).cancel_reason ?? null,
-    metadata: (row as any).metadata ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
     client_first_name: row.client?.first_name,
@@ -769,38 +864,19 @@ function toBooking(row: BookingRow): Booking {
     client_email: row.client?.email,
     client_phone: row.client?.phone ?? null,
     event_title: row.event?.title ?? null,
-  };
-}
-
-function toOrganizerBookingRow(booking: Booking): OrganizerBookingRow {
-  if (!booking.client_first_name || !booking.client_email) {
-    throw new Error(`Booking ${booking.id} is missing organizer join data`);
-  }
-
-  return {
-    booking_id: booking.id,
-    source: booking.source,
-    status: booking.status,
-    event_id: booking.event_id,
-    event_title: booking.event_title ?? null,
-    starts_at: booking.starts_at,
-    ends_at: booking.ends_at,
-    timezone: booking.timezone,
-    attended: booking.attended,
-    notes: booking.notes,
-    client_id: booking.client_id,
-    client_first_name: booking.client_first_name,
-    client_last_name: booking.client_last_name ?? null,
-    client_email: booking.client_email,
-    client_phone: booking.client_phone ?? null,
+    session_type_title: row.session_type?.title ?? null,
   };
 }
 
 function toCalendarSyncFailure(log: FailureLog): CalendarSyncFailure {
-  const op = String(log.context?.['calendar_operation'] ?? 'update');
+  const operationFromContext = String(log.context?.['calendar_operation'] ?? 'update');
   const operation: 'create' | 'update' | 'delete' =
-    op === 'create' || op === 'delete' ? op : 'update';
+    operationFromContext === 'create' || operationFromContext === 'delete'
+      ? operationFromContext
+      : 'update';
+
   const lastError = String(log.context?.['last_error'] ?? log.error_message ?? 'calendar sync failed');
+
   return {
     id: log.id,
     booking_id: log.booking_id ?? '',

@@ -9,7 +9,7 @@ describe('Admin update booking', () => {
 
   it('updates client and booking fields and returns refreshed booking', async () => {
     const booking = baseBooking();
-    const refreshed = { booking_id: 'b1', client_id: 'c1', attended: true, notes: 'Hello' } as any;
+    const refreshed = { booking_id: 'b1', client_id: 'c1', notes: 'Hello' } as any;
     const repo = {
       getBookingById: vi.fn().mockResolvedValue(booking),
       updateClient: vi.fn().mockResolvedValue(undefined),
@@ -19,13 +19,13 @@ describe('Admin update booking', () => {
     const ctx = makeCtx({ providers: { repository: repo } });
     const body = {
       client: { first_name: ' Jane ', last_name: ' Doe ', email: ' USER@EXAMPLE.COM ', phone: '  +41  ' },
-      booking: { attended: true, notes: 'Hello' },
+      booking: { notes: 'Hello' },
     };
     const req = adminRequest('PATCH', 'https://api.local/api/admin/bookings/b1', body);
     const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
     expect(res.status).toBe(200);
     expect(repo.updateClient).toHaveBeenCalledWith('c1', expect.objectContaining({ first_name: 'Jane', last_name: 'Doe', email: 'user@example.com', phone: '+41' }));
-    expect(repo.updateBooking).toHaveBeenCalledWith('b1', expect.objectContaining({ attended: true, notes: 'Hello' }));
+    expect(repo.updateBooking).toHaveBeenCalledWith('b1', expect.objectContaining({ notes: 'Hello' }));
     const data = await res.json();
     expect(data.booking).toEqual(refreshed);
   });
@@ -41,7 +41,7 @@ describe('Admin update booking', () => {
 
   it('accepts text/plain JSON bodies for cross-origin admin requests', async () => {
     const booking = baseBooking();
-    const refreshed = { booking_id: 'b1', client_id: 'c1', attended: false, notes: 'Plain text' } as any;
+    const refreshed = { booking_id: 'b1', client_id: 'c1', notes: 'Plain text' } as any;
     const repo = {
       getBookingById: vi.fn().mockResolvedValue(booking),
       updateClient: vi.fn().mockResolvedValue(undefined),
@@ -56,7 +56,7 @@ describe('Admin update booking', () => {
         'Content-Type': 'text/plain;charset=UTF-8',
       },
       body: JSON.stringify({
-        booking: { attended: false, notes: 'Plain text' },
+        booking: { notes: 'Plain text' },
       }),
     });
 

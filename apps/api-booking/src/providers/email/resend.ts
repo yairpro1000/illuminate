@@ -97,7 +97,7 @@ export class ResendEmailProvider implements IEmailProvider {
       clientEmail(booking),
       'booking_payment_due',
       'Your session is reserved – payment due',
-      `Hi ${clientName(booking)},\n\nYour slot is reserved. Please complete payment.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: ${booking.payment_due_at ? fmt(booking.payment_due_at) : 'before the session'}\n\nPay: ${payUrl}\nManage: ${manageUrl}`,
+      `Hi ${clientName(booking)},\n\nYour slot is reserved. Please complete payment.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: at least 24h before the session\n\nPay: ${payUrl}\nManage: ${manageUrl}`,
     );
   }
 

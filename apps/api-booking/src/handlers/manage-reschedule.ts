@@ -33,7 +33,7 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
 
     return ok({
       booking_id: updated.id,
-      status: updated.status,
+      status: updated.current_status,
       starts_at: updated.starts_at,
       ends_at: updated.ends_at,
       timezone: updated.timezone,

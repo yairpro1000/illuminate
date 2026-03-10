@@ -24,8 +24,8 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
 
     return ok({
       booking_id: booking.id,
-      status: booking.status,
-      source: booking.source,
+      status: booking.current_status,
+      source: booking.event_id ? 'event' : 'session',
       checkout_url: actionInfo.checkoutUrl,
       manage_url: actionInfo.manageUrl,
       next_action_url: actionInfo.nextActionUrl,

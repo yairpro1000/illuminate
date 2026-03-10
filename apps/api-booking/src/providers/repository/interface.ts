@@ -1,15 +1,27 @@
 import type {
   Booking,
-  BookingSource,
+  BookingCurrentStatus,
+  BookingEffectIntent,
+  BookingEventRecord,
+  BookingEventSource,
+  BookingEventType,
+  BookingSideEffect,
+  BookingSideEffectAttempt,
+  BookingSideEffectEntity,
+  BookingSideEffectStatus,
   BookingUpdate,
-  ContactMessage,
+  CalendarSyncFailure,
+  CalendarSyncOperation,
   Client,
   ClientUpdate,
+  ContactMessage,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
   FailureLog,
   NewBooking,
+  NewBookingSideEffect,
+  NewBookingSideEffectAttempt,
   NewClient,
   NewContactMessage,
   NewEventLateAccessLink,
@@ -19,17 +31,18 @@ import type {
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
-  CalendarSyncFailure,
-  CalendarSyncOperation,
+  SessionTypeRecord,
+  NewSessionType,
+  SessionTypeUpdate,
   TimeSlot,
 } from '../../types.js';
 
 export interface OrganizerBookingFilters {
-  source?: BookingSource;
+  booking_kind?: 'event' | 'session';
   event_id?: string;
   date?: string; // YYYY-MM-DD
   client_id?: string;
-  status?: string;
+  current_status?: BookingCurrentStatus;
 }
 
 /**
@@ -44,90 +57,94 @@ export interface IRepository {
   getClientByEmail(email: string): Promise<Client | null>;
   updateClient(id: string, updates: ClientUpdate): Promise<Client>;
 
-  // ── Bookings ───────────────────────────────────────────────────────────────
+  // ── Bookings ──────────────────────────────────────────────────────────────
 
   createBooking(data: NewBooking): Promise<Booking>;
   getBookingById(id: string): Promise<Booking | null>;
   getBookingByConfirmTokenHash(hash: string): Promise<Booking | null>;
-  getBookingByManageTokenHash(hash: string): Promise<Booking | null>;
   updateBooking(id: string, updates: BookingUpdate): Promise<Booking>;
 
-  /**
-   * Returns the start/end of session bookings that are currently holding a slot.
-   */
+  /** Returns start/end intervals that should currently block booking slots. */
   getHeldSlots(from: string, to: string): Promise<TimeSlot[]>;
 
-  // ── Events ─────────────────────────────────────────────────────────────────
+  // ── Booking events ───────────────────────────────────────────────────────
+
+  createBookingEvent(data: {
+    booking_id: string;
+    event_type: BookingEventType;
+    source: BookingEventSource;
+    payload?: Record<string, unknown>;
+  }): Promise<BookingEventRecord>;
+
+  listBookingEvents(bookingId: string): Promise<BookingEventRecord[]>;
+  getBookingEventById(eventId: string): Promise<BookingEventRecord | null>;
+  getLatestBookingEvent(bookingId: string): Promise<BookingEventRecord | null>;
+
+  // ── Booking side effects ────────────────────────────────────────────────
+
+  createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]>;
+
+  getBookingSideEffectById(id: string): Promise<BookingSideEffect | null>;
+
+  getPendingBookingSideEffects(
+    limit: number,
+    nowIso: string,
+  ): Promise<Array<BookingSideEffect & { booking_id: string }>>;
+
+  updateBookingSideEffect(
+    id: string,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+  ): Promise<BookingSideEffect>;
+
+  markStaleProcessingSideEffectsAsPending(nowIso: string): Promise<number>;
+
+  // ── Booking side effect attempts ────────────────────────────────────────
+
+  createBookingSideEffectAttempt(data: NewBookingSideEffectAttempt): Promise<BookingSideEffectAttempt>;
+  listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]>;
+  getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null>;
+
+  // ── Events ───────────────────────────────────────────────────────────────
 
   getPublishedEvents(): Promise<Event[]>;
   getEventBySlug(slug: string): Promise<Event | null>;
   getEventById(id: string): Promise<Event | null>;
   countEventActiveBookings(eventId: string, nowIso: string): Promise<number>;
 
-  // ── Event reminder subscriptions ───────────────────────────────────────────
+  // ── Event reminder subscriptions ────────────────────────────────────────
 
   createOrUpdateEventReminderSubscription(
     data: NewEventReminderSubscription,
   ): Promise<EventReminderSubscription>;
 
-  // ── Event late-access links ────────────────────────────────────────────────
+  // ── Event late-access links ─────────────────────────────────────────────
 
   createEventLateAccessLink(data: NewEventLateAccessLink): Promise<EventLateAccessLink>;
   revokeActiveEventLateAccessLinks(eventId: string): Promise<number>;
   getEventLateAccessLinkByTokenHash(eventId: string, tokenHash: string): Promise<EventLateAccessLink | null>;
   getActiveEventLateAccessLinkForEvent(eventId: string, nowIso: string): Promise<EventLateAccessLink | null>;
 
-  // ── Payments ───────────────────────────────────────────────────────────────
+  // ── Payments ─────────────────────────────────────────────────────────────
 
   createPayment(data: NewPayment): Promise<Payment>;
   getPaymentByBookingId(bookingId: string): Promise<Payment | null>;
   getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null>;
   updatePayment(id: string, updates: PaymentUpdate): Promise<Payment>;
 
-  // ── Contact form ───────────────────────────────────────────────────────────
+  // ── Contact form ────────────────────────────────────────────────────────
 
   createContactMessage(data: NewContactMessage): Promise<ContactMessage>;
 
-  // ── PA organizer reads/writes ──────────────────────────────────────────────
+  // ── Organizer/admin reads ───────────────────────────────────────────────
 
   getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]>;
 
-  // ── Scheduled job queries ──────────────────────────────────────────────────
-
-  getExpiredBookingHolds(): Promise<Booking[]>;
-  getUnconfirmedBookingFollowupsDue(): Promise<Booking[]>;
-  getPaymentDueRemindersDue(): Promise<Booking[]>;
-  getPaymentDueCancellationsDue(): Promise<Booking[]>;
-  get24hBookingRemindersDue(): Promise<Booking[]>;
-
-  // ── Observability ──────────────────────────────────────────────────────────
+  // ── Observability / diagnostics ─────────────────────────────────────────
 
   logFailure(data: NewFailureLog): Promise<void>;
   getRecentFailureLogs(limit: number): Promise<FailureLog[]>;
 
-  // ── Booking audit/events ──────────────────────────────────────────────────
-  createBookingEvent(data: {
-    booking_id: string;
-    event_type: string;
-    source: 'ui' | 'webhook' | 'cron' | 'admin' | 'system';
-    payload?: Record<string, unknown>;
-  }): Promise<void>;
-
-  // ── Optional side-effects outbox ─────────────────────────────────────────
-  enqueueSideEffect(data: {
-    booking_id: string;
-    effect_type: string;
-    payload?: Record<string, unknown>;
-  }): Promise<{ id: string } | null>;
-  markSideEffect(id: string, status: 'pending' | 'processing' | 'done' | 'failed', error_message?: string | null): Promise<void>;
-  getPendingSideEffects(limit: number): Promise<Array<{
-    id: string;
-    booking_id: string;
-    effect_type: string;
-    payload: Record<string, unknown> | null;
-  }>>;
-
-  // ── Calendar sync retry queue (backed by failure_logs) ────────────────────
+  // ── Calendar sync retry queue (backed by failure_logs) ─────────────────
 
   recordCalendarSyncFailure(input: {
     booking_id: string;
@@ -136,16 +153,47 @@ export interface IRepository {
     request_id?: string | null;
     maxAttempts: number;
   }): Promise<CalendarSyncFailure>;
+
   getCalendarSyncFailuresDue(limit: number): Promise<CalendarSyncFailure[]>;
+
   resolveCalendarSyncFailure(
     bookingId: string,
     resolution?: 'resolved' | 'ignored',
     note?: string | null,
   ): Promise<void>;
 
-  // ── Session types (offers) ────────────────────────────────────────────────
-  getPublicSessionTypes(): Promise<import('../../types.js').SessionTypeRecord[]>;
-  getAllSessionTypes(): Promise<import('../../types.js').SessionTypeRecord[]>;
-  createSessionType(data: import('../../types.js').NewSessionType): Promise<import('../../types.js').SessionTypeRecord>;
-  updateSessionType(id: string, updates: import('../../types.js').SessionTypeUpdate): Promise<import('../../types.js').SessionTypeRecord>;
+  // ── Session types (offers) ──────────────────────────────────────────────
+
+  getPublicSessionTypes(): Promise<SessionTypeRecord[]>;
+  getAllSessionTypes(): Promise<SessionTypeRecord[]>;
+  createSessionType(data: NewSessionType): Promise<SessionTypeRecord>;
+  updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord>;
+}
+
+export const SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES = 10;
+
+export function deriveBookingKind(booking: Pick<Booking, 'event_id'>): 'event' | 'session' {
+  return booking.event_id ? 'event' : 'session';
+}
+
+export function sideEffectIsDispatchable(effect: Pick<BookingSideEffect, 'status' | 'expires_at'>, nowIso: string): boolean {
+  if (effect.status !== 'pending') return false;
+  if (!effect.expires_at) return true;
+  return new Date(effect.expires_at).getTime() >= new Date(nowIso).getTime();
+}
+
+export function sideEffectStatusAfterAttempt(
+  attemptStatus: 'success' | 'fail',
+  attemptNum: number,
+  maxAttempts: number,
+): BookingSideEffectStatus {
+  if (attemptStatus === 'success') return 'success';
+  return attemptNum >= Math.max(1, maxAttempts) ? 'dead' : 'failed';
+}
+
+export function inferEntityFromIntent(intent: BookingEffectIntent): BookingSideEffectEntity {
+  if (intent.startsWith('send_')) return 'email';
+  if (intent.includes('stripe') || intent.includes('payment')) return 'payment';
+  if (intent.includes('slot')) return 'calendar';
+  return 'whatsapp';
 }

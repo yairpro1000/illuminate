@@ -68,11 +68,11 @@ function parseBookingFilters(url: URL): OrganizerBookingFilters {
   const status = url.searchParams.get('status');
 
   return {
-    source: source === 'event' || source === 'session' ? source : undefined,
+    booking_kind: source === 'event' || source === 'session' ? source : undefined,
     event_id: eventId?.trim() || undefined,
     date: date?.trim() || undefined,
     client_id: clientId?.trim() || undefined,
-    status: status?.trim() || undefined,
+    current_status: status?.trim() as OrganizerBookingFilters['current_status'] | undefined,
   };
 }
 
@@ -183,8 +183,7 @@ export async function handleAdminUpdateBooking(
     }
 
     if (bookingPatch) {
-      const updates: { attended?: boolean; notes?: string | null } = {};
-      if (typeof bookingPatch.attended === 'boolean') updates.attended = bookingPatch.attended;
+      const updates: { notes?: string | null } = {};
       if (bookingPatch.notes === null || typeof bookingPatch.notes === 'string') {
         updates.notes = bookingPatch.notes === null ? null : bookingPatch.notes.slice(0, 4000);
       }

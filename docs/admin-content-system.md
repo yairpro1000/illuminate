@@ -1,95 +1,56 @@
 # Admin Content System
 
-This document describes the minimal content management system used by the application.
+This document describes the admin-managed entities and the booking read model after the booking-domain reset.
 
-The system supports three primary content types:
+## Managed Entities
 
 1. Events
-2. Session types (offers)
+2. Session types
 3. Bookings
 
-Events and session types are admin-managed entities displayed on the public website.
-
-Images associated with these entities are stored in Cloudflare R2 and backed up to Google Drive.
-
----
-
-# Image Storage Architecture
-
-Images uploaded by the admin are handled as follows:
-
-1. Image uploaded from admin UI
-2. Worker API receives file
-3. File stored in Cloudflare R2
-4. Same file uploaded to a specific Google Drive folder (backup)
-5. Metadata stored in database
-
-The database stores:
-
-- image_key (R2 object key)
-- drive_file_id (Google Drive file id)
-- image_alt
-- original filename
-
-R2 is used as the production image host.
-Google Drive is used only as a private backup.
-
-R2 keys use prefix structure:
-
-events/<uuid>.<ext>
-sessions/<uuid>.<ext>
-
-Object storage does not use real folders.
-
----
-
-# Entities
+Images are stored in Cloudflare R2 and optionally mirrored to Google Drive backup.
 
 ## Events
 
-Events represent group gatherings.
+Admin-managed fields:
 
-Fields:
-
+```text
 id
-title
 slug
-short_description
+title
 description
 starts_at
 ends_at
-location
-capacity
-price
+timezone
+location_name
+address_line
+maps_url
+is_paid
+price_per_person_cents
 currency
+capacity
 status
 image_key
 drive_file_id
 image_alt
 created_at
 updated_at
+```
 
-Status values:
+`status`:
 
+```text
 draft
-open
-closed
+published
 cancelled
-
----
+sold_out
+```
 
 ## Session Types
 
-Session types represent bookable offers.
+Admin-managed fields:
 
-Examples:
-
-Intro session
-First 90-minute session
-Cycle 60-minute session
-
-Fields:
-
+```text
 id
 title
 slug
@@ -105,106 +66,131 @@ drive_file_id
 image_alt
 created_at
 updated_at
+```
 
-Status values:
+`status`:
 
+```text
 draft
 active
 hidden
+```
 
-Session types populate the public "Book a session" page.
+## Booking Model (Admin View)
 
----
+### Architecture
 
-## Bookings
+`bookings`
+- Stable facts and current-status cache only.
 
-Bookings represent either:
+`booking_events`
+- Canonical business timeline.
 
-- an event registration
-- a booked session
+`booking_side_effects`
+- Intended reactions from events.
 
-Fields:
+`booking_side_effect_attempts`
+- Retry/execution history per side effect.
 
+### Booking Fields
+
+```text
 id
-customer_name
-customer_email
-booking_kind
+client_id
 event_id
 session_type_id
-scheduled_at
-payment_status
-booking_status
-stripe_payment_intent_id
-refund_status
+starts_at
+ends_at
+timezone
+google_event_id
+address_line
+maps_url
+current_status
 notes
 created_at
 updated_at
+```
 
-booking_kind values:
+`current_status`:
 
-event
-session
+```text
+PENDING_CONFIRMATION
+SLOT_CONFIRMED
+PAID
+EXPIRED
+CANCELED
+CLOSED
+```
 
-payment_status values:
+### Canonical Event and Effect Values
 
+`booking_events.source`:
+
+```text
+public_ui
+admin_ui
+job
+webhook
+system
+```
+
+`booking_side_effects.status`:
+
+```text
 pending
-paid
+processing
+success
 failed
-refunded
+dead
+```
 
-booking_status values:
+`booking_side_effect_attempts.status`:
 
-active
-cancelled
-completed
-no_show
+```text
+success
+fail
+```
 
----
+## Admin APIs
 
-# Admin UI
+`GET /api/admin/bookings` supports filters:
 
-Admin routes:
+```text
+source=event|session        (mapped to booking_kind internally)
+event_id=<uuid>
+date=YYYY-MM-DD
+client_id=<uuid>
+status=<current_status>
+```
 
-/admin
-/admin/events
-/admin/session-types
-/admin/bookings
-/admin/messages
+Rows include:
 
-Events and session types support image upload.
+```text
+booking_id
+current_status
+event_id
+event_title
+session_type_id
+session_type_title
+starts_at
+ends_at
+timezone
+notes
+client_id
+client_first_name
+client_last_name
+client_email
+client_phone
+```
 
-Image upload triggers:
+`PATCH /api/admin/bookings/:bookingId` supports admin edits for:
 
-1. upload to R2
-2. upload to Google Drive
-3. save metadata to DB
+```text
+client.first_name
+client.last_name
+client.email
+client.phone
+booking.notes
+```
 
----
-
-# Image Upload Flow
-
-Admin uploads image
-
-Worker:
-
-1. generate uuid filename
-2. determine prefix (events/ or sessions/)
-3. upload to R2
-4. upload to Google Drive
-5. store metadata in DB
-
-Database stores only references, not binary data.
-
----
-
-# Goals
-
-The system must remain minimal and simple.
-
-We expect:
-
-small number of images
-small number of events
-small number of session types
-
-Avoid building a full CMS.
+No `attended` field exists in the current model.

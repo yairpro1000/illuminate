@@ -35,13 +35,11 @@ Reject requests if verification fails.
 
 ### 3.2 Storage
 
--   Store **only hashes** in DB:
-    -   `confirm_token_hash`
-    -   `manage_token_hash`
--   Never store raw tokens.
--   Hash algorithm: SHA-256 or better.
--   Token format should be random high-entropy bytes (e.g., 32 bytes
-    base64url).
+-   Confirm links are represented in booking events (event payload), not
+    booking table columns.
+-   Manage links are deterministic (`m1.<booking_id>`) and validated by
+    booking ID lookup plus lifecycle checks.
+-   Never log full raw confirm/manage tokens.
 
 ### 3.3 Expiration
 
@@ -52,7 +50,9 @@ Reject requests if verification fails.
 
 ### 3.4 Validation
 
--   Incoming token is hashed and compared to DB stored hash.
+-   Confirm token: hash incoming token and match against
+    `booking_events.payload.confirm_token_hash`.
+-   Manage token: validate token format and booking existence.
 -   If no match → 404/401 (do not reveal if the record exists).
 
 ------------------------------------------------------------------------
@@ -101,7 +101,7 @@ enabled). - Or implement in Worker with a lightweight KV/DO counter
     -   role/allowlist (admin email) before mutating state
 
 Admin endpoints include: - create/update events - upload/reorder media -
-set cash_ok / mark paid manually - broadcast messaging
+notes and client-data edits - late-access link management
 
 ------------------------------------------------------------------------
 

@@ -118,6 +118,16 @@
     sessions.forEach(function (session, i) {
       grid.appendChild(buildCard(session, i));
     });
+
+    const revealObserver = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          entry.target.classList.toggle('is-visible', entry.isIntersecting);
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' },
+    );
+    grid.querySelectorAll('.fade-up').forEach(function (el) { revealObserver.observe(el); });
   }
 
   /* ── Resolve the API base URL (mirrors api.js logic) ────── */

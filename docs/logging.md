@@ -218,7 +218,7 @@ These are generally safe and useful:
 * `google_event_id`
 * `http_status`
 * `attempts`
-* timestamps: `starts_at`, `payment_due_at`, `confirm_expires_at`
+* timestamps: `starts_at`, `ends_at`, `expires_at`, `created_at`
 * `currency`, `amount_cents`
 * `timezone`
 
@@ -475,4 +475,3 @@ and
 > “Webhook received, signature valid, DB update failed at step 3, retry scheduled.”
 
 That’s adult infrastructure.
-

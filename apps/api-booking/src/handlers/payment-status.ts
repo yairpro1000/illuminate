@@ -18,8 +18,8 @@ export async function handlePaymentStatus(request: Request, ctx: AppContext): Pr
 
     return ok({
       booking_id: actionInfo.booking.id,
-      status: actionInfo.booking.status,
-      source: actionInfo.booking.source,
+      status: actionInfo.booking.current_status,
+      source: actionInfo.booking.event_id ? 'event' : 'session',
       checkout_url: actionInfo.checkoutUrl,
       manage_url: actionInfo.manageUrl,
       next_action_url: actionInfo.nextActionUrl,

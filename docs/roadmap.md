@@ -1,4 +1,9 @@
 
+> [!WARNING]
+> This roadmap is a historical planning artifact.
+> Current booking domain source-of-truth docs are:
+> `site_database_schema.md`, `state_machines.md`, `booking_state_machine_refactor.md`, and `admin-content-system.md`.
+
 
 ---
 

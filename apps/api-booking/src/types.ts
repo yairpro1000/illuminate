@@ -1,25 +1,56 @@
-// ── Enums ────────────────────────────────────────────────────────────────────
+// ── Booking domain enums ────────────────────────────────────────────────────
 
-export type BookingSource = 'session' | 'event';
-export type BookingStatus =
-  | 'pending_email'
-  | 'pending_payment'
-  | 'confirmed'
-  | 'cash_ok'
-  | 'cancelled'
-  | 'expired';
+export type BookingCurrentStatus =
+  | 'PENDING_CONFIRMATION'
+  | 'SLOT_CONFIRMED'
+  | 'PAID'
+  | 'EXPIRED'
+  | 'CANCELED'
+  | 'CLOSED';
 
-// New top-level lifecycle status
-export type BookingLifecycleStatus = 'pending' | 'confirmed' | 'cancelled' | 'expired';
+export type BookingEventType =
+  | 'BOOKING_FORM_SUBMITTED_FREE'
+  | 'BOOKING_FORM_SUBMITTED_PAY_NOW'
+  | 'BOOKING_FORM_SUBMITTED_PAY_LATER'
+  | 'EMAIL_CONFIRMED'
+  | 'BOOKING_RESCHEDULED'
+  | 'SLOT_RESERVATION_REMINDER_SENT'
+  | 'PAYMENT_REMINDER_SENT'
+  | 'DATE_REMINDER_SENT'
+  | 'BOOKING_EXPIRED'
+  | 'BOOKING_CANCELED'
+  | 'CASH_AUTHORIZED'
+  | 'PAYMENT_SETTLED'
+  | 'SLOT_CONFIRMED'
+  | 'BOOKING_CLOSED';
 
-// New orthogonal sub-statuses
-export type PaymentMode = 'free' | 'pay_now' | 'pay_later';
-export type PaymentSubStatus = 'not_required' | 'pending' | 'paid';
-export type EmailSubStatus = 'not_required' | 'pending_confirmation' | 'confirmed' | 'expired';
-export type CalendarSubStatus = 'not_required' | 'pending' | 'created' | 'removed';
-export type SlotSubStatus = 'reserved' | 'released';
+export type BookingEventSource = 'public_ui' | 'admin_ui' | 'job' | 'webhook' | 'system';
 
-export type SessionType = 'intro' | 'session';
+export type BookingSideEffectEntity = 'email' | 'calendar' | 'payment' | 'whatsapp';
+
+export type BookingSideEffectStatus = 'pending' | 'processing' | 'success' | 'failed' | 'dead';
+
+export type BookingSideEffectAttemptStatus = 'success' | 'fail';
+
+export type BookingEffectIntent =
+  | 'send_email_confirmation'
+  | 'send_slot_reservation_reminder'
+  | 'send_payment_reminder'
+  | 'send_date_reminder'
+  | 'send_booking_failed_notification'
+  | 'send_booking_cancellation_confirmation'
+  | 'reserve_slot'
+  | 'update_reserved_slot'
+  | 'cancel_reserved_slot'
+  | 'confirm_reserved_slot'
+  | 'create_stripe_checkout'
+  | 'verify_stripe_payment'
+  | 'send_payment_link'
+  | 'expire_booking'
+  | 'close_booking';
+
+// ── Other domain enums ──────────────────────────────────────────────────────
+
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
 export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
 export type PaymentProvider = 'stripe' | 'mock';
@@ -37,7 +68,7 @@ export type FailureSeverity = 'debug' | 'info' | 'warning' | 'error' | 'critical
 export type FailureStatus = 'open' | 'retrying' | 'resolved' | 'ignored';
 export type CalendarSyncOperation = 'create' | 'update' | 'delete';
 
-// ── Core models ──────────────────────────────────────────────────────────────
+// ── Core models ─────────────────────────────────────────────────────────────
 
 export interface Client {
   id: string;
@@ -52,60 +83,57 @@ export interface Client {
 export interface Booking {
   id: string;
   client_id: string;
-  source: BookingSource;
-  status: BookingStatus;
-  // New lifecycle model (additive, backward compatible)
-  booking_status?: BookingLifecycleStatus | null;
-  payment_mode?: PaymentMode | null;
-  payment_status_v2?: PaymentSubStatus | null;
-  email_status?: EmailSubStatus | null;
-  calendar_status?: CalendarSubStatus | null;
-  slot_status?: SlotSubStatus | null;
   event_id: string | null;
-  session_type: SessionType | null;
+  session_type_id: string | null;
   starts_at: string;
   ends_at: string;
   timezone: string;
+  google_event_id: string | null;
   address_line: string;
   maps_url: string;
-  attended: boolean;
+  current_status: BookingCurrentStatus;
   notes: string | null;
-  confirm_token_hash: string | null;
-  confirm_expires_at: string | null;
-  manage_token_hash: string;
-  checkout_session_id: string | null;
-  checkout_hold_expires_at: string | null;
-  payment_due_at: string | null;
-  hold_expires_at?: string | null; // mirrors checkout_hold_expires_at for unified terminology
-  payment_due_at_v2?: string | null; // alias if needed
-  payment_due_reminder_scheduled_at: string | null;
-  payment_due_reminder_sent_at: string | null;
-  followup_scheduled_at: string | null;
-  followup_sent_at: string | null;
-  reminder_email_opt_in: boolean;
-  reminder_whatsapp_opt_in: boolean;
-  reminder_24h_scheduled_at: string | null;
-  reminder_24h_sent_at: string | null;
-  google_event_id: string | null;
-  // Derived milestone timestamps
-  email_confirmed_at?: string | null;
-  confirmed_at?: string | null;
-  cancelled_at?: string | null;
-  expired_at?: string | null;
-  reminder_36h_sent_at?: string | null;
-  last_payment_link_sent_at?: string | null;
-  expired_reason?: 'hold_timeout' | 'payment_timeout' | 'email_confirmation_timeout' | null;
-  cancel_reason?: 'user_cancelled' | 'admin_cancelled' | 'payment_deadline_missed' | null;
-  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 
-  // Convenience fields from joins.
+  // Convenience fields from joins
   client_first_name?: string;
   client_last_name?: string | null;
   client_email?: string;
   client_phone?: string | null;
   event_title?: string | null;
+  session_type_title?: string | null;
+}
+
+export interface BookingEventRecord {
+  id: string;
+  booking_id: string;
+  event_type: BookingEventType;
+  source: BookingEventSource;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface BookingSideEffect {
+  id: string;
+  booking_event_id: string;
+  entity: BookingSideEffectEntity;
+  effect_intent: BookingEffectIntent;
+  status: BookingSideEffectStatus;
+  expires_at: string | null;
+  max_attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookingSideEffectAttempt {
+  id: string;
+  booking_side_effect_id: string;
+  attempt_num: number;
+  api_log_id: string | null;
+  status: BookingSideEffectAttemptStatus;
+  error_message: string | null;
+  created_at: string;
 }
 
 export interface Event {
@@ -124,6 +152,9 @@ export interface Event {
   currency: string;
   capacity: number;
   status: EventStatus;
+  image_key?: string | null;
+  drive_file_id?: string | null;
+  image_alt?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -148,7 +179,7 @@ export interface EventReminderSubscription {
   created_at: string;
 }
 
-// ── Session Types (offers) ──────────────────────────────────────────────────
+// ── Session types (offers) ─────────────────────────────────────────────────
 
 export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
 
@@ -172,7 +203,8 @@ export interface SessionTypeRecord {
 
 export type NewSessionType = Omit<SessionTypeRecord, 'id' | 'created_at' | 'updated_at'>;
 export type SessionTypeUpdate = Partial<
-  Pick<SessionTypeRecord,
+  Pick<
+    SessionTypeRecord,
     | 'title'
     | 'slug'
     | 'short_description'
@@ -257,18 +289,18 @@ export interface CalendarSyncFailure {
   status: FailureStatus;
 }
 
-// ── PA organizer view models ─────────────────────────────────────────────────
+// ── Admin/read models ───────────────────────────────────────────────────────
 
 export interface OrganizerBookingRow {
   booking_id: string;
-  source: BookingSource;
-  status: BookingStatus;
+  current_status: BookingCurrentStatus;
   event_id: string | null;
   event_title: string | null;
+  session_type_id: string | null;
+  session_type_title: string | null;
   starts_at: string;
   ends_at: string;
   timezone: string;
-  attended: boolean;
   notes: string | null;
   client_id: string;
   client_first_name: string;
@@ -277,10 +309,12 @@ export interface OrganizerBookingRow {
   client_phone: string | null;
 }
 
-// ── Repository input types ───────────────────────────────────────────────────
+// ── Repository input types ──────────────────────────────────────────────────
 
 export type NewClient = Omit<Client, 'id' | 'created_at' | 'updated_at'>;
-export type NewBooking = Omit<Booking,
+
+export type NewBooking = Omit<
+  Booking,
   | 'id'
   | 'created_at'
   | 'updated_at'
@@ -289,7 +323,13 @@ export type NewBooking = Omit<Booking,
   | 'client_email'
   | 'client_phone'
   | 'event_title'
+  | 'session_type_title'
 >;
+
+export type NewBookingEvent = Omit<BookingEventRecord, 'id' | 'created_at'>;
+export type NewBookingSideEffect = Omit<BookingSideEffect, 'id' | 'created_at' | 'updated_at'>;
+export type NewBookingSideEffectAttempt = Omit<BookingSideEffectAttempt, 'id' | 'created_at'>;
+
 export type NewPayment = Omit<Payment, 'id' | 'created_at' | 'updated_at'>;
 export type NewContactMessage = Omit<ContactMessage, 'id' | 'created_at' | 'updated_at'>;
 export type NewEventReminderSubscription = Omit<EventReminderSubscription, 'id' | 'created_at'>;
@@ -298,55 +338,26 @@ export type NewEventLateAccessLink = Omit<EventLateAccessLink, 'id' | 'created_a
 export type BookingUpdate = Partial<
   Pick<
     Booking,
-    | 'status'
-    | 'session_type'
+    | 'event_id'
+    | 'session_type_id'
     | 'starts_at'
     | 'ends_at'
     | 'timezone'
-    | 'attended'
-    | 'notes'
-    | 'confirm_token_hash'
-    | 'confirm_expires_at'
-    | 'manage_token_hash'
-    | 'checkout_session_id'
-    | 'checkout_hold_expires_at'
-    | 'payment_due_at'
-    | 'payment_due_reminder_scheduled_at'
-    | 'payment_due_reminder_sent_at'
-    | 'followup_scheduled_at'
-    | 'followup_sent_at'
-    | 'reminder_24h_scheduled_at'
-    | 'reminder_24h_sent_at'
     | 'google_event_id'
-    | 'booking_status'
-    | 'payment_mode'
-    | 'payment_status_v2'
-    | 'email_status'
-    | 'calendar_status'
-    | 'slot_status'
-    | 'hold_expires_at'
-    | 'payment_due_at_v2'
-    | 'email_confirmed_at'
-    | 'confirmed_at'
-    | 'cancelled_at'
-    | 'expired_at'
-    | 'reminder_36h_sent_at'
-    | 'last_payment_link_sent_at'
-    | 'expired_reason'
-    | 'cancel_reason'
-    | 'metadata'
+    | 'address_line'
+    | 'maps_url'
+    | 'current_status'
+    | 'notes'
   >
 >;
 
-export type ClientUpdate = Partial<
-  Pick<Client, 'first_name' | 'last_name' | 'email' | 'phone'>
->;
+export type ClientUpdate = Partial<Pick<Client, 'first_name' | 'last_name' | 'email' | 'phone'>>;
 
 export type PaymentUpdate = Partial<
   Pick<Payment, 'status' | 'provider_payment_id' | 'invoice_url' | 'paid_at' | 'raw_payload'>
 >;
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// ── Shared helpers ──────────────────────────────────────────────────────────
 
 export interface TimeSlot {
   start: string;

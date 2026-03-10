@@ -1,75 +1,105 @@
-# State Machines
+# Booking State Model
 
-This document defines explicit status lifecycles and transitions for **Bookings (1:1 sessions)** and **Event Bookings**.
+The booking lifecycle is event-driven.
 
-## Bookings (1:1 sessions)
+- Canonical truth: `booking_events`
+- Cached read status: `bookings.current_status`
+- Intended reactions: `booking_side_effects`
+- Execution/retry history: `booking_side_effect_attempts`
 
-**Statuses:** `pending_email`, `pending_payment`, `confirmed`, `cash_ok`, `cancelled`, `expired`
+## Current Status Cache
 
-### Transition Table
+`bookings.current_status` values:
 
-| From | Trigger | To | Notes |
-|---|---|---|---|
-| — | Create intro booking | `pending_email` | Create `confirm_token_hash` + `confirm_expires_at`; send confirm email; set `followup_scheduled_at = now + 2h`. No calendar event yet. |
-| `pending_email` | Intro email confirmed within window | `confirmed` | Free intro skips payment lifecycle; create calendar event; schedule 24h reminder if opted in. |
-| — | Create booking (Pay Later, paid session) | `pending_email` | Create `confirm_token_hash` + `confirm_expires_at`; send confirm email; set `followup_scheduled_at = now + 2h`. No calendar event yet. |
-| `pending_email` | Paid-session email confirmed within window | `pending_payment` | Create calendar event; set `payment_due_at = starts_at - 24h`; compute `payment_due_reminder_scheduled_at`; persist a checkout recovery URL; attempt payment email. |
-| `pending_email` | `confirm_expires_at` reached | `pending_email` | Confirmation expiry is token-only. The booking remains pending until followed up or abandoned. |
-| `pending_email` | `followup_scheduled_at` reached and not confirmed | `pending_email` | Send **one** follow-up email; set `followup_sent_at`. |
-| — | Create booking (Pay Now, paid session) | `pending_payment` | Create Stripe Checkout; set `checkout_hold_expires_at = now + 15m`. |
-| `pending_payment` | Stripe webhook success | `confirmed` | Persist Stripe refs + invoice_url; create/update calendar event if missing; attempt confirmation email; checkout success page can recover the manage link. |
-| `pending_payment` | `checkout_hold_expires_at` reached (Pay Now) and unpaid | `expired` | Release hold; no calendar event. |
-| `pending_payment` | `payment_due_at` reached (Pay Later) and unpaid | `cancelled` | Cancel booking; remove/mark cancelled calendar event; send cancellation email. |
-| `pending_payment` | Admin sets cash on location | `cash_ok` | Bypasses auto-cancel at `payment_due_at`. |
-| `confirmed` | User cancels via manage link | `cancelled` | Enforce policy cutoffs as product decision. |
-| `confirmed` | User reschedules via manage link | `confirmed` | Update calendar event time; preserve payment linkage. |
-| any | Admin cancels | `cancelled` | Ensure calendar event is removed/updated and user notified. |
+```text
+PENDING_CONFIRMATION
+SLOT_CONFIRMED
+PAID
+EXPIRED
+CANCELED
+CLOSED
+```
 
-### Invariants
+This cache is synchronized from incoming business events. It is not the source of truth.
 
-- `pending_email` ⇒ booking is **not reserved** yet; no calendar event exists.
-- `pending_payment` can mean:
-  - Pay Now: reserved only until `checkout_hold_expires_at`.
-  - Pay Later: reserved (calendar event exists) but must be paid by `payment_due_at`.
-- Manage links are stable per booking and can be re-derived from the booking record.
-- Stripe webhooks must be **idempotent**.
+## Business Events
 
-### Reminder Timing Rules (Payment Due)
+`booking_events.event_type` values:
 
-For pay-later bookings:
+```text
+BOOKING_FORM_SUBMITTED_FREE
+BOOKING_FORM_SUBMITTED_PAY_NOW
+BOOKING_FORM_SUBMITTED_PAY_LATER
+EMAIL_CONFIRMED
+BOOKING_RESCHEDULED
+SLOT_RESERVATION_REMINDER_SENT
+PAYMENT_REMINDER_SENT
+DATE_REMINDER_SENT
+BOOKING_EXPIRED
+BOOKING_CANCELED
+CASH_AUTHORIZED
+PAYMENT_SETTLED
+SLOT_CONFIRMED
+BOOKING_CLOSED
+```
 
-- `payment_due_at = starts_at - 24h`
-- preferred reminder time: `payment_due_at - 6h`
-- if that falls in **sleep hours** (22:00–08:00 local time), snap to **18:00 day-before**
-- if 18:00 day-before already passed, snap to **08:00 next reasonable morning**
+`booking_events.source` values:
 
-Persist:
-- `payment_due_reminder_scheduled_at`
-- `payment_due_reminder_sent_at`
+```text
+public_ui
+admin_ui
+job
+webhook
+system
+```
 
----
+## Side-Effect Policy
 
-## Event Bookings
+The event-to-effect mapping is centralized in `booking-effect-policy.ts`.
 
-**Statuses:** `pending_email`, `pending_payment`, `confirmed`, `cancelled`, `expired`
+Key effect intents:
 
-### Transition Table
+```text
+send_email_confirmation
+send_slot_reservation_reminder
+send_payment_reminder
+send_date_reminder
+send_booking_failed_notification
+send_booking_cancellation_confirmation
+reserve_slot
+update_reserved_slot
+cancel_reserved_slot
+confirm_reserved_slot
+create_stripe_checkout
+verify_stripe_payment
+send_payment_link
+expire_booking
+close_booking
+```
 
-| From | Trigger | To | Notes |
-|---|---|---|---|
-| — | Book free event | `pending_email` | Phone required; set `confirm_expires_at = now + 15m`; set `followup_scheduled_at = now + 2h`; send confirm email. |
-| `pending_email` | Email confirmed within 15m | `confirmed` | Attempt confirmation email (maps + manage link); schedule 24h reminder if opted in. |
-| `pending_email` | `confirm_expires_at` reached | `pending_email` | Confirmation expiry is token-only; seat is not secured until confirmed. |
-| `pending_email` | `followup_scheduled_at` reached and not confirmed | `pending_email` | Send **one** follow-up; set `followup_sent_at`. |
-| — | Book paid event | `pending_payment` | Create Stripe Checkout; set `checkout_hold_expires_at`. No separate +2h unpaid follow-up exists in the current implementation. |
-| `pending_payment` | Stripe webhook success | `confirmed` | Store payment refs + invoice_url; attempt confirmation; schedule 24h reminder if opted in. |
-| `pending_payment` | `checkout_hold_expires_at` reached and unpaid | `expired` | Do not count toward capacity. |
-| `confirmed` | User cancels via manage link | `cancelled` | Enforce policy cutoffs as product decision. |
-| any | Admin cancels | `cancelled` | Notify user as product requires. |
-| — | Book event via valid late-access link | `confirmed` or `pending_payment` | Same booking lifecycle as normal event booking; late-access only bypasses the public time cutoff. |
+`booking_side_effects.status`:
 
-### Capacity Rule
+```text
+pending
+processing
+success
+failed
+dead
+```
 
-- Capacity counts confirmed bookings plus active `pending_payment` holds that have not yet expired.
-- One booking row represents one attendee.
-- There is no separate event registration, guest, or attendee table in the current design.
+`booking_side_effect_attempts.status`:
+
+```text
+success
+fail
+```
+
+## Deadline Policy
+
+Configured in code and persisted per effect:
+
+- non-paid confirmation: `15 minutes`
+- pay-now checkout completion: `45 minutes`
+- payment due threshold: `starts_at - 24 hours`
+
+The calculated deadline is stored as `booking_side_effects.expires_at`.

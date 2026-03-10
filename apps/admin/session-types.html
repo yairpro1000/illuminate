@@ -137,8 +137,8 @@
             <input id="fDuration" type="number" min="1" />
           </div>
           <div class="col">
-            <label for="fPrice">Price (CHF cents)</label>
-            <input id="fPrice" type="number" min="0" />
+            <label for="fPrice">Price (CHF)</label>
+            <input id="fPrice" type="number" min="0" step="1" />
           </div>
           <div class="col">
             <label for="fCurrency">Currency</label>
@@ -219,6 +219,29 @@
           return body;
         }
 
+        function parsePrice(priceInput) {
+          const normalized = String(priceInput ?? '').trim();
+          if (!normalized) return 0;
+          const amount = Number(normalized);
+          if (!Number.isFinite(amount) || amount < 0 || !Number.isInteger(amount)) return null;
+          return amount;
+        }
+
+        function formatPrice(price, currency) {
+          const amount = Number(price || 0);
+          const code = String(currency || 'CHF').toUpperCase();
+          try {
+            return new Intl.NumberFormat(undefined, {
+              style: 'currency',
+              currency: code,
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 0,
+            }).format(amount);
+          } catch (_) {
+            return `${amount} ${code}`;
+          }
+        }
+
         function render() {
           rowsBody.innerHTML = '';
           if (!state.rows.length) {
@@ -230,7 +253,7 @@
           for (const r of state.rows) {
             const tr = document.createElement('tr'); tr.className = 'clickable';
             tr.appendChild(cell(r.title));
-            tr.appendChild(cell(`${(r.price/100).toFixed(2)} ${r.currency}`));
+            tr.appendChild(cell(formatPrice(r.price, r.currency)));
             tr.appendChild(cell(`${r.duration_minutes} min`));
             tr.appendChild(cell(r.status));
             tr.appendChild(cell(String(r.sort_order || 0)));
@@ -254,7 +277,7 @@
           fShort.value = state.editing.short_description || '';
           fDesc.value = state.editing.description || '';
           fDuration.value = state.editing.duration_minutes || 60;
-          fPrice.value = state.editing.price || 0;
+          fPrice.value = Number(state.editing.price || 0);
           fCurrency.value = state.editing.currency || 'CHF';
           fStatus.value = state.editing.status || 'draft';
           fSort.value = state.editing.sort_order || 0;
@@ -268,9 +291,11 @@
         async function save() {
           if (state.saving) return; state.saving = true; editSaveEl.disabled = true; msg(editMsgEl, 'Saving…');
           try {
+            const price = parsePrice(fPrice.value);
+            if (price === null) throw new Error('Price must be a non-negative whole-number CHF value.');
             const payload = {
               title: fTitle.value.trim(), slug: fSlug.value.trim(), short_description: fShort.value.trim() || null,
-              description: fDesc.value, duration_minutes: Number(fDuration.value)||0, price: Number(fPrice.value)||0,
+              description: fDesc.value, duration_minutes: Number(fDuration.value)||0, price,
               currency: fCurrency.value.trim() || 'CHF', status: fStatus.value, sort_order: Number(fSort.value)||0,
               image_key: state.editing.image_key || null, image_alt: fAlt.value.trim() || null, drive_file_id: state.editing.drive_file_id || null,
             };

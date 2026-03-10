@@ -1,27 +1,14 @@
--- Booking-centric schema alignment (docs-first)
--- This migration intentionally removes legacy registration/attendee tables.
+-- Fresh-model schema baseline for booking domain and related app tables.
+-- This migration is intentionally create-only (no ALTER/backfill logic).
 
 create extension if not exists "pgcrypto";
 
--- Enums used by current docs
-
-do $$ begin
-  create type booking_source as enum ('session', 'event');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type booking_status as enum (
-    'pending_email',
-    'pending_payment',
-    'confirmed',
-    'cash_ok',
-    'cancelled',
-    'expired'
-  );
-exception when duplicate_object then null; end $$;
-
 do $$ begin
   create type event_status as enum ('draft', 'published', 'cancelled', 'sold_out');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type session_type_status as enum ('draft', 'active', 'hidden');
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -44,7 +31,6 @@ do $$ begin
   create type contact_message_status as enum ('new', 'read', 'replied', 'archived', 'spam');
 exception when duplicate_object then null; end $$;
 
--- clients
 create table if not exists clients (
   id uuid primary key default gen_random_uuid(),
   first_name text not null,
@@ -55,27 +41,28 @@ create table if not exists clients (
   updated_at timestamptz not null default now()
 );
 
-alter table clients
-  add column if not exists first_name text,
-  add column if not exists last_name text,
-  add column if not exists email text,
-  add column if not exists phone text,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
-
-do $$ begin
-  alter table clients alter column first_name set not null;
-exception when others then null; end $$;
-do $$ begin
-  alter table clients alter column last_name drop not null;
-exception when others then null; end $$;
-do $$ begin
-  alter table clients alter column email set not null;
-exception when others then null; end $$;
-
 create unique index if not exists idx_clients_email_unique on clients(lower(email));
 
--- events
+create table if not exists session_types (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  slug text not null unique,
+  short_description text null,
+  description text not null,
+  duration_minutes integer not null check (duration_minutes > 0),
+  price integer not null check (price >= 0),
+  currency text not null default 'CHF',
+  status session_type_status not null default 'draft',
+  sort_order integer not null default 0,
+  image_key text null,
+  drive_file_id text null,
+  image_alt text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_session_types_status_order on session_types(status, sort_order, created_at);
+
 create table if not exists events (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
@@ -90,123 +77,132 @@ create table if not exists events (
   is_paid boolean not null default false,
   price_per_person_cents integer null,
   currency text not null default 'CHF',
-  capacity integer not null default 24,
+  capacity integer not null check (capacity > 0),
   status event_status not null default 'draft',
+  image_key text null,
+  drive_file_id text null,
+  image_alt text null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint event_time_order check (ends_at > starts_at),
+  constraint paid_event_requires_price
+    check ((is_paid = false) or (price_per_person_cents is not null and price_per_person_cents > 0))
 );
 
-alter table events
-  add column if not exists timezone text not null default 'Europe/Zurich',
-  add column if not exists location_name text,
-  add column if not exists address_line text,
-  add column if not exists maps_url text,
-  add column if not exists is_paid boolean not null default false,
-  add column if not exists price_per_person_cents integer,
-  add column if not exists currency text not null default 'CHF',
-  add column if not exists capacity integer not null default 24,
-  add column if not exists status event_status not null default 'draft',
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+create index if not exists idx_events_status_starts on events(status, starts_at);
 
--- bookings
 create table if not exists bookings (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references clients(id) on delete restrict,
-  source booking_source not null,
-  status booking_status not null,
   event_id uuid null references events(id) on delete restrict,
-  session_type text null,
+  session_type_id uuid null references session_types(id) on delete restrict,
   starts_at timestamptz not null,
   ends_at timestamptz not null,
   timezone text not null default 'Europe/Zurich',
+  google_event_id text null,
   address_line text not null,
   maps_url text not null,
-  attended boolean not null default false,
+  current_status text not null check (
+    current_status in ('PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID', 'EXPIRED', 'CANCELED', 'CLOSED')
+  ),
   notes text null,
-  confirm_token_hash text null,
-  confirm_expires_at timestamptz null,
-  manage_token_hash text not null,
-  checkout_session_id text null,
-  checkout_hold_expires_at timestamptz null,
-  payment_due_at timestamptz null,
-  payment_due_reminder_scheduled_at timestamptz null,
-  payment_due_reminder_sent_at timestamptz null,
-  followup_scheduled_at timestamptz null,
-  followup_sent_at timestamptz null,
-  reminder_email_opt_in boolean not null default false,
-  reminder_whatsapp_opt_in boolean not null default false,
-  reminder_24h_scheduled_at timestamptz null,
-  reminder_24h_sent_at timestamptz null,
-  google_event_id text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint bookings_time_order check (ends_at > starts_at),
+  constraint bookings_exactly_one_kind check (
+    ((event_id is not null)::int + (session_type_id is not null)::int) = 1
+  )
+);
+
+create index if not exists idx_bookings_client_created on bookings(client_id, created_at desc);
+create index if not exists idx_bookings_event_status_start on bookings(event_id, current_status, starts_at) where event_id is not null;
+create index if not exists idx_bookings_session_status_start on bookings(session_type_id, current_status, starts_at) where session_type_id is not null;
+create index if not exists idx_bookings_status_start on bookings(current_status, starts_at);
+create index if not exists idx_bookings_google_event_id on bookings(google_event_id) where google_event_id is not null;
+
+create table if not exists booking_events (
+  id uuid primary key default gen_random_uuid(),
+  booking_id uuid not null references bookings(id) on delete cascade,
+  event_type text not null check (
+    event_type in (
+      'BOOKING_FORM_SUBMITTED_FREE',
+      'BOOKING_FORM_SUBMITTED_PAY_NOW',
+      'BOOKING_FORM_SUBMITTED_PAY_LATER',
+      'EMAIL_CONFIRMED',
+      'BOOKING_RESCHEDULED',
+      'SLOT_RESERVATION_REMINDER_SENT',
+      'PAYMENT_REMINDER_SENT',
+      'DATE_REMINDER_SENT',
+      'BOOKING_EXPIRED',
+      'BOOKING_CANCELED',
+      'CASH_AUTHORIZED',
+      'PAYMENT_SETTLED',
+      'SLOT_CONFIRMED',
+      'BOOKING_CLOSED'
+    )
+  ),
+  source text not null check (source in ('public_ui', 'admin_ui', 'job', 'webhook', 'system')),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_booking_events_booking_created on booking_events(booking_id, created_at desc);
+create index if not exists idx_booking_events_type_created on booking_events(event_type, created_at desc);
+create index if not exists idx_booking_events_confirm_token_hash
+  on booking_events((payload ->> 'confirm_token_hash'), created_at desc)
+  where payload ? 'confirm_token_hash';
+
+create table if not exists booking_side_effects (
+  id uuid primary key default gen_random_uuid(),
+  booking_event_id uuid not null references booking_events(id) on delete cascade,
+  entity text not null check (entity in ('email', 'calendar', 'payment', 'whatsapp')),
+  effect_intent text not null check (
+    effect_intent in (
+      'send_email_confirmation',
+      'send_slot_reservation_reminder',
+      'send_payment_reminder',
+      'send_date_reminder',
+      'send_booking_failed_notification',
+      'send_booking_cancellation_confirmation',
+      'reserve_slot',
+      'update_reserved_slot',
+      'cancel_reserved_slot',
+      'confirm_reserved_slot',
+      'create_stripe_checkout',
+      'verify_stripe_payment',
+      'send_payment_link',
+      'expire_booking',
+      'close_booking'
+    )
+  ),
+  status text not null check (status in ('pending', 'processing', 'success', 'failed', 'dead')),
+  expires_at timestamptz null,
+  max_attempts integer not null default 5 check (max_attempts >= 1),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-alter table bookings
-  add column if not exists source booking_source not null default 'session',
-  add column if not exists event_id uuid,
-  add column if not exists session_type text,
-  add column if not exists attended boolean not null default false,
-  add column if not exists notes text,
-  add column if not exists checkout_session_id text,
-  add column if not exists google_event_id text,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
+create index if not exists idx_booking_side_effects_status_created on booking_side_effects(status, created_at);
+create index if not exists idx_booking_side_effects_event_created on booking_side_effects(booking_event_id, created_at);
+create index if not exists idx_booking_side_effects_pending_due
+  on booking_side_effects(expires_at, created_at)
+  where status in ('pending', 'failed');
+create index if not exists idx_booking_side_effects_intent_status on booking_side_effects(effect_intent, status, created_at);
 
--- Remove legacy booking columns no longer part of docs
-alter table bookings drop column if exists booking_type;
-alter table bookings drop column if exists attendee_count;
-alter table bookings drop column if exists client_name;
-alter table bookings drop column if exists client_email;
-alter table bookings drop column if exists client_phone;
+create table if not exists booking_side_effect_attempts (
+  id uuid primary key default gen_random_uuid(),
+  booking_side_effect_id uuid not null references booking_side_effects(id) on delete cascade,
+  attempt_num integer not null check (attempt_num >= 1),
+  api_log_id text null,
+  status text not null check (status in ('success', 'fail')),
+  error_message text null,
+  created_at timestamptz not null default now(),
+  unique (booking_side_effect_id, attempt_num)
+);
 
--- Ensure foreign keys
+create index if not exists idx_booking_side_effect_attempts_effect_created
+  on booking_side_effect_attempts(booking_side_effect_id, created_at desc);
 
-do $$ begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'bookings_client_id_fkey'
-  ) then
-    alter table bookings
-      add constraint bookings_client_id_fkey
-      foreign key (client_id) references clients(id) on delete restrict;
-  end if;
-end $$;
-
-do $$ begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'bookings_event_id_fkey'
-  ) then
-    alter table bookings
-      add constraint bookings_event_id_fkey
-      foreign key (event_id) references events(id) on delete restrict;
-  end if;
-end $$;
-
--- Replace old shape check with docs shape
-alter table bookings drop constraint if exists bookings_source_shape;
-
-do $$ begin
-  alter table bookings
-    add constraint bookings_source_shape check (
-      (source = 'event' and event_id is not null) or
-      (source = 'session' and event_id is null)
-    );
-exception when duplicate_object then null; end $$;
-
-create index if not exists idx_bookings_client on bookings(client_id, created_at desc);
-create index if not exists idx_bookings_event_status on bookings(event_id, status, starts_at) where event_id is not null;
-create index if not exists idx_bookings_source_starts on bookings(source, starts_at);
-create index if not exists idx_bookings_status on bookings(status);
-create index if not exists idx_bookings_confirm_expires on bookings(confirm_expires_at) where confirm_expires_at is not null;
-create index if not exists idx_bookings_hold_expires on bookings(checkout_hold_expires_at) where checkout_hold_expires_at is not null;
-create index if not exists idx_bookings_payment_due on bookings(payment_due_at) where payment_due_at is not null;
-
--- Remove legacy registration/attendee model
-drop table if exists event_registrations cascade;
-drop table if exists event_attendees cascade;
-
--- payments: booking-linked only
 create table if not exists payments (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references bookings(id) on delete cascade,
@@ -223,40 +219,10 @@ create table if not exists payments (
   updated_at timestamptz not null default now()
 );
 
-alter table payments
-  add column if not exists provider text,
-  add column if not exists provider_payment_id text,
-  add column if not exists checkout_url text,
-  add column if not exists raw_payload jsonb,
-  add column if not exists paid_at timestamptz,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
-
--- Migrate legacy stripe_checkout_session_id if present.
-do $$ begin
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public' and table_name = 'payments' and column_name = 'stripe_checkout_session_id'
-  ) then
-    update payments
-    set provider = coalesce(provider, 'stripe'),
-        provider_payment_id = coalesce(provider_payment_id, stripe_checkout_session_id)
-    where provider_payment_id is null;
-  end if;
-end $$;
-
-alter table payments drop column if exists kind;
-alter table payments drop column if exists event_registration_id;
-alter table payments drop column if exists stripe_checkout_session_id;
-alter table payments drop column if exists stripe_payment_intent_id;
-alter table payments drop column if exists stripe_invoice_id;
-
 create index if not exists idx_payments_booking on payments(booking_id, created_at desc);
 create index if not exists idx_payments_status on payments(status, created_at desc);
 create index if not exists idx_payments_provider_payment on payments(provider, provider_payment_id);
 
--- failure_logs: durable retry state and compact operational errors
 create table if not exists failure_logs (
   id uuid primary key default gen_random_uuid(),
   source failure_source not null,
@@ -285,32 +251,6 @@ create table if not exists failure_logs (
   updated_at timestamptz not null default now()
 );
 
-alter table failure_logs
-  add column if not exists source failure_source,
-  add column if not exists operation text,
-  add column if not exists severity failure_severity not null default 'error',
-  add column if not exists status failure_status not null default 'open',
-  add column if not exists request_id text,
-  add column if not exists idempotency_key text,
-  add column if not exists booking_id uuid,
-  add column if not exists payment_id uuid,
-  add column if not exists client_id uuid,
-  add column if not exists stripe_event_id text,
-  add column if not exists stripe_checkout_session_id text,
-  add column if not exists google_event_id text,
-  add column if not exists email_provider_message_id text,
-  add column if not exists error_code text,
-  add column if not exists error_message text,
-  add column if not exists error_stack text,
-  add column if not exists http_status integer,
-  add column if not exists retryable boolean not null default true,
-  add column if not exists context jsonb not null default '{}'::jsonb,
-  add column if not exists attempts integer not null default 0,
-  add column if not exists next_retry_at timestamptz,
-  add column if not exists resolved_at timestamptz,
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
-
 create index if not exists idx_failure_logs_status on failure_logs(status, created_at desc);
 create index if not exists idx_failure_logs_source on failure_logs(source, created_at desc);
 create index if not exists idx_failure_logs_request_id on failure_logs(request_id) where request_id is not null;
@@ -319,10 +259,19 @@ create index if not exists idx_failure_logs_payment on failure_logs(payment_id);
 create index if not exists idx_failure_logs_client on failure_logs(client_id);
 create index if not exists idx_failure_logs_stripe_event on failure_logs(stripe_event_id);
 create index if not exists idx_failure_logs_next_retry on failure_logs(next_retry_at) where next_retry_at is not null;
+create index if not exists idx_failure_logs_calendar_sync_due
+  on failure_logs(next_retry_at, booking_id)
+  where source = 'calendar'
+    and operation = 'calendar_sync'
+    and retryable = true
+    and resolved_at is null
+    and next_retry_at is not null;
+create unique index if not exists idx_failure_logs_calendar_sync_active_unique
+  on failure_logs(booking_id)
+  where source = 'calendar'
+    and operation = 'calendar_sync'
+    and resolved_at is null;
 
-alter table failure_logs drop column if exists job_run_id;
-
--- public contact form submissions
 create table if not exists contact_messages (
   id uuid primary key default gen_random_uuid(),
   client_id uuid null references clients(id) on delete set null,
@@ -337,23 +286,10 @@ create table if not exists contact_messages (
   updated_at timestamptz not null default now()
 );
 
-alter table contact_messages
-  add column if not exists client_id uuid,
-  add column if not exists first_name text,
-  add column if not exists last_name text,
-  add column if not exists email text,
-  add column if not exists topic text,
-  add column if not exists message text,
-  add column if not exists status contact_message_status not null default 'new',
-  add column if not exists source text not null default 'website_contact_form',
-  add column if not exists created_at timestamptz not null default now(),
-  add column if not exists updated_at timestamptz not null default now();
-
 create index if not exists idx_contact_messages_status_created on contact_messages(status, created_at desc);
 create index if not exists idx_contact_messages_email on contact_messages(email);
 create index if not exists idx_contact_messages_client_id on contact_messages(client_id);
 
--- Reminder signup for Illuminate evenings
 create table if not exists event_reminder_subscriptions (
   id uuid primary key default gen_random_uuid(),
   email text not null,
@@ -365,7 +301,6 @@ create table if not exists event_reminder_subscriptions (
   unique (email, event_family)
 );
 
--- Late-access links
 create table if not exists event_late_access_links (
   id uuid primary key default gen_random_uuid(),
   event_id uuid not null references events(id) on delete cascade,
@@ -377,3 +312,45 @@ create table if not exists event_late_access_links (
 );
 
 create index if not exists idx_event_late_access_event on event_late_access_links(event_id, expires_at desc);
+
+create or replace function set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+create trigger trg_clients_updated_at
+before update on clients
+for each row execute function set_updated_at();
+
+create trigger trg_session_types_updated_at
+before update on session_types
+for each row execute function set_updated_at();
+
+create trigger trg_events_updated_at
+before update on events
+for each row execute function set_updated_at();
+
+create trigger trg_bookings_updated_at
+before update on bookings
+for each row execute function set_updated_at();
+
+create trigger trg_booking_side_effects_updated_at
+before update on booking_side_effects
+for each row execute function set_updated_at();
+
+create trigger trg_payments_updated_at
+before update on payments
+for each row execute function set_updated_at();
+
+create trigger trg_failure_logs_updated_at
+before update on failure_logs
+for each row execute function set_updated_at();
+
+create trigger trg_contact_messages_updated_at
+before update on contact_messages
+for each row execute function set_updated_at();

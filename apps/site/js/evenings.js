@@ -157,12 +157,46 @@
     const future = events.filter((e) => !(e.render && e.render.is_past));
     const past = events.filter((e) => Boolean(e.render && e.render.is_past));
 
-    const parts = [];
+    const futureCards = future.length
+      ? future.map((e) => renderCard(e, false)).join('')
+      : '<p class="events-empty">No upcoming evenings yet — check back soon.</p>';
 
-    parts.push(`<div class="events-section"><h3 class="heading-md">Upcoming</h3>${future.length ? future.map((e) => renderCard(e, false)).join('') : '<p>No upcoming evenings yet.</p>'}</div>`);
-    parts.push(`<div class="events-section" style="margin-top:2rem"><h3 class="heading-md">Past Evenings</h3>${past.length ? past.map((e) => renderCard(e, true)).join('') : '<p>No past evenings yet.</p>'}</div>`);
+    const pastCards = past.length
+      ? past.map((e) => renderCard(e, true)).join('')
+      : '<p class="events-empty">No past evenings yet.</p>';
 
-    grid.innerHTML = parts.join('');
+    grid.innerHTML = `
+      <div class="events-tabs">
+        <div class="events-tabs__nav" role="tablist" aria-label="Event categories">
+          <button class="events-tabs__tab is-active" role="tab" aria-selected="true" aria-controls="tab-upcoming" id="btn-upcoming">
+            Upcoming${future.length ? ` <span class="events-tabs__count">${future.length}</span>` : ''}
+          </button>
+          <button class="events-tabs__tab" role="tab" aria-selected="false" aria-controls="tab-past" id="btn-past">
+            Past Evenings${past.length ? ` <span class="events-tabs__count">${past.length}</span>` : ''}
+          </button>
+        </div>
+        <div class="events-tabs__panel" id="tab-upcoming" role="tabpanel" aria-labelledby="btn-upcoming">
+          <div class="events-grid">${futureCards}</div>
+        </div>
+        <div class="events-tabs__panel" id="tab-past" role="tabpanel" aria-labelledby="btn-past" hidden>
+          <div class="events-grid">${pastCards}</div>
+        </div>
+      </div>
+    `;
+
+    // Wire up tab switching
+    const tabs = grid.querySelectorAll('.events-tabs__tab');
+    const panels = grid.querySelectorAll('.events-tabs__panel');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((t) => { t.classList.remove('is-active'); t.setAttribute('aria-selected', 'false'); });
+        panels.forEach((p) => { p.hidden = true; });
+        tab.classList.add('is-active');
+        tab.setAttribute('aria-selected', 'true');
+        const panel = grid.querySelector('#' + tab.getAttribute('aria-controls'));
+        if (panel) panel.hidden = false;
+      });
+    });
 
     if (typeof initAddToCalendar === 'function') initAddToCalendar(grid);
 

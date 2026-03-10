@@ -28,7 +28,7 @@ export interface IEmailProvider {
   /** Session confirmation after payment/cash. */
   sendBookingConfirmation(booking: Booking, manageUrl: string, invoiceUrl: string | null): Promise<SendResult>;
 
-  /** Session reminder before payment_due_at. */
+  /** Session reminder before pay-later due threshold. */
   sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult>;
 
   /** Session reminder 24h before session. */
@@ -40,7 +40,7 @@ export interface IEmailProvider {
   /** Session cancellation. */
   sendBookingCancellation(booking: Booking): Promise<SendResult>;
 
-  /** Event (free) pending_email confirmation request. */
+  /** Event (free) pending-confirmation request. */
   sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult>;
 
   /** Event confirmation for free-confirmed or paid-success. */
@@ -54,6 +54,6 @@ export interface IEmailProvider {
   /** Event reminder 24h before event. */
   sendEventReminder24h(booking: Booking, event: Event, manageUrl: string): Promise<SendResult>;
 
-  /** Event follow-up for pending_email/pending_payment. */
+  /** Event follow-up for incomplete confirmation/payment flows. */
   sendEventFollowup(booking: Booking, event: Event, actionUrl: string): Promise<SendResult>;
 }

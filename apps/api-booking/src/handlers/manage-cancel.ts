@@ -18,7 +18,7 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       requestId: ctx.requestId,
     });
 
-    return ok({ booking_id: booking.id, status: 'cancelled' });
+    return ok({ booking_id: booking.id, status: 'CANCELED' });
   } catch (err) {
     return errorResponse(err);
   }
