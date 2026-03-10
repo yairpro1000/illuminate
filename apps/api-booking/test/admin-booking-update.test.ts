@@ -38,4 +38,30 @@ describe('Admin update booking', () => {
     const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
     expect(res.status).toBe(400);
   });
+
+  it('accepts text/plain JSON bodies for cross-origin admin requests', async () => {
+    const booking = baseBooking();
+    const refreshed = { booking_id: 'b1', client_id: 'c1', attended: false, notes: 'Plain text' } as any;
+    const repo = {
+      getBookingById: vi.fn().mockResolvedValue(booking),
+      updateClient: vi.fn().mockResolvedValue(undefined),
+      updateBooking: vi.fn().mockResolvedValue(undefined),
+      getOrganizerBookings: vi.fn().mockResolvedValue([refreshed]),
+    };
+    const ctx = makeCtx({ providers: { repository: repo } });
+    const req = new Request('https://api.local/api/admin/bookings/b1', {
+      method: 'POST',
+      headers: {
+        'Cf-Access-Authenticated-User-Email': 'admin@example.com',
+        'Content-Type': 'text/plain;charset=UTF-8',
+      },
+      body: JSON.stringify({
+        booking: { attended: false, notes: 'Plain text' },
+      }),
+    });
+
+    const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
+    expect(res.status).toBe(200);
+    expect(repo.updateBooking).toHaveBeenCalledWith('b1', expect.objectContaining({ notes: 'Plain text' }));
+  });
 });

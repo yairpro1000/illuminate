@@ -24,6 +24,15 @@ describe('Router integration (admin)', () => {
     expect(Array.isArray(body.services)).toBe(true);
   });
 
+  it('routes POST admin config updates without preflight-only methods', async () => {
+    const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
+    const req = adminRequest('POST', 'https://api.local/api/admin/config', { key: 'email', mode: 'resend' });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.effective_mode).toBe('resend');
+  });
+
   it('returns 401 for admin config without auth', async () => {
     const ctx = makeCtx();
     const req = new Request('https://api.local/api/admin/config', { method: 'GET' });

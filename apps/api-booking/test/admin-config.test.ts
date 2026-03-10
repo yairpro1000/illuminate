@@ -33,4 +33,21 @@ describe('Admin config overrides', () => {
     expect(body.effective_mode).toBe('mock');
     expect(body.override_mode).toBeNull();
   });
+
+  it('accepts text/plain JSON bodies for config updates', async () => {
+    const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
+    const req = new Request('https://api.local/api/admin/config', {
+      method: 'POST',
+      headers: {
+        'Cf-Access-Authenticated-User-Email': 'admin@example.com',
+        'Content-Type': 'text/plain;charset=UTF-8',
+      },
+      body: JSON.stringify({ key: 'email', mode: 'resend' }),
+    });
+
+    const res = await handleAdminPatchConfig(req, ctx);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.effective_mode).toBe('resend');
+  });
 });

@@ -76,6 +76,17 @@ function parseBookingFilters(url: URL): OrganizerBookingFilters {
   };
 }
 
+async function parseJsonBody(request: Request): Promise<Record<string, unknown>> {
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return await request.json() as Record<string, unknown>;
+  }
+
+  const raw = await request.text();
+  if (!raw.trim()) return {};
+  return JSON.parse(raw) as Record<string, unknown>;
+}
+
 // GET /api/admin/events
 export async function handleAdminGetEvents(request: Request, ctx: AppContext): Promise<Response> {
   try {
@@ -122,7 +133,7 @@ export async function handleAdminUpdateBooking(
     const booking = await ctx.providers.repository.getBookingById(bookingId);
     if (!booking) throw notFound('Booking not found');
 
-    const body = await request.json() as Record<string, unknown>;
+    const body = await parseJsonBody(request);
     const clientPatch = typeof body.client === 'object' && body.client !== null
       ? body.client as Record<string, unknown>
       : null;
@@ -229,7 +240,7 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
 export async function handleAdminPatchConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
     requireAdminAccess(request, ctx.env);
-    const body = await request.json() as Record<string, unknown>;
+    const body = await parseJsonBody(request);
     const key = typeof body.key === 'string' ? body.key as ServiceKey : null;
     const mode = typeof body.mode === 'string' ? body.mode : null;
     if (!key || !mode) throw badRequest('key and mode are required');
