@@ -16,7 +16,7 @@ function getExtFromMime(mime: string): string | null {
 }
 
 export async function handleAdminUploadImage(request: Request, ctx: AppContext): Promise<Response> {
-  requireAdminAccess(request, ctx.env);
+  await requireAdminAccess(request, ctx.env);
   const contentType = request.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('multipart/form-data')) {
     throw badRequest('content-type must be multipart/form-data');

@@ -12,6 +12,7 @@ export interface Env {
   API_ALLOWED_ORIGINS?: string;
   ADMIN_ALLOWED_EMAILS?: string;
   ADMIN_DEV_EMAIL?: string;
+  CLOUDFLARE_ACCESS_AUD?: string;
 
   // Set as secrets in prod — may be undefined in mock mode
   SUPABASE_URL: string;

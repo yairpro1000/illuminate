@@ -15,7 +15,7 @@ export async function handleGetSessionTypes(_request: Request, ctx: AppContext):
 // GET /api/admin/session-types
 export async function handleAdminGetSessionTypes(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const rows = await ctx.providers.repository.getAllSessionTypes();
     return ok({ session_types: rows });
   } catch (err) {
@@ -26,7 +26,7 @@ export async function handleAdminGetSessionTypes(request: Request, ctx: AppConte
 // POST /api/admin/session-types
 export async function handleAdminCreateSessionType(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const body = await request.json() as Record<string, any>;
     const required = ['title', 'slug', 'description', 'duration_minutes', 'price'];
     for (const f of required) if (!body[f]) throw badRequest(`${f} is required`);
@@ -58,7 +58,7 @@ export async function handleAdminUpdateSessionType(
   params: Record<string, string>,
 ): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const id = params.id?.trim();
     if (!id) throw badRequest('id is required');
     const body = await request.json() as Record<string, any>;

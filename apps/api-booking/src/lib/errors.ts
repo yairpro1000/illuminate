@@ -29,6 +29,10 @@ export function unauthorized(message = 'Unauthorized'): ApiError {
   return new ApiError(401, 'UNAUTHORIZED', message);
 }
 
+export function forbidden(message = 'Forbidden'): ApiError {
+  return new ApiError(403, 'FORBIDDEN', message);
+}
+
 export function conflict(message: string): ApiError {
   return new ApiError(409, 'CONFLICT', message);
 }

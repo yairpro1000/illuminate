@@ -90,7 +90,7 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
 // GET /api/admin/events
 export async function handleAdminGetEvents(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const events = await ctx.providers.repository.getPublishedEvents();
     return ok({
       events: events.map((event) => ({
@@ -110,7 +110,7 @@ export async function handleAdminGetEvents(request: Request, ctx: AppContext): P
 // GET /api/admin/bookings
 export async function handleAdminGetBookings(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const filters = parseBookingFilters(new URL(request.url));
     const rows = await ctx.providers.repository.getOrganizerBookings(filters);
     return ok({ rows });
@@ -126,7 +126,7 @@ export async function handleAdminUpdateBooking(
   params: Record<string, string>,
 ): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const bookingId = params.bookingId?.trim();
     if (!bookingId) throw badRequest('bookingId is required');
 
@@ -190,7 +190,7 @@ export async function handleAdminCreateLateAccessLink(
   params: Record<string, string>,
 ): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const eventId = params.eventId?.trim();
     if (!eventId) throw badRequest('eventId is required');
 
@@ -222,7 +222,7 @@ export async function handleAdminCreateLateAccessLink(
 // GET /api/admin/config
 export async function handleAdminGetConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const overrides = getAllOverrides();
     const services = SERVICE_MODES.map(({ key, label, modes }) => {
       const envMode = getEnvMode(key, ctx.env);
@@ -239,7 +239,7 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
 // PATCH /api/admin/config
 export async function handleAdminPatchConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const body = await parseJsonBody(request);
     const key = typeof body.key === 'string' ? body.key as ServiceKey : null;
     const mode = typeof body.mode === 'string' ? body.mode : null;
@@ -288,7 +288,7 @@ export async function handleAdminCreateReminderSubscription(
   ctx: AppContext,
 ): Promise<Response> {
   try {
-    requireAdminAccess(request, ctx.env);
+    await requireAdminAccess(request, ctx.env);
     const body = await request.json() as Record<string, unknown>;
     const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
     if (!email) throw badRequest('email is required');

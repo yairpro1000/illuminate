@@ -62,6 +62,7 @@ IMAGE_BASE_URL     = "http://localhost:8787/images" # dev placeholder; map via l
 # JOB_SECRET
 # ADMIN_ALLOWED_EMAILS
 # ADMIN_DEV_EMAIL
+# CLOUDFLARE_ACCESS_AUD
 
 [observability.logs]
 enabled = true
