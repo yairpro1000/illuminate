@@ -5,15 +5,41 @@
 
   function sanitizeBase(s) { return String(s || '').replace(/\/+$/g, ''); }
 
-  function computeRootBase() {
+  function getHostname() {
+    try {
+      if (window.__ADMIN_API_BASE_HOSTNAME__) return String(window.__ADMIN_API_BASE_HOSTNAME__).toLowerCase();
+    } catch (_) {}
+    return String(location.hostname || '').toLowerCase();
+  }
+
+  function getSearch() {
+    try {
+      if (typeof window.__ADMIN_API_BASE_SEARCH__ === 'string') return window.__ADMIN_API_BASE_SEARCH__;
+    } catch (_) {}
+    return String(location.search || '');
+  }
+
+  function isLocalhost() {
+    return !!LOCAL_HOSTS[getHostname()];
+  }
+
+  function getStoredBase() {
+    if (!isLocalhost()) return '';
     try {
       var fromStorage = localStorage.getItem(STORAGE_KEY);
-      if (fromStorage && fromStorage.trim()) return sanitizeBase(fromStorage);
-    } catch (_) {}
+      return fromStorage && fromStorage.trim() ? sanitizeBase(fromStorage) : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function computeRootBase() {
+    var fromStorage = getStoredBase();
+    if (fromStorage) return fromStorage;
 
     var envBase = (window.ENV && window.ENV.VITE_API_BASE) || '';
     if (String(envBase).trim()) return sanitizeBase(envBase);
-    if (LOCAL_HOSTS[location.hostname]) return 'http://localhost:8788';
+    if (isLocalhost()) return 'http://localhost:8788';
     return 'https://api.letsilluminate.co';
   }
 
@@ -21,19 +47,28 @@
     // Back-compat: if localStorage/admin_api_base is set, it is assumed to be
     // the full base (e.g. '/api' or 'https://api.host/api'). Otherwise build
     // from root API base + '/api'.
-    try {
-      var stored = localStorage.getItem(STORAGE_KEY);
-      if (stored && stored.trim()) return sanitizeBase(stored);
-    } catch (_) {}
+    var stored = getStoredBase();
+    if (stored) return stored;
     return sanitizeBase(computeRootBase()) + '/api';
   }
 
   function setApiBaseFromQuery() {
     try {
-      var params = new URLSearchParams(window.location.search);
+      var params = new URLSearchParams(getSearch());
       var fromQuery = (params.get('apiBase') || '').trim();
-      if (fromQuery) localStorage.setItem(STORAGE_KEY, sanitizeBase(fromQuery));
+      if (!fromQuery) return;
+      if (!isLocalhost()) {
+        // Prevent stale production breakage from old/debug query overrides.
+        try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, sanitizeBase(fromQuery));
     } catch (_) {}
+  }
+
+  function clearProdOverride() {
+    if (isLocalhost()) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
   }
 
   function resolveAdminUrl(path) {
@@ -47,6 +82,8 @@
   window.resolveAdminUrl = resolveAdminUrl;
   window.__setAdminApiBaseFromQuery = setApiBaseFromQuery;
 
+  // Never persist admin API base overrides on production domains.
+  clearProdOverride();
   // Initialize override from query if present
   setApiBaseFromQuery();
 })();

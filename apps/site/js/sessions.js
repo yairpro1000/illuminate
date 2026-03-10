@@ -120,17 +120,39 @@
     });
   }
 
+  /* ── Resolve the API base URL (mirrors api.js logic) ────── */
+  function resolveApiBase() {
+    if (window.API_BASE) return window.API_BASE.replace(/\/+$/, '');
+    try {
+      const stored = localStorage.getItem('API_BASE');
+      if (stored && stored.trim()) return stored.replace(/\/+$/, '');
+    } catch (_) { /* ignore */ }
+    const localHosts = ['localhost', '127.0.0.1', '::1'];
+    if (localHosts.indexOf(location.hostname) !== -1) return 'http://localhost:8788';
+    return '';
+  }
+
   /* ── Fetch with fallback ──────────────────────────────── */
   async function fetchSessionTypes() {
     // Try the live API first
     try {
-      const data = await getSessionTypes();
-      if (Array.isArray(data.session_types)) return data.session_types;
+      const base = resolveApiBase();
+      const res = await fetch(base + '/api/session-types', {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.session_types)) return data.session_types;
+      }
     } catch (_) {
       // API unavailable — fall through to local fallback
     }
 
-    // Local fallback for frontend-only testing
+    // Local fallback — only in local dev, never in production
+    const localHosts = ['localhost', '127.0.0.1', '::1'];
+    if (localHosts.indexOf(location.hostname) === -1) {
+      throw new Error('API unavailable');
+    }
     const res = await fetch(FALLBACK_URL);
     if (!res.ok) throw new Error('Fallback data unavailable');
     return res.json();
