@@ -61,6 +61,7 @@ For local `wrangler dev --env local`, email and calendar also remain mocked by d
 
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
+- `OBSERVABILITY_SCHEMA` (default `observability`; if using this value, add `observability` to Supabase API exposed schemas)
 - `JOB_SECRET`
 - `ADMIN_ALLOWED_EMAILS` or `ADMIN_DEV_EMAIL` for organizer access
 - optional real-provider secrets only if intentionally testing non-mock paths

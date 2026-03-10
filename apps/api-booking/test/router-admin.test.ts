@@ -60,5 +60,20 @@ describe('Router integration (admin)', () => {
     const res = await handleRequest(req, ctx);
     expect(res.status).toBe(404);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
+    expect(ctx.logger.logRequest).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 404,
+      success: true,
+    }));
+  });
+
+  it('logs 405 as a non-server error request', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/api/health', { method: 'POST' });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(405);
+    expect(ctx.logger.logRequest).toHaveBeenCalledWith(expect.objectContaining({
+      statusCode: 405,
+      success: true,
+    }));
   });
 });

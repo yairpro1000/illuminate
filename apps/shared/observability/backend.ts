@@ -508,6 +508,7 @@ export class SupabaseObservabilitySink {
   private readonly schema: string;
   private readonly fetchFn: (input: string, init?: RequestInit) => Promise<Response>;
   private readonly consoleTag: string;
+  private disabledReason: string | null = null;
 
   constructor(opts: SupabaseObservabilitySinkOptions) {
     this.supabaseUrl = String(opts.supabaseUrl ?? "").replace(/\/+$/g, "");
@@ -523,6 +524,7 @@ export class SupabaseObservabilitySink {
   }
 
   async capture(event: PersistedLogEvent): Promise<void> {
+    if (this.disabledReason) return;
     if (!this.isConfigured()) return;
 
     const inserted = await this.insert("logs", {
@@ -609,6 +611,15 @@ export class SupabaseObservabilitySink {
 
       if (!res.ok) {
         const text = await res.text();
+        if (text.includes('"code":"PGRST106"')) {
+          this.disabledReason = `schema_not_exposed:${this.schema}`;
+          console.warn(
+            this.consoleTag,
+            `disabled sink after schema exposure error (schema='${this.schema}')`,
+            truncateText(text),
+          );
+          return null;
+        }
         console.warn(this.consoleTag, `failed to insert into ${table}`, truncateText(text));
         return null;
       }

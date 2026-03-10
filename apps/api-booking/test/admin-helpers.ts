@@ -15,6 +15,7 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
     API_ALLOWED_ORIGINS: '*',
     ADMIN_ALLOWED_EMAILS: 'admin@example.com',
     ADMIN_DEV_EMAIL: '',
+    OBSERVABILITY_SCHEMA: 'observability',
     SUPABASE_URL: 'https://supabase.local',
     SUPABASE_SECRET_KEY: 'x',
     RESEND_API_KEY: 'x',

@@ -36,4 +36,44 @@ describe('SupabaseObservabilitySink', () => {
 
     expect(called).toBe(true);
   });
+
+  it('disables further inserts after PGRST106 schema exposure error', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'PGRST106',
+          message: 'Invalid schema: observability',
+          hint: 'Only the following schemas are exposed: public, graphql_public',
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+
+    const sink = new SupabaseObservabilitySink({
+      supabaseUrl: 'https://supabase.local',
+      secretKey: 'secret',
+      fetchFn: fetchFn as unknown as typeof fetch,
+    });
+
+    const event = {
+      base: {
+        source: 'worker' as const,
+        level: 'info' as const,
+        eventType: 'request',
+        message: 'GET /',
+        requestId: 'req-1',
+        correlationId: 'corr-1',
+        route: '/',
+        context: {},
+      },
+    };
+
+    await sink.capture(event);
+    await sink.capture(event);
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
 });

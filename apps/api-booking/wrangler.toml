@@ -25,6 +25,8 @@ GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
 IMAGE_BASE_URL     = "https://assets.letsilluminate.co" # Optional CDN/public origin for R2 objects
+OBSERVABILITY_SCHEMA = "observability" # Must also be exposed in Supabase API settings
+ADMIN_AUTH_DISABLED = "true" # TEMPORARY ONLY: bypass /api/admin/* auth for manual testing
 
 [[r2_buckets]]
 binding = "IMAGES_BUCKET"
@@ -46,6 +48,8 @@ GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
 ADMIN_DEV_EMAIL    = "dev@localhost"
 IMAGE_BASE_URL     = "http://localhost:8787/images" # dev placeholder; map via local proxy if needed
+OBSERVABILITY_SCHEMA = "observability"
+ADMIN_AUTH_DISABLED = "true"
 
 # Secrets — set via `wrangler secret put <NAME>` for prod, never commit values:
 # SUPABASE_URL
@@ -62,7 +66,6 @@ IMAGE_BASE_URL     = "http://localhost:8787/images" # dev placeholder; map via l
 # JOB_SECRET
 # ADMIN_ALLOWED_EMAILS
 # ADMIN_DEV_EMAIL
-# ADMIN_AUTH_DISABLED       # TEMPORARY ONLY: set to true to bypass /api/admin/* auth for manual testing
 # CLOUDFLARE_ACCESS_AUD
 
 [observability.logs]

@@ -142,7 +142,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
       path: url.pathname,
       statusCode: 404,
       durationMs: 0,
-      success: false,
+      success: true,
       requestSizeBytes,
     });
     return origin ? addCors(res, origin) : res;
@@ -237,7 +237,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     path: url.pathname,
     statusCode,
     durationMs: 0,
-    success: false,
+    success: statusCode < 500,
     requestSizeBytes,
   });
   return origin ? addCors(res, origin) : res;

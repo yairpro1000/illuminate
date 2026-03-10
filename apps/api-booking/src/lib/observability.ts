@@ -50,6 +50,7 @@ function makeSink(env: Env): SupabaseObservabilitySink {
   return new SupabaseObservabilitySink({
     supabaseUrl: env.SUPABASE_URL,
     secretKey: env.SUPABASE_SECRET_KEY,
+    schema: env.OBSERVABILITY_SCHEMA?.trim() || undefined,
     consoleTag: "[worker-observability]",
   });
 }
