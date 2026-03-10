@@ -352,8 +352,8 @@ export class SupabaseRepository implements IRepository {
     return this.getBookingList((query) =>
       query
         .or(
-          'and(booking_status.eq.pending,not.hold_expires_at.is.null,hold_expires_at.lte.' + nowIso() + '),' +
-          'and(status.eq.pending_payment,not.checkout_hold_expires_at.is.null,payment_due_at.is.null,checkout_hold_expires_at.lte.' + nowIso() + ')' +
+          'and(booking_status.eq.pending,hold_expires_at.not.is.null,hold_expires_at.lte.' + nowIso() + '),' +
+          'and(status.eq.pending_payment,checkout_hold_expires_at.not.is.null,payment_due_at.is.null,checkout_hold_expires_at.lte.' + nowIso() + ')' +
           ''
         )
     );
@@ -373,8 +373,8 @@ export class SupabaseRepository implements IRepository {
     return this.getBookingList((query) =>
       query
         .or(
-          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,not.payment_due_reminder_scheduled_at.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null),' +
-          'and(status.eq.pending_payment,not.payment_due_at.is.null,not.payment_due_reminder_scheduled_at.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null)'
+          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,payment_due_reminder_scheduled_at.not.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null),' +
+          'and(status.eq.pending_payment,payment_due_at.not.is.null,payment_due_reminder_scheduled_at.not.is.null,payment_due_reminder_scheduled_at.lte.' + nowIso() + ',payment_due_reminder_sent_at.is.null)'
         )
     );
   }
@@ -383,8 +383,8 @@ export class SupabaseRepository implements IRepository {
     return this.getBookingList((query) =>
       query
         .or(
-          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,not.payment_due_at.is.null,payment_due_at.lte.' + nowIso() + '),' +
-          'and(status.eq.pending_payment,not.payment_due_at.is.null,payment_due_at.lte.' + nowIso() + ')'
+          'and(booking_status.eq.confirmed,payment_mode.eq.pay_later,payment_status_v2.eq.pending,payment_due_at.not.is.null,payment_due_at.lte.' + nowIso() + '),' +
+          'and(status.eq.pending_payment,payment_due_at.not.is.null,payment_due_at.lte.' + nowIso() + ')'
         )
     );
   }
@@ -393,8 +393,8 @@ export class SupabaseRepository implements IRepository {
     return this.getBookingList((query) =>
       query
         .or(
-          'and(booking_status.eq.confirmed,reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,not.reminder_24h_scheduled_at.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + '),' +
-          'and(status.in.(confirmed,cash_ok),reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,not.reminder_24h_scheduled_at.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + ')'
+          'and(booking_status.eq.confirmed,reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,reminder_24h_scheduled_at.not.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + '),' +
+          'and(status.in.(confirmed,cash_ok),reminder_email_opt_in.eq.true,reminder_24h_sent_at.is.null,reminder_24h_scheduled_at.not.is.null,reminder_24h_scheduled_at.lte.' + nowIso() + ')'
         )
     );
   }

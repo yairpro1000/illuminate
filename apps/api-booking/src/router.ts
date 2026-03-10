@@ -122,16 +122,37 @@ const ROUTES: Route[] = [
 
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
+  const isAdminEventsPath = url.pathname === '/api/admin/events';
   const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS, !!ctx.env.ADMIN_DEV_EMAIL);
   const requestSizeBytes = headerByteLength(request.headers);
+  if (isAdminEventsPath) {
+    console.log('[admin-events-debug] ingress', JSON.stringify({
+      method: request.method,
+      path: url.pathname,
+      origin: request.headers.get('Origin'),
+      origin_allowed: !!origin,
+      origin_allowed_value: origin,
+      admin_auth_disabled: /^(1|true|yes|on)$/i.test(String(ctx.env.ADMIN_AUTH_DISABLED ?? '').trim()),
+      user_agent: request.headers.get('user-agent'),
+      cf_ray: request.headers.get('cf-ray'),
+    }));
+  }
 
   if (request.method === 'OPTIONS') {
-    return origin
+    const preflightRes = origin
       ? handlePreflight(origin)
       : new Response(null, {
         status: 403,
         headers: { Vary: 'Origin' },
       });
+    if (isAdminEventsPath) {
+      console.log('[admin-events-debug] preflight', JSON.stringify({
+        status: preflightRes.status,
+        has_cors_header: !!preflightRes.headers.get('Access-Control-Allow-Origin'),
+        cors_origin: preflightRes.headers.get('Access-Control-Allow-Origin'),
+      }));
+    }
+    return preflightRes;
   }
 
   if (!url.pathname.startsWith('/api/')) {
@@ -145,7 +166,15 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
       success: true,
       requestSizeBytes,
     });
-    return origin ? addCors(res, origin) : res;
+    const finalRes = origin ? addCors(res, origin) : res;
+    if (isAdminEventsPath) {
+      console.log('[admin-events-debug] non_api', JSON.stringify({
+        status: finalRes.status,
+        has_cors_header: !!finalRes.headers.get('Access-Control-Allow-Origin'),
+        cors_origin: finalRes.headers.get('Access-Control-Allow-Origin'),
+      }));
+    }
+    return finalRes;
   }
 
   ctx.logger.logMilestone('incoming_request_received', {
@@ -184,7 +213,16 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
           path: url.pathname,
         });
       }
-      return origin ? addCors(res, origin) : res;
+      const finalRes = origin ? addCors(res, origin) : res;
+      if (isAdminEventsPath) {
+        console.log('[admin-events-debug] matched_route_response', JSON.stringify({
+          status: finalRes.status,
+          handler_status: res.status,
+          has_cors_header: !!finalRes.headers.get('Access-Control-Allow-Origin'),
+          cors_origin: finalRes.headers.get('Access-Control-Allow-Origin'),
+        }));
+      }
+      return finalRes;
     } catch (error) {
       const statusCode = error instanceof ApiError ? error.statusCode : 500;
       if (statusCode >= 500) {
@@ -223,7 +261,18 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         success: statusCode < 500,
         requestSizeBytes,
       });
-      return origin ? addCors(res, origin) : res;
+      const finalRes = origin ? addCors(res, origin) : res;
+      if (isAdminEventsPath) {
+        console.log('[admin-events-debug] matched_route_error', JSON.stringify({
+          status: finalRes.status,
+          error_status: statusCode,
+          error_code: error instanceof ApiError ? error.code : 'INTERNAL_ERROR',
+          error_message: error instanceof Error ? error.message : String(error),
+          has_cors_header: !!finalRes.headers.get('Access-Control-Allow-Origin'),
+          cors_origin: finalRes.headers.get('Access-Control-Allow-Origin'),
+        }));
+      }
+      return finalRes;
     }
   }
 
@@ -240,5 +289,13 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     success: statusCode < 500,
     requestSizeBytes,
   });
-  return origin ? addCors(res, origin) : res;
+  const finalRes = origin ? addCors(res, origin) : res;
+  if (isAdminEventsPath) {
+    console.log('[admin-events-debug] unmatched_route', JSON.stringify({
+      status: finalRes.status,
+      has_cors_header: !!finalRes.headers.get('Access-Control-Allow-Origin'),
+      cors_origin: finalRes.headers.get('Access-Control-Allow-Origin'),
+    }));
+  }
+  return finalRes;
 }

@@ -184,12 +184,25 @@ function logAdminAccessDecision(
   result: 'allow' | 'deny',
   reason?: string,
 ): void {
+  const path = new URL(request.url).pathname;
+  if (path === '/api/admin/events') {
+    console.log('[admin-events-debug] auth', JSON.stringify({
+      path,
+      admin_auth_disabled: isTruthy(env.ADMIN_AUTH_DISABLED),
+      branch,
+      result,
+      reason: reason ?? null,
+      has_access_aud: !!env.CLOUDFLARE_ACCESS_AUD?.trim(),
+      has_access_email_header: !!getAccessEmail(request),
+      has_access_jwt_header: !!getAccessJwt(request),
+    }));
+  }
   if (!logger) return;
   logger.logInfo({
     eventType: 'admin_auth_check',
     message: 'Admin auth decision',
     context: {
-      path: new URL(request.url).pathname,
+      path,
       admin_auth_disabled: isTruthy(env.ADMIN_AUTH_DISABLED),
       branch,
       result,
