@@ -34,7 +34,7 @@ interface JobSummary {
 }
 
 const PRIMARY_CRON_EXPRESSION = '* * * * *';
-const SUPPORTED_CRON_EXPRESSIONS = new Set([
+const KNOWN_CRON_EXPRESSIONS = new Set([
   PRIMARY_CRON_EXPRESSION,
   '*/5 * * * *',
   '*/15 * * * *',
@@ -95,7 +95,7 @@ export async function handleJobTrigger(
 
 export async function runCron(cron: string, ctx: JobContext): Promise<void> {
   const source = jobLogSource(ctx);
-  const isSupportedExpression = SUPPORTED_CRON_EXPRESSIONS.has(cron);
+  const isKnownExpression = KNOWN_CRON_EXPRESSIONS.has(cron);
 
   ctx.logger.logInfo({
     source,
@@ -103,25 +103,27 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
     message: 'Cron dispatch decision evaluated',
     context: {
       received_cron_expression: cron,
-      supported_cron_expressions: Array.from(SUPPORTED_CRON_EXPRESSIONS),
+      known_cron_expressions: Array.from(KNOWN_CRON_EXPRESSIONS),
       trigger_source: ctx.triggerSource,
-      branch_taken: isSupportedExpression ? 'run_unified_sweep' : 'ignore_expression',
+      branch_taken: isKnownExpression
+        ? 'run_unified_sweep_known_expression'
+        : 'run_unified_sweep_unknown_expression',
     },
   });
 
-  if (!isSupportedExpression) {
+  if (!isKnownExpression) {
     ctx.logger.logWarn({
       source,
-      eventType: 'cron_dispatch_rejected',
-      message: 'Cron expression rejected by unified dispatcher',
+      eventType: 'cron_dispatch_fallback',
+      message: 'Unknown cron expression executed by unified dispatcher',
       context: {
         received_cron_expression: cron,
-        supported_cron_expressions: Array.from(SUPPORTED_CRON_EXPRESSIONS),
+        known_cron_expressions: Array.from(KNOWN_CRON_EXPRESSIONS),
         trigger_source: ctx.triggerSource,
-        deny_reason: 'unsupported_cron_expression',
+        fallback_reason: 'unknown_cron_expression',
+        temporary_debug: true,
       },
     });
-    return;
   }
 
   if (cron !== PRIMARY_CRON_EXPRESSION) {

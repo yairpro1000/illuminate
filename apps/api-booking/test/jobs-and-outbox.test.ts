@@ -96,7 +96,7 @@ describe('Jobs and outbox', () => {
       eventType: 'cron_dispatch_decision',
       context: expect.objectContaining({
         received_cron_expression: '* * * * *',
-        branch_taken: 'run_unified_sweep',
+        branch_taken: 'run_unified_sweep_known_expression',
       }),
     }));
   });
@@ -114,16 +114,52 @@ describe('Jobs and outbox', () => {
     }));
   });
 
-  it('logs concrete deny reason for unsupported cron expression', async () => {
+  it('runs unknown cron expressions via unified fallback and logs the reason', async () => {
     const ctx = makeCtx();
     await expect(runCron('*/10 * * * *', ctx)).resolves.toBeUndefined();
 
-    expect(ctx.providers.repository.getExpiredBookingHolds).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
     expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cron_dispatch_rejected',
+      eventType: 'cron_dispatch_fallback',
       context: expect.objectContaining({
         received_cron_expression: '*/10 * * * *',
-        deny_reason: 'unsupported_cron_expression',
+        fallback_reason: 'unknown_cron_expression',
+      }),
+    }));
+  });
+
+  it('continues unified sweep after a step failure and emits partial-failure diagnostics', async () => {
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getExpiredBookingHolds: vi.fn().mockRejectedValue(new Error('db unavailable')),
+        },
+      },
+    });
+
+    await expect(runCron('* * * * *', ctx)).rejects.toThrow(/checkout-expiry/);
+
+    // Ensure later sweep steps still ran despite checkout-expiry failure.
+    expect(ctx.providers.repository.getUnconfirmedBookingFollowupsDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPaymentDueRemindersDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.get24hBookingRemindersDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPendingSideEffects).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getCalendarSyncFailuresDue).toHaveBeenCalledWith(100);
+
+    expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cron_sweep_step',
+      context: expect.objectContaining({
+        job_name: 'checkout-expiry',
+        status: 'failed',
+      }),
+    }));
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cron_sweep_completed',
+      context: expect.objectContaining({
+        status: 'partial_failure',
+        failed_steps: 1,
+        failed_job_names: ['checkout-expiry'],
       }),
     }));
   });
