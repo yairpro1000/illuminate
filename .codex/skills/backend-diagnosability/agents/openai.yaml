@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Diagnosability"
+  short_description: "Backend logging and failure diagnostics"
+  default_prompt: "Use $backend-diagnosability to implement or review backend changes with structured logs, explicit failure reasons, consistent error envelopes, and diagnostic tests."

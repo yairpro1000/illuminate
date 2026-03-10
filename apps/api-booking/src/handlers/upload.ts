@@ -15,6 +15,10 @@ function getExtFromMime(mime: string): string | null {
   return map[mime] ?? null;
 }
 
+function isFileUpload(value: unknown): value is File {
+  return typeof File !== 'undefined' && value !== null && typeof value !== 'string' && value instanceof File;
+}
+
 export async function handleAdminUploadImage(request: Request, ctx: AppContext): Promise<Response> {
   await requireAdminAccess(request, ctx.env);
   const contentType = request.headers.get('content-type') || '';
@@ -25,7 +29,7 @@ export async function handleAdminUploadImage(request: Request, ctx: AppContext):
   const form = await request.formData();
   const file = form.get('file');
   const entityType = String(form.get('entity_type') || '').trim();
-  if (!(file instanceof File)) throw badRequest('file is required');
+  if (!isFileUpload(file)) throw badRequest('file is required');
   if (entityType !== 'event' && entityType !== 'session') throw badRequest('entity_type must be event | session');
 
   const uuid = crypto.randomUUID();

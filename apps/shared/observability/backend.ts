@@ -506,14 +506,15 @@ export class SupabaseObservabilitySink {
   private readonly supabaseUrl: string;
   private readonly secretKey: string;
   private readonly schema: string;
-  private readonly fetchFn: typeof fetch;
+  private readonly fetchFn: (input: string, init?: RequestInit) => Promise<Response>;
   private readonly consoleTag: string;
 
   constructor(opts: SupabaseObservabilitySinkOptions) {
     this.supabaseUrl = String(opts.supabaseUrl ?? "").replace(/\/+$/g, "");
     this.secretKey = String(opts.secretKey ?? "");
     this.schema = opts.schema ?? "observability";
-    this.fetchFn = opts.fetchFn ?? fetch;
+    const fetchFn = opts.fetchFn ?? fetch;
+    this.fetchFn = (input: string, init?: RequestInit) => Reflect.apply(fetchFn, globalThis, [input, init]);
     this.consoleTag = opts.consoleTag ?? "[observability]";
   }
 
