@@ -625,7 +625,8 @@
       async function loadEvents() {
         msg(statusEl, 'Loading…');
         try {
-          const data = await api('/admin/events');
+          // Edit-offers requires the full event payload (not the compact list used by bookings filters).
+          const data = await api('/admin/events/all');
           state.evRows = data.events || [];
           renderEV();
           msg(statusEl, 'Ready.');
