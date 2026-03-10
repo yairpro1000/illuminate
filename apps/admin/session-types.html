@@ -72,7 +72,6 @@
         <div class="admin-logo">Admin</div>
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
-          <a href="config.html" class="admin-nav-link" data-page="config">Provider Config</a>
           <a href="session-types.html" class="admin-nav-link" data-page="session-types">Session Types</a>
         </div>
       </nav>
@@ -111,7 +110,7 @@
       (function(){
         var page = (location.pathname.split('/').pop() || 'index.html');
         if (page === '' || page === '/') page = 'index.html';
-        var map = { 'index.html': 'index', 'config.html': 'config', 'session-types.html': 'session-types' };
+        var map = { 'index.html': 'index', 'session-types.html': 'session-types' };
         var key = map[page] || 'index';
         var el = document.querySelector('.admin-nav-link[data-page="'+key+'"]');
         if (el) el.classList.add('active');
@@ -181,6 +180,7 @@
     </div>
 
     <script src="js/api-base.js"></script>
+    <script src="js/admin-auth.js"></script>
     <script>
       (function() {
         const apiBase = window.getAdminApiBase();
@@ -209,6 +209,9 @@
         function resolveUrl(path) { return window.resolveAdminUrl(path); }
         async function api(path, init) {
           const res = await fetch(resolveUrl(path), { method: 'GET', credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
+          if (res.status === 401 && window.adminAuth) {
+            try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+          }
           const text = await res.text();
           let body = {};
           try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
@@ -289,6 +292,9 @@
           try {
             const fd = new FormData(); fd.append('file', file); fd.append('entity_type', 'session');
             const res = await fetch(resolveUrl('/admin/upload-image'), { method: 'POST', body: fd, credentials: 'include' });
+            if (res.status === 401 && window.adminAuth) {
+              try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+            }
             const data = await res.json(); if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(data)}`);
             state.editing.image_key = data.image_key || null; state.editing.drive_file_id = data.drive_file_id || null; const url = data.url || '';
             if (url) { imgPreview.src = url; imgPreview.classList.remove('hidden'); }

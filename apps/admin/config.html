@@ -159,7 +159,6 @@
         <div class="admin-logo">Admin</div>
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
-          <a href="config.html" class="admin-nav-link" data-page="config">Provider Config</a>
           <a href="session-types.html" class="admin-nav-link" data-page="session-types">Session Types</a>
         </div>
       </nav>
@@ -183,13 +182,14 @@
       (function(){
         var page = (location.pathname.split('/').pop() || 'index.html');
         if (page === '' || page === '/') page = 'index.html';
-        var map = { 'index.html': 'index', 'config.html': 'config', 'session-types.html': 'session-types' };
+        var map = { 'index.html': 'index', 'session-types.html': 'session-types' };
         var key = map[page] || 'index';
         var el = document.querySelector('.admin-nav-link[data-page="'+key+'"]');
         if (el) el.classList.add('active');
       })();
     </script>
     <script src="js/api-base.js"></script>
+    <script src="js/admin-auth.js"></script>
     <script>
       (function () {
         const apiBase = window.getAdminApiBase();
@@ -205,6 +205,9 @@
             headers: { "Content-Type": "application/json" },
             ...init,
           });
+          if (res.status === 401 && window.adminAuth) {
+            try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+          }
           const text = await res.text();
           let body = {};
           try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
