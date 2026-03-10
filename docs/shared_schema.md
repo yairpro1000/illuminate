@@ -85,26 +85,14 @@ Use it for:
 - file/line/column when available
 - small extra structured metadata
 
-### `failure_logs`
+### Booking retry state
 
-Durable operational failure and retry state.
+Durable workflow retry state is tracked by:
 
-Use it for:
+- `booking_side_effects` (intended action + lifecycle status)
+- `booking_side_effect_attempts` (attempt-by-attempt execution results)
 
-- retryable background or provider failures that must survive log retention
-- the calendar sync retry queue
-- support/debug flows where you need a stable record of unresolved failures
-
-Important columns:
-
-- `source`, `operation`, `severity`, `status`
-- `request_id` and `idempotency_key`
-- `booking_id`, `payment_id`, `client_id`
-- provider IDs such as `stripe_event_id`, `stripe_checkout_session_id`, `google_event_id`, `email_provider_message_id`
-- retry state: `retryable`, `attempts`, `next_retry_at`, `resolved_at`
-- `context` for compact redacted metadata such as `event_id`, `calendar_operation`, or operator notes
-
-There is intentionally no `job_runs` table. Cron/manual job execution is traced through structured events in `observability.logs`, while durable retry state lives in `failure_logs`.
+There is intentionally no `job_runs` table. Cron/manual job execution is traced through structured events in `observability.logs`, while durable retry state lives in booking side-effect tables.
 
 ## Technical logs vs business milestone logs
 
@@ -196,7 +184,7 @@ The common shape is:
 5. outbound provider calls land in the same base table plus provider-facing `api_logs`
 6. failures add `api_failure_details` or `error_details`
 7. business milestones and cron/job summaries reuse `observability.logs`
-8. durable retry and failure state lives in `failure_logs`
+8. durable retry and failure state lives in `booking_side_effects` + `booking_side_effect_attempts`
 
 This keeps one traceable chain per workflow without forcing every event into the same wide table.
 

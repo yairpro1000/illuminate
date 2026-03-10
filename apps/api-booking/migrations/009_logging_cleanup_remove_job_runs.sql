@@ -1,2 +1,2 @@
--- Cleanup folded into 010_booking_centric_schema.sql fresh baseline.
+-- Retired migration placeholder kept only for ordering continuity.
 -- Intentionally no-op.

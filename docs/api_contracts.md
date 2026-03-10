@@ -18,7 +18,7 @@
 - Anti-bot is explicitly mock-first.
 - Public/admin contracts must still remain stable even while those providers are mocked.
 - `job_runs` does not exist.
-- Durable calendar retry state lives in `failure_logs`.
+- Side-effect retries are tracked in `booking_side_effect_attempts`.
 
 ## Public booking API
 
@@ -309,7 +309,6 @@ Authorization: Bearer <JOB_SECRET>
 Supported names:
 
 - `checkout-expiry`
-- `calendar-sync-retries`
 - `unconfirmed-followups`
 - `payment-due-reminders`
 - `payment-due-cancellations`

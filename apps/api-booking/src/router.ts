@@ -25,6 +25,8 @@ import { handleStripeWebhook } from './handlers/webhook.js';
 import { handleJobTrigger } from './handlers/jobs.js';
 import {
   handleAdminGetEvents,
+  handleAdminGetAllEvents,
+  handleAdminUpdateEvent,
   handleAdminGetBookings,
   handleAdminUpdateBooking,
   handleAdminCreateLateAccessLink,
@@ -99,6 +101,8 @@ const ROUTES: Route[] = [
 
   route('POST', '/api/contact', handleContact),
   route('GET', '/api/admin/events', handleAdminGetEvents),
+  route('GET', '/api/admin/events/all', handleAdminGetAllEvents),
+  route('PATCH', '/api/admin/events/:eventId', handleAdminUpdateEvent),
   route('GET', '/api/admin/bookings', handleAdminGetBookings),
   route('PATCH', '/api/admin/bookings/:bookingId', handleAdminUpdateBooking),
   route('POST', '/api/admin/bookings/:bookingId', handleAdminUpdateBooking),

@@ -24,7 +24,7 @@ API_ALLOWED_ORIGINS = "https://letsilluminate.co,https://admin.letsilluminate.co
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
-IMAGE_BASE_URL     = "https://assets.letsilluminate.co" # Optional CDN/public origin for R2 objects
+IMAGE_BASE_URL     = "https://images.letsilluminate.co" # CDN/public origin for R2 objects
 OBSERVABILITY_SCHEMA = "observability" # Must also be exposed in Supabase API settings
 ADMIN_AUTH_DISABLED = "true" # TEMPORARY ONLY: bypass /api/admin/* auth for manual testing
 
@@ -55,9 +55,6 @@ ADMIN_AUTH_DISABLED = "true"
 # SUPABASE_URL
 # SUPABASE_SECRET_KEY
 # RESEND_API_KEY
-# GOOGLE_OAUTH_CLIENT_ID
-# GOOGLE_OAUTH_CLIENT_SECRET
-# GOOGLE_OAUTH_REFRESH_TOKEN
 # GOOGLE_CLIENT_EMAIL         ← service account email
 # GOOGLE_PRIVATE_KEY          ← service account private key (PEM)
 # STRIPE_SECRET_KEY

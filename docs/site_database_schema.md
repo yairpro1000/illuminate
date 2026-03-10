@@ -64,7 +64,6 @@ send_booking_cancellation_confirmation
 reserve_slot
 update_reserved_slot
 cancel_reserved_slot
-confirm_reserved_slot
 create_stripe_checkout
 verify_stripe_payment
 send_payment_link

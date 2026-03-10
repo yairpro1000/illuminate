@@ -3,7 +3,6 @@ import type { Env } from '../env.js';
 import type { Logger } from '../lib/logger.js';
 import type {
   Booking,
-  BookingCurrentStatus,
   BookingEventRecord,
   BookingEventSource,
   BookingEventType,
@@ -69,14 +68,12 @@ export async function appendBookingEventWithEffects(
   });
 
   const paymentMode = await inferPaymentMode(bookingId, ctx);
-  const slotAlreadyConfirmed = isSlotConfirmed(booking.current_status);
 
   const effectSpecs = getEffectsForEvent({
     booking,
     eventType,
     eventAtIso: event.created_at,
     paymentMode,
-    slotAlreadyConfirmed,
   });
 
   const sideEffects = effectSpecs.length > 0
@@ -128,8 +125,4 @@ async function inferPaymentMode(
   if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_FREE') return 'free';
   if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_PAY_NOW') return 'pay_now';
   return 'pay_later';
-}
-
-function isSlotConfirmed(status: BookingCurrentStatus): boolean {
-  return status === 'SLOT_CONFIRMED' || status === 'PAID' || status === 'CLOSED';
 }

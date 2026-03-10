@@ -41,7 +41,7 @@ Per request:
 For jobs:
 
 * emit structured start/completion/failure events to `observability.logs`
-* per failure: write to `failure_logs` + emit `error` log
+* per failure: write to `observability.logs` + emit `error` log
 
 ## 4) Don’t log secrets or raw payloads
 
@@ -55,7 +55,7 @@ Never log:
 
 If you need payload debugging:
 
-* store a *redacted* subset in `failure_logs.context`
+* store a *redacted* subset in `observability.logs.context`
 
 ## 5) Minimal Worker helper (drop-in pattern)
 
@@ -121,7 +121,7 @@ export default {
 
 ## 6) Link logs ↔ DB failure logs
 
-When you insert into `failure_logs`, always include:
+When you insert into `observability.logs`, always include:
 
 * `request_id`
 * `source`
@@ -138,11 +138,11 @@ Then your debugging flow is:
 Wrap all Stripe/Google/Email calls with a helper that:
 
 * logs start/end
-* records failures to `failure_logs` with `retryable=true/false`
+* records failures to `observability.logs` with `retryable=true/false`
 
 This is the “adult supervision” layer.
 
-Here’s a simple, safe **redaction policy** you can apply to anything you’re about to log or store in `failure_logs.context`.
+Here’s a simple, safe **redaction policy** you can apply to anything you’re about to log or store in `observability.logs.context`.
 
 ## Redaction goals
 
@@ -300,7 +300,7 @@ export function redact(obj) {
 Usage:
 
 * Before `console.log(JSON.stringify(...))`
-* Before inserting `failure_logs.context`
+* Before inserting `observability.logs.context`
 
 ---
 
@@ -318,7 +318,7 @@ Here’s a small **`log_event()` helper layer** that:
 * Automatically attaches `request_id`
 * Applies `redact()`
 * Emits structured JSON
-* Optionally writes to `failure_logs`
+* Optionally writes to `observability.logs`
 * Keeps your code clean
 
 This is production-grade but still lightweight.
@@ -366,7 +366,7 @@ export function log_event({
 
 # Optional: log_failure_to_db()
 
-This writes to `failure_logs` safely and consistently.
+This writes to `observability.logs` safely and consistently.
 
 ```js
 export async function log_failure_to_db({
@@ -380,7 +380,7 @@ export async function log_failure_to_db({
   retryable = true,
   context = {}
 }) {
-  await db.from("failure_logs").insert({
+  await db.from("observability.logs").insert({
     source,
     operation,
     severity,

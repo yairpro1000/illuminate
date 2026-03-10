@@ -16,18 +16,6 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type failure_source as enum ('api', 'stripe_webhook', 'calendar', 'email', 'job', 'storage', 'auth');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type failure_severity as enum ('debug', 'info', 'warning', 'error', 'critical');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
-  create type failure_status as enum ('open', 'retrying', 'resolved', 'ignored');
-exception when duplicate_object then null; end $$;
-
-do $$ begin
   create type contact_message_status as enum ('new', 'read', 'replied', 'archived', 'spam');
 exception when duplicate_object then null; end $$;
 
@@ -167,7 +155,6 @@ create table if not exists booking_side_effects (
       'reserve_slot',
       'update_reserved_slot',
       'cancel_reserved_slot',
-      'confirm_reserved_slot',
       'create_stripe_checkout',
       'verify_stripe_payment',
       'send_payment_link',
@@ -222,55 +209,6 @@ create table if not exists payments (
 create index if not exists idx_payments_booking on payments(booking_id, created_at desc);
 create index if not exists idx_payments_status on payments(status, created_at desc);
 create index if not exists idx_payments_provider_payment on payments(provider, provider_payment_id);
-
-create table if not exists failure_logs (
-  id uuid primary key default gen_random_uuid(),
-  source failure_source not null,
-  operation text not null,
-  severity failure_severity not null default 'error',
-  status failure_status not null default 'open',
-  request_id text null,
-  idempotency_key text null,
-  booking_id uuid null references bookings(id) on delete set null,
-  payment_id uuid null references payments(id) on delete set null,
-  client_id uuid null references clients(id) on delete set null,
-  stripe_event_id text null,
-  stripe_checkout_session_id text null,
-  google_event_id text null,
-  email_provider_message_id text null,
-  error_code text null,
-  error_message text not null,
-  error_stack text null,
-  http_status integer null,
-  retryable boolean not null default true,
-  context jsonb not null default '{}'::jsonb,
-  attempts integer not null default 0,
-  next_retry_at timestamptz null,
-  resolved_at timestamptz null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_failure_logs_status on failure_logs(status, created_at desc);
-create index if not exists idx_failure_logs_source on failure_logs(source, created_at desc);
-create index if not exists idx_failure_logs_request_id on failure_logs(request_id) where request_id is not null;
-create index if not exists idx_failure_logs_booking on failure_logs(booking_id);
-create index if not exists idx_failure_logs_payment on failure_logs(payment_id);
-create index if not exists idx_failure_logs_client on failure_logs(client_id);
-create index if not exists idx_failure_logs_stripe_event on failure_logs(stripe_event_id);
-create index if not exists idx_failure_logs_next_retry on failure_logs(next_retry_at) where next_retry_at is not null;
-create index if not exists idx_failure_logs_calendar_sync_due
-  on failure_logs(next_retry_at, booking_id)
-  where source = 'calendar'
-    and operation = 'calendar_sync'
-    and retryable = true
-    and resolved_at is null
-    and next_retry_at is not null;
-create unique index if not exists idx_failure_logs_calendar_sync_active_unique
-  on failure_logs(booking_id)
-  where source = 'calendar'
-    and operation = 'calendar_sync'
-    and resolved_at is null;
 
 create table if not exists contact_messages (
   id uuid primary key default gen_random_uuid(),
@@ -345,10 +283,6 @@ for each row execute function set_updated_at();
 
 create trigger trg_payments_updated_at
 before update on payments
-for each row execute function set_updated_at();
-
-create trigger trg_failure_logs_updated_at
-before update on failure_logs
 for each row execute function set_updated_at();
 
 create trigger trg_contact_messages_updated_at

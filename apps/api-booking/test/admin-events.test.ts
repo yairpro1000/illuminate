@@ -7,7 +7,7 @@ describe('Admin events', () => {
     const events = [
       { id: 'e1', slug: 's1', title: 'T1', starts_at: '2026-03-10T18:00:00Z', ends_at: '2026-03-10T20:00:00Z', status: 'published' },
     ];
-    const ctx = makeCtx({ providers: { repository: { getPublishedEvents: vi.fn().mockResolvedValue(events) } } });
+    const ctx = makeCtx({ providers: { repository: { getAllEvents: vi.fn().mockResolvedValue(events) } } });
     const req = adminRequest('GET', 'https://api.local/api/admin/events');
     const res = await handleAdminGetEvents(req, ctx);
     expect(res.status).toBe(200);
@@ -18,14 +18,14 @@ describe('Admin events', () => {
   });
 
   it('rejects unauthorized access', async () => {
-    const ctx = makeCtx({ providers: { repository: { getPublishedEvents: vi.fn() } } });
+    const ctx = makeCtx({ providers: { repository: { getAllEvents: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/events', { method: 'GET' });
     const res = await handleAdminGetEvents(req, ctx);
     expect(res.status).toBe(401);
   });
 
   it('logs auth start and auth failure details for admin events', async () => {
-    const ctx = makeCtx({ providers: { repository: { getPublishedEvents: vi.fn() } } });
+    const ctx = makeCtx({ providers: { repository: { getAllEvents: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/events', { method: 'GET' });
     const res = await handleAdminGetEvents(req, ctx);
 

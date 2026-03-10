@@ -7,14 +7,12 @@ import type {
   BookingSideEffect,
   BookingSideEffectAttempt,
   BookingUpdate,
-  CalendarSyncFailure,
   Client,
   ClientUpdate,
   ContactMessage,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
-  FailureLog,
   NewBooking,
   NewBookingSideEffect,
   NewBookingSideEffectAttempt,
@@ -22,7 +20,6 @@ import type {
   NewContactMessage,
   NewEventLateAccessLink,
   NewEventReminderSubscription,
-  NewFailureLog,
   NewPayment,
   OrganizerBookingRow,
   Payment,
@@ -34,7 +31,6 @@ import type {
 } from '../../types.js';
 
 const now = () => new Date().toISOString();
-const CALENDAR_SYNC_OPERATION = 'calendar_sync';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -280,6 +276,18 @@ export class MockRepository implements IRepository {
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   }
 
+  async getAllEvents(): Promise<Event[]> {
+    return [...mockState.events.values()].sort((a, b) => b.starts_at.localeCompare(a.starts_at));
+  }
+
+  async updateEvent(id: string, updates: import('../../types.js').EventUpdate): Promise<Event> {
+    const event = mockState.events.get(id);
+    if (!event) throw new Error(`Event ${id} not found`);
+    const updated = { ...event, ...updates, updated_at: new Date().toISOString() };
+    mockState.events.set(id, updated);
+    return updated;
+  }
+
   async getEventBySlug(slug: string): Promise<Event | null> {
     for (const event of mockState.events.values()) {
       if (event.slug === slug) return event;
@@ -477,164 +485,6 @@ export class MockRepository implements IRepository {
     return rows;
   }
 
-  // ── Observability ─────────────────────────────────────────────────────────
-
-  async logFailure(data: NewFailureLog): Promise<void> {
-    const log: FailureLog = {
-      id: crypto.randomUUID(),
-      source: data.source,
-      operation: data.operation,
-      severity: data.severity ?? 'error',
-      status: 'open',
-      request_id: data.request_id ?? null,
-      idempotency_key: data.idempotency_key ?? null,
-      booking_id: data.booking_id ?? null,
-      payment_id: data.payment_id ?? null,
-      client_id: data.client_id ?? null,
-      stripe_event_id: data.stripe_event_id ?? null,
-      stripe_checkout_session_id: data.stripe_checkout_session_id ?? null,
-      google_event_id: data.google_event_id ?? null,
-      email_provider_message_id: data.email_provider_message_id ?? null,
-      error_code: data.error_code ?? null,
-      error_message: data.error_message,
-      error_stack: data.error_stack ?? null,
-      http_status: data.http_status ?? null,
-      retryable: data.retryable ?? true,
-      context: data.context ?? {},
-      attempts: 0,
-      next_retry_at: null,
-      resolved_at: null,
-      created_at: now(),
-      updated_at: now(),
-    };
-    mockState.failureLogs.push(log);
-  }
-
-  async getRecentFailureLogs(limit: number): Promise<FailureLog[]> {
-    return mockState.failureLogs.slice(-limit).reverse();
-  }
-
-  // ── Calendar sync retry queue ────────────────────────────────────────────
-
-  async recordCalendarSyncFailure(input: {
-    booking_id: string;
-    operation: 'create' | 'update' | 'delete';
-    error_message: string;
-    request_id?: string | null;
-    maxAttempts: number;
-  }): Promise<CalendarSyncFailure> {
-    const existing = [...mockState.failureLogs]
-      .reverse()
-      .find((log) =>
-        log.source === 'calendar' &&
-        log.operation === CALENDAR_SYNC_OPERATION &&
-        log.booking_id === input.booking_id &&
-        log.resolved_at === null &&
-        log.retryable,
-      ) ?? null;
-
-    const attempts = (existing?.attempts ?? 0) + 1;
-    const exhausted = attempts >= input.maxAttempts;
-    const nextRetryAt = exhausted ? null : new Date(Date.now() + computeRetryDelayMs(attempts)).toISOString();
-    const status = exhausted ? 'ignored' : 'retrying';
-
-    if (existing) {
-      existing.attempts = attempts;
-      existing.next_retry_at = nextRetryAt;
-      existing.status = status;
-      existing.retryable = !exhausted;
-      existing.error_message = input.error_message;
-      existing.request_id = input.request_id ?? existing.request_id;
-      existing.context = {
-        ...(existing.context ?? {}),
-        calendar_operation: input.operation,
-        last_error: input.error_message,
-      };
-      existing.updated_at = now();
-      return toCalendarSyncFailure(existing);
-    }
-
-    const created: FailureLog = {
-      id: crypto.randomUUID(),
-      source: 'calendar',
-      operation: CALENDAR_SYNC_OPERATION,
-      severity: exhausted ? 'critical' : 'error',
-      status,
-      request_id: input.request_id ?? null,
-      idempotency_key: null,
-      booking_id: input.booking_id,
-      payment_id: null,
-      client_id: null,
-      stripe_event_id: null,
-      stripe_checkout_session_id: null,
-      google_event_id: null,
-      email_provider_message_id: null,
-      error_code: null,
-      error_message: input.error_message,
-      error_stack: null,
-      http_status: null,
-      retryable: !exhausted,
-      context: {
-        calendar_operation: input.operation,
-        last_error: input.error_message,
-      },
-      attempts,
-      next_retry_at: nextRetryAt,
-      resolved_at: null,
-      created_at: now(),
-      updated_at: now(),
-    };
-    mockState.failureLogs.push(created);
-    return toCalendarSyncFailure(created);
-  }
-
-  async getCalendarSyncFailuresDue(limit: number): Promise<CalendarSyncFailure[]> {
-    const due = mockState.failureLogs
-      .filter((log) =>
-        log.source === 'calendar' &&
-        log.operation === CALENDAR_SYNC_OPERATION &&
-        log.retryable &&
-        log.resolved_at === null &&
-        log.next_retry_at !== null &&
-        new Date(log.next_retry_at).getTime() <= Date.now(),
-      )
-      .sort((a, b) => {
-        const aTime = a.next_retry_at ? new Date(a.next_retry_at).getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.next_retry_at ? new Date(b.next_retry_at).getTime() : Number.MAX_SAFE_INTEGER;
-        return aTime - bTime;
-      })
-      .slice(0, Math.max(1, limit));
-    return due.map(toCalendarSyncFailure);
-  }
-
-  async resolveCalendarSyncFailure(
-    bookingId: string,
-    resolution: 'resolved' | 'ignored' = 'resolved',
-    note?: string | null,
-  ): Promise<void> {
-    const active = [...mockState.failureLogs]
-      .reverse()
-      .find((log) =>
-        log.source === 'calendar' &&
-        log.operation === CALENDAR_SYNC_OPERATION &&
-        log.booking_id === bookingId &&
-        log.resolved_at === null,
-      );
-    if (!active) return;
-
-    active.status = resolution;
-    active.retryable = false;
-    active.next_retry_at = null;
-    active.resolved_at = now();
-    if (note) {
-      active.context = {
-        ...(active.context ?? {}),
-        resolution_note: note,
-      };
-    }
-    active.updated_at = now();
-  }
-
   // ── Session types (offers) ───────────────────────────────────────────────
 
   async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
@@ -763,30 +613,4 @@ function findSessionTypeTitle(sessionTypeId: string | null): string | null {
   if (!sessionTypeId) return null;
   const row = MOCK_SESSION_TYPES.find((sessionType) => sessionType.id === sessionTypeId);
   return row?.title ?? null;
-}
-
-function toCalendarSyncFailure(log: FailureLog): CalendarSyncFailure {
-  const operationFromContext = String(log.context?.['calendar_operation'] ?? 'update');
-  const operation: 'create' | 'update' | 'delete' =
-    operationFromContext === 'create' || operationFromContext === 'delete'
-      ? operationFromContext
-      : 'update';
-
-  const lastError = String(log.context?.['last_error'] ?? log.error_message ?? 'calendar sync failed');
-
-  return {
-    id: log.id,
-    booking_id: log.booking_id ?? '',
-    operation,
-    attempts: log.attempts,
-    next_retry_at: log.next_retry_at,
-    last_error: lastError,
-    resolved_at: log.resolved_at,
-    status: log.status,
-  };
-}
-
-function computeRetryDelayMs(attempt: number): number {
-  const clamped = Math.max(1, Math.min(6, attempt));
-  return Math.min(60 * 60 * 1000, (2 ** clamped) * 60 * 1000);
 }

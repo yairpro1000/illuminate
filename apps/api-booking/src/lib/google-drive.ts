@@ -126,6 +126,102 @@ export async function uploadToGoogleDrive(opts: {
   return { fileId: data.id };
 }
 
+async function driveApiCall(
+  opts: {
+    method: string;
+    url: string;
+    accessToken: string;
+    body?: string;
+    contentType?: string;
+  },
+  logger?: Logger,
+): Promise<Response> {
+  const headers: Record<string, string> = { 'Authorization': `Bearer ${opts.accessToken}` };
+  if (opts.contentType) headers['Content-Type'] = opts.contentType;
+
+  if (logger) {
+    return instrumentFetch(logger, {
+      provider: 'google_drive',
+      operation: 'api_call',
+      method: opts.method,
+      url: opts.url,
+      headers,
+      body: opts.body,
+    });
+  }
+  return fetch(opts.url, { method: opts.method, headers, body: opts.body });
+}
+
+async function findFolderByName(
+  name: string,
+  parentId: string,
+  accessToken: string,
+  logger?: Logger,
+): Promise<string | null> {
+  const q = `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`;
+  const res = await driveApiCall({ method: 'GET', url, accessToken }, logger);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google Drive folder search failed (${res.status}): ${text.slice(0, 400)}`);
+  }
+  const data = await res.json() as { files: Array<{ id: string }> };
+  return data.files.length > 0 ? (data.files[0]?.id ?? null) : null;
+}
+
+async function createDriveFolder(
+  name: string,
+  parentId: string | null,
+  accessToken: string,
+  logger?: Logger,
+): Promise<string> {
+  const metadata: Record<string, unknown> = { name, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) metadata.parents = [parentId];
+  const url = 'https://www.googleapis.com/drive/v3/files?fields=id';
+  const res = await driveApiCall(
+    { method: 'POST', url, accessToken, body: JSON.stringify(metadata), contentType: 'application/json' },
+    logger,
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google Drive folder creation failed (${res.status}): ${text.slice(0, 400)}`);
+  }
+  const data = await res.json() as { id: string };
+  return data.id;
+}
+
+/**
+ * Resolves a two-level Drive folder path, creating folders as needed.
+ * Returns the ID of the leaf subfolder.
+ *
+ * If rootFolderId is provided it is used directly as the parent for subfolder lookup.
+ * Otherwise the function finds/creates a `rootFolderName` folder at Drive root first.
+ */
+export async function getOrCreateDriveFolderPath(opts: {
+  rootFolderName: string;
+  rootFolderId?: string | null;
+  subfolderName: string;
+  serviceAccount: GoogleSaConfig;
+  logger?: Logger;
+}): Promise<string> {
+  const token = await getAccessToken(
+    opts.serviceAccount,
+    'https://www.googleapis.com/auth/drive',
+    opts.logger,
+  );
+
+  let parentId: string;
+  if (opts.rootFolderId) {
+    parentId = opts.rootFolderId;
+  } else {
+    const found = await findFolderByName(opts.rootFolderName, 'root', token, opts.logger);
+    parentId = found ?? await createDriveFolder(opts.rootFolderName, null, token, opts.logger);
+  }
+
+  const found = await findFolderByName(opts.subfolderName, parentId, token, opts.logger);
+  return found ?? createDriveFolder(opts.subfolderName, parentId, token, opts.logger);
+}
+
 export function resolveServiceAccountFromEnv(env: {
   GOOGLE_SERVICE_ACCOUNT_JSON?: string;
   GOOGLE_CLIENT_EMAIL?: string;

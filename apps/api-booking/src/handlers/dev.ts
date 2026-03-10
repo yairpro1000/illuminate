@@ -27,25 +27,6 @@ function guardMockEmail(ctx: AppContext): void {
   }
 }
 
-function summarizeFailureLog(log: typeof mockState.failureLogs[number]) {
-  return {
-    id: log.id,
-    source: log.source,
-    operation: log.operation,
-    severity: log.severity,
-    status: log.status,
-    request_id: log.request_id,
-    booking_id: log.booking_id,
-    payment_id: log.payment_id,
-    retryable: log.retryable,
-    attempts: log.attempts,
-    next_retry_at: log.next_retry_at,
-    resolved_at: log.resolved_at,
-    created_at: log.created_at,
-    updated_at: log.updated_at,
-  };
-}
-
 // POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
 export async function handleSimulatePayment(request: Request, ctx: AppContext): Promise<Response> {
   try {
@@ -112,8 +93,24 @@ export async function handleDevEmails(_request: Request, ctx: AppContext): Promi
 // GET /api/__dev/failures
 export async function handleDevFailures(_request: Request, ctx: AppContext): Promise<Response> {
   try {
-    const logs = await ctx.providers.repository.getRecentFailureLogs(50);
-    return ok({ failure_logs: logs.map(summarizeFailureLog) });
+    guardMockRepository(ctx);
+    const failedAttempts = mockState.sideEffectAttempts
+      .filter((attempt) => attempt.status === 'fail')
+      .slice(-50)
+      .reverse()
+      .map((attempt) => {
+        const effect = mockState.sideEffects.find((row) => row.id === attempt.booking_side_effect_id);
+        return {
+          id: attempt.id,
+          booking_side_effect_id: attempt.booking_side_effect_id,
+          booking_id: effect?.booking_id ?? null,
+          effect_intent: effect?.effect_intent ?? null,
+          attempt_num: attempt.attempt_num,
+          error_message: attempt.error_message,
+          created_at: attempt.created_at,
+        };
+      });
+    return ok({ failed_side_effect_attempts: failedAttempts });
   } catch (err) {
     return errorResponse(err);
   }

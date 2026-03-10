@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   var STORAGE_KEY = 'admin_api_base';
+  var STORAGE_KEY_ROOT = 'API_BASE'; // alternate key: treated as root URL, /api is appended
   var LOCAL_HOSTS = { 'localhost':1, '127.0.0.1':1, '::1':1 };
 
   function sanitizeBase(s) { return String(s || '').replace(/\/+$/g, ''); }
@@ -33,7 +34,20 @@
     }
   }
 
+  function getStoredRootBase() {
+    if (!isLocalhost()) return '';
+    try {
+      var fromStorage = localStorage.getItem(STORAGE_KEY_ROOT);
+      return fromStorage && fromStorage.trim() ? sanitizeBase(fromStorage) : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   function computeRootBase() {
+    var fromStoredRoot = getStoredRootBase();
+    if (fromStoredRoot) return fromStoredRoot;
+
     var fromStorage = getStoredBase();
     if (fromStorage) return fromStorage;
 
@@ -44,9 +58,10 @@
   }
 
   function computeAdminApiBase() {
-    // Back-compat: if localStorage/admin_api_base is set, it is assumed to be
-    // the full base (e.g. '/api' or 'https://api.host/api'). Otherwise build
-    // from root API base + '/api'.
+    // If API_BASE is set, treat it as the root and append /api.
+    var storedRoot = getStoredRootBase();
+    if (storedRoot) return storedRoot + '/api';
+    // Back-compat: admin_api_base is assumed to already include /api.
     var stored = getStoredBase();
     if (stored) return stored;
     return sanitizeBase(computeRootBase()) + '/api';
@@ -69,6 +84,7 @@
   function clearProdOverride() {
     if (isLocalhost()) return;
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    try { localStorage.removeItem(STORAGE_KEY_ROOT); } catch (_) {}
   }
 
   function resolveAdminUrl(path) {

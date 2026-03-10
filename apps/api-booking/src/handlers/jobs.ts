@@ -55,12 +55,10 @@ const CRON_SWEEP_STEPS: ReadonlyArray<{
   { jobName: 'payment-due-cancellations', run: runPaymentDueCancellations },
   { jobName: '24h-reminders', run: run24hReminders },
   { jobName: 'side-effects-dispatcher', run: runSideEffectsOutbox },
-  { jobName: 'calendar-sync-retries', run: runCalendarSyncRetries },
 ];
 
 const MANUAL_JOB_NAMES = new Set([
   'checkout-expiry',
-  'calendar-sync-retries',
   'unconfirmed-followups',
   'payment-due-reminders',
   'payment-due-cancellations',
@@ -163,8 +161,6 @@ async function runJob(name: string, ctx: JobContext): Promise<void> {
   switch (requestedName) {
     case 'checkout-expiry':
       return runCheckoutExpiry(ctx);
-    case 'calendar-sync-retries':
-      return runCalendarSyncRetries(ctx);
     case 'unconfirmed-followups':
       return runUnconfirmedFollowups(ctx);
     case 'payment-due-reminders':
@@ -374,17 +370,17 @@ async function runSideEffectsByIntent(
       succeeded++;
     } catch (error) {
       failed++;
-      await ctx.providers.repository.logFailure({
-        source: 'job',
-        operation: jobName,
-        booking_id: effect.booking_id,
-        request_id: ctx.requestId,
-        error_message: String(error),
+      ctx.logger.logError({
+        source: jobLogSource(ctx),
+        eventType: 'side_effect_dispatch_failure',
+        message: 'Side effect dispatch failed',
         context: {
           job_name: jobName,
           trigger_source: ctx.triggerSource,
+          booking_id: effect.booking_id,
           effect_intent: effect.effect_intent,
           side_effect_id: effect.id,
+          error: String(error),
         },
       });
     }
@@ -418,17 +414,17 @@ export async function runSideEffectsOutbox(ctx: JobContext): Promise<void> {
       succeeded++;
     } catch (error) {
       failed++;
-      await ctx.providers.repository.logFailure({
-        source: 'job',
-        operation: 'side-effects-dispatcher',
-        booking_id: effect.booking_id,
-        request_id: ctx.requestId,
-        error_message: String(error),
+      ctx.logger.logError({
+        source: jobLogSource(ctx),
+        eventType: 'side_effect_dispatch_failure',
+        message: 'Side effect dispatch failed',
         context: {
           job_name: jobName,
           trigger_source: ctx.triggerSource,
+          booking_id: effect.booking_id,
           effect_intent: effect.effect_intent,
           side_effect_id: effect.id,
+          error: String(error),
         },
       });
     }
@@ -594,28 +590,35 @@ async function executeSideEffect(
       return;
     }
 
-    case 'reserve_slot':
-      await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
-      return;
+    case 'reserve_slot': {
+      const result = await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
+      if (!result.calendarSynced) {
+        throw new Error(result.failureReason ?? 'calendar_sync_failed');
+      }
 
-    case 'update_reserved_slot':
-      await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
+      await appendSlotConfirmedIfMissing(
+        result.booking,
+        ctx,
+        {
+          trigger: 'reserve_slot_effect',
+          sideEffectId: effect.id,
+        },
+      );
       return;
+    }
 
-    case 'cancel_reserved_slot':
-      await retryCalendarSyncForBooking(booking, 'delete', bookingCtx);
+    case 'update_reserved_slot': {
+      const result = await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
+      if (!result.calendarSynced) {
+        throw new Error(result.failureReason ?? 'calendar_sync_failed');
+      }
       return;
+    }
 
-    case 'confirm_reserved_slot': {
-      await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
-      if (!['EXPIRED', 'CANCELED', 'CLOSED'].includes(booking.current_status)) {
-        await appendBookingEventWithEffects(
-          booking.id,
-          'SLOT_CONFIRMED',
-          'system',
-          { via_effect_intent: effect.effect_intent },
-          bookingCtx,
-        );
+    case 'cancel_reserved_slot': {
+      const result = await retryCalendarSyncForBooking(booking, 'delete', bookingCtx);
+      if (!result.calendarSynced) {
+        throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return;
     }
@@ -663,60 +666,85 @@ async function executeSideEffect(
   }
 }
 
-// ── Job: retry failed calendar sync operations ──────────────────────────────
+async function appendSlotConfirmedIfMissing(
+  booking: { id: string; event_id: string | null; current_status: BookingCurrentStatus },
+  ctx: JobContext,
+  options: {
+    trigger: 'reserve_slot_effect';
+    calendarOperation?: 'create' | 'update' | 'delete';
+    sideEffectId?: string;
+  },
+): Promise<void> {
+  const shouldAppend =
+    options.calendarOperation !== 'update' &&
+    options.calendarOperation !== 'delete' &&
+    booking.event_id === null &&
+    (booking.current_status === 'SLOT_CONFIRMED' || booking.current_status === 'PAID');
 
-async function runCalendarSyncRetries(ctx: JobContext): Promise<void> {
-  const { providers, logger } = ctx;
-  const jobName = 'calendar-sync-retries';
-  logJobStarted(ctx, jobName);
+  ctx.logger.logInfo({
+    source: jobLogSource(ctx),
+    eventType: 'calendar_retry_slot_confirmed_decision',
+    message: 'Evaluated SLOT_CONFIRMED append after calendar retry',
+    context: {
+      booking_id: booking.id,
+      trigger: options.trigger,
+      calendar_operation: options.calendarOperation ?? 'create',
+      side_effect_id: options.sideEffectId ?? null,
+      current_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      should_append_slot_confirmed: shouldAppend,
+      branch_taken: shouldAppend ? 'append_slot_confirmed_if_missing' : 'skip_slot_confirmed_append',
+      deny_reason: shouldAppend ? null : 'operation_or_status_not_eligible',
+    },
+  });
 
-  const failures = await providers.repository.getCalendarSyncFailuresDue(100);
-  let succeeded = 0;
-  let failed = 0;
+  if (!shouldAppend) return;
 
-  for (const failure of failures) {
-    try {
-      const booking = await providers.repository.getBookingById(failure.booking_id);
-      if (!booking) {
-        await providers.repository.resolveCalendarSyncFailure(
-          failure.booking_id,
-          'ignored',
-          'booking_missing',
-        );
-        succeeded++;
-        continue;
-      }
-
-      const result = await retryCalendarSyncForBooking(booking, failure.operation, {
-        providers,
-        env: ctx.env,
-        logger,
-        requestId: ctx.requestId,
-      });
-
-      if (result.calendarSynced) succeeded++;
-      else failed++;
-    } catch (error) {
-      failed++;
-      await providers.repository.logFailure({
-        source: 'job',
-        operation: 'calendar-sync-retries',
-        booking_id: failure.booking_id,
-        request_id: ctx.requestId,
-        error_message: String(error),
-        context: {
-          job_name: jobName,
-          trigger_source: ctx.triggerSource,
-          calendar_operation: failure.operation,
-        },
-      });
-    }
+  const existingEvents = await ctx.providers.repository.listBookingEvents(booking.id);
+  const alreadyHasSlotConfirmed = existingEvents.some((event) => event.event_type === 'SLOT_CONFIRMED');
+  if (alreadyHasSlotConfirmed) {
+    ctx.logger.logInfo({
+      source: jobLogSource(ctx),
+      eventType: 'calendar_retry_slot_confirmed_deduplicated',
+      message: 'Skipped SLOT_CONFIRMED append because event already exists',
+      context: {
+        booking_id: booking.id,
+        trigger: options.trigger,
+        calendar_operation: options.calendarOperation ?? 'create',
+        side_effect_id: options.sideEffectId ?? null,
+        branch_taken: 'slot_confirmed_already_present',
+      },
+    });
+    return;
   }
 
-  logJobCompleted(ctx, jobName, {
-    items_found: failures.length,
-    items_processed: failures.length,
-    items_succeeded: succeeded,
-    items_failed: failed,
+  await appendBookingEventWithEffects(
+    booking.id,
+    'SLOT_CONFIRMED',
+    'job',
+    {
+      via: options.trigger,
+      side_effect_id: options.sideEffectId ?? null,
+      calendar_operation: options.calendarOperation ?? 'create',
+    },
+    {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    },
+  );
+
+  ctx.logger.logInfo({
+    source: jobLogSource(ctx),
+    eventType: 'calendar_retry_slot_confirmed_appended',
+    message: 'Appended SLOT_CONFIRMED after successful calendar retry',
+    context: {
+      booking_id: booking.id,
+      trigger: options.trigger,
+      calendar_operation: options.calendarOperation ?? 'create',
+      side_effect_id: options.sideEffectId ?? null,
+      branch_taken: 'slot_confirmed_appended_after_retry',
+    },
   });
 }

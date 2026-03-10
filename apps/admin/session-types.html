@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ILLUMINATE Admin — Session Types</title>
+    <title>ILLUMINATE Admin — Edit Offers</title>
     <meta name="robots" content="noindex, nofollow" />
     <style>
       :root {
@@ -31,6 +31,8 @@
       textarea { min-height: 90px; resize: vertical; }
       button { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
       button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
+      button.icon-btn { background: #fff; color: var(--ink); border-color: var(--line); padding: 5px 8px; font-size: 1rem; line-height: 1; border-radius: 6px; cursor: pointer; }
+      button.icon-btn:hover { background: #f3f4f6; }
       button:disabled { opacity: 0.6; cursor: not-allowed; }
       a { color: var(--accent); }
       table { width: 100%; border-collapse: collapse; background: #fff; }
@@ -45,18 +47,15 @@
       .btnrow { display: flex; gap: 8px; justify-content: flex-end; }
       .grid2 { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 10px; }
       .thumb { width: 100%; max-width: 220px; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+      .input-with-btn { display: flex; gap: 6px; align-items: center; }
+      .input-with-btn input { flex: 1; min-width: 0; }
       @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
       /* admin sidebar layout */
       .admin-layout { display: flex; min-height: 100vh; }
       .admin-sidebar {
-        flex: 0 0 180px;
-        width: 180px;
-        background: var(--card);
-        border-right: 1px solid var(--line);
-        padding: 16px 10px;
-        position: sticky;
-        top: 0;
-        height: 100vh;
+        flex: 0 0 180px; width: 180px;
+        background: var(--card); border-right: 1px solid var(--line);
+        padding: 16px 10px; position: sticky; top: 0; height: 100vh;
       }
       .admin-logo { font-weight: 700; margin: 2px 0 10px; font-size: 0.95rem; color: var(--muted); }
       .admin-nav { display: flex; flex-direction: column; gap: 4px; }
@@ -64,6 +63,13 @@
       .admin-nav-link:hover { background: #f3f4f6; }
       .admin-nav-link.active { background: var(--accent); color: #fff; }
       .admin-content { flex: 1; min-width: 0; }
+      /* tabs */
+      .tab-bar { display: flex; gap: 4px; margin-bottom: 12px; }
+      .tab-btn { background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 18px; cursor: pointer; font-size: 0.92rem; }
+      .tab-btn:hover { background: #f3f4f6; }
+      .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+      /* search */
+      .search-bar { width: 100%; max-width: 340px; margin-bottom: 10px; }
     </style>
   </head>
   <body>
@@ -72,37 +78,251 @@
         <div class="admin-logo">Admin</div>
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
-          <a href="session-types.html" class="admin-nav-link" data-page="session-types">Session Types</a>
+          <a href="session-types.html" class="admin-nav-link" data-page="session-types">Edit Offers</a>
         </div>
       </nav>
       <main class="admin-content">
-      <section class="card">
-        <h1>Session Types</h1>
-        <div class="row" style="justify-content: space-between; align-items: center;">
+
+        <!-- Top bar -->
+        <section class="card">
+          <h1 id="pageTitle">Edit Offers</h1>
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <div class="col">
+              <div id="status" class="status muted">Loading…</div>
+            </div>
+            <div class="col">
+              <button id="newBtn" type="button">New</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="session-types" type="button">Session Types</button>
+          <button class="tab-btn" data-tab="events" type="button">Events</button>
+        </div>
+
+        <!-- Lists -->
+        <section class="card">
+          <input class="search-bar" id="searchInput" type="search" placeholder="Search…" />
+
+          <!-- Session Types table -->
+          <div id="stView">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Price</th>
+                  <th>Duration</th>
+                  <th>Status</th>
+                  <th>Sort</th>
+                </tr>
+              </thead>
+              <tbody id="stBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Events table -->
+          <div id="evView" class="hidden">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Capacity</th>
+                </tr>
+              </thead>
+              <tbody id="evBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- ── SESSION TYPE modal ─────────────────────────────────────────────── -->
+    <div id="stOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="stTitle">
+        <h1 id="stTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit session type</h1>
+        <div class="grid2">
           <div class="col">
-            <div id="status" class="status muted">Loading…</div>
+            <label for="stFTitle">Title</label>
+            <input id="stFTitle" />
           </div>
           <div class="col">
-            <button id="newBtn" type="button">New session type</button>
+            <label for="stFSlug">Slug</label>
+            <input id="stFSlug" />
+          </div>
+          <div class="col">
+            <label for="stFShort">Short description</label>
+            <input id="stFShort" />
+          </div>
+          <div class="col">
+            <label for="stFDuration">Duration (minutes)</label>
+            <input id="stFDuration" type="number" min="1" />
+          </div>
+          <div class="col">
+            <label for="stFPrice">Price (CHF)</label>
+            <input id="stFPrice" type="number" min="0" step="1" />
+          </div>
+          <div class="col">
+            <label for="stFCurrency">Currency</label>
+            <input id="stFCurrency" value="CHF" />
+          </div>
+          <div class="col">
+            <label for="stFStatus">Status</label>
+            <select id="stFStatus">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="hidden">hidden</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="stFSort">Sort order</label>
+            <input id="stFSort" type="number" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="stFDesc">Description</label>
+            <textarea id="stFDesc"></textarea>
+          </div>
+          <div class="col">
+            <label for="stFImage">Upload image</label>
+            <input id="stFImage" type="file" accept="image/*" />
+            <div class="small muted" id="stImgMsg"></div>
+            <img id="stImgPreview" class="thumb hidden" alt="Preview" />
+          </div>
+          <div class="col">
+            <label for="stFAlt">Image alt</label>
+            <input id="stFAlt" />
+          </div>
+          <div class="col">
+            <label>Image key (R2)</label>
+            <div class="input-with-btn">
+              <input id="stFImageKey" placeholder="session_types/…" />
+              <button type="button" class="icon-btn" id="stImageKeyLink" title="Open in R2">🌐</button>
+            </div>
+          </div>
+          <div class="col">
+            <label>Google Drive file ID</label>
+            <div class="input-with-btn">
+              <input id="stFDriveId" placeholder="Drive file ID" />
+              <button type="button" class="icon-btn" id="stDriveIdLink" title="Open in Drive">🌐</button>
+            </div>
           </div>
         </div>
-      </section>
+        <div id="stEditMsg" class="status muted"></div>
+        <div class="btnrow" style="margin-top: 10px;">
+          <button id="stClose" type="button" class="secondary">Close</button>
+          <button id="stSave" type="button">Save</button>
+        </div>
+      </div>
+    </div>
 
-      <section class="card">
-        <table>
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Price</th>
-              <th>Duration</th>
-              <th>Status</th>
-              <th>Sort</th>
-            </tr>
-          </thead>
-          <tbody id="rowsBody"></tbody>
-        </table>
-      </section>
-      </main>
+    <!-- ── EVENT modal ────────────────────────────────────────────────────── -->
+    <div id="evOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="evTitle">
+        <h1 id="evTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit event</h1>
+        <div class="grid2">
+          <div class="col">
+            <label for="evFTitle">Title</label>
+            <input id="evFTitle" />
+          </div>
+          <div class="col">
+            <label for="evFSlug">Slug</label>
+            <input id="evFSlug" />
+          </div>
+          <div class="col">
+            <label for="evFStatus">Status</label>
+            <select id="evFStatus">
+              <option value="draft">draft</option>
+              <option value="published">published</option>
+              <option value="cancelled">cancelled</option>
+              <option value="sold_out">sold_out</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="evFCapacity">Capacity</label>
+            <input id="evFCapacity" type="number" min="1" />
+          </div>
+          <div class="col">
+            <label for="evFStartsAt">Starts at</label>
+            <input id="evFStartsAt" type="datetime-local" />
+          </div>
+          <div class="col">
+            <label for="evFEndsAt">Ends at</label>
+            <input id="evFEndsAt" type="datetime-local" />
+          </div>
+          <div class="col">
+            <label for="evFTimezone">Timezone</label>
+            <input id="evFTimezone" value="Europe/Zurich" />
+          </div>
+          <div class="col">
+            <label for="evFLocation">Location name</label>
+            <input id="evFLocation" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="evFAddress">Address line</label>
+            <input id="evFAddress" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="evFMapsUrl">Maps URL</label>
+            <input id="evFMapsUrl" />
+          </div>
+          <div class="col">
+            <label for="evFIsPaid">Is paid</label>
+            <select id="evFIsPaid">
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="evFPrice">Price per person (cents)</label>
+            <input id="evFPrice" type="number" min="0" step="1" />
+          </div>
+          <div class="col">
+            <label for="evFCurrency">Currency</label>
+            <input id="evFCurrency" value="CHF" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="evFWhatsapp">WhatsApp group invite URL</label>
+            <input id="evFWhatsapp" />
+          </div>
+          <div class="col" style="grid-column: 1 / -1;">
+            <label for="evFDesc">Description</label>
+            <textarea id="evFDesc"></textarea>
+          </div>
+          <div class="col">
+            <label for="evFImage">Upload image</label>
+            <input id="evFImage" type="file" accept="image/*" />
+            <div class="small muted" id="evImgMsg"></div>
+            <img id="evImgPreview" class="thumb hidden" alt="Preview" />
+          </div>
+          <div class="col">
+            <label for="evFAlt">Image alt</label>
+            <input id="evFAlt" />
+          </div>
+          <div class="col">
+            <label>Image key (R2)</label>
+            <div class="input-with-btn">
+              <input id="evFImageKey" placeholder="events/…" />
+              <button type="button" class="icon-btn" id="evImageKeyLink" title="Open in R2">🌐</button>
+            </div>
+          </div>
+          <div class="col">
+            <label>Google Drive file ID</label>
+            <div class="input-with-btn">
+              <input id="evFDriveId" placeholder="Drive file ID" />
+              <button type="button" class="icon-btn" id="evDriveIdLink" title="Open in Drive">🌐</button>
+            </div>
+          </div>
+        </div>
+        <div id="evEditMsg" class="status muted"></div>
+        <div class="btnrow" style="margin-top: 10px;">
+          <button id="evClose" type="button" class="secondary">Close</button>
+          <button id="evSave" type="button">Save</button>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -116,227 +336,410 @@
         if (el) el.classList.add('active');
       })();
     </script>
-    <div id="editOverlay" class="overlay hidden" aria-hidden="true">
-      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
-        <h1 id="editTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit session type</h1>
-        <div class="grid2">
-          <div class="col">
-            <label for="fTitle">Title</label>
-            <input id="fTitle" />
-          </div>
-          <div class="col">
-            <label for="fSlug">Slug</label>
-            <input id="fSlug" />
-          </div>
-          <div class="col">
-            <label for="fShort">Short description</label>
-            <input id="fShort" />
-          </div>
-          <div class="col">
-            <label for="fDuration">Duration (minutes)</label>
-            <input id="fDuration" type="number" min="1" />
-          </div>
-          <div class="col">
-            <label for="fPrice">Price (CHF)</label>
-            <input id="fPrice" type="number" min="0" step="1" />
-          </div>
-          <div class="col">
-            <label for="fCurrency">Currency</label>
-            <input id="fCurrency" value="CHF" />
-          </div>
-          <div class="col">
-            <label for="fStatus">Status</label>
-            <select id="fStatus">
-              <option value="draft">draft</option>
-              <option value="active">active</option>
-              <option value="hidden">hidden</option>
-            </select>
-          </div>
-          <div class="col">
-            <label for="fSort">Sort order</label>
-            <input id="fSort" type="number" />
-          </div>
-          <div class="col" style="grid-column: 1 / -1;">
-            <label for="fDesc">Description</label>
-            <textarea id="fDesc"></textarea>
-          </div>
-          <div class="col">
-            <label for="fImage">Image</label>
-            <input id="fImage" type="file" accept="image/*" />
-            <div class="small muted" id="imgMsg"></div>
-            <img id="imgPreview" class="thumb hidden" alt="Preview" />
-          </div>
-          <div class="col">
-            <label for="fAlt">Image alt</label>
-            <input id="fAlt" />
-          </div>
-        </div>
-        <div id="editMsg" class="status muted"></div>
-        <div class="btnrow" style="margin-top: 10px;">
-          <button id="editClose" type="button" class="secondary">Close</button>
-          <button id="editSave" type="button">Save</button>
-        </div>
-      </div>
-    </div>
-
     <script src="js/api-base.js"></script>
     <script src="js/admin-auth.js"></script>
     <script>
-      (function() {
-        const apiBase = window.getAdminApiBase();
+    (function() {
+      const R2_BASE = 'https://images.letsilluminate.co';
+      const DRIVE_BASE = 'https://drive.google.com/file/d';
 
-        const state = { rows: [], editing: null, saving: false, uploading: false };
-        const rowsBody = document.getElementById('rowsBody');
-        const statusEl = document.getElementById('status');
-        const editOverlayEl = document.getElementById('editOverlay');
-        const editMsgEl = document.getElementById('editMsg');
+      const apiBase = window.getAdminApiBase();
+      function resolveUrl(path) { return window.resolveAdminUrl(path); }
 
-        const fTitle = document.getElementById('fTitle');
-        const fSlug = document.getElementById('fSlug');
-        const fShort = document.getElementById('fShort');
-        const fDesc = document.getElementById('fDesc');
-        const fDuration = document.getElementById('fDuration');
-        const fPrice = document.getElementById('fPrice');
-        const fCurrency = document.getElementById('fCurrency');
-        const fStatus = document.getElementById('fStatus');
-        const fSort = document.getElementById('fSort');
-        const fImage = document.getElementById('fImage');
-        const fAlt = document.getElementById('fAlt');
-        const imgMsg = document.getElementById('imgMsg');
-        const imgPreview = document.getElementById('imgPreview');
-        const editSaveEl = document.getElementById('editSave');
+      // ── State ──────────────────────────────────────────────────────────────
+      const state = {
+        tab: 'session-types',
+        stRows: [], stSearch: '', stEditing: null, stSaving: false, stUploading: false,
+        evRows: [], evSearch: '', evEditing: null, evSaving: false, evUploading: false,
+      };
 
-        function resolveUrl(path) { return window.resolveAdminUrl(path); }
-        async function api(path, init) {
-          const res = await fetch(resolveUrl(path), { method: 'GET', credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
-          if (res.status === 401 && window.adminAuth) {
-            try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+      // ── Shared helpers ─────────────────────────────────────────────────────
+      function msg(el, text, isErr) {
+        el.className = isErr ? 'status err' : 'status muted';
+        el.textContent = text || '';
+      }
+
+      async function api(path, init) {
+        const res = await fetch(resolveUrl(path), {
+          method: 'GET', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          ...init,
+        });
+        if (res.status === 401 && window.adminAuth) {
+          try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+        }
+        const text = await res.text();
+        let body = {};
+        try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(body)}`);
+        return body;
+      }
+
+      function cell(text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        return td;
+      }
+
+      function formatPrice(price, currency) {
+        const amount = Number(price || 0);
+        const code = String(currency || 'CHF').toUpperCase();
+        try {
+          return new Intl.NumberFormat(undefined, { style: 'currency', currency: code, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+        } catch (_) { return `${amount} ${code}`; }
+      }
+
+      function isoToLocal(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+
+      // ── Tabs ───────────────────────────────────────────────────────────────
+      const stView = document.getElementById('stView');
+      const evView = document.getElementById('evView');
+      const newBtn = document.getElementById('newBtn');
+      const statusEl = document.getElementById('status');
+      const searchInput = document.getElementById('searchInput');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          state.tab = btn.dataset.tab;
+          searchInput.value = '';
+          state.stSearch = '';
+          state.evSearch = '';
+          if (state.tab === 'session-types') {
+            stView.classList.remove('hidden');
+            evView.classList.add('hidden');
+            renderST();
+          } else {
+            evView.classList.remove('hidden');
+            stView.classList.add('hidden');
+            renderEV();
+            if (!state.evRows.length) loadEvents();
           }
-          const text = await res.text();
-          let body = {};
-          try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
-          if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(body)}`);
-          return body;
-        }
+        });
+      });
 
-        function parsePrice(priceInput) {
-          const normalized = String(priceInput ?? '').trim();
-          if (!normalized) return 0;
-          const amount = Number(normalized);
-          if (!Number.isFinite(amount) || amount < 0 || !Number.isInteger(amount)) return null;
-          return amount;
-        }
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.trim().toLowerCase();
+        if (state.tab === 'session-types') { state.stSearch = q; renderST(); }
+        else { state.evSearch = q; renderEV(); }
+      });
 
-        function formatPrice(price, currency) {
-          const amount = Number(price || 0);
-          const code = String(currency || 'CHF').toUpperCase();
-          try {
-            return new Intl.NumberFormat(undefined, {
-              style: 'currency',
-              currency: code,
-              minimumFractionDigits: 0,
-              maximumFractionDigits: 0,
-            }).format(amount);
-          } catch (_) {
-            return `${amount} ${code}`;
+      newBtn.addEventListener('click', () => {
+        if (state.tab === 'session-types') openST(null);
+        else openEV(null);
+      });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // SESSION TYPES
+      // ══════════════════════════════════════════════════════════════════════
+      const stBody = document.getElementById('stBody');
+      const stOverlay = document.getElementById('stOverlay');
+      const stEditMsg = document.getElementById('stEditMsg');
+      const stFTitle = document.getElementById('stFTitle');
+      const stFSlug = document.getElementById('stFSlug');
+      const stFShort = document.getElementById('stFShort');
+      const stFDesc = document.getElementById('stFDesc');
+      const stFDuration = document.getElementById('stFDuration');
+      const stFPrice = document.getElementById('stFPrice');
+      const stFCurrency = document.getElementById('stFCurrency');
+      const stFStatus = document.getElementById('stFStatus');
+      const stFSort = document.getElementById('stFSort');
+      const stFImage = document.getElementById('stFImage');
+      const stFAlt = document.getElementById('stFAlt');
+      const stFImageKey = document.getElementById('stFImageKey');
+      const stFDriveId = document.getElementById('stFDriveId');
+      const stImgMsg = document.getElementById('stImgMsg');
+      const stImgPreview = document.getElementById('stImgPreview');
+      const stSaveBtn = document.getElementById('stSave');
+
+      function renderST() {
+        stBody.innerHTML = '';
+        let rows = state.stRows;
+        if (state.stSearch) rows = rows.filter(r => (r.title + ' ' + (r.short_description || '') + ' ' + r.status).toLowerCase().includes(state.stSearch));
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td'); td.colSpan = 5; td.className = 'muted'; td.textContent = 'No rows.';
+          tr.appendChild(td); stBody.appendChild(tr); return;
+        }
+        for (const r of rows) {
+          const tr = document.createElement('tr'); tr.className = 'clickable';
+          tr.appendChild(cell(r.title));
+          tr.appendChild(cell(formatPrice(r.price, r.currency)));
+          tr.appendChild(cell(`${r.duration_minutes} min`));
+          tr.appendChild(cell(r.status));
+          tr.appendChild(cell(String(r.sort_order || 0)));
+          tr.addEventListener('click', () => openST(r));
+          stBody.appendChild(tr);
+        }
+      }
+
+      async function loadST() {
+        msg(statusEl, 'Loading…');
+        try {
+          const data = await api('/admin/session-types');
+          state.stRows = data.session_types || [];
+          renderST();
+          msg(statusEl, 'Ready.');
+        } catch (e) { msg(statusEl, String(e), true); }
+      }
+
+      function openST(row) {
+        state.stEditing = row ? { ...row } : { title: '', slug: '', short_description: '', description: '', duration_minutes: 60, price: 0, currency: 'CHF', status: 'draft', sort_order: 0, image_key: null, image_alt: null, drive_file_id: null };
+        stFTitle.value = state.stEditing.title || '';
+        stFSlug.value = state.stEditing.slug || '';
+        stFShort.value = state.stEditing.short_description || '';
+        stFDesc.value = state.stEditing.description || '';
+        stFDuration.value = state.stEditing.duration_minutes || 60;
+        stFPrice.value = Number(state.stEditing.price || 0);
+        stFCurrency.value = state.stEditing.currency || 'CHF';
+        stFStatus.value = state.stEditing.status || 'draft';
+        stFSort.value = state.stEditing.sort_order || 0;
+        stFAlt.value = state.stEditing.image_alt || '';
+        stFImageKey.value = state.stEditing.image_key || '';
+        stFDriveId.value = state.stEditing.drive_file_id || '';
+        if (state.stEditing.url) { stImgPreview.src = state.stEditing.url; stImgPreview.classList.remove('hidden'); }
+        else if (state.stEditing.image_key) { stImgPreview.src = `${R2_BASE}/${state.stEditing.image_key}`; stImgPreview.classList.remove('hidden'); }
+        else { stImgPreview.classList.add('hidden'); }
+        stFImage.value = '';
+        msg(stEditMsg, ''); msg(stImgMsg, '');
+        stOverlay.classList.remove('hidden'); stOverlay.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeST() { stOverlay.classList.add('hidden'); stOverlay.setAttribute('aria-hidden', 'true'); }
+
+      async function saveST() {
+        if (state.stSaving) return;
+        state.stSaving = true; stSaveBtn.disabled = true; msg(stEditMsg, 'Saving…');
+        try {
+          // sync editable key/drive fields from inputs before save
+          state.stEditing.image_key = stFImageKey.value.trim() || null;
+          state.stEditing.drive_file_id = stFDriveId.value.trim() || null;
+          const priceRaw = String(stFPrice.value ?? '').trim();
+          const price = priceRaw === '' ? 0 : Number(priceRaw);
+          if (!Number.isFinite(price) || price < 0 || !Number.isInteger(price)) throw new Error('Price must be a non-negative whole number.');
+          const payload = {
+            title: stFTitle.value.trim(), slug: stFSlug.value.trim(),
+            short_description: stFShort.value.trim() || null, description: stFDesc.value,
+            duration_minutes: Number(stFDuration.value) || 0, price,
+            currency: stFCurrency.value.trim() || 'CHF', status: stFStatus.value,
+            sort_order: Number(stFSort.value) || 0,
+            image_key: state.stEditing.image_key, image_alt: stFAlt.value.trim() || null,
+            drive_file_id: state.stEditing.drive_file_id,
+          };
+          if (state.stEditing.id) {
+            await api(`/admin/session-types/${encodeURIComponent(state.stEditing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+          } else {
+            await api('/admin/session-types', { method: 'POST', body: JSON.stringify(payload) });
           }
+          msg(stEditMsg, 'Saved.');
+          closeST(); await loadST();
+        } catch (e) { msg(stEditMsg, String(e), true); }
+        finally { state.stSaving = false; stSaveBtn.disabled = false; }
+      }
+
+      async function uploadSTImage(file) {
+        if (!file || state.stUploading) return;
+        state.stUploading = true; msg(stImgMsg, 'Uploading…');
+        try {
+          const fd = new FormData(); fd.append('file', file); fd.append('entity_type', 'session');
+          const res = await fetch(resolveUrl('/admin/upload-image'), { method: 'POST', body: fd, credentials: 'include' });
+          if (res.status === 401 && window.adminAuth) { try { window.adminAuth.handleUnauthorized(401); } catch (_) {} }
+          const data = await res.json(); if (!res.ok) throw new Error(`${res.status}: ${JSON.stringify(data)}`);
+          state.stEditing.image_key = data.image_key || null;
+          state.stEditing.drive_file_id = data.drive_file_id || null;
+          stFImageKey.value = state.stEditing.image_key || '';
+          stFDriveId.value = state.stEditing.drive_file_id || '';
+          const url = data.url || (data.image_key ? `${R2_BASE}/${data.image_key}` : '');
+          if (url) { stImgPreview.src = url; stImgPreview.classList.remove('hidden'); }
+          msg(stImgMsg, 'Uploaded.');
+        } catch (e) { msg(stImgMsg, String(e), true); }
+        finally { state.stUploading = false; }
+      }
+
+      document.getElementById('stClose').addEventListener('click', closeST);
+      stSaveBtn.addEventListener('click', () => { void saveST(); });
+      stFImage.addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) void uploadSTImage(f); });
+      stOverlay.addEventListener('click', e => { if (e.target === stOverlay) closeST(); });
+      document.getElementById('stImageKeyLink').addEventListener('click', () => {
+        const k = stFImageKey.value.trim(); if (k) window.open(`${R2_BASE}/${k}`, '_blank');
+      });
+      document.getElementById('stDriveIdLink').addEventListener('click', () => {
+        const id = stFDriveId.value.trim(); if (id) window.open(`${DRIVE_BASE}/${id}`, '_blank');
+      });
+
+      // ══════════════════════════════════════════════════════════════════════
+      // EVENTS
+      // ══════════════════════════════════════════════════════════════════════
+      const evBody = document.getElementById('evBody');
+      const evOverlay = document.getElementById('evOverlay');
+      const evEditMsg = document.getElementById('evEditMsg');
+      const evFTitle = document.getElementById('evFTitle');
+      const evFSlug = document.getElementById('evFSlug');
+      const evFStatus = document.getElementById('evFStatus');
+      const evFCapacity = document.getElementById('evFCapacity');
+      const evFStartsAt = document.getElementById('evFStartsAt');
+      const evFEndsAt = document.getElementById('evFEndsAt');
+      const evFTimezone = document.getElementById('evFTimezone');
+      const evFLocation = document.getElementById('evFLocation');
+      const evFAddress = document.getElementById('evFAddress');
+      const evFMapsUrl = document.getElementById('evFMapsUrl');
+      const evFIsPaid = document.getElementById('evFIsPaid');
+      const evFPrice = document.getElementById('evFPrice');
+      const evFCurrency = document.getElementById('evFCurrency');
+      const evFWhatsapp = document.getElementById('evFWhatsapp');
+      const evFDesc = document.getElementById('evFDesc');
+      const evFImage = document.getElementById('evFImage');
+      const evFAlt = document.getElementById('evFAlt');
+      const evFImageKey = document.getElementById('evFImageKey');
+      const evFDriveId = document.getElementById('evFDriveId');
+      const evImgMsg = document.getElementById('evImgMsg');
+      const evImgPreview = document.getElementById('evImgPreview');
+      const evSaveBtn = document.getElementById('evSave');
+
+      function renderEV() {
+        evBody.innerHTML = '';
+        let rows = state.evRows;
+        if (state.evSearch) rows = rows.filter(r => (r.title + ' ' + r.status + ' ' + (r.location_name || '')).toLowerCase().includes(state.evSearch));
+        if (!rows.length) {
+          const tr = document.createElement('tr');
+          const td = document.createElement('td'); td.colSpan = 4; td.className = 'muted'; td.textContent = 'No rows.';
+          tr.appendChild(td); evBody.appendChild(tr); return;
         }
-
-        function render() {
-          rowsBody.innerHTML = '';
-          if (!state.rows.length) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = 5; td.className = 'muted'; td.textContent = 'No rows.';
-            tr.appendChild(td); rowsBody.appendChild(tr); return;
-          }
-          for (const r of state.rows) {
-            const tr = document.createElement('tr'); tr.className = 'clickable';
-            tr.appendChild(cell(r.title));
-            tr.appendChild(cell(formatPrice(r.price, r.currency)));
-            tr.appendChild(cell(`${r.duration_minutes} min`));
-            tr.appendChild(cell(r.status));
-            tr.appendChild(cell(String(r.sort_order || 0)));
-            tr.addEventListener('click', () => openEdit(r));
-            rowsBody.appendChild(tr);
-          }
+        for (const r of rows) {
+          const tr = document.createElement('tr'); tr.className = 'clickable';
+          tr.appendChild(cell(r.title));
+          tr.appendChild(cell(r.starts_at ? new Date(r.starts_at).toLocaleDateString() : ''));
+          tr.appendChild(cell(r.status));
+          tr.appendChild(cell(String(r.capacity || '')));
+          tr.addEventListener('click', () => openEV(r));
+          evBody.appendChild(tr);
         }
-        function cell(text) { const td = document.createElement('td'); td.textContent = text; return td; }
-        function msg(el, text, isErr) { el.className = isErr ? 'status err' : 'status muted'; el.textContent = text || ''; }
+      }
 
-        async function load() {
-          msg(statusEl, 'Loading…');
-          try { const data = await api('/admin/session-types'); state.rows = data.session_types || []; render(); msg(statusEl, 'Ready.'); }
-          catch (e) { msg(statusEl, String(e), true); }
-        }
+      async function loadEvents() {
+        msg(statusEl, 'Loading…');
+        try {
+          const data = await api('/admin/events');
+          state.evRows = data.events || [];
+          renderEV();
+          msg(statusEl, 'Ready.');
+        } catch (e) { msg(statusEl, String(e), true); }
+      }
 
-        function openEdit(row) {
-          state.editing = row ? { ...row } : { title: '', slug: '', short_description: '', description: '', duration_minutes: 60, price: 0, currency: 'CHF', status: 'draft', sort_order: 0, image_key: null, image_alt: null, drive_file_id: null };
-          fTitle.value = state.editing.title || '';
-          fSlug.value = state.editing.slug || '';
-          fShort.value = state.editing.short_description || '';
-          fDesc.value = state.editing.description || '';
-          fDuration.value = state.editing.duration_minutes || 60;
-          fPrice.value = Number(state.editing.price || 0);
-          fCurrency.value = state.editing.currency || 'CHF';
-          fStatus.value = state.editing.status || 'draft';
-          fSort.value = state.editing.sort_order || 0;
-          fAlt.value = state.editing.image_alt || '';
-          if (state.editing.url) { imgPreview.src = state.editing.url; imgPreview.classList.remove('hidden'); } else { imgPreview.classList.add('hidden'); }
-          fImage.value = '';
-          msg(editMsgEl, ''); msg(imgMsg, '');
-          editOverlayEl.classList.remove('hidden'); editOverlayEl.setAttribute('aria-hidden', 'false');
-        }
+      function openEV(row) {
+        state.evEditing = row ? { ...row } : {
+          title: '', slug: '', description: '', starts_at: '', ends_at: '',
+          timezone: 'Europe/Zurich', location_name: '', address_line: '', maps_url: '',
+          is_paid: false, price_per_person_cents: null, currency: 'CHF', capacity: 0,
+          status: 'draft', image_key: null, drive_file_id: null, image_alt: null, whatsapp_group_invite_url: null,
+        };
+        const ev = state.evEditing;
+        evFTitle.value = ev.title || '';
+        evFSlug.value = ev.slug || '';
+        evFStatus.value = ev.status || 'draft';
+        evFCapacity.value = ev.capacity || '';
+        evFStartsAt.value = isoToLocal(ev.starts_at);
+        evFEndsAt.value = isoToLocal(ev.ends_at);
+        evFTimezone.value = ev.timezone || 'Europe/Zurich';
+        evFLocation.value = ev.location_name || '';
+        evFAddress.value = ev.address_line || '';
+        evFMapsUrl.value = ev.maps_url || '';
+        evFIsPaid.value = ev.is_paid ? 'true' : 'false';
+        evFPrice.value = ev.price_per_person_cents != null ? ev.price_per_person_cents : '';
+        evFCurrency.value = ev.currency || 'CHF';
+        evFWhatsapp.value = ev.whatsapp_group_invite_url || '';
+        evFDesc.value = ev.description || '';
+        evFAlt.value = ev.image_alt || '';
+        evFImageKey.value = ev.image_key || '';
+        evFDriveId.value = ev.drive_file_id || '';
+        if (ev.image_key) { evImgPreview.src = `${R2_BASE}/${ev.image_key}`; evImgPreview.classList.remove('hidden'); }
+        else { evImgPreview.classList.add('hidden'); }
+        evFImage.value = '';
+        msg(evEditMsg, ''); msg(evImgMsg, '');
+        evOverlay.classList.remove('hidden'); evOverlay.setAttribute('aria-hidden', 'false');
+      }
 
-        async function save() {
-          if (state.saving) return; state.saving = true; editSaveEl.disabled = true; msg(editMsgEl, 'Saving…');
-          try {
-            const price = parsePrice(fPrice.value);
-            if (price === null) throw new Error('Price must be a non-negative whole-number CHF value.');
-            const payload = {
-              title: fTitle.value.trim(), slug: fSlug.value.trim(), short_description: fShort.value.trim() || null,
-              description: fDesc.value, duration_minutes: Number(fDuration.value)||0, price,
-              currency: fCurrency.value.trim() || 'CHF', status: fStatus.value, sort_order: Number(fSort.value)||0,
-              image_key: state.editing.image_key || null, image_alt: fAlt.value.trim() || null, drive_file_id: state.editing.drive_file_id || null,
-            };
-            if (state.editing.id) {
-              await api(`/admin/session-types/${encodeURIComponent(state.editing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
-            } else {
-              await api('/admin/session-types', { method: 'POST', body: JSON.stringify(payload) });
-            }
-            msg(editMsgEl, 'Saved.');
-            editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden', 'true');
-            await load();
-          } catch (e) {
-            msg(editMsgEl, String(e), true);
-          } finally { state.saving = false; editSaveEl.disabled = false; }
-        }
+      function closeEV() { evOverlay.classList.add('hidden'); evOverlay.setAttribute('aria-hidden', 'true'); }
 
-        async function uploadImage(file) {
-          if (!file || state.uploading) return; state.uploading = true; msg(imgMsg, 'Uploading image…');
-          try {
-            const fd = new FormData(); fd.append('file', file); fd.append('entity_type', 'session');
-            const res = await fetch(resolveUrl('/admin/upload-image'), { method: 'POST', body: fd, credentials: 'include' });
-            if (res.status === 401 && window.adminAuth) {
-              try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
-            }
-            const data = await res.json(); if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${JSON.stringify(data)}`);
-            state.editing.image_key = data.image_key || null; state.editing.drive_file_id = data.drive_file_id || null; const url = data.url || '';
-            if (url) { imgPreview.src = url; imgPreview.classList.remove('hidden'); }
-            msg(imgMsg, 'Uploaded.');
-          } catch (e) { msg(imgMsg, String(e), true); }
-          finally { state.uploading = false; }
-        }
+      async function saveEV() {
+        if (state.evSaving) return;
+        state.evSaving = true; evSaveBtn.disabled = true; msg(evEditMsg, 'Saving…');
+        try {
+          state.evEditing.image_key = evFImageKey.value.trim() || null;
+          state.evEditing.drive_file_id = evFDriveId.value.trim() || null;
+          const priceRaw = evFPrice.value.trim();
+          const payload = {
+            title: evFTitle.value.trim(), slug: evFSlug.value.trim(),
+            description: evFDesc.value.trim(), status: evFStatus.value,
+            capacity: Number(evFCapacity.value) || 0,
+            starts_at: evFStartsAt.value ? new Date(evFStartsAt.value).toISOString() : undefined,
+            ends_at: evFEndsAt.value ? new Date(evFEndsAt.value).toISOString() : undefined,
+            timezone: evFTimezone.value.trim() || 'Europe/Zurich',
+            location_name: evFLocation.value.trim() || null,
+            address_line: evFAddress.value.trim(),
+            maps_url: evFMapsUrl.value.trim(),
+            is_paid: evFIsPaid.value === 'true',
+            price_per_person_cents: priceRaw !== '' ? Number(priceRaw) : null,
+            currency: evFCurrency.value.trim() || 'CHF',
+            whatsapp_group_invite_url: evFWhatsapp.value.trim() || null,
+            image_key: state.evEditing.image_key,
+            drive_file_id: state.evEditing.drive_file_id,
+            image_alt: evFAlt.value.trim() || null,
+          };
+          if (!state.evEditing.id) throw new Error('Creating new events is not yet supported here — create via DB.');
+          await api(`/admin/events/${encodeURIComponent(state.evEditing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+          msg(evEditMsg, 'Saved.');
+          closeEV(); await loadEvents();
+        } catch (e) { msg(evEditMsg, String(e), true); }
+        finally { state.evSaving = false; evSaveBtn.disabled = false; }
+      }
 
-        document.getElementById('newBtn').addEventListener('click', () => openEdit(null));
-        document.getElementById('editClose').addEventListener('click', () => { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); });
-        document.getElementById('editSave').addEventListener('click', () => { void save(); });
-        document.getElementById('fImage').addEventListener('change', (e) => { const f = e.target.files && e.target.files[0]; if (f) void uploadImage(f); });
-        editOverlayEl.addEventListener('click', (e) => { if (e.target === editOverlayEl) { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); } });
-        window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !editOverlayEl.classList.contains('hidden')) { editOverlayEl.classList.add('hidden'); editOverlayEl.setAttribute('aria-hidden','true'); } });
+      async function uploadEVImage(file) {
+        if (!file || state.evUploading) return;
+        state.evUploading = true; msg(evImgMsg, 'Uploading…');
+        try {
+          const fd = new FormData(); fd.append('file', file); fd.append('entity_type', 'event');
+          const res = await fetch(resolveUrl('/admin/upload-image'), { method: 'POST', body: fd, credentials: 'include' });
+          if (res.status === 401 && window.adminAuth) { try { window.adminAuth.handleUnauthorized(401); } catch (_) {} }
+          const data = await res.json(); if (!res.ok) throw new Error(`${res.status}: ${JSON.stringify(data)}`);
+          state.evEditing.image_key = data.image_key || null;
+          state.evEditing.drive_file_id = data.drive_file_id || null;
+          evFImageKey.value = state.evEditing.image_key || '';
+          evFDriveId.value = state.evEditing.drive_file_id || '';
+          const url = data.url || (data.image_key ? `${R2_BASE}/${data.image_key}` : '');
+          if (url) { evImgPreview.src = url; evImgPreview.classList.remove('hidden'); }
+          msg(evImgMsg, 'Uploaded.');
+        } catch (e) { msg(evImgMsg, String(e), true); }
+        finally { state.evUploading = false; }
+      }
 
-        void load();
-      })();
+      document.getElementById('evClose').addEventListener('click', closeEV);
+      evSaveBtn.addEventListener('click', () => { void saveEV(); });
+      evFImage.addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) void uploadEVImage(f); });
+      evOverlay.addEventListener('click', e => { if (e.target === evOverlay) closeEV(); });
+      document.getElementById('evImageKeyLink').addEventListener('click', () => {
+        const k = evFImageKey.value.trim(); if (k) window.open(`${R2_BASE}/${k}`, '_blank');
+      });
+      document.getElementById('evDriveIdLink').addEventListener('click', () => {
+        const id = evFDriveId.value.trim(); if (id) window.open(`${DRIVE_BASE}/${id}`, '_blank');
+      });
+
+      // ── Escape key closes whichever modal is open ──────────────────────────
+      window.addEventListener('keydown', e => {
+        if (e.key !== 'Escape') return;
+        if (!stOverlay.classList.contains('hidden')) closeST();
+        if (!evOverlay.classList.contains('hidden')) closeEV();
+      });
+
+      // ── Init ───────────────────────────────────────────────────────────────
+      void loadST();
+    })();
     </script>
   </body>
 </html>

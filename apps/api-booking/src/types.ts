@@ -42,7 +42,6 @@ export type BookingEffectIntent =
   | 'reserve_slot'
   | 'update_reserved_slot'
   | 'cancel_reserved_slot'
-  | 'confirm_reserved_slot'
   | 'create_stripe_checkout'
   | 'verify_stripe_payment'
   | 'send_payment_link'
@@ -54,19 +53,6 @@ export type BookingEffectIntent =
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
 export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
 export type PaymentProvider = 'stripe' | 'mock';
-
-export type FailureSource =
-  | 'api'
-  | 'stripe_webhook'
-  | 'calendar'
-  | 'email'
-  | 'job'
-  | 'storage'
-  | 'auth';
-
-export type FailureSeverity = 'debug' | 'info' | 'warning' | 'error' | 'critical';
-export type FailureStatus = 'open' | 'retrying' | 'resolved' | 'ignored';
-export type CalendarSyncOperation = 'create' | 'update' | 'delete';
 
 // ── Core models ─────────────────────────────────────────────────────────────
 
@@ -155,6 +141,7 @@ export interface Event {
   image_key?: string | null;
   drive_file_id?: string | null;
   image_alt?: string | null;
+  whatsapp_group_invite_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -200,6 +187,27 @@ export interface SessionTypeRecord {
   created_at: string;
   updated_at: string;
 }
+
+export type EventUpdate = Partial<Pick<Event,
+  | 'slug'
+  | 'title'
+  | 'description'
+  | 'starts_at'
+  | 'ends_at'
+  | 'timezone'
+  | 'location_name'
+  | 'address_line'
+  | 'maps_url'
+  | 'is_paid'
+  | 'price_per_person_cents'
+  | 'currency'
+  | 'capacity'
+  | 'status'
+  | 'image_key'
+  | 'drive_file_id'
+  | 'image_alt'
+  | 'whatsapp_group_invite_url'
+>>;
 
 export type NewSessionType = Omit<SessionTypeRecord, 'id' | 'created_at' | 'updated_at'>;
 export type SessionTypeUpdate = Partial<
@@ -248,45 +256,6 @@ export interface Payment {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export interface FailureLog {
-  id: string;
-  source: FailureSource;
-  operation: string;
-  severity: FailureSeverity;
-  status: FailureStatus;
-  request_id: string | null;
-  idempotency_key: string | null;
-  booking_id: string | null;
-  payment_id: string | null;
-  client_id: string | null;
-  stripe_event_id: string | null;
-  stripe_checkout_session_id: string | null;
-  google_event_id: string | null;
-  email_provider_message_id: string | null;
-  error_code: string | null;
-  error_message: string;
-  error_stack: string | null;
-  http_status: number | null;
-  retryable: boolean;
-  context: Record<string, unknown>;
-  attempts: number;
-  next_retry_at: string | null;
-  resolved_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CalendarSyncFailure {
-  id: string;
-  booking_id: string;
-  operation: CalendarSyncOperation;
-  attempts: number;
-  next_retry_at: string | null;
-  last_error: string;
-  resolved_at: string | null;
-  status: FailureStatus;
 }
 
 // ── Admin/read models ───────────────────────────────────────────────────────
@@ -369,25 +338,4 @@ export interface EventCutoffState {
   public_registration_open: boolean;
   late_access_open: boolean;
   reminder_signup_recommended: boolean;
-}
-
-export interface NewFailureLog {
-  source: FailureSource;
-  operation: string;
-  severity?: FailureSeverity;
-  request_id?: string | null;
-  booking_id?: string | null;
-  payment_id?: string | null;
-  client_id?: string | null;
-  idempotency_key?: string | null;
-  stripe_event_id?: string | null;
-  stripe_checkout_session_id?: string | null;
-  google_event_id?: string | null;
-  email_provider_message_id?: string | null;
-  error_code?: string | null;
-  error_message: string;
-  error_stack?: string | null;
-  http_status?: number | null;
-  retryable?: boolean;
-  context?: Record<string, unknown>;
 }

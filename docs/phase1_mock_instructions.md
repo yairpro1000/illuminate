@@ -61,7 +61,7 @@ timestamps), not just true/false.
 -   View bookings list
 -   Update booking status
 -   Trigger manual state transitions
--   View failure_logs table
+-   View failed `booking_side_effect_attempts`
 
 ------------------------------------------------------------------------
 
@@ -71,7 +71,7 @@ Mock providers must:
 
 -   Generate deterministic fake IDs (uuid)
 -   Return structured objects matching real API responses
--   Log actions to console and failure_logs table
+-   Log actions to console + `observability.logs`
 -   Allow manual error simulation (e.g. simulate Stripe failure)
 
 ------------------------------------------------------------------------
@@ -81,7 +81,7 @@ Mock providers must:
 Create hidden route: /\_\_dev
 
 Features: - Create test booking - Simulate payment success - Simulate
-payment failure - Trigger reminder job - Inspect last 50 failure_logs
+payment failure - Trigger reminder job - Inspect last 50 failed side-effect attempts
 
 ------------------------------------------------------------------------
 

@@ -27,7 +27,6 @@ export interface BookingPolicyContext {
   eventType: BookingEventType;
   eventAtIso: string;
   paymentMode?: 'free' | 'pay_now' | 'pay_later' | null;
-  slotAlreadyConfirmed?: boolean;
 }
 
 export interface BookingEffectSpec {
@@ -49,7 +48,7 @@ function isReservationEntitledStatus(status: BookingCurrentStatus): boolean {
 }
 
 function isReservationFinalizationEvent(eventType: BookingEventType): boolean {
-  return eventType === 'EMAIL_CONFIRMED' || eventType === 'PAYMENT_SETTLED' || eventType === 'SLOT_CONFIRMED';
+  return eventType === 'EMAIL_CONFIRMED' || eventType === 'PAYMENT_SETTLED';
 }
 
 export function shouldReserveSlotForTransition(input: SlotReservationTransitionInput): boolean {
@@ -112,7 +111,7 @@ export function getEffectsForEvent(
         previousStatus,
         nextStatus,
       })
-        ? [make('confirm_reserved_slot', null)]
+        ? [make('reserve_slot', null)]
         : [];
     case 'BOOKING_RESCHEDULED':
       return [make('update_reserved_slot', null)];
@@ -133,7 +132,7 @@ export function getEffectsForEvent(
         previousStatus,
         nextStatus,
       })
-        ? [make('confirm_reserved_slot', null)]
+        ? [make('reserve_slot', null)]
         : [];
     case 'SLOT_CONFIRMED': {
       const effects: BookingEffectSpec[] = [];

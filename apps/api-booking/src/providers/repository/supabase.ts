@@ -7,14 +7,12 @@ import type {
   BookingSideEffect,
   BookingSideEffectAttempt,
   BookingUpdate,
-  CalendarSyncFailure,
   Client,
   ClientUpdate,
   ContactMessage,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
-  FailureLog,
   NewBooking,
   NewBookingSideEffect,
   NewBookingSideEffectAttempt,
@@ -22,7 +20,6 @@ import type {
   NewContactMessage,
   NewEventLateAccessLink,
   NewEventReminderSubscription,
-  NewFailureLog,
   NewPayment,
   OrganizerBookingRow,
   Payment,
@@ -32,8 +29,6 @@ import type {
   NewSessionType,
   SessionTypeUpdate,
 } from '../../types.js';
-
-const CALENDAR_SYNC_OPERATION = 'calendar_sync';
 
 const BOOKING_SELECT = `
   *,
@@ -372,6 +367,20 @@ export class SupabaseRepository implements IRepository {
     return rows;
   }
 
+  async getAllEvents(): Promise<Event[]> {
+    return requireData<Event[]>(
+      this.db.from('events').select('*').order('starts_at', { ascending: false }),
+      'Failed to load all events',
+    );
+  }
+
+  async updateEvent(id: string, updates: import('../../types.js').EventUpdate): Promise<Event> {
+    return requireSingle<Event>(
+      this.db.from('events').update(updates).eq('id', id).select().single(),
+      'Failed to update event',
+    );
+  }
+
   async getEventBySlug(slug: string): Promise<Event | null> {
     return maybeSingle<Event>(
       this.db.from('events').select('*').eq('slug', slug).limit(1).maybeSingle(),
@@ -588,204 +597,6 @@ export class SupabaseRepository implements IRepository {
     });
   }
 
-  // ── Observability ─────────────────────────────────────────────────────────
-
-  async logFailure(data: NewFailureLog): Promise<void> {
-    await requireData(
-      this.db
-        .from('failure_logs')
-        .insert({
-          source: data.source,
-          operation: data.operation,
-          severity: data.severity ?? 'error',
-          status: 'open',
-          request_id: data.request_id ?? null,
-          idempotency_key: data.idempotency_key ?? null,
-          booking_id: data.booking_id ?? null,
-          payment_id: data.payment_id ?? null,
-          client_id: data.client_id ?? null,
-          stripe_event_id: data.stripe_event_id ?? null,
-          stripe_checkout_session_id: data.stripe_checkout_session_id ?? null,
-          google_event_id: data.google_event_id ?? null,
-          email_provider_message_id: data.email_provider_message_id ?? null,
-          error_code: data.error_code ?? null,
-          error_message: data.error_message,
-          error_stack: data.error_stack ?? null,
-          http_status: data.http_status ?? null,
-          retryable: data.retryable ?? true,
-          context: data.context ?? {},
-          attempts: 0,
-          next_retry_at: null,
-          resolved_at: null,
-        })
-        .select('id'),
-      'Failed to persist failure log',
-    );
-  }
-
-  async getRecentFailureLogs(limit: number): Promise<FailureLog[]> {
-    const rows = await requireData<FailureLog[]>(
-      this.db
-        .from('failure_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(Math.max(1, limit)),
-      'Failed to load recent failure logs',
-    );
-    return rows;
-  }
-
-  // ── Calendar sync retry queue ─────────────────────────────────────────────
-
-  async recordCalendarSyncFailure(input: {
-    booking_id: string;
-    operation: 'create' | 'update' | 'delete';
-    error_message: string;
-    request_id?: string | null;
-    maxAttempts: number;
-  }): Promise<CalendarSyncFailure> {
-    const existing = await maybeSingle<FailureLog>(
-      this.db
-        .from('failure_logs')
-        .select('*')
-        .eq('source', 'calendar')
-        .eq('operation', CALENDAR_SYNC_OPERATION)
-        .eq('booking_id', input.booking_id)
-        .is('resolved_at', null)
-        .limit(1)
-        .maybeSingle(),
-      'Failed to load active calendar sync failure',
-    );
-
-    const attempts = (existing?.attempts ?? 0) + 1;
-    const exhausted = attempts >= input.maxAttempts;
-    const nextRetryAt = exhausted ? null : new Date(Date.now() + computeRetryDelayMs(attempts)).toISOString();
-    const status = exhausted ? 'ignored' : 'retrying';
-
-    if (existing) {
-      const updated = await requireSingle<FailureLog>(
-        this.db
-          .from('failure_logs')
-          .update({
-            attempts,
-            next_retry_at: nextRetryAt,
-            status,
-            retryable: !exhausted,
-            error_message: input.error_message,
-            request_id: input.request_id ?? existing.request_id,
-            severity: exhausted ? 'critical' : 'error',
-            context: {
-              ...(existing.context ?? {}),
-              calendar_operation: input.operation,
-              last_error: input.error_message,
-            },
-            updated_at: nowIso(),
-          })
-          .eq('id', existing.id)
-          .select('*')
-          .single(),
-        `Failed to update calendar sync failure for booking ${input.booking_id}`,
-      );
-      return toCalendarSyncFailure(updated);
-    }
-
-    const created = await requireSingle<FailureLog>(
-      this.db
-        .from('failure_logs')
-        .insert({
-          source: 'calendar',
-          operation: CALENDAR_SYNC_OPERATION,
-          severity: exhausted ? 'critical' : 'error',
-          status,
-          request_id: input.request_id ?? null,
-          idempotency_key: null,
-          booking_id: input.booking_id,
-          payment_id: null,
-          client_id: null,
-          stripe_event_id: null,
-          stripe_checkout_session_id: null,
-          google_event_id: null,
-          email_provider_message_id: null,
-          error_code: null,
-          error_message: input.error_message,
-          error_stack: null,
-          http_status: null,
-          retryable: !exhausted,
-          context: {
-            calendar_operation: input.operation,
-            last_error: input.error_message,
-          },
-          attempts,
-          next_retry_at: nextRetryAt,
-          resolved_at: null,
-        })
-        .select('*')
-        .single(),
-      `Failed to create calendar sync failure for booking ${input.booking_id}`,
-    );
-    return toCalendarSyncFailure(created);
-  }
-
-  async getCalendarSyncFailuresDue(limit: number): Promise<CalendarSyncFailure[]> {
-    const rows = await requireData<FailureLog[]>(
-      this.db
-        .from('failure_logs')
-        .select('*')
-        .eq('source', 'calendar')
-        .eq('operation', CALENDAR_SYNC_OPERATION)
-        .eq('retryable', true)
-        .is('resolved_at', null)
-        .not('next_retry_at', 'is', null)
-        .lte('next_retry_at', nowIso())
-        .order('next_retry_at', { ascending: true })
-        .limit(Math.max(1, limit)),
-      'Failed to load due calendar sync failures',
-    );
-    return rows.map(toCalendarSyncFailure);
-  }
-
-  async resolveCalendarSyncFailure(
-    bookingId: string,
-    resolution: 'resolved' | 'ignored' = 'resolved',
-    note?: string | null,
-  ): Promise<void> {
-    const active = await maybeSingle<FailureLog>(
-      this.db
-        .from('failure_logs')
-        .select('*')
-        .eq('source', 'calendar')
-        .eq('operation', CALENDAR_SYNC_OPERATION)
-        .eq('booking_id', bookingId)
-        .is('resolved_at', null)
-        .limit(1)
-        .maybeSingle(),
-      'Failed to load active calendar sync failure for resolution',
-    );
-
-    if (!active) return;
-
-    await requireData(
-      this.db
-        .from('failure_logs')
-        .update({
-          status: resolution,
-          retryable: false,
-          next_retry_at: null,
-          resolved_at: nowIso(),
-          updated_at: nowIso(),
-          context: note
-            ? {
-                ...(active.context ?? {}),
-                resolution_note: note,
-              }
-            : active.context,
-        })
-        .eq('id', active.id)
-        .select('id'),
-      `Failed to resolve calendar sync failure for booking ${bookingId}`,
-    );
-  }
-
   // ── Session types ─────────────────────────────────────────────────────────
 
   async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
@@ -868,27 +679,6 @@ function toBooking(row: BookingRow): Booking {
   };
 }
 
-function toCalendarSyncFailure(log: FailureLog): CalendarSyncFailure {
-  const operationFromContext = String(log.context?.['calendar_operation'] ?? 'update');
-  const operation: 'create' | 'update' | 'delete' =
-    operationFromContext === 'create' || operationFromContext === 'delete'
-      ? operationFromContext
-      : 'update';
-
-  const lastError = String(log.context?.['last_error'] ?? log.error_message ?? 'calendar sync failed');
-
-  return {
-    id: log.id,
-    booking_id: log.booking_id ?? '',
-    operation,
-    attempts: log.attempts,
-    next_retry_at: log.next_retry_at,
-    last_error: lastError,
-    resolved_at: log.resolved_at,
-    status: log.status,
-  };
-}
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -903,11 +693,6 @@ function startOfDayIso(date: string): string {
 
 function endOfDayIso(date: string): string {
   return `${date}T23:59:59.999Z`;
-}
-
-function computeRetryDelayMs(attempt: number): number {
-  const clamped = Math.max(1, Math.min(6, attempt));
-  return Math.min(60 * 60 * 1000, (2 ** clamped) * 60 * 1000);
 }
 
 async function requireSingle<T>(

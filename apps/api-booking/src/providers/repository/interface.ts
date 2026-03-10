@@ -10,15 +10,12 @@ import type {
   BookingSideEffectEntity,
   BookingSideEffectStatus,
   BookingUpdate,
-  CalendarSyncFailure,
-  CalendarSyncOperation,
   Client,
   ClientUpdate,
   ContactMessage,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
-  FailureLog,
   NewBooking,
   NewBookingSideEffect,
   NewBookingSideEffectAttempt,
@@ -26,12 +23,12 @@ import type {
   NewContactMessage,
   NewEventLateAccessLink,
   NewEventReminderSubscription,
-  NewFailureLog,
   NewPayment,
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
   SessionTypeRecord,
+  EventUpdate,
   NewSessionType,
   SessionTypeUpdate,
   TimeSlot,
@@ -107,8 +104,10 @@ export interface IRepository {
   // ── Events ───────────────────────────────────────────────────────────────
 
   getPublishedEvents(): Promise<Event[]>;
+  getAllEvents(): Promise<Event[]>;
   getEventBySlug(slug: string): Promise<Event | null>;
   getEventById(id: string): Promise<Event | null>;
+  updateEvent(id: string, updates: EventUpdate): Promise<Event>;
   countEventActiveBookings(eventId: string, nowIso: string): Promise<number>;
 
   // ── Event reminder subscriptions ────────────────────────────────────────
@@ -138,29 +137,6 @@ export interface IRepository {
   // ── Organizer/admin reads ───────────────────────────────────────────────
 
   getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]>;
-
-  // ── Observability / diagnostics ─────────────────────────────────────────
-
-  logFailure(data: NewFailureLog): Promise<void>;
-  getRecentFailureLogs(limit: number): Promise<FailureLog[]>;
-
-  // ── Calendar sync retry queue (backed by failure_logs) ─────────────────
-
-  recordCalendarSyncFailure(input: {
-    booking_id: string;
-    operation: CalendarSyncOperation;
-    error_message: string;
-    request_id?: string | null;
-    maxAttempts: number;
-  }): Promise<CalendarSyncFailure>;
-
-  getCalendarSyncFailuresDue(limit: number): Promise<CalendarSyncFailure[]>;
-
-  resolveCalendarSyncFailure(
-    bookingId: string,
-    resolution?: 'resolved' | 'ignored',
-    note?: string | null,
-  ): Promise<void>;
 
   // ── Session types (offers) ──────────────────────────────────────────────
 

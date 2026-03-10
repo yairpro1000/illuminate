@@ -12,7 +12,6 @@ import type {
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
-  FailureLog,
   Payment,
 } from '../types.js';
 
@@ -32,7 +31,6 @@ export const mockState = {
   eventReminderSubscriptions: new Map<string, EventReminderSubscription>(),
   contactMessages: new Map<string, ContactMessage>(),
   payments: new Map<string, Payment>(),
-  failureLogs: [] as FailureLog[],
   sentEmails: [] as SentEmail[],
   // booking audit/events recorded by the mock repository
   bookingEvents: [] as BookingEventRecord[],

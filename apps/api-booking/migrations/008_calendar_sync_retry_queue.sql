@@ -1,2 +1,2 @@
--- Moved into 010_booking_centric_schema.sql so fresh DB bootstraps cleanly.
+-- Retired: calendar retry queue moved to booking_side_effects + booking_side_effect_attempts.
 -- Intentionally no-op.

@@ -31,8 +31,8 @@ describe('Admin upload image', () => {
     const res = await handleAdminUploadImage(req, ctx);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.image_key).toMatch(/^sessions\//);
-    expect(body.url).toMatch(/^https:\/\/assets\.example\.com\/sessions\//);
+    expect(body.image_key).toMatch(/^session_types\//);
+    expect(body.url).toMatch(/^https:\/\/assets\.example\.com\/session_types\//);
     expect(put).toHaveBeenCalledTimes(1);
   });
 

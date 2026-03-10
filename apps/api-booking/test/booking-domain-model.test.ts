@@ -29,7 +29,6 @@ function resetMockState() {
   mockState.eventReminderSubscriptions.clear();
   mockState.contactMessages.clear();
   mockState.payments.clear();
-  mockState.failureLogs.length = 0;
   mockState.sentEmails.length = 0;
   mockState.bookingEvents.length = 0;
   mockState.sideEffects.length = 0;
@@ -208,10 +207,10 @@ describe('booking domain model', () => {
     const intents = mockState.sideEffects
       .filter((effect) => effect.booking_id === created.bookingId)
       .map((effect) => effect.effect_intent);
-    expect(intents).toContain('confirm_reserved_slot');
+    expect(intents).toContain('reserve_slot');
 
     const confirmationReservationEffect = mockState.sideEffects.find(
-      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'confirm_reserved_slot',
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'reserve_slot',
     );
     expect(confirmationReservationEffect?.status).toBe('success');
   });
@@ -327,17 +326,19 @@ describe('booking domain model', () => {
 
     expect(confirmed.current_status).toBe('SLOT_CONFIRMED');
     expect(confirmed.google_event_id).toBeNull();
-    expect(mockState.failureLogs.some((log) =>
-      log.source === 'calendar' &&
-      log.booking_id === created.bookingId &&
-      log.operation === 'calendar_sync' &&
-      typeof log.error_message === 'string' &&
-      log.error_message.includes('Invalid resource id value'),
-    )).toBe(true);
+    const reserveEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'reserve_slot',
+    );
+    expect(reserveEffect?.status).toBe('failed');
+    const reserveAttempts = mockState.sideEffectAttempts.filter(
+      (attempt) => attempt.booking_side_effect_id === reserveEffect?.id,
+    );
+    expect(reserveAttempts.map((attempt) => attempt.status)).toEqual(['fail']);
+    expect(reserveAttempts[0]?.error_message).toContain('Invalid resource id value');
     expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'calendar_reservation_attempt_completed',
       context: expect.objectContaining({
-        branch_taken: 'immediate_reservation_failed_recorded_for_retry',
+        branch_taken: 'side_effect_failed_recorded_for_retry',
       }),
     }));
   });

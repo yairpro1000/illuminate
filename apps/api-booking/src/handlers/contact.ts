@@ -59,22 +59,18 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
     return ok({ ok: true, message_id: sendResult.messageId, contact_id: contact.id, request_id: ctx.requestId });
   } catch (err) {
     const providerDebug = err instanceof EmailProviderError ? err.debug : undefined;
-
-    try {
-      await ctx.providers.repository.logFailure({
-        source: 'email',
-        operation: 'sendContactMessage',
+    ctx.logger.logError({
+      source: 'worker',
+      eventType: 'contact_send_failed',
+      message: 'Contact form email send failed',
+      context: sanitizeContext({
+        flow: 'contact_form',
         request_id: ctx.requestId,
-        error_message: String(err),
-        context: sanitizeContext({
-          flow: 'contact_form',
-          provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
-          kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
-        }),
-      });
-    } catch (logErr) {
-      ctx.logger.error('failed to persist contact failure log', { err: String(logErr) });
-    }
+        provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
+        kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
+        error: String(err),
+      }),
+    });
 
     if (err instanceof ApiError) {
       return jsonResponse({ ok: false, error: err.code, message: err.message, request_id: ctx.requestId }, err.statusCode);

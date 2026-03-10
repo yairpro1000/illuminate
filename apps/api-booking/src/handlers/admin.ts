@@ -1,6 +1,7 @@
 import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { OrganizerBookingFilters } from '../providers/repository/interface.js';
+import type { EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { generateToken, hashToken } from '../services/token-service.js';
@@ -99,7 +100,7 @@ export async function handleAdminGetEvents(request: Request, ctx: AppContext): P
       },
     });
     await requireAdminAccess(request, ctx.env, ctx.logger);
-    const events = await ctx.providers.repository.getPublishedEvents();
+    const events = await ctx.providers.repository.getAllEvents();
     return ok({
       events: events.map((event) => ({
         id: event.id,
@@ -121,6 +122,50 @@ export async function handleAdminGetEvents(request: Request, ctx: AppContext): P
         auth_failure_reason: err instanceof Error ? err.message : String(err),
       },
     });
+    return errorResponse(err);
+  }
+}
+
+// GET /api/admin/events/all  (all events for admin edit-offers page)
+export async function handleAdminGetAllEvents(request: Request, ctx: AppContext): Promise<Response> {
+  try {
+    await requireAdminAccess(request, ctx.env);
+    const events = await ctx.providers.repository.getAllEvents();
+    return ok({ events });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// PATCH /api/admin/events/:eventId
+export async function handleAdminUpdateEvent(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  try {
+    await requireAdminAccess(request, ctx.env);
+    const eventId = params.eventId?.trim();
+    if (!eventId) throw badRequest('eventId is required');
+
+    const event = await ctx.providers.repository.getEventById(eventId);
+    if (!event) throw notFound('Event not found');
+
+    const body = await parseJsonBody(request);
+    const updates: EventUpdate = {};
+    const allowed: Array<keyof EventUpdate> = [
+      'slug', 'title', 'description', 'starts_at', 'ends_at', 'timezone',
+      'location_name', 'address_line', 'maps_url', 'is_paid', 'price_per_person_cents',
+      'currency', 'capacity', 'status', 'image_key', 'drive_file_id', 'image_alt',
+      'whatsapp_group_invite_url',
+    ];
+    for (const f of allowed) {
+      if (f in body) (updates as Record<string, unknown>)[f] = body[f];
+    }
+
+    const updated = await ctx.providers.repository.updateEvent(eventId, updates);
+    return ok({ event: updated });
+  } catch (err) {
     return errorResponse(err);
   }
 }
