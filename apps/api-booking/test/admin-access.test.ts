@@ -58,6 +58,17 @@ afterEach(() => {
 });
 
 describe('requireAdminAccess', () => {
+  it('temporarily bypasses admin auth when ADMIN_AUTH_DISABLED=true', async () => {
+    const env = makeEnv({
+      ADMIN_AUTH_DISABLED: 'true',
+      CLOUDFLARE_ACCESS_AUD: 'aud-123',
+      ADMIN_ALLOWED_EMAILS: 'admin@example.com',
+    });
+
+    await expect(requireAdminAccess(new Request('https://api.local/api/admin/events'), env))
+      .resolves.toEqual({ email: 'admin-auth-disabled@local' });
+  });
+
   it('returns 401 when Access JWT is missing', async () => {
     const env = makeEnv({
       CLOUDFLARE_ACCESS_AUD: 'aud-123',

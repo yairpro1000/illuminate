@@ -75,6 +75,10 @@ interface JwksResponse {
 const JWKS_CACHE_TTL_MS = 5 * 60_000;
 const jwksCache = new Map<string, { expiresAt: number; keys: JwkKey[] }>();
 
+function isTruthy(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test(String(value ?? '').trim());
+}
+
 function isAllowedAudience(aud: string | string[] | undefined, expected: string): boolean {
   if (typeof aud === 'string') return aud === expected;
   if (Array.isArray(aud)) return aud.includes(expected);
@@ -172,6 +176,13 @@ function isLocalhostRequest(request: Request): boolean {
 }
 
 export async function requireAdminAccess(request: Request, env: Env): Promise<{ email: string }> {
+  // TEMPORARY TESTING BYPASS:
+  // When ADMIN_AUTH_DISABLED=true, admin routes are intentionally left open to
+  // unblock manual testing. Do not leave this enabled in production.
+  if (isTruthy(env.ADMIN_AUTH_DISABLED)) {
+    return { email: 'admin-auth-disabled@local' };
+  }
+
   const accessAud = env.CLOUDFLARE_ACCESS_AUD?.trim();
   const accessEmail = getAccessEmail(request);
   const allowlist = parseAllowlist(env.ADMIN_ALLOWED_EMAILS);
