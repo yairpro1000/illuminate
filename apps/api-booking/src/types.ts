@@ -39,6 +39,7 @@ export type BookingEffectIntent =
   | 'send_date_reminder'
   | 'send_booking_failed_notification'
   | 'send_booking_cancellation_confirmation'
+  | 'send_booking_confirmation'
   | 'reserve_slot'
   | 'update_reserved_slot'
   | 'cancel_reserved_slot'

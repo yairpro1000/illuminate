@@ -22,7 +22,7 @@ export interface IEmailProvider {
   /** Session pay-later: ask user to confirm email. */
   sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult>;
 
-  /** Session pay-later: email confirmed, payment now due. */
+  /** Checkout follow-up: payment not completed and hold nearing expiry. */
   sendBookingPaymentDue(booking: Booking, payUrl: string, manageUrl: string): Promise<SendResult>;
 
   /** Session confirmation after payment/cash. */
@@ -37,8 +37,8 @@ export interface IEmailProvider {
   /** Session follow-up when email not yet confirmed. */
   sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult>;
 
-  /** Session cancellation. */
-  sendBookingCancellation(booking: Booking): Promise<SendResult>;
+  /** Session cancellation/expiry. Optionally include a start-new-booking URL. */
+  sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
 
   /** Event (free) pending-confirmation request. */
   sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult>;

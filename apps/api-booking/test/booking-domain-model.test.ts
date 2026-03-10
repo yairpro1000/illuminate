@@ -147,7 +147,7 @@ describe('booking domain model', () => {
     const payNowEffects = mockState.sideEffects
       .filter((effect) => effect.booking_id === payNow.bookingId)
       .map((effect) => effect.effect_intent);
-    expect(payNowEffects).toEqual(expect.arrayContaining(['create_stripe_checkout', 'expire_booking']));
+    expect(payNowEffects).toEqual(expect.arrayContaining(['create_stripe_checkout', 'send_payment_link', 'expire_booking']));
     expect(payNowEffects).not.toContain('reserve_slot');
 
     const payNowAttempts = mockState.sideEffectAttempts.filter((attempt) => {
@@ -160,6 +160,14 @@ describe('booking domain model', () => {
       .filter((event) => event.booking_id === payLater.bookingId)
       .map((event) => event.event_type);
     expect(payLaterEventTypes).toContain('BOOKING_FORM_SUBMITTED_PAY_LATER');
+    const payLaterConfirmationEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === payLater.bookingId && effect.effect_intent === 'send_email_confirmation',
+    );
+    expect(payLaterConfirmationEffect?.status).toBe('success');
+    const payLaterConfirmationAttempts = mockState.sideEffectAttempts.filter(
+      (attempt) => attempt.booking_side_effect_id === payLaterConfirmationEffect?.id,
+    );
+    expect(payLaterConfirmationAttempts.map((attempt) => attempt.status)).toEqual(['success']);
 
     const freeEventTypes = mockState.bookingEvents
       .filter((event) => event.booking_id === free.bookingId)
@@ -213,6 +221,36 @@ describe('booking domain model', () => {
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'reserve_slot',
     );
     expect(confirmationReservationEffect?.status).toBe('success');
+  });
+
+  it('rejects pay-later confirmation when token is older than 15 minutes', async () => {
+    const ctx = makeCtx();
+
+    const created = await createPayLaterBooking(
+      {
+        slotStart: '2026-03-19T13:00:00.000Z',
+        slotEnd: '2026-03-19T14:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        sessionType: 'session',
+        clientName: 'Expired Token Doe',
+        clientEmail: 'expired-token@example.com',
+        clientPhone: '+41000000009',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      },
+      ctx,
+    );
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER');
+    expect(submission).toBeTruthy();
+    submission!.created_at = new Date(Date.now() - 16 * 60_000).toISOString();
+
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    await expect(confirmBookingEmail(token, ctx)).rejects.toThrow('no longer valid');
   });
 
   it('reserves intro (free) session slots only after email confirmation', async () => {
@@ -270,6 +308,9 @@ describe('booking domain model', () => {
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(payment).toBeTruthy();
+    const beforeSettlement = await ctx.providers.repository.getBookingById(created.bookingId);
+    expect(beforeSettlement?.current_status).toBe('PENDING_CONFIRMATION');
+    expect(beforeSettlement?.google_event_id).toBeNull();
 
     await confirmBookingPayment(
       {
@@ -288,6 +329,16 @@ describe('booking domain model', () => {
     const updated = await ctx.providers.repository.getBookingById(created.bookingId);
     expect(updated?.current_status).toBe('PAID');
     expect(updated?.google_event_id).toBeTruthy();
+
+    const sendConfirmationEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'send_booking_confirmation',
+    );
+    expect(sendConfirmationEffect?.status).toBe('success');
+
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'paid@example.com',
+    );
+    expect(confirmationEmail).toBeTruthy();
   });
 
   it('records a calendar retryable failure when immediate reservation fails', async () => {
@@ -341,6 +392,58 @@ describe('booking domain model', () => {
         branch_taken: 'side_effect_failed_recorded_for_retry',
       }),
     }));
+
+    const opsAlertEmail = mockState.sentEmails.find((email) =>
+      email.kind === 'contact_message' &&
+      email.to === 'hello@yairb.ch' &&
+      email.body.includes('calendar_reservation_failure'),
+    );
+    expect(opsAlertEmail).toBeTruthy();
+  });
+
+  it('records failed immediate confirmation email attempt and keeps retry path', async () => {
+    const emailProvider = {
+      sendBookingConfirmRequest: vi.fn().mockRejectedValue(new Error('smtp temporary outage')),
+      sendEventConfirmRequest: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const ctx = makeCtx({ email: emailProvider });
+
+    const created = await createPayLaterBooking(
+      {
+        slotStart: '2026-03-29T10:00:00.000Z',
+        slotEnd: '2026-03-29T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        sessionType: 'session',
+        clientName: 'Email Retry Doe',
+        clientEmail: 'email-retry@example.com',
+        clientPhone: '+41000000017',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      },
+      ctx,
+    );
+
+    const confirmationEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'send_email_confirmation',
+    );
+    expect(confirmationEffect?.status).toBe('failed');
+
+    const confirmationAttempts = mockState.sideEffectAttempts.filter(
+      (attempt) => attempt.booking_side_effect_id === confirmationEffect?.id,
+    );
+    expect(confirmationAttempts.map((attempt) => attempt.status)).toEqual(['fail']);
+    expect(confirmationAttempts[0]?.error_message).toContain('smtp temporary outage');
+
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'realtime_side_effect_attempt_completed',
+      context: expect.objectContaining({
+        side_effect_intent: 'send_email_confirmation',
+        branch_taken: 'realtime_side_effect_failed_recorded_for_retry',
+      }),
+    }));
   });
 
   it('expires pending confirmation bookings when expire_booking effect is due', async () => {
@@ -378,6 +481,15 @@ describe('booking domain model', () => {
       .filter((event) => event.booking_id === created.bookingId)
       .map((event) => event.event_type);
     expect(eventTypes).toContain('BOOKING_EXPIRED');
+
+    const cancelReservedSlotEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'cancel_reserved_slot',
+    );
+    const failedNotificationEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'send_booking_failed_notification',
+    );
+    expect(cancelReservedSlotEffect?.status).toBe('success');
+    expect(failedNotificationEffect?.status).toBe('success');
   });
 
   it('schedules payment reminder at starts_at minus 24h after slot confirmation', async () => {
@@ -463,6 +575,19 @@ describe('booking domain model', () => {
       .filter((effect) => effect.booking_id === created.bookingId)
       .map((effect) => effect.effect_intent);
     expect(intents).toEqual(expect.arrayContaining(['update_reserved_slot', 'cancel_reserved_slot']));
+
+    const updateReservedSlotEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'update_reserved_slot',
+    );
+    const cancelReservedSlotEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'cancel_reserved_slot',
+    );
+    const cancellationEmailEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'send_booking_cancellation_confirmation',
+    );
+    expect(updateReservedSlotEffect?.status).toBe('success');
+    expect(cancelReservedSlotEffect?.status).toBe('success');
+    expect(cancellationEmailEffect?.status).toBe('success');
   });
 
   it('tracks side-effect retry attempts, eventual success, and dead-path exhaustion', async () => {

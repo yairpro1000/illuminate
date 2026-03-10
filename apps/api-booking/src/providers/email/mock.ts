@@ -56,8 +56,8 @@ export class MockEmailProvider implements IEmailProvider {
     return this.send(
       clientEmail(booking),
       'booking_payment_due',
-      'Your session is reserved – payment due',
-      `Hi ${clientName(booking)},\n\nYour slot is reserved. Please complete payment.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: at least 24h before the session\n\nPay: ${payUrl}\nManage: ${manageUrl}`,
+      'Action needed: complete payment in 15 minutes',
+      `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in 15 minutes unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
     );
   }
 
@@ -97,12 +97,13 @@ export class MockEmailProvider implements IEmailProvider {
     );
   }
 
-  async sendBookingCancellation(booking: Booking): Promise<SendResult> {
+  async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
+    const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
     return this.send(
       clientEmail(booking),
       'booking_cancellation',
       'Your booking has been cancelled',
-      `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.`,
+      `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`,
     );
   }
 

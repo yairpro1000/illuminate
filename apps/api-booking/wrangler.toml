@@ -30,7 +30,7 @@ ADMIN_AUTH_DISABLED = "true" # TEMPORARY ONLY: bypass /api/admin/* auth for manu
 
 [[r2_buckets]]
 binding = "IMAGES_BUCKET"
-bucket_name = "letsilluminate-images"
+bucket_name = "illuminate-images"
 
 # Local-only overrides (used by `wrangler dev --env local`)
 [env.local.vars]

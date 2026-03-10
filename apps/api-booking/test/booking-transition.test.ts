@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { currentStatusForEvent, getEffectsForEvent, shouldReserveSlotForTransition } from '../src/domain/booking-effect-policy.js';
 
 describe('booking effect policy', () => {
-  it('maps pay-now submission to checkout + expire intents', () => {
+  it('maps pay-now submission to checkout + payment-link + expire intents', () => {
     const effects = getEffectsForEvent({
       booking: {
         id: 'b1',
@@ -17,10 +17,13 @@ describe('booking effect policy', () => {
 
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'create_stripe_checkout',
+      'send_payment_link',
       'expire_booking',
     ]);
 
-    expect(effects[0]?.expires_at).toBe('2026-03-10T10:45:00.000Z');
+    expect(effects[0]?.expires_at).toBeNull();
+    expect(effects[1]?.expires_at).toBe('2026-03-10T10:45:00.000Z');
+    expect(effects[2]?.expires_at).toBe('2026-03-10T11:00:00.000Z');
   });
 
   it('maps slot-confirmed pay-later to date reminder + payment reminder', () => {
@@ -46,6 +49,25 @@ describe('booking effect policy', () => {
   it('maps payment settled to PAID cached status', () => {
     const next = currentStatusForEvent('PAYMENT_SETTLED', 'PENDING_CONFIRMATION', 'pay_now');
     expect(next).toBe('PAID');
+  });
+
+  it('maps slot-confirmed pay-now to date reminder + booking confirmation', () => {
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b3',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'PAID',
+      },
+      eventType: 'SLOT_CONFIRMED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentMode: 'pay_now',
+    });
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'send_date_reminder',
+      'send_booking_confirmation',
+    ]);
   });
 
   it('reserves on finalized transitions, not on submission', () => {

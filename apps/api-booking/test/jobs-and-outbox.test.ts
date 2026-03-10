@@ -60,6 +60,9 @@ function makeCtx(overrides: any = {}) {
       sendEventFollowup: vi.fn().mockResolvedValue(undefined),
       sendBookingReminder24h: vi.fn().mockResolvedValue(undefined),
       sendEventReminder24h: vi.fn().mockResolvedValue(undefined),
+      sendBookingConfirmation: vi.fn().mockResolvedValue(undefined),
+      sendEventConfirmation: vi.fn().mockResolvedValue(undefined),
+      sendContactMessage: vi.fn().mockResolvedValue(undefined),
     },
     calendar: {
       createEvent: vi.fn().mockResolvedValue({ eventId: 'g1' }),
@@ -202,7 +205,7 @@ describe('Jobs and side-effect dispatcher', () => {
       booking_event_id: 'be1',
       effect_intent: 'reserve_slot',
       entity: 'calendar',
-      status: 'pending',
+      status: 'failed',
       expires_at: null,
       max_attempts: 5,
       created_at: new Date().toISOString(),
@@ -254,5 +257,139 @@ describe('Jobs and side-effect dispatcher', () => {
       entry?.context?.branch_taken === 'slot_confirmed_appended_after_retry',
     );
     expect(appendedLogExists).toBe(true);
+  });
+
+  it('skips first-attempt non-cron pending side effects in sweeper', async () => {
+    const nowIso = new Date().toISOString();
+    const effect = {
+      id: 'se-non-cron-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'cancel_reserved_slot',
+      entity: 'calendar',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.calendar.deleteEvent).not.toHaveBeenCalled();
+    const decisionLogExists = ctx.logger.logInfo.mock.calls.some(([entry]: [any]) =>
+      entry?.eventType === 'side_effect_sweeper_dispatch_decision' &&
+      entry?.context?.side_effect_id === 'se-non-cron-1' &&
+      entry?.context?.branch_taken === 'skip_pending_non_cron_first_attempt' &&
+      entry?.context?.deny_reason === 'non_cron_side_effect_must_execute_realtime',
+    );
+    expect(decisionLogExists).toBe(true);
+  });
+
+  it('dispatches stale-recovered pending non-cron side effects', async () => {
+    const effect = {
+      id: 'se-stale-non-cron-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'send_booking_cancellation_confirmation',
+      entity: 'email',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendBookingCancellation).toHaveBeenCalled();
+    const decisionLogExists = ctx.logger.logInfo.mock.calls.some(([entry]: [any]) =>
+      entry?.eventType === 'side_effect_sweeper_dispatch_decision' &&
+      entry?.context?.side_effect_id === 'se-stale-non-cron-1' &&
+      entry?.context?.branch_taken === 'dispatch_stale_recovered_pending_effect',
+    );
+    expect(decisionLogExists).toBe(true);
+  });
+
+  it('dispatches stale-recovered booking confirmation side effects', async () => {
+    const effect = {
+      id: 'se-booking-confirm-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'send_booking_confirmation',
+      entity: 'email',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getPaymentByBookingId: vi.fn().mockResolvedValue(null),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se-booking-confirm-1', status: 'success', attempt_num: 1 }),
+    );
+  });
+
+  it('does not first-run create_stripe_checkout in sweeper', async () => {
+    const nowIso = new Date().toISOString();
+    const effect = {
+      id: 'se-stripe-checkout-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'create_stripe_checkout',
+      entity: 'payment',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).not.toHaveBeenCalled();
+    const decisionLogExists = ctx.logger.logInfo.mock.calls.some(([entry]: [any]) =>
+      entry?.eventType === 'side_effect_sweeper_dispatch_decision' &&
+      entry?.context?.side_effect_id === 'se-stripe-checkout-1' &&
+      entry?.context?.side_effect_intent === 'create_stripe_checkout' &&
+      entry?.context?.branch_taken === 'skip_pending_non_cron_first_attempt',
+    );
+    expect(decisionLogExists).toBe(true);
   });
 });

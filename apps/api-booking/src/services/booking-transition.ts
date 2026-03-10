@@ -52,6 +52,7 @@ export async function appendBookingEventWithEffects(
       policy: {
         non_paid_confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
         pay_now_checkout_window_minutes: DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes,
+        pay_now_reminder_grace_minutes: DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
         payment_due_before_start_hours: DEFAULT_BOOKING_POLICY.paymentDueBeforeStartHours,
         processing_max_attempts: DEFAULT_BOOKING_POLICY.processingMaxAttempts,
       },

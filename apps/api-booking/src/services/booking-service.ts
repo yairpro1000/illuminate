@@ -4,6 +4,7 @@ import type { Logger } from '../lib/logger.js';
 import type {
   Booking,
   BookingCurrentStatus,
+  BookingEffectIntent,
   BookingEventType,
   BookingSideEffect,
   Event,
@@ -14,10 +15,26 @@ import { generateToken, hashToken } from './token-service.js';
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
-import { shouldReserveSlotForTransition } from '../domain/booking-effect-policy.js';
+import { DEFAULT_BOOKING_POLICY, shouldReserveSlotForTransition } from '../domain/booking-effect-policy.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 
 const PUBLIC_EVENT_CUTOFF_AFTER_START_MINUTES = 30;
+const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
+  'send_payment_link',
+  'send_slot_reservation_reminder',
+  'send_payment_reminder',
+  'send_date_reminder',
+  'expire_booking',
+]);
+const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
+  'send_email_confirmation',
+  'update_reserved_slot',
+  'cancel_reserved_slot',
+  'send_booking_failed_notification',
+  'send_booking_cancellation_confirmation',
+  'send_booking_confirmation',
+  'close_booking',
+]);
 
 export interface BookingContext {
   providers: Providers;
@@ -215,10 +232,17 @@ export async function createPayLaterBooking(
     ctx,
   );
 
-  // Side-effects dispatcher delivers the email. We still return current cache state.
+  const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
+    transitionEventType: input.sessionType === 'intro' ? 'BOOKING_FORM_SUBMITTED_FREE' : 'BOOKING_FORM_SUBMITTED_PAY_LATER',
+    sourceOperation: 'create_pay_later_booking',
+    bookingBeforeTransition: booking,
+    bookingAfterTransition: transitioned.booking,
+    transitionSideEffects: transitioned.sideEffects,
+  }, ctx);
+
   return {
-    bookingId: transitioned.booking.id,
-    status: transitioned.booking.current_status,
+    bookingId: finalizedBooking.id,
+    status: finalizedBooking.current_status,
   };
 }
 
@@ -291,6 +315,13 @@ async function createEventBookingInternal(
       },
       ctx,
     );
+    const createdWithImmediateEffects = await applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: 'BOOKING_FORM_SUBMITTED_FREE',
+      sourceOperation: options.viaLateAccess ? 'create_event_booking_with_access' : 'create_event_booking',
+      bookingBeforeTransition: booking,
+      bookingAfterTransition: created.booking,
+      transitionSideEffects: created.sideEffects,
+    }, ctx);
 
     if (options.viaLateAccess) {
       const confirmed = await appendBookingEventWithEffects(
@@ -303,7 +334,7 @@ async function createEventBookingInternal(
       return { bookingId: confirmed.booking.id, status: confirmed.booking.current_status };
     }
 
-    return { bookingId: created.booking.id, status: created.booking.current_status };
+    return { bookingId: createdWithImmediateEffects.id, status: createdWithImmediateEffects.current_status };
   }
 
   const transitioned = await appendBookingEventWithEffects(
@@ -347,10 +378,59 @@ export async function confirmBookingEmail(
   const booking = await ctx.providers.repository.getBookingByConfirmTokenHash(tokenHash);
   if (!booking) throw notFound('Booking not found');
 
+  const bookingEvents = await ctx.providers.repository.listBookingEvents(booking.id);
+  const submissionWithToken = [...bookingEvents]
+    .reverse()
+    .find((event) => {
+      const isConfirmableSubmission =
+        event.event_type === 'BOOKING_FORM_SUBMITTED_FREE' ||
+        event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER';
+      return isConfirmableSubmission && event.payload?.['confirm_token_hash'] === tokenHash;
+    });
+  const confirmationDeadlineIso = submissionWithToken
+    ? new Date(
+      new Date(submissionWithToken.created_at).getTime() +
+      DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes * 60_000,
+    ).toISOString()
+    : null;
+  const isConfirmationWindowExpired = confirmationDeadlineIso
+    ? Date.now() > new Date(confirmationDeadlineIso).getTime()
+    : true;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_decision',
+    message: 'Evaluated email confirmation token redemption',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      has_submission_with_confirm_token: Boolean(submissionWithToken),
+      confirmation_deadline: confirmationDeadlineIso,
+      confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
+      is_confirmation_window_expired: isConfirmationWindowExpired,
+      branch_taken: booking.current_status !== 'PENDING_CONFIRMATION'
+        ? 'booking_already_progressed_or_terminal'
+        : submissionWithToken
+          ? (isConfirmationWindowExpired ? 'deny_confirmation_window_expired' : 'accept_confirmation_within_window')
+          : 'deny_missing_submission_for_token',
+      deny_reason: booking.current_status !== 'PENDING_CONFIRMATION'
+        ? (booking.current_status === 'SLOT_CONFIRMED' || booking.current_status === 'PAID'
+          ? null
+          : 'booking_not_confirmable_in_current_status')
+        : submissionWithToken
+          ? (isConfirmationWindowExpired ? 'confirmation_window_expired' : null)
+          : 'confirm_token_submission_not_found',
+    },
+  });
+
   if (booking.current_status !== 'PENDING_CONFIRMATION') {
     if (booking.current_status === 'SLOT_CONFIRMED' || booking.current_status === 'PAID') {
       return booking;
     }
+    throw gone('This confirmation link is no longer valid');
+  }
+
+  if (!submissionWithToken || isConfirmationWindowExpired) {
     throw gone('This confirmation link is no longer valid');
   }
 
@@ -461,13 +541,21 @@ export async function cancelBooking(
     throw badRequest('Booking cannot be cancelled in its current state');
   }
 
-  await appendBookingEventWithEffects(
+  const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_CANCELED',
     'public_ui',
     { reason: 'user_cancelled' },
     ctx,
   );
+
+  await applyImmediateNonCronSideEffectsForTransition({
+    transitionEventType: 'BOOKING_CANCELED',
+    sourceOperation: 'cancel_booking',
+    bookingBeforeTransition: booking,
+    bookingAfterTransition: transitioned.booking,
+    transitionSideEffects: transitioned.sideEffects,
+  }, ctx);
 }
 
 export async function expireBooking(
@@ -481,7 +569,14 @@ export async function expireBooking(
     { reason: 'side_effect_expired' },
     ctx,
   );
-  return result.booking;
+
+  return applyImmediateNonCronSideEffectsForTransition({
+    transitionEventType: 'BOOKING_EXPIRED',
+    sourceOperation: 'expire_booking',
+    bookingBeforeTransition: booking,
+    bookingAfterTransition: result.booking,
+    transitionSideEffects: result.sideEffects,
+  }, ctx);
 }
 
 export async function rescheduleBooking(
@@ -507,7 +602,7 @@ export async function rescheduleBooking(
     timezone: input.timezone,
   });
 
-  await appendBookingEventWithEffects(
+  const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_RESCHEDULED',
     'public_ui',
@@ -518,7 +613,13 @@ export async function rescheduleBooking(
     ctx,
   );
 
-  return updated;
+  return applyImmediateNonCronSideEffectsForTransition({
+    transitionEventType: 'BOOKING_RESCHEDULED',
+    sourceOperation: 'reschedule_booking',
+    bookingBeforeTransition: updated,
+    bookingAfterTransition: transitioned.booking,
+    transitionSideEffects: transitioned.sideEffects,
+  }, ctx);
 }
 
 export async function retryCalendarSyncForBooking(
@@ -577,6 +678,21 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
     source: 'job',
     payload: {},
   });
+}
+
+export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
+  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const invoiceUrl = payment?.invoice_url ?? null;
+
+  if (!booking.event_id) {
+    await ctx.providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl);
+    return;
+  }
+
+  const event = await ctx.providers.repository.getEventById(booking.event_id);
+  if (!event) return;
+  await ctx.providers.email.sendEventConfirmation(booking, event, manageUrl, invoiceUrl);
 }
 
 export async function getBookingPublicActionInfo(
@@ -718,6 +834,10 @@ export async function buildManageUrl(siteUrl: string, booking: Booking): Promise
 
 function buildStableManageToken(bookingId: string): string {
   return `m1.${bookingId}`;
+}
+
+function buildStartNewBookingUrl(siteUrl: string): string {
+  return `${siteUrl.replace(/\/+$/g, '')}/book.html`;
 }
 
 function parseStableManageToken(rawToken: string): { bookingId: string } | null {
@@ -865,6 +985,219 @@ function reservationSkipReason(
   return `event_not_reservation_trigger:${eventType}`;
 }
 
+function shouldRunImmediateTransitionSideEffect(intent: BookingEffectIntent): boolean {
+  if (CRON_MANAGED_SIDE_EFFECT_INTENTS.has(intent)) return false;
+  return REALTIME_TRANSITION_SIDE_EFFECT_INTENTS.has(intent);
+}
+
+export async function applyImmediateNonCronSideEffectsForTransition(
+  input: {
+    transitionEventType: BookingEventType;
+    sourceOperation: string;
+    bookingBeforeTransition: Booking;
+    bookingAfterTransition: Booking;
+    transitionSideEffects: BookingSideEffect[];
+  },
+  ctx: BookingContext,
+): Promise<Booking> {
+  const { logger } = ctx;
+  const realtimeEffects = input.transitionSideEffects.filter((effect) =>
+    shouldRunImmediateTransitionSideEffect(effect.effect_intent),
+  );
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'realtime_side_effect_transition_decision',
+    message: 'Evaluated immediate non-cron side effects for transition',
+    context: {
+      booking_id: input.bookingAfterTransition.id,
+      transition_event_type: input.transitionEventType,
+      source_operation: input.sourceOperation,
+      current_status_before: input.bookingBeforeTransition.current_status,
+      current_status_after: input.bookingAfterTransition.current_status,
+      all_transition_side_effect_ids: input.transitionSideEffects.map((effect) => effect.id),
+      all_transition_side_effect_intents: input.transitionSideEffects.map((effect) => effect.effect_intent),
+      realtime_side_effect_ids: realtimeEffects.map((effect) => effect.id),
+      realtime_side_effect_intents: realtimeEffects.map((effect) => effect.effect_intent),
+      should_execute_realtime_side_effects: realtimeEffects.length > 0,
+      branch_taken: realtimeEffects.length > 0
+        ? 'execute_realtime_side_effects_immediately'
+        : 'no_realtime_side_effects_for_transition',
+      deny_reason: realtimeEffects.length > 0 ? null : 'transition_has_no_non_cron_realtime_side_effects',
+    },
+  });
+
+  if (realtimeEffects.length === 0) {
+    return input.bookingAfterTransition;
+  }
+
+  let currentBooking = input.bookingAfterTransition;
+
+  for (const effect of realtimeEffects) {
+    logger.logInfo?.({
+      source: 'backend',
+      eventType: 'realtime_side_effect_attempt_started',
+      message: 'Immediate side effect attempt started',
+      context: {
+        booking_id: currentBooking.id,
+        transition_event_type: input.transitionEventType,
+        source_operation: input.sourceOperation,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        side_effect_status_before: effect.status,
+        branch_taken: `attempt_${effect.effect_intent}_immediately`,
+      },
+    });
+
+    try {
+      await markSideEffectsProcessing([effect], ctx);
+      currentBooking = await executeImmediateTransitionSideEffect(effect, currentBooking, input, ctx);
+      await markSideEffectAttemptForEffects([effect], 'success', null, ctx);
+
+      logger.logInfo?.({
+        source: 'backend',
+        eventType: 'realtime_side_effect_attempt_completed',
+        message: 'Immediate side effect attempt succeeded',
+        context: {
+          booking_id: currentBooking.id,
+          transition_event_type: input.transitionEventType,
+          source_operation: input.sourceOperation,
+          side_effect_id: effect.id,
+          side_effect_intent: effect.effect_intent,
+          side_effect_status_after: 'success',
+          branch_taken: 'realtime_side_effect_succeeded',
+        },
+      });
+    } catch (error) {
+      const failureReason = toSyncFailureReason(error);
+
+      try {
+        await markSideEffectAttemptForEffects([effect], 'fail', failureReason, ctx);
+      } catch (attemptError) {
+        logger.logError?.({
+          source: 'backend',
+          eventType: 'realtime_side_effect_attempt_record_failed',
+          message: 'Failed to record failed immediate side effect attempt',
+          context: {
+            booking_id: currentBooking.id,
+            transition_event_type: input.transitionEventType,
+            source_operation: input.sourceOperation,
+            side_effect_id: effect.id,
+            side_effect_intent: effect.effect_intent,
+            failure_reason: failureReason,
+            record_failure_reason: toSyncFailureReason(attemptError),
+            branch_taken: 'realtime_side_effect_failed_record_persist_error',
+          },
+        });
+      }
+
+      logger.logWarn?.({
+        source: 'backend',
+        eventType: 'realtime_side_effect_attempt_completed',
+        message: 'Immediate side effect attempt failed; retry path retained',
+        context: {
+          booking_id: currentBooking.id,
+          transition_event_type: input.transitionEventType,
+          source_operation: input.sourceOperation,
+          side_effect_id: effect.id,
+          side_effect_intent: effect.effect_intent,
+          side_effect_status_after: 'failed_or_dead',
+          failure_reason: failureReason,
+          branch_taken: 'realtime_side_effect_failed_recorded_for_retry',
+        },
+      });
+    }
+  }
+
+  return currentBooking;
+}
+
+async function executeImmediateTransitionSideEffect(
+  effect: BookingSideEffect,
+  booking: Booking,
+  transition: {
+    transitionEventType: BookingEventType;
+    sourceOperation: string;
+  },
+  ctx: BookingContext,
+): Promise<Booking> {
+  switch (effect.effect_intent) {
+    case 'send_email_confirmation': {
+      const bookingEvent = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
+      const confirmToken = typeof bookingEvent?.payload?.['confirm_token'] === 'string'
+        ? bookingEvent.payload['confirm_token'] as string
+        : null;
+
+      if (!confirmToken) {
+        const viaLateAccess = bookingEvent?.payload?.['via_late_access'] === true;
+        if (viaLateAccess) {
+          ctx.logger.logInfo?.({
+            source: 'backend',
+            eventType: 'realtime_side_effect_noop',
+            message: 'Skipped confirmation email for late-access booking',
+            context: {
+              booking_id: booking.id,
+              transition_event_type: transition.transitionEventType,
+              source_operation: transition.sourceOperation,
+              side_effect_id: effect.id,
+              side_effect_intent: effect.effect_intent,
+              branch_taken: 'skip_confirmation_email_late_access_flow',
+              deny_reason: 'late_access_booking_has_no_confirm_token',
+            },
+          });
+          return booking;
+        }
+        throw new Error('confirm_token_missing');
+      }
+
+      const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+      await sendEmailConfirmation(booking, confirmUrl, ctx);
+      return booking;
+    }
+
+    case 'update_reserved_slot': {
+      const result = await retryCalendarSyncForBooking(booking, 'update', ctx);
+      if (!result.calendarSynced) {
+        throw new Error(result.failureReason ?? 'calendar_sync_failed');
+      }
+      return result.booking;
+    }
+
+    case 'cancel_reserved_slot': {
+      const result = await retryCalendarSyncForBooking(booking, 'delete', ctx);
+      if (!result.calendarSynced) {
+        throw new Error(result.failureReason ?? 'calendar_sync_failed');
+      }
+      return result.booking;
+    }
+
+    case 'send_booking_failed_notification': {
+      await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
+      return booking;
+    }
+
+    case 'send_booking_cancellation_confirmation': {
+      await ctx.providers.email.sendBookingCancellation(booking, null);
+      return booking;
+    }
+
+    case 'send_booking_confirmation': {
+      await sendBookingFinalConfirmation(booking, ctx);
+      return booking;
+    }
+
+    case 'close_booking': {
+      if (booking.current_status === 'CLOSED') {
+        return booking;
+      }
+      return ctx.providers.repository.updateBooking(booking.id, { current_status: 'CLOSED' as BookingCurrentStatus });
+    }
+
+    default:
+      throw new Error(`realtime_side_effect_unsupported:${effect.effect_intent}`);
+  }
+}
+
 async function applyImmediateReservationForTransition(
   input: {
     transitionEventType: BookingEventType;
@@ -977,6 +1310,14 @@ async function applyImmediateReservationForTransition(
       },
     });
 
+    await sendCalendarReservationFailureAlert({
+      booking: syncResult.booking,
+      transitionEventType: input.transitionEventType,
+      sourceOperation: input.sourceOperation,
+      failureReason,
+      reservationEffectIds: reservationEffects.map((effect) => effect.id),
+    }, ctx);
+
     return syncResult.booking;
   }
 
@@ -991,6 +1332,7 @@ async function applyImmediateReservationForTransition(
   let slotConfirmedEventWritten = false;
 
   if (!['EXPIRED', 'CANCELED', 'CLOSED'].includes(finalBooking.current_status)) {
+    const bookingBeforeSlotConfirmed = finalBooking;
     const slotConfirmed = await appendBookingEventWithEffects(
       finalBooking.id,
       'SLOT_CONFIRMED',
@@ -1002,7 +1344,13 @@ async function applyImmediateReservationForTransition(
       },
       ctx,
     );
-    finalBooking = slotConfirmed.booking;
+    finalBooking = await applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: 'SLOT_CONFIRMED',
+      sourceOperation: `${input.sourceOperation}:slot_confirmed`,
+      bookingBeforeTransition: bookingBeforeSlotConfirmed,
+      bookingAfterTransition: slotConfirmed.booking,
+      transitionSideEffects: slotConfirmed.sideEffects,
+    }, ctx);
     slotConfirmedEventWritten = true;
   }
 
@@ -1024,6 +1372,80 @@ async function applyImmediateReservationForTransition(
   });
 
   return finalBooking;
+}
+
+async function sendCalendarReservationFailureAlert(
+  input: {
+    booking: Booking;
+    transitionEventType: BookingEventType;
+    sourceOperation: string;
+    failureReason: string;
+    reservationEffectIds: string[];
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  const { logger } = ctx;
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'calendar_reservation_failure_alert_decision',
+    message: 'Evaluated operational alert dispatch for calendar reservation failure',
+    context: {
+      booking_id: input.booking.id,
+      transition_event_type: input.transitionEventType,
+      source_operation: input.sourceOperation,
+      reservation_effect_ids: input.reservationEffectIds,
+      failure_reason: input.failureReason,
+      should_send_alert: true,
+      branch_taken: 'send_operational_alert_email',
+    },
+  });
+
+  const message = [
+    'Calendar reservation failed and was queued for retry.',
+    `booking_id: ${input.booking.id}`,
+    `transition_event_type: ${input.transitionEventType}`,
+    `source_operation: ${input.sourceOperation}`,
+    `booking_status: ${input.booking.current_status}`,
+    `booking_kind: ${input.booking.event_id ? 'event' : 'session'}`,
+    `reservation_effect_ids: ${input.reservationEffectIds.join(', ') || 'none'}`,
+    `failure_reason: ${input.failureReason}`,
+    `request_id: ${ctx.requestId}`,
+  ].join('\n');
+
+  try {
+    await ctx.providers.email.sendContactMessage(
+      'Booking Ops Alert',
+      'alerts@yairb.ch',
+      message,
+      'calendar_reservation_failure',
+    );
+    logger.logInfo?.({
+      source: 'backend',
+      eventType: 'calendar_reservation_failure_alert_sent',
+      message: 'Operational alert email sent for calendar reservation failure',
+      context: {
+        booking_id: input.booking.id,
+        transition_event_type: input.transitionEventType,
+        source_operation: input.sourceOperation,
+        reservation_effect_ids: input.reservationEffectIds,
+        branch_taken: 'operational_alert_sent',
+      },
+    });
+  } catch (error) {
+    logger.logError?.({
+      source: 'backend',
+      eventType: 'calendar_reservation_failure_alert_failed',
+      message: 'Operational alert email failed for calendar reservation failure',
+      context: {
+        booking_id: input.booking.id,
+        transition_event_type: input.transitionEventType,
+        source_operation: input.sourceOperation,
+        reservation_effect_ids: input.reservationEffectIds,
+        failure_reason: toSyncFailureReason(error),
+        branch_taken: 'operational_alert_send_failed',
+      },
+    });
+  }
 }
 
 function toSyncFailureReason(error: unknown): string {

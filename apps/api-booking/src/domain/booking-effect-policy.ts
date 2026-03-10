@@ -11,6 +11,7 @@ import { inferEntityFromIntent } from '../providers/repository/interface.js';
 export interface BookingPolicyConfig {
   nonPaidConfirmationWindowMinutes: number;
   payNowCheckoutWindowMinutes: number;
+  payNowReminderGraceMinutes: number;
   paymentDueBeforeStartHours: number;
   processingMaxAttempts: number;
 }
@@ -18,6 +19,7 @@ export interface BookingPolicyConfig {
 export const DEFAULT_BOOKING_POLICY: BookingPolicyConfig = {
   nonPaidConfirmationWindowMinutes: 15,
   payNowCheckoutWindowMinutes: 45,
+  payNowReminderGraceMinutes: 15,
   paymentDueBeforeStartHours: 24,
   processingMaxAttempts: 5,
 };
@@ -91,10 +93,13 @@ export function getEffectsForEvent(
       ];
     }
     case 'BOOKING_FORM_SUBMITTED_PAY_NOW': {
-      const windowIso = inMinutes(policy.payNowCheckoutWindowMinutes);
+      const reminderIso = inMinutes(policy.payNowCheckoutWindowMinutes);
+      const expiryIso = inMinutes(policy.payNowCheckoutWindowMinutes + policy.payNowReminderGraceMinutes);
       return [
-        make('create_stripe_checkout', windowIso),
-        make('expire_booking', windowIso),
+        // Checkout is created synchronously in submit flow; keep this as audit intent only.
+        make('create_stripe_checkout', null),
+        make('send_payment_link', reminderIso),
+        make('expire_booking', expiryIso),
       ];
     }
     case 'BOOKING_FORM_SUBMITTED_PAY_LATER': {
@@ -139,6 +144,9 @@ export function getEffectsForEvent(
       const dateReminderEligible = startsAtMs > nowMs && !['CANCELED', 'EXPIRED'].includes(input.booking.current_status);
       if (dateReminderEligible) {
         effects.push(make('send_date_reminder', new Date(startsAtMs).toISOString()));
+      }
+      if (paymentMode === 'pay_now') {
+        effects.push(make('send_booking_confirmation', null));
       }
       if (paymentMode === 'pay_later') {
         effects.push(make('send_payment_reminder', paymentDueThresholdIso));
