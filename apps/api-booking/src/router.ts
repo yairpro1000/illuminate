@@ -128,7 +128,10 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   if (request.method === 'OPTIONS') {
     return origin
       ? handlePreflight(origin)
-      : new Response(null, { status: 403 });
+      : new Response(null, {
+        status: 403,
+        headers: { Vary: 'Origin' },
+      });
   }
 
   if (!url.pathname.startsWith('/api/')) {
@@ -142,7 +145,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
       success: false,
       requestSizeBytes,
     });
-    return res;
+    return origin ? addCors(res, origin) : res;
   }
 
   ctx.logger.logMilestone('incoming_request_received', {

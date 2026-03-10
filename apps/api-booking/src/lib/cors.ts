@@ -5,6 +5,8 @@ const ALLOWED_HEADERS = [
   'x-correlation-id',
   'cf-access-authenticated-user-email',
   'Cf-Access-Authenticated-User-Email',
+  'cf-access-jwt-assertion',
+  'Cf-Access-Jwt-Assertion',
 ].join(', ');
 const ALLOWED_METHODS = 'GET, POST, PATCH, OPTIONS';
 
@@ -29,6 +31,17 @@ export function addCors(response: Response, origin: string): Response {
     headers.set(k, v);
   }
   return new Response(response.body, { status: response.status, headers });
+}
+
+export function addCorsIfAllowed(
+  request: Request,
+  response: Response,
+  siteUrl: string,
+  configuredOrigins?: string,
+  devMode = false,
+): Response {
+  const origin = getAllowedOrigin(request, siteUrl, configuredOrigins, devMode);
+  return origin ? addCors(response, origin) : response;
 }
 
 /** Returns the request origin if it should be allowed, or null. */

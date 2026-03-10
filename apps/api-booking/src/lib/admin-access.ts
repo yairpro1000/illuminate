@@ -1,4 +1,5 @@
 import type { Env } from '../env.js';
+import type { Logger } from './logger.js';
 import { forbidden, unauthorized } from './errors.js';
 
 function normalizeEmail(raw: string): string {
@@ -175,11 +176,42 @@ function isLocalhostRequest(request: Request): boolean {
   }
 }
 
-export async function requireAdminAccess(request: Request, env: Env): Promise<{ email: string }> {
+function logAdminAccessDecision(
+  logger: Logger | undefined,
+  request: Request,
+  env: Env,
+  branch: string,
+  result: 'allow' | 'deny',
+  reason?: string,
+): void {
+  if (!logger) return;
+  logger.logInfo({
+    eventType: 'admin_auth_check',
+    message: 'Admin auth decision',
+    context: {
+      path: new URL(request.url).pathname,
+      admin_auth_disabled: isTruthy(env.ADMIN_AUTH_DISABLED),
+      branch,
+      result,
+      reason: reason ?? null,
+      has_access_aud: !!env.CLOUDFLARE_ACCESS_AUD?.trim(),
+      has_access_email_header: !!getAccessEmail(request),
+      has_access_jwt_header: !!getAccessJwt(request),
+      allowlist_configured: parseAllowlist(env.ADMIN_ALLOWED_EMAILS).size > 0,
+    },
+  });
+}
+
+export async function requireAdminAccess(
+  request: Request,
+  env: Env,
+  logger?: Logger,
+): Promise<{ email: string }> {
   // TEMPORARY TESTING BYPASS:
   // When ADMIN_AUTH_DISABLED=true, admin routes are intentionally left open to
   // unblock manual testing. Do not leave this enabled in production.
   if (isTruthy(env.ADMIN_AUTH_DISABLED)) {
+    logAdminAccessDecision(logger, request, env, 'auth_disabled_bypass', 'allow');
     return { email: 'admin-auth-disabled@local' };
   }
 
@@ -189,20 +221,30 @@ export async function requireAdminAccess(request: Request, env: Env): Promise<{ 
 
   if (accessAud) {
     const token = getAccessJwt(request);
-    if (!token) throw unauthorized('Admin authentication required');
+    if (!token) {
+      logAdminAccessDecision(logger, request, env, 'access_jwt_missing', 'deny', 'missing_access_jwt');
+      throw unauthorized('Admin authentication required');
+    }
     const payload = await verifyAccessJwt(token, accessAud);
     const email = typeof payload.email === 'string' ? normalizeEmail(payload.email) : null;
-    if (!email) throw unauthorized('Admin authentication required');
+    if (!email) {
+      logAdminAccessDecision(logger, request, env, 'access_jwt_email_missing', 'deny', 'jwt_missing_email');
+      throw unauthorized('Admin authentication required');
+    }
     if (allowlist.size > 0 && !allowlist.has(email)) {
+      logAdminAccessDecision(logger, request, env, 'access_jwt_allowlist', 'deny', 'email_not_allowlisted');
       throw forbidden('Admin access denied');
     }
+    logAdminAccessDecision(logger, request, env, 'access_jwt_allowlist', 'allow');
     return { email };
   }
 
   if (accessEmail) {
     if (allowlist.size === 0 || allowlist.has(accessEmail)) {
+      logAdminAccessDecision(logger, request, env, 'access_email_header', 'allow');
       return { email: accessEmail };
     }
+    logAdminAccessDecision(logger, request, env, 'access_email_header', 'deny', 'email_not_allowlisted');
     throw unauthorized('Admin access denied');
   }
 
@@ -210,9 +252,12 @@ export async function requireAdminAccess(request: Request, env: Env): Promise<{ 
   if (devEmail && isLocalhostRequest(request)) {
     const normalized = normalizeEmail(devEmail);
     if (allowlist.size === 0 || allowlist.has(normalized)) {
+      logAdminAccessDecision(logger, request, env, 'localhost_dev_email', 'allow');
       return { email: normalized };
     }
+    logAdminAccessDecision(logger, request, env, 'localhost_dev_email', 'deny', 'dev_email_not_allowlisted');
   }
 
+  logAdminAccessDecision(logger, request, env, 'no_admin_auth_path_matched', 'deny', 'no_eligible_auth_mechanism');
   throw unauthorized('Admin authentication required');
 }

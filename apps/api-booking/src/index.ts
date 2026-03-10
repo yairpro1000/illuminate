@@ -4,6 +4,7 @@ import { handleRequest }   from './router.js';
 import { createCronObservability, createWorkerObservability } from './lib/logger.js';
 import { runCron }         from './handlers/jobs.js';
 import { jsonResponse } from './lib/errors.js';
+import { addCorsIfAllowed } from './lib/cors.js';
 
 export default {
   async fetch(request: Request, env: Env, executionCtx: ExecutionContext): Promise<Response> {
@@ -22,7 +23,13 @@ export default {
           path: new URL(request.url).pathname,
         },
       });
-      return jsonResponse({ error: 'INTERNAL_ERROR', message: 'Internal server error', request_id: requestId }, 500);
+      return addCorsIfAllowed(
+        request,
+        jsonResponse({ error: 'INTERNAL_ERROR', message: 'Internal server error', request_id: requestId }, 500),
+        env.SITE_URL,
+        env.API_ALLOWED_ORIGINS,
+        !!env.ADMIN_DEV_EMAIL,
+      );
     }
   },
 

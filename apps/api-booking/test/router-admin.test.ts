@@ -39,4 +39,26 @@ describe('Router integration (admin)', () => {
     const res = await handleRequest(req, ctx);
     expect(res.status).toBe(401);
   });
+
+  it('adds CORS headers to admin auth errors', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/api/admin/config', {
+      method: 'GET',
+      headers: { Origin: 'https://admin.letsilluminate.co' },
+    });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(401);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
+  });
+
+  it('adds CORS headers to non-api 404 responses', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/nope', {
+      method: 'GET',
+      headers: { Origin: 'https://admin.letsilluminate.co' },
+    });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
+  });
 });

@@ -69,6 +69,27 @@ describe('requireAdminAccess', () => {
       .resolves.toEqual({ email: 'admin-auth-disabled@local' });
   });
 
+  it('logs the bypass branch when ADMIN_AUTH_DISABLED=true', async () => {
+    const env = makeEnv({
+      ADMIN_AUTH_DISABLED: 'true',
+      CLOUDFLARE_ACCESS_AUD: 'aud-123',
+      ADMIN_ALLOWED_EMAILS: 'admin@example.com',
+    });
+    const logger = { logInfo: vi.fn() } as any;
+
+    await expect(requireAdminAccess(new Request('https://api.local/api/admin/events'), env, logger))
+      .resolves.toEqual({ email: 'admin-auth-disabled@local' });
+
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_auth_check',
+      context: expect.objectContaining({
+        admin_auth_disabled: true,
+        branch: 'auth_disabled_bypass',
+        result: 'allow',
+      }),
+    }));
+  });
+
   it('returns 401 when Access JWT is missing', async () => {
     const env = makeEnv({
       CLOUDFLARE_ACCESS_AUD: 'aud-123',
@@ -118,5 +139,36 @@ describe('requireAdminAccess', () => {
 
     await expect(requireAdminAccess(req, env))
       .rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+  });
+
+  it('logs the denial branch when the Access JWT email is not allowed', async () => {
+    const { token, jwks } = await makeAccessJwt({ iss: 'https://team-deny-logs.cloudflareaccess.com' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(jwks), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ));
+
+    const env = makeEnv({
+      CLOUDFLARE_ACCESS_AUD: 'aud-123',
+      ADMIN_ALLOWED_EMAILS: 'other@example.com',
+    });
+    const logger = { logInfo: vi.fn() } as any;
+    const req = new Request('https://api.local/api/admin/events', {
+      headers: { 'Cf-Access-Jwt-Assertion': token },
+    });
+
+    await expect(requireAdminAccess(req, env, logger))
+      .rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_auth_check',
+      context: expect.objectContaining({
+        branch: 'access_jwt_allowlist',
+        result: 'deny',
+        reason: 'email_not_allowlisted',
+      }),
+    }));
   });
 });

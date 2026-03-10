@@ -23,4 +23,27 @@ describe('Admin events', () => {
     const res = await handleAdminGetEvents(req, ctx);
     expect(res.status).toBe(401);
   });
+
+  it('logs auth start and auth failure details for admin events', async () => {
+    const ctx = makeCtx({ providers: { repository: { getPublishedEvents: vi.fn() } } });
+    const req = new Request('https://api.local/api/admin/events', { method: 'GET' });
+    const res = await handleAdminGetEvents(req, ctx);
+
+    expect(res.status).toBe(401);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_events_request',
+      context: expect.objectContaining({
+        path: '/api/admin/events',
+        admin_auth_disabled: false,
+      }),
+    }));
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_events_request_failed',
+      context: expect.objectContaining({
+        path: '/api/admin/events',
+        admin_auth_disabled: false,
+        status_code: 401,
+      }),
+    }));
+  });
 });

@@ -90,7 +90,15 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
 // GET /api/admin/events
 export async function handleAdminGetEvents(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    await requireAdminAccess(request, ctx.env);
+    ctx.logger.logInfo({
+      eventType: 'admin_events_request',
+      message: 'Admin events auth starting',
+      context: {
+        path: new URL(request.url).pathname,
+        admin_auth_disabled: /^(1|true|yes|on)$/i.test(String(ctx.env.ADMIN_AUTH_DISABLED ?? '').trim()),
+      },
+    });
+    await requireAdminAccess(request, ctx.env, ctx.logger);
     const events = await ctx.providers.repository.getPublishedEvents();
     return ok({
       events: events.map((event) => ({
@@ -103,6 +111,16 @@ export async function handleAdminGetEvents(request: Request, ctx: AppContext): P
       })),
     });
   } catch (err) {
+    ctx.logger.logWarn({
+      eventType: 'admin_events_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path: new URL(request.url).pathname,
+        admin_auth_disabled: /^(1|true|yes|on)$/i.test(String(ctx.env.ADMIN_AUTH_DISABLED ?? '').trim()),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+        auth_failure_reason: err instanceof Error ? err.message : String(err),
+      },
+    });
     return errorResponse(err);
   }
 }
