@@ -180,13 +180,10 @@
       </div>
     </div>
 
+    <script src="js/api-base.js"></script>
     <script>
       (function() {
-        const STORAGE_KEY = 'admin_api_base';
-        const params = new URLSearchParams(window.location.search);
-        const fromQuery = (params.get('apiBase') || '').trim();
-        if (fromQuery) localStorage.setItem(STORAGE_KEY, fromQuery.replace(/\/+$/g, ''));
-        let apiBase = (localStorage.getItem(STORAGE_KEY) || '/api').replace(/\/+$/g, '');
+        const apiBase = window.getAdminApiBase();
 
         const state = { rows: [], editing: null, saving: false, uploading: false };
         const rowsBody = document.getElementById('rowsBody');
@@ -209,9 +206,7 @@
         const imgPreview = document.getElementById('imgPreview');
         const editSaveEl = document.getElementById('editSave');
 
-        function resolveUrl(path) {
-          return path.startsWith('http') ? path : `${apiBase}${path.startsWith('/') ? path : `/${path}`}`;
-        }
+        function resolveUrl(path) { return window.resolveAdminUrl(path); }
         async function api(path, init) {
           const res = await fetch(resolveUrl(path), { method: 'GET', credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...init });
           const text = await res.text();

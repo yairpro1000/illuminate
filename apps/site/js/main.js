@@ -4,7 +4,18 @@
    ============================================================ */
 
 /* ── Shared site observability ─────────────────────────────── */
-const OBS_API_PATH = '/api/observability/frontend';
+const __LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const __ENV_API_BASE = (window.ENV && window.ENV.VITE_API_BASE) || undefined;
+const __API_BASE_FOR_OBS = (function(){
+  try {
+    const fromStorage = localStorage.getItem('API_BASE');
+    if (fromStorage && fromStorage.trim()) return fromStorage.replace(/\/+$/g, '');
+  } catch (_) {}
+  if (__ENV_API_BASE && String(__ENV_API_BASE).trim()) return String(__ENV_API_BASE).replace(/\/+$/g, '');
+  if (__LOCAL_HOSTS.has(location.hostname)) return 'http://localhost:8788';
+  return 'https://api.letsilluminate.co';
+})();
+const OBS_API_PATH = __API_BASE_FOR_OBS + '/api/observability/frontend';
 function makeObsId(prefix) {
   return (crypto.randomUUID && crypto.randomUUID()) || (prefix + '_' + Date.now().toString(36));
 }

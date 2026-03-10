@@ -1,0 +1,12 @@
+{
+  "name": "illuminate-admin-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest --run --environment=jsdom"
+  },
+  "devDependencies": {
+    "vitest": "^1.4.0",
+    "jsdom": "^24.0.0"
+  }
+}

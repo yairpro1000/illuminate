@@ -137,7 +137,8 @@
           if (typeof createEventReminderSubscription === 'function') {
             await createEventReminderSubscription(payload);
           } else {
-            await fetch('/api/events/reminder-subscriptions', {
+            const base = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE : '';
+            await fetch(base + '/api/events/reminder-subscriptions', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
@@ -178,7 +179,10 @@
     attachReminderHandlers(grid);
   }
 
-  fetch('/api/events')
+  (function(){
+    const base = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE : '';
+    return fetch(base + '/api/events');
+  })()
     .then((r) => r.json())
     .then((data) => {
       const events = Array.isArray(data.events) ? data.events : [];

@@ -320,13 +320,10 @@
         if (el) el.classList.add('active');
       })();
     </script>
+    <script src="js/api-base.js"></script>
     <script>
       (function () {
-        const STORAGE_KEY = "admin_api_base";
-        const params = new URLSearchParams(window.location.search);
-        const fromQuery = (params.get("apiBase") || "").trim();
-        if (fromQuery) localStorage.setItem(STORAGE_KEY, fromQuery.replace(/\/+$/g, ""));
-        let apiBase = (localStorage.getItem(STORAGE_KEY) || "/api").replace(/\/+$/g, "");
+        const apiBase = window.getAdminApiBase();
 
         const state = {
           allRows: [],
@@ -370,9 +367,7 @@
           editMsgEl.textContent = text || "";
         }
 
-        function resolveUrl(path) {
-          return path.startsWith("http") ? path : `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
-        }
+        function resolveUrl(path) { return window.resolveAdminUrl(path); }
 
         async function api(path, init) {
           const res = await fetch(resolveUrl(path), {

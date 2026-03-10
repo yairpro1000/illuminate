@@ -1,9 +1,12 @@
 /* ============================================================
-   ILLUMINATE — API client
-   All calls go to the Cloudflare Worker at /api/*.
-   PROVIDERS_MODE on the Worker controls mock vs real behaviour
-   — no client-side mock flag needed.
-   ============================================================ */
+  ILLUMINATE — API client
+  All calls go to the backend Worker under /api/*.
+  API base selection:
+  - local override: localStorage.API_BASE
+  - env (if provided): window.ENV.VITE_API_BASE
+  - localhost: http://localhost:8788
+  - production default: https://api.letsilluminate.co
+  ============================================================ */
 
 'use strict';
 
@@ -82,17 +85,20 @@ function createEventReminderSubscription(payload) {
   return _post('/api/events/reminder-subscriptions', payload);
 }
 
-/* ── Base URL ─────────────────────────────────────────────
-   In production (Cloudflare Pages + Worker on same domain)
-   relative paths work fine — leave as empty string.
-   In local dev, default to the Worker's address so the
-   site on :5500/:8080 can reach the Worker on :8787.
-   Override via: localStorage.setItem('API_BASE', 'http://localhost:8787')
-   ──────────────────────────────────────────────────────── */
-
+/* ── Base URL ───────────────────────────────────────────── */
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-const API_BASE = localStorage.getItem('API_BASE') ||
-  (LOCAL_DEV_HOSTS.has(location.hostname) ? 'http://localhost:8787' : '');
+// Prefer precomputed global base (from js/api-base.js) when available.
+const ENV_BASE = (window.ENV && window.ENV.VITE_API_BASE) || undefined;
+const DEFAULT_LOCAL = 'http://localhost:8788';
+const DEFAULT_PROD  = 'https://api.letsilluminate.co';
+const API_BASE = (function computeApiBase() {
+  if (typeof window !== 'undefined' && window.API_BASE) return window.API_BASE.replace(/\/+$/g, '');
+  const fromStorage = (function(){ try { return localStorage.getItem('API_BASE') || null; } catch (_) { return null; } })();
+  if (fromStorage && fromStorage.trim()) return fromStorage.replace(/\/+$/g, '');
+  if (ENV_BASE && String(ENV_BASE).trim()) return String(ENV_BASE).replace(/\/+$/g, '');
+  if (LOCAL_DEV_HOSTS.has(location.hostname)) return DEFAULT_LOCAL;
+  return DEFAULT_PROD;
+})();
 const OBS = window.siteObservability || null;
 
 /* ── Internal fetch helpers ──────────────────────────────── */
