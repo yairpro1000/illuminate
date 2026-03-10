@@ -182,7 +182,7 @@
         th:nth-child(4), td:nth-child(4) {
           display: none;
         }
-        th:nth-child(7), td:nth-child(7) {
+        th:nth-child(6), td:nth-child(6) {
           display: none;
         }
       }
@@ -252,7 +252,6 @@
               <th>Client</th>
               <th>Email</th>
               <th>Status</th>
-              <th>Attended</th>
               <th>Notes</th>
             </tr>
           </thead>
@@ -288,13 +287,6 @@
         </div>
 
         <div class="row" style="margin-top: 10px;">
-          <div class="col" style="min-width: 180px;">
-            <label for="editAttended">Attended</label>
-            <select id="editAttended">
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </div>
           <div class="col" style="flex: 1 1 320px;">
             <label for="editNotes">Notes</label>
             <textarea id="editNotes"></textarea>
@@ -355,7 +347,6 @@
         const editLastNameEl = document.getElementById("editLastName");
         const editEmailEl = document.getElementById("editEmail");
         const editPhoneEl = document.getElementById("editPhone");
-        const editAttendedEl = document.getElementById("editAttended");
         const editNotesEl = document.getElementById("editNotes");
         const editMsgEl = document.getElementById("editMsg");
         const editSaveEl = document.getElementById("editSave");
@@ -446,7 +437,7 @@
             rows = rows.filter((r) => {
               const haystack = [
                 r.client_first_name, r.client_last_name, r.client_email,
-                r.client_phone, r.notes, r.status, r.event_title, r.session_type_title,
+                r.client_phone, r.notes, r.current_status, r.event_title, r.session_type_title,
               ].join(' ').toLowerCase();
               return haystack.includes(q);
             });
@@ -460,7 +451,7 @@
           if (!Array.isArray(state.rows) || state.rows.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 7;
+            td.colSpan = 6;
             td.className = "muted";
             td.textContent = "No rows.";
             tr.appendChild(td);
@@ -472,12 +463,11 @@
             const tr = document.createElement("tr");
             tr.className = "clickable";
             const fullName = [row.client_first_name || "", row.client_last_name || ""].join(" ").trim();
-            tr.appendChild(createCell(row.source === "event" ? (row.event_title || "Event") : "Session"));
+            tr.appendChild(createCell(row.event_id ? (row.event_title || "Event") : "Session"));
             tr.appendChild(createCell(new Date(row.starts_at).toLocaleString()));
             tr.appendChild(createCell(fullName));
             tr.appendChild(createCell(row.client_email || ""));
-            tr.appendChild(createCell(row.status || ""));
-            tr.appendChild(createCell(row.attended ? "yes" : "no"));
+            tr.appendChild(createCell(row.current_status || ""));
             tr.appendChild(createCell(row.notes || "", "notes-cell"));
             tr.addEventListener("click", () => openEditModal(row));
             rowsBody.appendChild(tr);
@@ -576,7 +566,6 @@
           editLastNameEl.value = row.client_last_name || "";
           editEmailEl.value = row.client_email || "";
           editPhoneEl.value = row.client_phone || "";
-          editAttendedEl.value = row.attended ? "yes" : "no";
           editNotesEl.value = row.notes || "";
           setEditMessage("", false);
           editOverlayEl.classList.remove("hidden");
@@ -607,7 +596,6 @@
                   phone: editPhoneEl.value.trim() || null,
                 },
                 booking: {
-                  attended: editAttendedEl.value === "yes",
                   notes: editNotesEl.value || null,
                 },
               }),
@@ -669,17 +657,18 @@
         // DEV: inject one test row so the table and edit modal can be verified locally
         state.allRows = [{
           booking_id: "test-001",
-          source: "session",
+          event_id: null,
+          session_type_id: "session-type-001",
           starts_at: new Date(Date.now() + 86400000).toISOString(),
           client_id: "client-001",
           client_first_name: "Jane",
           client_last_name: "Doe",
           client_email: "jane@example.com",
           client_phone: "+1 555 0100",
-          status: "confirmed",
-          attended: false,
+          current_status: "SLOT_CONFIRMED",
           notes: "Bring portfolio to session",
           event_title: null,
+          session_type_title: "Private Session",
         }];
         state.rows = [...state.allRows];
         renderRows();

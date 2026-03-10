@@ -70,6 +70,7 @@ create table if not exists events (
   image_key text null,
   drive_file_id text null,
   image_alt text null,
+  whatsapp_group_invite_url text null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint event_time_order check (ends_at > starts_at),
