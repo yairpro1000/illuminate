@@ -33,11 +33,11 @@ This change introduces a centralized state-machine-based lifecycle for bookings 
 - All major entry points (create pay-now/pay-later, email confirm, Stripe webhook, expire, cancel, reschedule) now emit `booking_events` and synchronize new lifecycle fields.
 
 ## Cron Jobs
-- Existing cron setup retained and maps to new concepts:
-  - */5m: expire pending holds → HOLD_EXPIRED
-  - */30m: pay-later 36h reminder → PAY_LATER_REMINDER_DUE
-  - */15m: pay-later payment-deadline cancellation → PAYMENT_DEADLINE_MISSED
-  - hourly: 24h reminders
+- Unified cron sweep runs every minute and maps to the same concepts:
+  - expire pending holds → HOLD_EXPIRED
+  - pay-later 36h reminder → PAY_LATER_REMINDER_DUE
+  - pay-later payment-deadline cancellation → PAYMENT_DEADLINE_MISSED
+  - 24h reminders
 
 Wrangler triggers remain: [apps/api-booking/wrangler.toml](apps/api-booking/wrangler.toml#L1).
 
@@ -73,4 +73,3 @@ Wrangler triggers remain: [apps/api-booking/wrangler.toml](apps/api-booking/wran
 - For now, we maintain legacy `status` alongside new lifecycle fields. Queries/jobs still using legacy columns continue to work. As a follow-up, jobs and reads can be migrated to the new columns.
 - Side-effects outbox is created but not yet wired; current code still sends emails inline with best-effort logging. This can be migrated to outbox pattern later.
 - Calendar status is derived; future work can record `created/removed` transitions explicitly.
-

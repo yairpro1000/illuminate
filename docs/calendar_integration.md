@@ -51,7 +51,7 @@ On cancellation: - Delete or update calendar event.
     - `error_message` (latest error)
     - `resolved_at`
     - operation type in `context.calendar_operation`
--   Retries are processed by scheduled Worker job `calendar-sync-retries` (dispatched by cron `*/5 * * * *`).
+-   Retries are processed by scheduled Worker job `calendar-sync-retries` inside the unified cron sweep (dispatched every minute).
 -   Cron execution itself is traced through structured events in `observability.logs`; no separate `job_runs` table is used.
 -   Retry behavior is bounded (max 5 attempts). After exhaustion:
     - record remains persistent for manual intervention

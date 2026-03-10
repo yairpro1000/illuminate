@@ -26,10 +26,7 @@ Cron triggers are source-controlled in [apps/api-booking/wrangler.toml](/Users/Y
 
 Configured schedule:
 
-- `*/5 * * * *`: checkout expiry + calendar sync retries
-- `*/15 * * * *`: unconfirmed follow-ups + overdue unpaid cancellations
-- `*/30 * * * *`: payment-due reminders
-- `0 * * * *`: 24h reminders
+- `* * * * *`: unified sweep (checkout expiry, unconfirmed follow-ups, overdue unpaid cancellations, payment-due reminders, 24h reminders, side-effects dispatch, calendar sync retries)
 
 ### `apps/api-pa`
 

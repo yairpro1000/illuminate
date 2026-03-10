@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runPaymentDueReminders, runPaymentDueCancellations, runCheckoutExpiry, runSideEffectsOutbox } from '../src/handlers/jobs.js';
+import { runCron, runPaymentDueReminders, runPaymentDueCancellations, runCheckoutExpiry, runSideEffectsOutbox } from '../src/handlers/jobs.js';
 
 function makeCtx(overrides: any = {}) {
   const providers = {
@@ -7,6 +7,10 @@ function makeCtx(overrides: any = {}) {
       getPaymentDueRemindersDue: vi.fn().mockResolvedValue([]),
       getPaymentDueCancellationsDue: vi.fn().mockResolvedValue([]),
       getExpiredBookingHolds: vi.fn().mockResolvedValue([]),
+      getUnconfirmedBookingFollowupsDue: vi.fn().mockResolvedValue([]),
+      get24hBookingRemindersDue: vi.fn().mockResolvedValue([]),
+      getCalendarSyncFailuresDue: vi.fn().mockResolvedValue([]),
+      resolveCalendarSyncFailure: vi.fn().mockResolvedValue(undefined),
       enqueueSideEffect: vi.fn().mockResolvedValue({ id: 'se1' }),
       markSideEffect: vi.fn().mockResolvedValue(undefined),
       getPendingSideEffects: vi.fn().mockResolvedValue([]),
@@ -75,5 +79,39 @@ describe('Jobs and outbox', () => {
     const ctx = makeCtx({ providers: { repository: { getPaymentDueCancellationsDue: vi.fn().mockResolvedValue([b]) } } });
     await expect(runPaymentDueCancellations(ctx)).resolves.toBeUndefined();
     expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalled();
+  });
+
+  it('runs unified cron sweep for supported expression', async () => {
+    const ctx = makeCtx();
+    await expect(runCron('* * * * *', ctx)).resolves.toBeUndefined();
+
+    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getUnconfirmedBookingFollowupsDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPaymentDueCancellationsDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPaymentDueRemindersDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.get24hBookingRemindersDue).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getPendingSideEffects).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.getCalendarSyncFailuresDue).toHaveBeenCalledWith(100);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cron_dispatch_decision',
+      context: expect.objectContaining({
+        received_cron_expression: '* * * * *',
+        branch_taken: 'run_unified_sweep',
+      }),
+    }));
+  });
+
+  it('logs concrete deny reason for unsupported cron expression', async () => {
+    const ctx = makeCtx();
+    await expect(runCron('*/5 * * * *', ctx)).resolves.toBeUndefined();
+
+    expect(ctx.providers.repository.getExpiredBookingHolds).not.toHaveBeenCalled();
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cron_dispatch_rejected',
+      context: expect.objectContaining({
+        received_cron_expression: '*/5 * * * *',
+        deny_reason: 'unsupported_cron_expression',
+      }),
+    }));
   });
 });

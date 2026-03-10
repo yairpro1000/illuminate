@@ -33,6 +33,35 @@ interface JobSummary {
   items_failed: number;
 }
 
+const SUPPORTED_CRON_EXPRESSION = '* * * * *';
+
+const CRON_SWEEP_STEPS: ReadonlyArray<{
+  jobName: string;
+  run: (ctx: JobContext) => Promise<void>;
+}> = [
+  { jobName: 'checkout-expiry', run: runCheckoutExpiry },
+  { jobName: 'unconfirmed-followups', run: runUnconfirmedFollowups },
+  { jobName: 'payment-due-cancellations', run: runPaymentDueCancellations },
+  { jobName: 'payment-due-reminders', run: runPaymentDueReminders },
+  { jobName: '24h-reminders', run: run24hReminders },
+  { jobName: 'side-effects-dispatcher', run: runSideEffectsOutbox },
+  { jobName: 'calendar-sync-retries', run: runCalendarSyncRetries },
+];
+
+const MANUAL_JOB_NAMES = new Set([
+  'checkout-expiry',
+  'calendar-sync-retries',
+  'unconfirmed-followups',
+  'payment-due-reminders',
+  'payment-due-cancellations',
+  '24h-reminders',
+  'cron-sweep',
+]);
+
+function jobLogSource(ctx: JobContext): 'cron' | 'worker' {
+  return ctx.triggerSource === 'cron' ? 'cron' : 'worker';
+}
+
 // ── HTTP handler (manual trigger) ───────────────────────────────────────────
 
 export async function handleJobTrigger(
@@ -58,29 +87,54 @@ export async function handleJobTrigger(
 // ── Cron dispatcher ──────────────────────────────────────────────────────────
 
 export async function runCron(cron: string, ctx: JobContext): Promise<void> {
-  switch (cron) {
-    case '*/5 * * * *':
-      await runCheckoutExpiry(ctx);
-      await runSideEffectsOutbox(ctx);
-      await runCalendarSyncRetries(ctx);
-      break;
-    case '*/15 * * * *':
-      await runUnconfirmedFollowups(ctx);
-      await runPaymentDueCancellations(ctx);
-      break;
-    case '*/30 * * * *':
-      await runPaymentDueReminders(ctx);
-      break;
-    case '0 * * * *':
-      await run24hReminders(ctx);
-      break;
-    default:
-      ctx.logger.warn('Unknown cron expression', { cron });
+  const source = jobLogSource(ctx);
+  const isSupportedExpression = cron === SUPPORTED_CRON_EXPRESSION;
+
+  ctx.logger.logInfo({
+    source,
+    eventType: 'cron_dispatch_decision',
+    message: 'Cron dispatch decision evaluated',
+    context: {
+      received_cron_expression: cron,
+      supported_cron_expression: SUPPORTED_CRON_EXPRESSION,
+      trigger_source: ctx.triggerSource,
+      branch_taken: isSupportedExpression ? 'run_unified_sweep' : 'ignore_expression',
+    },
+  });
+
+  if (!isSupportedExpression) {
+    ctx.logger.logWarn({
+      source,
+      eventType: 'cron_dispatch_rejected',
+      message: 'Cron expression rejected by unified dispatcher',
+      context: {
+        received_cron_expression: cron,
+        supported_cron_expression: SUPPORTED_CRON_EXPRESSION,
+        trigger_source: ctx.triggerSource,
+        deny_reason: 'unsupported_cron_expression',
+      },
+    });
+    return;
   }
+
+  await runUnifiedCronSweep(cron, ctx);
 }
 
 async function runJob(name: string, ctx: JobContext): Promise<void> {
-  switch (name) {
+  const requestedName = name.trim();
+  const branchTaken = MANUAL_JOB_NAMES.has(requestedName) ? `run_${requestedName}` : 'unknown_job_name';
+  ctx.logger.logInfo({
+    source: jobLogSource(ctx),
+    eventType: 'job_dispatch_decision',
+    message: 'Manual job dispatch decision evaluated',
+    context: {
+      requested_job_name: requestedName || null,
+      trigger_source: ctx.triggerSource,
+      branch_taken: branchTaken,
+    },
+  });
+
+  switch (requestedName) {
     case 'checkout-expiry':
       return runCheckoutExpiry(ctx);
     case 'calendar-sync-retries':
@@ -93,9 +147,115 @@ async function runJob(name: string, ctx: JobContext): Promise<void> {
       return runPaymentDueCancellations(ctx);
     case '24h-reminders':
       return run24hReminders(ctx);
+    case 'cron-sweep':
+      return runUnifiedCronSweep('manual:cron-sweep', ctx);
     default:
-      ctx.logger.warn('Unknown job name', { name });
+      ctx.logger.logWarn({
+        source: jobLogSource(ctx),
+        eventType: 'job_dispatch_rejected',
+        message: 'Unknown job name',
+        context: {
+          requested_job_name: requestedName || null,
+          trigger_source: ctx.triggerSource,
+          deny_reason: 'unknown_job_name',
+        },
+      });
   }
+}
+
+async function runUnifiedCronSweep(cron: string, ctx: JobContext): Promise<void> {
+  const source = jobLogSource(ctx);
+  const startedAt = Date.now();
+  const failedSteps: string[] = [];
+
+  ctx.logger.logInfo({
+    source,
+    eventType: 'cron_sweep_started',
+    message: 'Unified cron sweep started',
+    context: {
+      cron_expression: cron,
+      trigger_source: ctx.triggerSource,
+      status: 'running',
+      total_steps: CRON_SWEEP_STEPS.length,
+    },
+  });
+
+  for (const step of CRON_SWEEP_STEPS) {
+    ctx.logger.logInfo({
+      source,
+      eventType: 'cron_sweep_step',
+      message: `Cron sweep step ${step.jobName} started`,
+      context: {
+        cron_expression: cron,
+        trigger_source: ctx.triggerSource,
+        job_name: step.jobName,
+        status: 'running',
+      },
+    });
+
+    try {
+      await step.run(ctx);
+      ctx.logger.logInfo({
+        source,
+        eventType: 'cron_sweep_step',
+        message: `Cron sweep step ${step.jobName} completed`,
+        context: {
+          cron_expression: cron,
+          trigger_source: ctx.triggerSource,
+          job_name: step.jobName,
+          status: 'success',
+        },
+      });
+    } catch (error) {
+      failedSteps.push(step.jobName);
+      ctx.logger.logError({
+        source,
+        eventType: 'cron_sweep_step',
+        message: `Cron sweep step ${step.jobName} failed`,
+        context: {
+          cron_expression: cron,
+          trigger_source: ctx.triggerSource,
+          job_name: step.jobName,
+          status: 'failed',
+          failure_reason: String(error),
+        },
+      });
+    }
+  }
+
+  const duration_ms = Date.now() - startedAt;
+  const summaryContext = {
+    cron_expression: cron,
+    trigger_source: ctx.triggerSource,
+    total_steps: CRON_SWEEP_STEPS.length,
+    succeeded_steps: CRON_SWEEP_STEPS.length - failedSteps.length,
+    failed_steps: failedSteps.length,
+    failed_job_names: failedSteps,
+    duration_ms,
+  };
+
+  if (failedSteps.length > 0) {
+    ctx.logger.logWarn({
+      source,
+      eventType: 'cron_sweep_completed',
+      message: 'Unified cron sweep completed with failures',
+      context: {
+        ...summaryContext,
+        status: 'partial_failure',
+      },
+    });
+    throw new Error(`Cron sweep failed in ${failedSteps.length} step(s): ${failedSteps.join(', ')}`);
+  }
+
+  ctx.logger.logInfo({
+    source,
+    eventType: 'cron_sweep_completed',
+    message: 'Unified cron sweep completed',
+    context: {
+      ...summaryContext,
+      status: 'success',
+    },
+  });
 }
 
 function jobOutcome(itemsSucceeded: number, itemsFailed: number): JobOutcome {
