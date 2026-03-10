@@ -33,7 +33,14 @@ interface JobSummary {
   items_failed: number;
 }
 
-const SUPPORTED_CRON_EXPRESSION = '* * * * *';
+const PRIMARY_CRON_EXPRESSION = '* * * * *';
+const SUPPORTED_CRON_EXPRESSIONS = new Set([
+  PRIMARY_CRON_EXPRESSION,
+  '*/5 * * * *',
+  '*/15 * * * *',
+  '*/30 * * * *',
+  '0 * * * *',
+]);
 
 const CRON_SWEEP_STEPS: ReadonlyArray<{
   jobName: string;
@@ -88,7 +95,7 @@ export async function handleJobTrigger(
 
 export async function runCron(cron: string, ctx: JobContext): Promise<void> {
   const source = jobLogSource(ctx);
-  const isSupportedExpression = cron === SUPPORTED_CRON_EXPRESSION;
+  const isSupportedExpression = SUPPORTED_CRON_EXPRESSIONS.has(cron);
 
   ctx.logger.logInfo({
     source,
@@ -96,7 +103,7 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
     message: 'Cron dispatch decision evaluated',
     context: {
       received_cron_expression: cron,
-      supported_cron_expression: SUPPORTED_CRON_EXPRESSION,
+      supported_cron_expressions: Array.from(SUPPORTED_CRON_EXPRESSIONS),
       trigger_source: ctx.triggerSource,
       branch_taken: isSupportedExpression ? 'run_unified_sweep' : 'ignore_expression',
     },
@@ -109,12 +116,26 @@ export async function runCron(cron: string, ctx: JobContext): Promise<void> {
       message: 'Cron expression rejected by unified dispatcher',
       context: {
         received_cron_expression: cron,
-        supported_cron_expression: SUPPORTED_CRON_EXPRESSION,
+        supported_cron_expressions: Array.from(SUPPORTED_CRON_EXPRESSIONS),
         trigger_source: ctx.triggerSource,
         deny_reason: 'unsupported_cron_expression',
       },
     });
     return;
+  }
+
+  if (cron !== PRIMARY_CRON_EXPRESSION) {
+    ctx.logger.logInfo({
+      source,
+      eventType: 'cron_dispatch_compatibility_mode',
+      message: 'Legacy cron expression mapped to unified sweep',
+      context: {
+        received_cron_expression: cron,
+        mapped_cron_expression: PRIMARY_CRON_EXPRESSION,
+        trigger_source: ctx.triggerSource,
+        temporary_debug: true,
+      },
+    });
   }
 
   await runUnifiedCronSweep(cron, ctx);

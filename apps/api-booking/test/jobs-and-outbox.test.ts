@@ -101,15 +101,28 @@ describe('Jobs and outbox', () => {
     }));
   });
 
-  it('logs concrete deny reason for unsupported cron expression', async () => {
+  it('maps legacy cron expression to the unified sweep', async () => {
     const ctx = makeCtx();
     await expect(runCron('*/5 * * * *', ctx)).resolves.toBeUndefined();
+
+    expect(ctx.providers.repository.getExpiredBookingHolds).toHaveBeenCalledTimes(1);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cron_dispatch_compatibility_mode',
+      context: expect.objectContaining({
+        received_cron_expression: '*/5 * * * *',
+      }),
+    }));
+  });
+
+  it('logs concrete deny reason for unsupported cron expression', async () => {
+    const ctx = makeCtx();
+    await expect(runCron('*/10 * * * *', ctx)).resolves.toBeUndefined();
 
     expect(ctx.providers.repository.getExpiredBookingHolds).not.toHaveBeenCalled();
     expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'cron_dispatch_rejected',
       context: expect.objectContaining({
-        received_cron_expression: '*/5 * * * *',
+        received_cron_expression: '*/10 * * * *',
         deny_reason: 'unsupported_cron_expression',
       }),
     }));
