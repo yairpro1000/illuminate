@@ -591,7 +591,7 @@ export async function resolveBookingManageAccess(
   if (!rawAdminToken) {
     return { booking, actorSource: 'public_ui', bypassPolicyWindow: false };
   }
-  const secret = (ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
+  const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
   if (!secret) {
     return { booking, actorSource: 'public_ui', bypassPolicyWindow: false };
   }
@@ -606,7 +606,7 @@ export async function buildAdminManageUrl(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<{ url: string; adminToken: string; expiresAt: string }> {
-  const secret = (ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
+  const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
   if (!secret) throw badRequest('Admin manage token secret is not configured');
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);

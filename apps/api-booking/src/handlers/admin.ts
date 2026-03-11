@@ -256,10 +256,23 @@ export async function handleAdminCreateBookingManageLink(
   ctx: AppContext,
   params: Record<string, string>,
 ): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
     await requireAdminAccess(request, ctx.env);
     const bookingId = params.bookingId?.trim();
     if (!bookingId) throw badRequest('bookingId is required');
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_manage_link_create_started',
+      message: 'Starting admin manage-link generation',
+      context: {
+        path,
+        booking_id: bookingId,
+        has_admin_manage_token_secret: Boolean(String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET ?? '').trim()),
+        has_job_secret: Boolean(String(ctx.env.JOB_SECRET ?? '').trim()),
+        branch_taken: 'resolve_booking_and_build_manage_link',
+      },
+    });
     const booking = await ctx.providers.repository.getBookingById(bookingId);
     if (!booking) throw notFound('Booking not found');
     const link = await buildAdminManageUrl(booking, {
@@ -274,6 +287,18 @@ export async function handleAdminCreateBookingManageLink(
       expires_at: link.expiresAt,
     });
   } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_manage_link_create_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        booking_id: params.bookingId ?? null,
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+        branch_taken: err instanceof Error ? 'handled_error' : 'non_error_throwable',
+        deny_reason: err instanceof Error ? err.message : String(err),
+      },
+    });
     return errorResponse(err);
   }
 }
