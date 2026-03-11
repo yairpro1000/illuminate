@@ -420,18 +420,17 @@ ul, ol { list-style: none; }
   background: oklch(13% 0.025 209 / 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid transparent;
+  border-top: none;
   padding-inline: 1.5rem; /* fixed side padding — not var(--container) which is a width */
   padding-block: 0;       /* collapsed by default */
   overflow: hidden;
   max-height: 0;
-  transition: max-height 0.4s var(--ease), padding-block 0.3s, border-color 0.3s;
+  transition: max-height 0.4s var(--ease), padding-block 0.3s;
 }
 
 .nav__mobile.open {
   max-height: 400px;
   padding-block: 1.5rem;
-  border-top-color: var(--color-border);
 }
 
 .nav__mobile a {
@@ -445,6 +444,19 @@ ul, ol { list-style: none; }
 
 .nav__mobile a:last-child { border-bottom: none; }
 .nav__mobile a:hover { color: var(--color-lake-light); }
+
+.nav__mobile a:last-of-type {
+  background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
+  color: var(--color-white);
+  border-bottom: none;
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 0 14px var(--color-lake-glow);
+}
+.nav__mobile a:last-of-type:hover { color: var(--color-white); }
 
 .nav__mobile-theme {
   display: flex;
@@ -1585,6 +1597,10 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 /* ============================================================
    RESPONSIVE
    ============================================================ */
+@media (min-width: 48rem) {
+  .nav__mobile { display: none; }
+}
+
 @media (max-width: 47.9375rem) {
   .nav__links,
   .nav__cta { display: none; }
@@ -2292,6 +2308,7 @@ body.theme-light .final__body p {
 .nav__mobile a[aria-current="page"] {
   color: var(--color-lake-light);
 }
+.nav__mobile a:last-of-type[aria-current="page"] { color: var(--color-white); }
 
 /* About section worldview link spacing */
 .about-strip__worldview-link {
