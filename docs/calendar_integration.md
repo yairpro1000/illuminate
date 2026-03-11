@@ -2,21 +2,21 @@
 
 ## 1. Google Auth Mode
 
--   Calendar writes use a Google **service account JWT** flow.
+-   Calendar writes use a Google **OAuth refresh-token** flow.
 -   Required env vars:
-    - `GOOGLE_CLIENT_EMAIL`
-    - `GOOGLE_PRIVATE_KEY`
-    - `GOOGLE_TOKEN_URI`
+    - `GOOGLE_CLIENT_CALENDAR`
+    - `GOOGLE_CLIENT_SECRET_CALENDAR`
+    - `GOOGLE_REFRESH_TOKEN_CALENDAR`
     - `GOOGLE_CALENDAR_ID`
--   `GOOGLE_OAUTH_CLIENT_ID / SECRET / REFRESH_TOKEN` are not used by booking calendar sync.
+-   `GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY / GOOGLE_TOKEN_URI` are not used by booking calendar sync.
 
 ------------------------------------------------------------------------
 
 ## 2. Token Storage
 
 -   Access tokens never stored in client.
--   Access token is minted server-side from the service-account JWT assertion.
--   Private key remains in Worker secrets.
+-   Worker exchanges the refresh token at runtime and fetches a fresh access token before each Calendar call.
+-   Refresh token remains in Worker secrets.
 
 ------------------------------------------------------------------------
 

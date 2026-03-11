@@ -15,6 +15,9 @@ function makeEnv() {
     SUPABASE_SECRET_KEY: 'secret',
     RESEND_API_KEY: 'resend-secret',
     GOOGLE_CALENDAR_ID: 'calendar@example.com',
+    GOOGLE_CLIENT_CALENDAR: 'client-id',
+    GOOGLE_CLIENT_SECRET_CALENDAR: 'client-secret',
+    GOOGLE_REFRESH_TOKEN_CALENDAR: 'refresh-token',
     GOOGLE_CLIENT_EMAIL: 'service@example.com',
     GOOGLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
     GOOGLE_TOKEN_URI: 'https://oauth2.googleapis.com/token',
@@ -77,4 +80,3 @@ describe('provider observability wrapper', () => {
     }));
   });
 });
-

@@ -931,7 +931,7 @@ function fullClientName(booking: Booking): string {
   return [booking.client_first_name ?? '', booking.client_last_name ?? ''].join(' ').trim() || 'Unknown Client';
 }
 
-function buildSessionCalendarEventPayload(booking: Booking): CalendarEvent {
+function buildSessionCalendarEventPayload(booking: Booking, requestId: string): CalendarEvent {
   const durationMinutes = Math.max(1, Math.round(
     (new Date(booking.ends_at).getTime() - new Date(booking.starts_at).getTime()) / 60000,
   ));
@@ -958,6 +958,7 @@ function buildSessionCalendarEventPayload(booking: Booking): CalendarEvent {
     attendeeName: fullClientName(booking),
     privateMetadata: {
       booking_id: booking.id,
+      request_id: requestId,
       current_status: booking.current_status,
     },
   };
@@ -975,7 +976,7 @@ async function syncSessionBookingCalendar(
   }
 
   const needsEvent = shouldSessionBookingHaveCalendarEvent(booking);
-  const payload = buildSessionCalendarEventPayload(booking);
+  const payload = buildSessionCalendarEventPayload(booking, ctx.requestId);
 
   if (!needsEvent) {
     if (!booking.google_event_id) {

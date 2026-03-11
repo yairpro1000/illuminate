@@ -55,8 +55,11 @@ ADMIN_AUTH_DISABLED = "true"
 # SUPABASE_URL
 # SUPABASE_SECRET_KEY
 # RESEND_API_KEY
-# GOOGLE_CLIENT_EMAIL         ← service account email
-# GOOGLE_PRIVATE_KEY          ← service account private key (PEM)
+# GOOGLE_CLIENT_CALENDAR      ← OAuth client id for calendar writes
+# GOOGLE_CLIENT_SECRET_CALENDAR
+# GOOGLE_REFRESH_TOKEN_CALENDAR
+# GOOGLE_CLIENT_EMAIL         ← service account email (Google Drive backup only)
+# GOOGLE_PRIVATE_KEY          ← service account private key (Google Drive backup only)
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
 # TURNSTILE_SECRET_KEY

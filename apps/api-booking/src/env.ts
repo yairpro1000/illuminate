@@ -24,7 +24,12 @@ export interface Env {
 
   GOOGLE_CALENDAR_ID: string;
 
-  // Service account credentials (used by GoogleCalendarProvider)
+  // Google Calendar OAuth refresh-token credentials (used by GoogleCalendarProvider)
+  GOOGLE_CLIENT_CALENDAR: string;
+  GOOGLE_CLIENT_SECRET_CALENDAR: string;
+  GOOGLE_REFRESH_TOKEN_CALENDAR: string;
+
+  // Service account credentials (used by Google Drive backup integration)
   GOOGLE_CLIENT_EMAIL: string;
   GOOGLE_PRIVATE_KEY: string;
   GOOGLE_TOKEN_URI: string;
