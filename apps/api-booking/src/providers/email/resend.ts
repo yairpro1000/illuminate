@@ -271,7 +271,7 @@ export class ResendEmailProvider implements IEmailProvider {
         from: EMAIL_FROM,
         to,
         subject,
-        reply_to: replyTo ?? EMAIL_REPLY_TO,
+        replyTo: replyTo ?? EMAIL_REPLY_TO,
         text,
         ...(html ? { html } : {}),
       };
