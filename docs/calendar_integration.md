@@ -2,21 +2,25 @@
 
 ## 1. Google Auth Mode
 
--   Calendar writes use a Google **OAuth refresh-token** flow.
+-   Calendar **writes** (`events.insert`, `events.update`, `events.delete`) use Google **OAuth refresh-token**.
+-   Calendar **availability reads** (`freeBusy` for slot generation) use the existing Google **service account JWT** flow.
 -   Required env vars:
+    - `GOOGLE_CALENDAR_ID`
     - `GOOGLE_CLIENT_CALENDAR`
     - `GOOGLE_CLIENT_SECRET_CALENDAR`
     - `GOOGLE_REFRESH_TOKEN_CALENDAR`
-    - `GOOGLE_CALENDAR_ID`
--   `GOOGLE_CLIENT_EMAIL / GOOGLE_PRIVATE_KEY / GOOGLE_TOKEN_URI` are not used by booking calendar sync.
+    - `GOOGLE_CLIENT_EMAIL`
+    - `GOOGLE_PRIVATE_KEY`
+    - `GOOGLE_TOKEN_URI`
 
 ------------------------------------------------------------------------
 
 ## 2. Token Storage
 
--   Access tokens never stored in client.
--   Worker exchanges the refresh token at runtime and fetches a fresh access token before each Calendar call.
--   Refresh token remains in Worker secrets.
+-   Access tokens are never stored in client.
+-   For writes: Worker exchanges refresh token at runtime and fetches a fresh OAuth access token before each write call.
+-   For freeBusy reads: Worker mints service-account JWT assertions server-side and exchanges them for short-lived access tokens.
+-   Refresh token and private key remain in Worker secrets.
 
 ------------------------------------------------------------------------
 

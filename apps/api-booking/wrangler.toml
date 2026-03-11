@@ -58,8 +58,8 @@ ADMIN_AUTH_DISABLED = "true"
 # GOOGLE_CLIENT_CALENDAR      ← OAuth client id for calendar writes
 # GOOGLE_CLIENT_SECRET_CALENDAR
 # GOOGLE_REFRESH_TOKEN_CALENDAR
-# GOOGLE_CLIENT_EMAIL         ← service account email (Google Drive backup only)
-# GOOGLE_PRIVATE_KEY          ← service account private key (Google Drive backup only)
+# GOOGLE_CLIENT_EMAIL         ← service account email (calendar freeBusy + Google Drive backup)
+# GOOGLE_PRIVATE_KEY          ← service account private key (calendar freeBusy + Google Drive backup)
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
 # TURNSTILE_SECRET_KEY

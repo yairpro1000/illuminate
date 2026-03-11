@@ -7,6 +7,9 @@ interface GoogleEnv {
   GOOGLE_CLIENT_CALENDAR: string;
   GOOGLE_CLIENT_SECRET_CALENDAR: string;
   GOOGLE_REFRESH_TOKEN_CALENDAR: string;
+  GOOGLE_CLIENT_EMAIL: string;
+  GOOGLE_PRIVATE_KEY: string;
+  GOOGLE_TOKEN_URI: string;
   GOOGLE_CALENDAR_ID: string;
 }
 
@@ -84,6 +87,108 @@ function stringifyUnknownPayload(payload: unknown): string {
   } catch {
     return String(payload);
   }
+}
+
+function b64url(str: string): string {
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header64  = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload64 = b64url(JSON.stringify({
+    iss:   env.GOOGLE_CLIENT_EMAIL,
+    scope: 'https://www.googleapis.com/auth/calendar',
+    aud:   env.GOOGLE_TOKEN_URI,
+    iat:   now,
+    exp:   now + 3600,
+  }));
+  const signingInput = `${header64}.${payload64}`;
+
+  const pemBody = env.GOOGLE_PRIVATE_KEY
+    .replace(/\\n/g, '\n')
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s+/g, '');
+
+  const derBytes = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    derBytes.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+
+  const sigBytes = await crypto.subtle.sign(
+    'RSASSA-PKCS1-v1_5',
+    cryptoKey,
+    new TextEncoder().encode(signingInput),
+  );
+  const sig64 = btoa(String.fromCharCode(...new Uint8Array(sigBytes)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return `${signingInput}.${sig64}`;
+}
+
+async function getServiceAccountAccessToken(env: GoogleEnv, logger?: Logger): Promise<string> {
+  const jwt = await createServiceAccountJWT(env);
+  const body = new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion: jwt,
+  });
+
+  const res = logger
+    ? await instrumentFetch(logger, {
+        provider: 'google_calendar',
+        operation: 'service_account_token_exchange',
+        method: 'POST',
+        url: env.GOOGLE_TOKEN_URI,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+      })
+    : await fetch(env.GOOGLE_TOKEN_URI, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    const parsedError = parseGoogleApiError(errorBody);
+    logger?.logError?.({
+      source: 'backend',
+      eventType: 'google_calendar_service_account_token_exchange_failed',
+      message: 'Google service-account token exchange failed for freeBusy read',
+      context: {
+        google_http_status: res.status,
+        google_error_code: parsedError.code,
+        google_error_status: parsedError.status,
+        google_error_reason: parsedError.reason,
+        google_error_message: parsedError.message,
+        google_response_body: sanitizeGoogleBodyForError(errorBody),
+        branch_taken: 'abort_free_busy_service_account_token_exchange_failed',
+        deny_reason: parsedError.reason ?? parsedError.message ?? `google_service_account_token_exchange_http_${res.status}`,
+      },
+    });
+    throw new Error(`Google service-account token exchange failed (${res.status}): ${errorBody}`);
+  }
+
+  const data = await res.json() as { access_token?: unknown };
+  if (typeof data.access_token !== 'string' || !data.access_token) {
+    logger?.logError?.({
+      source: 'backend',
+      eventType: 'google_calendar_service_account_token_exchange_failed',
+      message: 'Google service-account token exchange response missing access_token',
+      context: {
+        google_http_status: res.status,
+        google_response_body: sanitizeGoogleBodyForError(stringifyUnknownPayload(data)),
+        branch_taken: 'abort_free_busy_service_account_token_exchange_missing_access_token',
+        deny_reason: 'service_account_token_exchange_missing_access_token',
+      },
+    });
+    throw new Error('Google service-account token exchange failed (missing_access_token)');
+  }
+  return data.access_token;
 }
 
 async function getGoogleAccessToken(
@@ -233,9 +338,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       return cached.data;
     }
 
-    const token = await getGoogleAccessToken(this.env, this.logger, {
-      calendarOperation: 'free_busy',
-    });
+    const token = await getServiceAccountAccessToken(this.env, this.logger);
     const chunks = splitDateRangeIntoChunks(from, to, MAX_FREEBUSY_CHUNK_DAYS);
     const busy: TimeSlot[] = [];
     const seen = new Set<string>();
@@ -337,7 +440,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       requestId: diagnostics.requestId,
     });
     const calId = encodeURIComponent(this.calendarId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: options?.eventIdHint ?? null,
@@ -382,7 +485,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: null,
@@ -424,7 +527,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all`;
     const res = this.logger
       ? await instrumentFetch(this.logger, {
           provider: 'google_calendar',
@@ -553,7 +656,7 @@ function buildGoogleEventBody(
     location: event.location,
     start: { dateTime: event.startIso, timeZone: event.timezone },
     end: { dateTime: event.endIso, timeZone: event.timezone },
-    attendees: [{ email: event.attendeeEmail }],
+    attendees: [{ email: event.attendeeEmail, displayName: event.attendeeName }],
     ...(event.privateMetadata ? { extendedProperties: { private: event.privateMetadata } } : {}),
   };
 }

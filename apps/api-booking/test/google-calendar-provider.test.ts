@@ -21,6 +21,9 @@ function makeProvider(logger?: any) {
     GOOGLE_CLIENT_CALENDAR: 'oauth-client-id',
     GOOGLE_CLIENT_SECRET_CALENDAR: 'oauth-client-secret',
     GOOGLE_REFRESH_TOKEN_CALENDAR: 'oauth-refresh-token',
+    GOOGLE_CLIENT_EMAIL: 'svc@example.iam.gserviceaccount.com',
+    GOOGLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+    GOOGLE_TOKEN_URI: 'https://oauth2.googleapis.com/token',
     GOOGLE_CALENDAR_ID: ' yairilluminate@gmail.com \n',
   }, logger);
 }
@@ -51,12 +54,12 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     expect(tokenBody).toContain('grant_type=refresh_token');
 
     const insertUrl = String(fetchMock.mock.calls[1]?.[0] ?? '');
-    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events');
+    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=all');
     expect(insertUrl).not.toContain('%0A');
     expect(insertUrl).not.toContain('%20');
 
     const insertBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
-    expect(insertBody['attendees']).toEqual([{ email: 'test@example.com' }]);
+    expect(insertBody['attendees']).toEqual([{ email: 'test@example.com', displayName: 'Test User' }]);
   });
 
   it('logs booking_id, request_id, and google response body when events.insert fails', async () => {
