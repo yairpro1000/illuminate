@@ -134,9 +134,9 @@ function htmlLayout(bodyContent: string): string {
   .btn:hover { background:#0c7a91; }
   .secondary-link { margin-top:12px; font-size:14px; }
   .secondary-link a { color:#4fc3d8; text-decoration:none; }
-  .footer { background:#0a1219; padding:22px 40px; border-top:1px solid #1d3848; border-left:1px solid #1d3848; border-right:1px solid #1d3848; }
-  .footer p { margin:0; font-size:12px; color:#4a6a78; line-height:1.6; }
-  .footer a { color:#4a6a78; text-decoration:none; }
+  .footer { background:#0a1219; padding:28px 40px; border-top:1px solid #1d3848; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
+  .footer__brand { margin:0; font-size:12px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:#4fc3d8; }
+  .footer__sub { font-weight:400; letter-spacing:0.03em; text-transform:none; color:#88abb5; }
 </style>
 </head>
 <body>
@@ -145,7 +145,7 @@ function htmlLayout(bodyContent: string): string {
     <img class="header__logo" src="https://letsilluminate.co/img/ILLUMINATE_hero.png" alt="ILLUMINATE by Yair Benharroch" />
   </div>
   <div class="body">${bodyContent}</div>
-  <div class="footer"><p>Illuminate &middot; Zürich &middot; <a href="https://yairb.ch">yairb.ch</a></p></div>
+  <div class="footer"><p class="footer__brand">ILLUMINATE <span class="footer__sub">by Yair Benharroch</span></p></div>
 </div>
 </body>
 </html>`;
