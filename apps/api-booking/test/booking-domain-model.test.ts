@@ -642,7 +642,7 @@ describe('booking domain model', () => {
     );
 
     const booking = await ctx.providers.repository.getBookingById(created.bookingId);
-    const rescheduled = await rescheduleBooking(
+    const rescheduledResult = await rescheduleBooking(
       booking!,
       {
         newStart: '2026-03-24T10:00:00.000Z',
@@ -651,10 +651,13 @@ describe('booking domain model', () => {
       },
       ctx,
     );
+    expect(rescheduledResult.ok).toBe(true);
+    const rescheduled = rescheduledResult.booking;
 
     expect(rescheduled.starts_at).toBe('2026-03-24T10:00:00.000Z');
 
-    await cancelBooking(rescheduled, ctx);
+    const canceledResult = await cancelBooking(rescheduled, ctx);
+    expect(canceledResult.ok).toBe(true);
 
     const refreshed = await ctx.providers.repository.getBookingById(created.bookingId);
     expect(refreshed?.current_status).toBe('CANCELED');

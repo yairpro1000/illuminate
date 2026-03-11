@@ -14,12 +14,12 @@
   }
 
   function statusBadge(status) {
-    const cls = ['confirmed','cash_ok'].includes(status)
+    const cls = ['SLOT_CONFIRMED','PAID','COMPLETED'].includes(status)
       ? 'confirmed'
-      : ['pending_email','pending_payment'].includes(status)
+      : ['PENDING_CONFIRMATION'].includes(status)
         ? 'pending'
         : 'cancelled';
-    return `<span class="status-badge status-badge--${cls}">${status.replace('_', ' ')}</span>`;
+    return `<span class="status-badge status-badge--${cls}">${String(status || '').replaceAll('_', ' ')}</span>`;
   }
 
   function formatDt(iso) {
@@ -73,9 +73,12 @@
   }
 
   const isBooking = data.source === 'session';
-  const cancellable = ['pending_email','pending_payment','confirmed','cash_ok'].includes(data.status);
+  const cancellable = Boolean(data.actions && data.actions.can_cancel);
   const reschedulable = Boolean(data.actions && data.actions.can_reschedule);
   const rescheduleHref = `book.html?type=${encodeURIComponent(data.session_type || 'intro')}&mode=reschedule&token=${encodeURIComponent(token)}&id=${encodeURIComponent(data.booking_id)}`;
+  const policyText = data.policy?.text || '';
+  const lockedMessage = data.policy?.locked_message || '';
+  const showLockedMessage = Boolean(data.policy && data.policy.can_self_serve_change === false);
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],
@@ -96,14 +99,20 @@
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
+    ${policyText ? `<div class="policy-box">${policyText}</div>` : ''}
+    ${showLockedMessage ? `<div class="policy-box">${lockedMessage}</div>` : ''}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
-      ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel ${isBooking ? 'booking' : 'event booking'}</button>` : ''}
+      ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
       <a href="index.html" class="btn btn-ghost">← Homepage</a>
     </div>
   `;
 
   if (cancellable) {
+    const dialogMsg = document.getElementById('cancel-dialog-msg');
+    dialogMsg.textContent = data.is_paid
+      ? 'This action cannot be undone online.\nA refund will be processed if the booking was paid.'
+      : 'This action cannot be undone online.';
     document.getElementById('cancel-btn').addEventListener('click', () => {
       document.getElementById('cancel-dialog').removeAttribute('hidden');
     });
@@ -131,7 +140,7 @@
           <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {
-        document.getElementById('cancel-yes').textContent = 'Yes, cancel';
+        document.getElementById('cancel-yes').textContent = 'Yes, cancel booking';
         document.getElementById('cancel-yes').disabled = false;
         alert(err.message || 'Could not cancel booking.');
       }

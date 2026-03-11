@@ -47,6 +47,15 @@
     body.theme-light .status-badge--pending   { background: oklch(95% 0.08 60);  color: oklch(40% 0.12 60); }
     body.theme-light .status-badge--cancelled { background: oklch(92% 0.03 210); color: oklch(40% 0.02 210); }
     .manage-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
+    .policy-box {
+      margin: 0 0 1rem;
+      padding: .875rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: .75rem;
+      white-space: pre-line;
+      color: var(--color-text-muted);
+      font-size: .95rem;
+    }
     .confirm-dialog {
       position: fixed; inset: 0;
       background: oklch(0% 0 0 / 0.6);
@@ -77,10 +86,10 @@
 <div class="confirm-dialog" id="cancel-dialog" hidden>
   <div class="confirm-dialog__box">
     <h2 class="confirm-dialog__title">Cancel this booking?</h2>
-    <p class="confirm-dialog__msg">This action cannot be undone. Please check our cancellation policy before proceeding.</p>
+    <p class="confirm-dialog__msg" id="cancel-dialog-msg">This action cannot be undone online.</p>
     <div class="confirm-dialog__btns">
-      <button class="btn btn-ghost" id="cancel-no">Keep it</button>
-      <button class="btn btn-primary" id="cancel-yes" style="background:oklch(50% 0.15 25)">Yes, cancel</button>
+      <button class="btn btn-ghost" id="cancel-no">Keep booking</button>
+      <button class="btn btn-primary" id="cancel-yes" style="background:oklch(50% 0.15 25)">Yes, cancel booking</button>
     </div>
   </div>
 </div>

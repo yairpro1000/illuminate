@@ -123,7 +123,7 @@ export class MockRepository implements IRepository {
     return [...mockState.bookings.values()]
       .filter((booking) => {
         if (booking.event_id) return false;
-        if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'CLOSED') {
+        if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW' || booking.current_status === 'REFUNDED') {
           return false;
         }
         const startMs = new Date(booking.starts_at).getTime();
@@ -304,7 +304,7 @@ export class MockRepository implements IRepository {
 
     for (const booking of mockState.bookings.values()) {
       if (booking.event_id !== eventId) continue;
-      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'CLOSED') {
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW' || booking.current_status === 'REFUNDED') {
         continue;
       }
       count += 1;

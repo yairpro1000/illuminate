@@ -6,7 +6,9 @@ export type BookingCurrentStatus =
   | 'PAID'
   | 'EXPIRED'
   | 'CANCELED'
-  | 'CLOSED';
+  | 'COMPLETED'
+  | 'NO_SHOW'
+  | 'REFUNDED';
 
 export type BookingEventType =
   | 'BOOKING_FORM_SUBMITTED_FREE'
@@ -22,7 +24,10 @@ export type BookingEventType =
   | 'CASH_AUTHORIZED'
   | 'PAYMENT_SETTLED'
   | 'SLOT_CONFIRMED'
-  | 'BOOKING_CLOSED';
+  | 'BOOKING_CLOSED'
+  | 'REFUND_REQUESTED'
+  | 'REFUND_CREATED'
+  | 'REFUND_VERIFIED';
 
 export type BookingEventSource = 'public_ui' | 'admin_ui' | 'job' | 'webhook' | 'system';
 
@@ -45,6 +50,8 @@ export type BookingEffectIntent =
   | 'cancel_reserved_slot'
   | 'create_stripe_checkout'
   | 'verify_stripe_payment'
+  | 'create_stripe_refund'
+  | 'verify_stripe_refund'
   | 'send_payment_link'
   | 'expire_booking'
   | 'close_booking';
@@ -231,10 +238,7 @@ export type SessionTypeUpdate = Partial<
 
 export interface ContactMessage {
   id: string;
-  client_id: string | null;
-  first_name: string;
-  last_name: string | null;
-  email: string;
+  client_id: string;
   topic: string | null;
   message: string;
   status: 'new' | 'read' | 'replied' | 'archived' | 'spam';

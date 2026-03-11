@@ -5,6 +5,7 @@ import type { Booking, Event } from '../../types.js';
 
 const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 const EMAIL_REPLY_TO = 'hello@yairb.ch';
+const BOOKING_POLICY_TEXT = 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.';
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -83,6 +84,8 @@ function bookingConfirmationBody(
     `Manage booking: ${manageUrl}`,
     payUrl ? `Complete payment: ${payUrl}` : null,
     invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
+    '',
+    BOOKING_POLICY_TEXT,
     '',
     'Looking forward to meeting you,',
     'Yair',
@@ -191,6 +194,7 @@ function bookingConfirmationHtml(
     <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
+    <p style="white-space:pre-line;text-align:left;max-width:420px;margin:16px auto 0;">${esc(BOOKING_POLICY_TEXT)}</p>
     <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -243,6 +247,7 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
+    <p style="white-space:pre-line;text-align:left;max-width:420px;margin:16px auto 0;">${esc(BOOKING_POLICY_TEXT)}</p>
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -448,7 +453,7 @@ export class ResendEmailProvider implements IEmailProvider {
     manageUrl: string,
     invoiceUrl: string | null,
   ): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}`;
+    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${BOOKING_POLICY_TEXT}`;
     const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl);
     return this.sendEmail(clientEmail(booking), 'event_confirmation', `You're confirmed – ${event.title}`, text, undefined, html);
   }

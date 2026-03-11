@@ -134,6 +134,10 @@ export function getEffectsForEvent(
         make('cancel_reserved_slot', null),
         make('send_booking_cancellation_confirmation', null),
       ];
+    case 'REFUND_REQUESTED':
+      return [make('create_stripe_refund', null)];
+    case 'REFUND_CREATED':
+      return [make('verify_stripe_refund', null)];
     case 'PAYMENT_SETTLED':
       return shouldReserveSlotForTransition({
         booking: input.booking,
@@ -159,6 +163,8 @@ export function getEffectsForEvent(
     }
     case 'BOOKING_CLOSED':
       return [make('close_booking', null)];
+    case 'REFUND_VERIFIED':
+      return [];
     case 'SLOT_RESERVATION_REMINDER_SENT':
     case 'PAYMENT_REMINDER_SENT':
     case 'DATE_REMINDER_SENT':
@@ -190,7 +196,9 @@ export function currentStatusForEvent(
     case 'BOOKING_CANCELED':
       return 'CANCELED';
     case 'BOOKING_CLOSED':
-      return 'CLOSED';
+      return 'COMPLETED';
+    case 'REFUND_VERIFIED':
+      return 'REFUNDED';
     default:
       return previous;
   }

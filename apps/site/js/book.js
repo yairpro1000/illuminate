@@ -595,6 +595,10 @@ function buildBookingReview() {
     <div class="form-step">
       <p class="step-eyebrow">Review your booking</p>
       ${buildReviewTable(rows)}
+      <p class="form-hint" style="white-space:pre-line">${escHtml(
+        S.publicConfig?.booking_policy_text
+          || 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.',
+      )}</p>
       <div class="step-footer">
         <button class="btn btn-ghost" data-back>← Back</button>
         <button class="btn btn-primary" data-submit ${S.submitting ? 'disabled' : ''}>
@@ -683,6 +687,10 @@ function buildEventReview() {
     <div class="form-step">
       <p class="step-eyebrow">Review your registration</p>
       ${buildReviewTable(rows)}
+      <p class="form-hint" style="white-space:pre-line">${escHtml(
+        S.publicConfig?.booking_policy_text
+          || 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.',
+      )}</p>
       <div class="step-footer">
         <button class="btn btn-ghost" data-back>← Back</button>
         <button class="btn btn-primary" data-submit ${S.submitting ? 'disabled' : ''}>

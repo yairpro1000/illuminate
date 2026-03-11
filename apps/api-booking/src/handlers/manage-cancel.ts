@@ -36,12 +36,16 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       },
     });
 
-    await cancelBooking(booking, {
+    const result = await cancelBooking(booking, {
       providers: ctx.providers,
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+    }, {
+      source: 'public_ui',
+      bypassPolicyWindow: false,
     });
+    if (!result.ok) throw badRequest(result.message, result.code);
 
     ctx.logger.logInfo?.({
       source: 'backend',
@@ -49,12 +53,18 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       message: 'Public manage-booking cancel completed',
       context: {
         path,
-        booking_id: booking.id,
+        booking_id: result.booking.id,
+        booking_status: result.booking.current_status,
         branch_taken: 'return_cancel_success',
       },
     });
 
-    return ok({ booking_id: booking.id, status: 'CANCELED' });
+    return ok({
+      booking_id: result.booking.id,
+      status: result.booking.current_status,
+      result_code: result.code,
+      message: result.message,
+    });
   } catch (err) {
     const statusCode = err instanceof ApiError ? err.statusCode : 500;
     if (err instanceof ApiError) {

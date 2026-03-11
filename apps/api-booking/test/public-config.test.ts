@@ -42,6 +42,7 @@ describe('public config endpoint diagnostics', () => {
         pay_now_total_expiry_minutes:
           DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes + DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
       },
+      booking_policy_text: expect.any(String),
     });
 
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -114,4 +115,3 @@ describe('public config endpoint diagnostics', () => {
     });
   });
 });
-

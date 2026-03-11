@@ -33,8 +33,16 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'send_booking_failed_notification',
   'send_booking_cancellation_confirmation',
   'send_booking_confirmation',
+  'create_stripe_refund',
+  'verify_stripe_refund',
   'close_booking',
 ]);
+
+const MANAGE_BOOKING_POLICY_TEXT = `Booking policy
+You can reschedule or cancel your booking up to 24 hours before the session.
+Within 24 hours of the session, bookings can no longer be changed online and are non-refundable.
+If an emergency occurs, please contact me directly.`;
+const SELF_SERVICE_LOCK_WINDOW_HOURS = 24;
 
 export interface BookingContext {
   providers: Providers;
@@ -109,6 +117,13 @@ export interface RescheduleInput {
   newStart: string;
   newEnd: string;
   timezone: string;
+}
+
+export interface BookingActionResult {
+  ok: boolean;
+  code: string;
+  message: string;
+  booking: Booking;
 }
 
 export interface CalendarSyncResult {
@@ -570,26 +585,113 @@ export async function resolveBookingByManageToken(
 export async function cancelBooking(
   booking: Booking,
   ctx: BookingContext,
-): Promise<void> {
-  if (isTerminalStatus(booking.current_status)) {
-    throw badRequest('Booking cannot be cancelled in its current state');
+  options: { source?: 'public_ui' | 'admin_ui'; bypassPolicyWindow?: boolean } = {},
+): Promise<BookingActionResult> {
+  const source = options.source ?? 'public_ui';
+  const policy = evaluateManageBookingPolicy(booking.starts_at);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancel_booking_policy_gate_decision',
+    message: 'Evaluated cancel booking policy gate',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      starts_at: booking.starts_at,
+      source,
+      bypass_policy_window: Boolean(options.bypassPolicyWindow),
+      can_self_serve_change: policy.canSelfServeChange,
+      hours_before_start: policy.hoursBeforeStart,
+      branch_taken: (!options.bypassPolicyWindow && !policy.canSelfServeChange) ? 'deny_policy_locked' : 'allow_policy_gate',
+      deny_reason: (!options.bypassPolicyWindow && !policy.canSelfServeChange) ? 'starts_within_24h' : null,
+    },
+  });
+  if (!options.bypassPolicyWindow && !policy.canSelfServeChange) {
+    return {
+      ok: false,
+      code: 'BOOKING_POLICY_LOCKED',
+      message: 'This session starts in less than 24 hours and cannot be changed online.',
+      booking,
+    };
+  }
+
+  if (isTerminalStatus(booking.current_status) || booking.current_status === 'REFUNDED') {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'cancel_booking_status_gate_decision',
+      message: 'Denied cancel booking because status is not cancellable',
+      context: {
+        booking_id: booking.id,
+        booking_status: booking.current_status,
+        source,
+        branch_taken: 'deny_terminal_or_refunded_status',
+        deny_reason: 'booking_status_not_cancellable',
+      },
+    });
+    return {
+      ok: false,
+      code: 'INVALID_STATUS',
+      message: 'Booking cannot be cancelled in its current state',
+      booking,
+    };
   }
 
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_CANCELED',
-    'public_ui',
+    source,
     { reason: 'user_cancelled' },
     ctx,
   );
 
-  await applyImmediateNonCronSideEffectsForTransition({
+  let finalBooking = await applyImmediateNonCronSideEffectsForTransition({
     transitionEventType: 'BOOKING_CANCELED',
     sourceOperation: 'cancel_booking',
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, ctx);
+
+  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const wasPaid = payment?.status === 'succeeded' || booking.current_status === 'PAID';
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancel_booking_refund_branch_decision',
+    message: 'Evaluated refund branch during cancellation',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment?.id ?? null,
+      payment_status: payment?.status ?? null,
+      prior_booking_status: booking.current_status,
+      source,
+      branch_taken: wasPaid ? 'run_refund_flow' : 'skip_refund_flow_unpaid',
+      deny_reason: wasPaid ? null : 'booking_not_paid',
+    },
+  });
+  if (wasPaid) {
+    const refundRequested = await appendBookingEventWithEffects(
+      booking.id,
+      'REFUND_REQUESTED',
+      source,
+      { reason: 'booking_cancelled_in_allowed_window' },
+      ctx,
+    );
+    finalBooking = await applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: 'REFUND_REQUESTED',
+      sourceOperation: 'cancel_booking_refund_requested',
+      bookingBeforeTransition: finalBooking,
+      bookingAfterTransition: refundRequested.booking,
+      transitionSideEffects: refundRequested.sideEffects,
+    }, ctx);
+  }
+
+  return {
+    ok: true,
+    code: finalBooking.current_status === 'REFUNDED' ? 'CANCELED_AND_REFUNDED' : 'CANCELED',
+    message: finalBooking.current_status === 'REFUNDED'
+      ? 'Booking cancelled and refund verified.'
+      : 'Booking cancelled.',
+    booking: finalBooking,
+  };
 }
 
 export async function expireBooking(
@@ -641,13 +743,51 @@ export async function rescheduleBooking(
   booking: Booking,
   input: RescheduleInput,
   ctx: BookingContext,
-): Promise<Booking> {
+  options: { source?: 'public_ui' | 'admin_ui'; bypassPolicyWindow?: boolean } = {},
+): Promise<BookingActionResult> {
+  const source = options.source ?? 'public_ui';
+  const policy = evaluateManageBookingPolicy(booking.starts_at);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'reschedule_booking_policy_gate_decision',
+    message: 'Evaluated reschedule booking policy gate',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      starts_at: booking.starts_at,
+      source,
+      bypass_policy_window: Boolean(options.bypassPolicyWindow),
+      can_self_serve_change: policy.canSelfServeChange,
+      hours_before_start: policy.hoursBeforeStart,
+      branch_taken: (!options.bypassPolicyWindow && !policy.canSelfServeChange) ? 'deny_policy_locked' : 'allow_policy_gate',
+      deny_reason: (!options.bypassPolicyWindow && !policy.canSelfServeChange) ? 'starts_within_24h' : null,
+    },
+  });
+  if (!options.bypassPolicyWindow && !policy.canSelfServeChange) {
+    return {
+      ok: false,
+      code: 'BOOKING_POLICY_LOCKED',
+      message: 'This session starts in less than 24 hours and cannot be changed online.',
+      booking,
+    };
+  }
+
   if (booking.event_id) {
-    throw badRequest('Only 1:1 bookings can be rescheduled');
+    return {
+      ok: false,
+      code: 'EVENT_BOOKING_NOT_RESCHEDULABLE',
+      message: 'Only 1:1 bookings can be rescheduled',
+      booking,
+    };
   }
 
   if (isTerminalStatus(booking.current_status)) {
-    throw badRequest('Booking cannot be rescheduled in its current state');
+    return {
+      ok: false,
+      code: 'INVALID_STATUS',
+      message: 'Booking cannot be rescheduled in its current state',
+      booking,
+    };
   }
 
   await assertSlotAvailable(input.newStart, input.newEnd, ctx.providers, {
@@ -663,7 +803,7 @@ export async function rescheduleBooking(
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_RESCHEDULED',
-    'public_ui',
+    source,
     {
       from: { start: booking.starts_at, end: booking.ends_at, timezone: booking.timezone },
       to: { start: updated.starts_at, end: updated.ends_at, timezone: updated.timezone },
@@ -671,13 +811,19 @@ export async function rescheduleBooking(
     ctx,
   );
 
-  return applyImmediateNonCronSideEffectsForTransition({
+  const finalBooking = await applyImmediateNonCronSideEffectsForTransition({
     transitionEventType: 'BOOKING_RESCHEDULED',
     sourceOperation: 'reschedule_booking',
     bookingBeforeTransition: updated,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, ctx);
+  return {
+    ok: true,
+    code: 'RESCHEDULED',
+    message: 'Booking rescheduled.',
+    booking: finalBooking,
+  };
 }
 
 export async function retryCalendarSyncForBooking(
@@ -854,6 +1000,21 @@ export async function getBookingPublicActionInfo(
     manageUrl,
     nextActionUrl: manageUrl,
     nextActionLabel: manageUrl ? 'Manage Booking' : null,
+  };
+}
+
+export function evaluateManageBookingPolicy(startsAtIso: string): {
+  canSelfServeChange: boolean;
+  hoursBeforeStart: number;
+  policyText: string;
+} {
+  const nowMs = Date.now();
+  const startsAtMs = new Date(startsAtIso).getTime();
+  const hoursBeforeStart = (startsAtMs - nowMs) / 3_600_000;
+  return {
+    canSelfServeChange: hoursBeforeStart >= SELF_SERVICE_LOCK_WINDOW_HOURS,
+    hoursBeforeStart,
+    policyText: MANAGE_BOOKING_POLICY_TEXT,
   };
 }
 
@@ -1321,10 +1482,42 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'close_booking': {
-      if (booking.current_status === 'CLOSED') {
+      if (booking.current_status === 'COMPLETED') {
         return booking;
       }
-      return ctx.providers.repository.updateBooking(booking.id, { current_status: 'CLOSED' as BookingCurrentStatus });
+      return ctx.providers.repository.updateBooking(booking.id, { current_status: 'COMPLETED' as BookingCurrentStatus });
+    }
+
+    case 'create_stripe_refund': {
+      const created = await appendBookingEventWithEffects(
+        booking.id,
+        'REFUND_CREATED',
+        'system',
+        { provider: 'stripe', mode: 'simulated' },
+        ctx,
+      );
+      return applyImmediateNonCronSideEffectsForTransition({
+        transitionEventType: 'REFUND_CREATED',
+        sourceOperation: `${transition.sourceOperation}:create_refund`,
+        bookingBeforeTransition: booking,
+        bookingAfterTransition: created.booking,
+        transitionSideEffects: created.sideEffects,
+      }, ctx);
+    }
+
+    case 'verify_stripe_refund': {
+      const verified = await appendBookingEventWithEffects(
+        booking.id,
+        'REFUND_VERIFIED',
+        'system',
+        { provider: 'stripe', mode: 'simulated' },
+        ctx,
+      );
+      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+      if (payment && payment.status !== 'refunded') {
+        await ctx.providers.repository.updatePayment(payment.id, { status: 'refunded' });
+      }
+      return verified.booking;
     }
 
     default:
@@ -1473,7 +1666,7 @@ async function applyImmediateReservationForTransition(
   let finalBooking = syncResult.booking;
   let slotConfirmedEventWritten = false;
 
-  if (!['EXPIRED', 'CANCELED', 'CLOSED'].includes(finalBooking.current_status)) {
+  if (!['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW', 'REFUNDED'].includes(finalBooking.current_status)) {
     const bookingBeforeSlotConfirmed = finalBooking;
     const slotConfirmed = await appendBookingEventWithEffects(
       finalBooking.id,

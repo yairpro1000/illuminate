@@ -1,6 +1,7 @@
 import { mockState } from '../mock-state.js';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
+const BOOKING_POLICY_TEXT = 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.';
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -79,6 +80,8 @@ function bookingConfirmationBody(
     `Manage booking: ${manageUrl}`,
     payUrl ? `Complete payment: ${payUrl}` : null,
     invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
+    '',
+    BOOKING_POLICY_TEXT,
     '',
     'Looking forward to meeting you,',
     'Yair',
@@ -210,7 +213,7 @@ export class MockEmailProvider implements IEmailProvider {
       clientEmail(booking),
       'event_confirmation',
       `You're confirmed – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}`,
+      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${BOOKING_POLICY_TEXT}`,
     );
   }
 

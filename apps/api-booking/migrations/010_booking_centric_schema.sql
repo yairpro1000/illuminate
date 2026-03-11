@@ -91,9 +91,7 @@ create table if not exists bookings (
   google_event_id text null,
   address_line text not null,
   maps_url text not null,
-  current_status text not null check (
-    current_status in ('PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID', 'EXPIRED', 'CANCELED', 'CLOSED')
-  ),
+  current_status text not null,
   notes text null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -112,25 +110,8 @@ create index if not exists idx_bookings_google_event_id on bookings(google_event
 create table if not exists booking_events (
   id uuid primary key default gen_random_uuid(),
   booking_id uuid not null references bookings(id) on delete cascade,
-  event_type text not null check (
-    event_type in (
-      'BOOKING_FORM_SUBMITTED_FREE',
-      'BOOKING_FORM_SUBMITTED_PAY_NOW',
-      'BOOKING_FORM_SUBMITTED_PAY_LATER',
-      'EMAIL_CONFIRMED',
-      'BOOKING_RESCHEDULED',
-      'SLOT_RESERVATION_REMINDER_SENT',
-      'PAYMENT_REMINDER_SENT',
-      'DATE_REMINDER_SENT',
-      'BOOKING_EXPIRED',
-      'BOOKING_CANCELED',
-      'CASH_AUTHORIZED',
-      'PAYMENT_SETTLED',
-      'SLOT_CONFIRMED',
-      'BOOKING_CLOSED'
-    )
-  ),
-  source text not null check (source in ('public_ui', 'admin_ui', 'job', 'webhook', 'system')),
+  event_type text not null,
+  source text not null,
   payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
@@ -144,26 +125,9 @@ create index if not exists idx_booking_events_confirm_token_hash
 create table if not exists booking_side_effects (
   id uuid primary key default gen_random_uuid(),
   booking_event_id uuid not null references booking_events(id) on delete cascade,
-  entity text not null check (entity in ('email', 'calendar', 'payment', 'whatsapp', 'system')),
-  effect_intent text not null check (
-    effect_intent in (
-      'send_email_confirmation',
-      'send_slot_reservation_reminder',
-      'send_payment_reminder',
-      'send_date_reminder',
-      'send_booking_failed_notification',
-      'send_booking_cancellation_confirmation',
-      'reserve_slot',
-      'update_reserved_slot',
-      'cancel_reserved_slot',
-      'create_stripe_checkout',
-      'verify_stripe_payment',
-      'send_payment_link',
-      'expire_booking',
-      'close_booking'
-    )
-  ),
-  status text not null check (status in ('pending', 'processing', 'success', 'failed', 'dead')),
+  entity text not null,
+  effect_intent text not null,
+  status text not null,
   expires_at timestamptz null,
   max_attempts integer not null default 5 check (max_attempts >= 1),
   created_at timestamptz not null default now(),
@@ -186,6 +150,72 @@ create table if not exists booking_side_effect_attempts (
   error_message text null,
   created_at timestamptz not null default now(),
   unique (booking_side_effect_id, attempt_num)
+);
+
+alter table bookings drop constraint if exists bookings_current_status_check;
+alter table bookings add constraint bookings_current_status_check check (
+  current_status in ('PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID', 'EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW', 'REFUNDED')
+);
+
+alter table booking_events drop constraint if exists booking_events_event_type_check;
+alter table booking_events add constraint booking_events_event_type_check check (
+  event_type in (
+    'BOOKING_FORM_SUBMITTED_FREE',
+    'BOOKING_FORM_SUBMITTED_PAY_NOW',
+    'BOOKING_FORM_SUBMITTED_PAY_LATER',
+    'EMAIL_CONFIRMED',
+    'BOOKING_RESCHEDULED',
+    'SLOT_RESERVATION_REMINDER_SENT',
+    'PAYMENT_REMINDER_SENT',
+    'DATE_REMINDER_SENT',
+    'BOOKING_EXPIRED',
+    'BOOKING_CANCELED',
+    'CASH_AUTHORIZED',
+    'PAYMENT_SETTLED',
+    'SLOT_CONFIRMED',
+    'BOOKING_CLOSED',
+    'REFUND_REQUESTED',
+    'REFUND_CREATED',
+    'REFUND_VERIFIED'
+  )
+);
+
+alter table booking_events drop constraint if exists booking_events_source_check;
+alter table booking_events add constraint booking_events_source_check check (
+  source in ('public_ui', 'admin_ui', 'job', 'webhook', 'system')
+);
+
+alter table booking_side_effects drop constraint if exists booking_side_effects_entity_check;
+alter table booking_side_effects add constraint booking_side_effects_entity_check check (
+  entity in ('email', 'calendar', 'payment', 'whatsapp', 'system')
+);
+
+alter table booking_side_effects drop constraint if exists booking_side_effects_effect_intent_check;
+alter table booking_side_effects add constraint booking_side_effects_effect_intent_check check (
+  effect_intent in (
+    'send_email_confirmation',
+    'send_slot_reservation_reminder',
+    'send_payment_reminder',
+    'send_date_reminder',
+    'send_booking_failed_notification',
+    'send_booking_cancellation_confirmation',
+    'send_booking_confirmation',
+    'reserve_slot',
+    'update_reserved_slot',
+    'cancel_reserved_slot',
+    'create_stripe_checkout',
+    'verify_stripe_payment',
+    'create_stripe_refund',
+    'verify_stripe_refund',
+    'send_payment_link',
+    'expire_booking',
+    'close_booking'
+  )
+);
+
+alter table booking_side_effects drop constraint if exists booking_side_effects_status_check;
+alter table booking_side_effects add constraint booking_side_effects_status_check check (
+  status in ('pending', 'processing', 'success', 'failed', 'dead')
 );
 
 create index if not exists idx_booking_side_effect_attempts_effect_created

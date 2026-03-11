@@ -19,6 +19,8 @@ alter table booking_side_effects
       'cancel_reserved_slot',
       'create_stripe_checkout',
       'verify_stripe_payment',
+      'create_stripe_refund',
+      'verify_stripe_refund',
       'send_payment_link',
       'expire_booking',
       'close_booking'

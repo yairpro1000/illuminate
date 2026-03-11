@@ -287,6 +287,37 @@
         </div>
 
         <div class="row" style="margin-top: 10px;">
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="editStatus">Booking status</label>
+            <select id="editStatus">
+              <option value="PENDING_CONFIRMATION">PENDING_CONFIRMATION</option>
+              <option value="SLOT_CONFIRMED">SLOT_CONFIRMED</option>
+              <option value="PAID">PAID</option>
+              <option value="EXPIRED">EXPIRED</option>
+              <option value="CANCELED">CANCELED</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="NO_SHOW">NO_SHOW</option>
+              <option value="REFUNDED">REFUNDED</option>
+            </select>
+          </div>
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="editTimezone">Timezone (admin reschedule)</label>
+            <input id="editTimezone" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 10px;">
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="editNewStart">New start (ISO)</label>
+            <input id="editNewStart" placeholder="2026-03-25T09:00:00.000Z" />
+          </div>
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="editNewEnd">New end (ISO)</label>
+            <input id="editNewEnd" placeholder="2026-03-25T10:00:00.000Z" />
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 10px;">
           <div class="col" style="flex: 1 1 320px;">
             <label for="editNotes">Notes</label>
             <textarea id="editNotes"></textarea>
@@ -296,6 +327,8 @@
         <div id="editMsg" class="status muted"></div>
 
         <div class="btnrow" style="margin-top: 10px;">
+          <button id="editCancelBooking" type="button" class="secondary">Admin cancel</button>
+          <button id="editRescheduleBooking" type="button" class="secondary">Admin reschedule</button>
           <button id="editClose" type="button" class="secondary">Close</button>
           <button id="editSave" type="button">Save</button>
         </div>
@@ -347,6 +380,10 @@
         const editLastNameEl = document.getElementById("editLastName");
         const editEmailEl = document.getElementById("editEmail");
         const editPhoneEl = document.getElementById("editPhone");
+        const editStatusEl = document.getElementById("editStatus");
+        const editTimezoneEl = document.getElementById("editTimezone");
+        const editNewStartEl = document.getElementById("editNewStart");
+        const editNewEndEl = document.getElementById("editNewEnd");
         const editNotesEl = document.getElementById("editNotes");
         const editMsgEl = document.getElementById("editMsg");
         const editSaveEl = document.getElementById("editSave");
@@ -566,6 +603,10 @@
           editLastNameEl.value = row.client_last_name || "";
           editEmailEl.value = row.client_email || "";
           editPhoneEl.value = row.client_phone || "";
+          editStatusEl.value = row.current_status || "PENDING_CONFIRMATION";
+          editTimezoneEl.value = row.timezone || "Europe/Zurich";
+          editNewStartEl.value = "";
+          editNewEndEl.value = "";
           editNotesEl.value = row.notes || "";
           setEditMessage("", false);
           editOverlayEl.classList.remove("hidden");
@@ -596,6 +637,7 @@
                   phone: editPhoneEl.value.trim() || null,
                 },
                 booking: {
+                  current_status: editStatusEl.value,
                   notes: editNotesEl.value || null,
                 },
               }),
@@ -609,6 +651,34 @@
           } finally {
             state.saving = false;
             editSaveEl.disabled = false;
+          }
+        }
+
+        async function runAdminAction(action) {
+          if (!state.editing || state.saving) return;
+          state.saving = true;
+          setEditMessage("Saving...", false);
+          try {
+            const booking = {
+              action,
+              current_status: editStatusEl.value,
+              notes: editNotesEl.value || null,
+            };
+            if (action === "reschedule") {
+              booking.new_start = editNewStartEl.value.trim();
+              booking.new_end = editNewEndEl.value.trim();
+              booking.timezone = editTimezoneEl.value.trim() || "Europe/Zurich";
+            }
+            await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}`, {
+              method: "POST",
+              body: JSON.stringify({ booking }),
+            });
+            closeEditModal();
+            await loadRows();
+          } catch (err) {
+            setEditMessage(String(err), true);
+          } finally {
+            state.saving = false;
           }
         }
 
@@ -642,6 +712,12 @@
         document.getElementById("editClose").addEventListener("click", closeEditModal);
         document.getElementById("editSave").addEventListener("click", () => {
           void saveEdit();
+        });
+        document.getElementById("editCancelBooking").addEventListener("click", () => {
+          void runAdminAction("cancel");
+        });
+        document.getElementById("editRescheduleBooking").addEventListener("click", () => {
+          void runAdminAction("reschedule");
         });
 
         editOverlayEl.addEventListener("click", (e) => {

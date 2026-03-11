@@ -45,7 +45,7 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       },
     });
 
-    const updated = await rescheduleBooking(
+    const result = await rescheduleBooking(
       booking,
       {
         newStart,
@@ -58,7 +58,13 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         logger: ctx.logger,
         requestId: ctx.requestId,
       },
+      {
+        source: 'public_ui',
+        bypassPolicyWindow: false,
+      },
     );
+    if (!result.ok) throw badRequest(result.message, result.code);
+    const updated = result.booking;
 
     ctx.logger.logInfo?.({
       source: 'backend',
@@ -77,6 +83,8 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
     return ok({
       booking_id: updated.id,
       status: updated.current_status,
+      result_code: result.code,
+      message: result.message,
       starts_at: updated.starts_at,
       ends_at: updated.ends_at,
       timezone: updated.timezone,

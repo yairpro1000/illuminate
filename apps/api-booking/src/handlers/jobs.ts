@@ -788,8 +788,8 @@ async function executeSideEffect(
     }
 
     case 'close_booking': {
-      if (booking.current_status === 'CLOSED') return;
-      await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CLOSED' as BookingCurrentStatus });
+      if (booking.current_status === 'COMPLETED') return;
+      await ctx.providers.repository.updateBooking(booking.id, { current_status: 'COMPLETED' as BookingCurrentStatus });
       await ctx.providers.repository.createBookingEvent({
         booking_id: booking.id,
         event_type: 'BOOKING_CLOSED',

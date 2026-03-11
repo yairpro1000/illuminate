@@ -401,7 +401,7 @@ export class SupabaseRepository implements IRepository {
         .from('bookings')
         .select('current_status')
         .eq('event_id', eventId)
-        .not('current_status', 'in', '(EXPIRED,CANCELED,CLOSED)'),
+        .not('current_status', 'in', '(EXPIRED,CANCELED,COMPLETED,NO_SHOW,REFUNDED)'),
       'Failed to count event bookings',
     );
 
@@ -542,10 +542,7 @@ export class SupabaseRepository implements IRepository {
     const row = await requireSingle<ContactMessage>(
       this.db
         .from('contact_messages')
-        .insert({
-          ...data,
-          email: normalizeEmail(data.email),
-        })
+        .insert(data)
         .select('*')
         .single(),
       'Failed to create contact message',

@@ -10,6 +10,8 @@ interface PublicBookingPolicy {
   pay_now_total_expiry_minutes: number;
 }
 
+const PUBLIC_BOOKING_POLICY_TEXT = 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.';
+
 function buildPublicBookingPolicy(): PublicBookingPolicy {
   return {
     non_paid_confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
@@ -69,6 +71,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
     const responseBody = {
       config_version: 'booking_policy_v1',
       booking_policy: bookingPolicy,
+      booking_policy_text: PUBLIC_BOOKING_POLICY_TEXT,
     };
 
     ctx.logger.logInfo?.({

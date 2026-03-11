@@ -1,10 +1,11 @@
 import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { OrganizerBookingFilters } from '../providers/repository/interface.js';
-import type { EventUpdate } from '../types.js';
+import type { BookingCurrentStatus, EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { generateToken, hashToken } from '../services/token-service.js';
+import { cancelBooking, rescheduleBooking } from '../services/booking-service.js';
 import {
   SERVICE_MODES,
   getAllOverrides,
@@ -228,12 +229,48 @@ export async function handleAdminUpdateBooking(
     }
 
     if (bookingPatch) {
-      const updates: { notes?: string | null } = {};
+      const updates: { notes?: string | null; current_status?: BookingCurrentStatus } = {};
       if (bookingPatch.notes === null || typeof bookingPatch.notes === 'string') {
         updates.notes = bookingPatch.notes === null ? null : bookingPatch.notes.slice(0, 4000);
       }
+      if (typeof bookingPatch.current_status === 'string') {
+        updates.current_status = bookingPatch.current_status as BookingCurrentStatus;
+      }
       if (Object.keys(updates).length > 0) {
         await ctx.providers.repository.updateBooking(booking.id, updates);
+      }
+
+      const action = typeof bookingPatch.action === 'string' ? bookingPatch.action : null;
+      if (action === 'cancel') {
+        const result = await cancelBooking(booking, {
+          providers: ctx.providers,
+          env: ctx.env,
+          logger: ctx.logger,
+          requestId: ctx.requestId,
+        }, {
+          source: 'admin_ui',
+          bypassPolicyWindow: true,
+        });
+        if (!result.ok) throw badRequest(result.message, result.code);
+      }
+      if (action === 'reschedule') {
+        const newStart = typeof bookingPatch.new_start === 'string' ? bookingPatch.new_start : null;
+        const newEnd = typeof bookingPatch.new_end === 'string' ? bookingPatch.new_end : null;
+        if (!newStart || !newEnd) throw badRequest('new_start and new_end are required for reschedule action');
+        const result = await rescheduleBooking(booking, {
+          newStart,
+          newEnd,
+          timezone: typeof bookingPatch.timezone === 'string' ? bookingPatch.timezone : booking.timezone,
+        }, {
+          providers: ctx.providers,
+          env: ctx.env,
+          logger: ctx.logger,
+          requestId: ctx.requestId,
+        }, {
+          source: 'admin_ui',
+          bypassPolicyWindow: true,
+        });
+        if (!result.ok) throw badRequest(result.message, result.code);
       }
     }
 

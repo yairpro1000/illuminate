@@ -14,14 +14,29 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
     const email = requireString(body, 'email');
     const message = requireString(body, 'message');
     const topic = typeof body['topic'] === 'string' && body['topic'].trim() ? body['topic'].trim() : null;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    ctx.logger.logMilestone('contact_payload_validated', {
+      flow: 'contact_form',
+      has_topic: !!topic,
+      has_last_name: !!lastName,
+      email_domain: normalizedEmail.includes('@') ? (normalizedEmail.split('@')[1] ?? null) : null,
+    });
 
     await ctx.providers.antibot.verify(
       (body['turnstile_token'] as string | undefined) ?? '',
       request.headers.get('CF-Connecting-IP'),
     );
+    ctx.logger.logMilestone('contact_antibot_verification_passed', {
+      flow: 'contact_form',
+      provider: 'antibot',
+    });
 
-    const normalizedEmail = email.trim().toLowerCase();
     const existingClient = await ctx.providers.repository.getClientByEmail(normalizedEmail);
+    ctx.logger.logMilestone('contact_client_lookup_completed', {
+      flow: 'contact_form',
+      client_exists: !!existingClient,
+    });
     const client = existingClient
       ? await ctx.providers.repository.updateClient(existingClient.id, {
           first_name: firstName,
@@ -34,29 +49,72 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
           email: normalizedEmail,
           phone: null,
         });
+    ctx.logger.logMilestone('contact_client_upsert_completed', {
+      flow: 'contact_form',
+      branch: existingClient ? 'update_existing_client' : 'create_new_client',
+      client_id: client.id,
+    });
 
     const contact = await ctx.providers.repository.createContactMessage({
       client_id: client.id,
-      first_name: firstName,
-      last_name: lastName,
-      email: normalizedEmail,
       topic,
       message,
       status: 'new',
       source: 'website_contact_form',
     });
-
-    const sendResult = await ctx.providers.email.sendContactMessage(name, normalizedEmail, message, topic);
-
-    ctx.logger.logMilestone('provider_result_persisted', {
+    ctx.logger.logMilestone('contact_message_persisted', {
       flow: 'contact_form',
-      provider: 'email',
-      message_id: sendResult.messageId,
       contact_message_id: contact.id,
       client_id: client.id,
     });
 
-    return ok({ ok: true, message_id: sendResult.messageId, contact_id: contact.id, request_id: ctx.requestId });
+    try {
+      ctx.logger.logMilestone('contact_email_send_attempted', {
+        flow: 'contact_form',
+        provider: 'email',
+        kind: 'contact_message',
+      });
+      const sendResult = await ctx.providers.email.sendContactMessage(name, normalizedEmail, message, topic);
+
+      ctx.logger.logMilestone('provider_result_persisted', {
+        flow: 'contact_form',
+        provider: 'email',
+        message_id: sendResult.messageId,
+        contact_message_id: contact.id,
+        client_id: client.id,
+      });
+
+      return ok({
+        ok: true,
+        message_id: sendResult.messageId,
+        contact_id: contact.id,
+        email_delivery: 'sent',
+        request_id: ctx.requestId,
+      });
+    } catch (emailErr) {
+      const providerDebug = emailErr instanceof EmailProviderError ? emailErr.debug : undefined;
+      ctx.logger.logWarn({
+        source: 'worker',
+        eventType: 'contact_email_send_failed_after_persist',
+        message: 'Contact form email failed after contact persistence; returning accepted response',
+        context: sanitizeContext({
+          flow: 'contact_form',
+          request_id: ctx.requestId,
+          contact_message_id: contact.id,
+          client_id: client.id,
+          provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
+          kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
+          failure_reason: emailErr instanceof Error ? emailErr.message : String(emailErr),
+        }),
+      });
+      return ok({
+        ok: true,
+        message_id: null,
+        contact_id: contact.id,
+        email_delivery: 'failed',
+        request_id: ctx.requestId,
+      });
+    }
   } catch (err) {
     const providerDebug = err instanceof EmailProviderError ? err.debug : undefined;
     ctx.logger.logError({
@@ -68,6 +126,7 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
         request_id: ctx.requestId,
         provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
         kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
+        branch: err instanceof ApiError ? 'input_or_policy_rejected' : 'contact_handler_failed',
         error: String(err),
       }),
     });
