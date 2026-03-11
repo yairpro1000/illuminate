@@ -704,6 +704,7 @@ export interface CreateLoggerOptions {
   defaults: LoggerDefaults;
   schedule?: Scheduler;
   consoleTag?: string;
+  shouldPersist?: (event: PersistedLogEvent) => boolean;
 }
 
 export function fireAndForget(promise: Promise<unknown>, schedule?: Scheduler): void {
@@ -777,7 +778,7 @@ export function createObservabilityLogger(opts: CreateLoggerOptions): Observabil
       console.log(`${consoleTag} ${line}`);
     }
 
-    if (sink?.isConfigured()) {
+    if (sink?.isConfigured() && (opts.shouldPersist?.(event) ?? true)) {
       fireAndForget(sink.capture(event), opts.schedule);
     }
   }

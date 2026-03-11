@@ -34,6 +34,13 @@ export interface FrontendLogPayload {
   error?: PersistedLogEvent["error"];
 }
 
+export function shouldPersistWorkerLogEvent(event: PersistedLogEvent): boolean {
+  if (event.base.level !== "info") return true;
+  if (event.base.source === "provider" && event.base.eventType === "provider_call") return false;
+  if (event.base.eventType === "message") return false;
+  return true;
+}
+
 function pickRequestId(request: Request): string {
   return request.headers.get("x-request-id")?.trim() || crypto.randomUUID();
 }
@@ -68,6 +75,7 @@ export function createWorkerObservability(
     sink: makeSink(env),
     schedule: scheduleWith(executionCtx),
     consoleTag: "[worker]",
+    shouldPersist: shouldPersistWorkerLogEvent,
     defaults: {
       source,
       requestId,
@@ -93,6 +101,7 @@ export function createCronObservability(
     sink: makeSink(env),
     schedule: scheduleWith(executionCtx),
     consoleTag: "[worker-cron]",
+    shouldPersist: shouldPersistWorkerLogEvent,
     defaults: {
       source: "cron",
       requestId,

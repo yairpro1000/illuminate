@@ -101,12 +101,17 @@ export class ResendEmailProvider implements IEmailProvider {
     );
   }
 
-  async sendBookingConfirmation(booking: Booking, manageUrl: string, invoiceUrl: string | null): Promise<SendResult> {
+  async sendBookingConfirmation(
+    booking: Booking,
+    manageUrl: string,
+    invoiceUrl: string | null,
+    payUrl?: string | null,
+  ): Promise<SendResult> {
     return this.sendEmail(
       clientEmail(booking),
       'booking_confirmation',
       'Your session is confirmed – ILLUMINATE',
-      `Hi ${clientName(booking)},\n\nYour 1:1 session is confirmed.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\nMap: ${booking.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}`,
+      `Hi ${clientName(booking)},\n\nYour 1:1 session is confirmed.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\nMap: ${booking.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\nComplete payment: ${payUrl}` : ''}\n\nManage: ${manageUrl}`,
     );
   }
 

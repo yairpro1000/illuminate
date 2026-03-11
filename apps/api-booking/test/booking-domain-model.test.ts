@@ -221,6 +221,16 @@ describe('booking domain model', () => {
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'reserve_slot',
     );
     expect(confirmationReservationEffect?.status).toBe('success');
+
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(payment?.checkout_url).toBeTruthy();
+    const finalConfirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'maya@example.com',
+    );
+    expect(finalConfirmationEmail).toBeTruthy();
+    expect(finalConfirmationEmail?.body).toContain('Manage: https://example.com/manage.html?token=');
+    expect(finalConfirmationEmail?.body).toContain('Complete payment:');
+    expect(finalConfirmationEmail?.body).toContain(payment?.checkout_url ?? '');
   });
 
   it('rejects pay-later confirmation when token is older than 15 minutes', async () => {
@@ -284,6 +294,47 @@ describe('booking domain model', () => {
     const confirmed = await confirmBookingEmail(token, ctx);
     expect(confirmed.google_event_id).toBeTruthy();
     expect(confirmed.current_status).toBe('SLOT_CONFIRMED');
+
+    const introConfirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'intro@example.com',
+    );
+    expect(introConfirmationEmail).toBeTruthy();
+    expect(introConfirmationEmail?.body).toContain('Manage: https://example.com/manage.html?token=');
+    expect(introConfirmationEmail?.body).not.toContain('Complete payment:');
+  });
+
+  it('sends free-event confirmation email immediately after email confirmation', async () => {
+    const ctx = makeCtx();
+    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
+
+    const created = await createEventBooking(
+      {
+        event: freeEvent,
+        firstName: 'Event',
+        lastName: 'Guest',
+        email: 'event-guest@example.com',
+        phone: '+41000000018',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      },
+      ctx,
+    );
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED_FREE');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+
+    const confirmed = await confirmBookingEmail(token, ctx);
+    expect(confirmed.current_status).toBe('SLOT_CONFIRMED');
+
+    const eventConfirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'event_confirmation' && email.to === 'event-guest@example.com',
+    );
+    expect(eventConfirmationEmail).toBeTruthy();
+    expect(eventConfirmationEmail?.body).toContain('Manage: https://example.com/manage.html?token=');
   });
 
   it('reserves pay-now slots immediately on payment success', async () => {
@@ -399,6 +450,12 @@ describe('booking domain model', () => {
       email.body.includes('calendar_reservation_failure'),
     );
     expect(opsAlertEmail).toBeTruthy();
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_email_confirmation_sync_outcome',
+      context: expect.objectContaining({
+        branch_taken: 'confirmation_completed_calendar_sync_pending_retry',
+      }),
+    }));
   });
 
   it('records failed immediate confirmation email attempt and keeps retry path', async () => {
@@ -490,6 +547,18 @@ describe('booking domain model', () => {
     );
     expect(cancelReservedSlotEffect?.status).toBe('success');
     expect(failedNotificationEffect?.status).toBe('success');
+
+    const expiryEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_cancellation' && email.to === 'leo@example.com',
+    );
+    expect(expiryEmail).toBeTruthy();
+    expect(expiryEmail?.body).toContain('Start a new booking: https://example.com/book.html');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_expiry_notification_sync_outcome',
+      context: expect.objectContaining({
+        branch_taken: 'expiry_notification_intent_executed_or_queued',
+      }),
+    }));
   });
 
   it('schedules payment reminder at starts_at minus 24h after slot confirmation', async () => {

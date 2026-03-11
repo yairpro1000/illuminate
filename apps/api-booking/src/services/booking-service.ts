@@ -331,7 +331,14 @@ async function createEventBookingInternal(
         { reason: 'late_access_booking' },
         ctx,
       );
-      return { bookingId: confirmed.booking.id, status: confirmed.booking.current_status };
+      const finalized = await applyImmediateReservationForTransition({
+        transitionEventType: 'EMAIL_CONFIRMED',
+        sourceOperation: 'create_event_booking_with_access:confirm',
+        bookingBeforeTransition: createdWithImmediateEffects,
+        bookingAfterTransition: confirmed.booking,
+        transitionSideEffects: confirmed.sideEffects,
+      }, ctx);
+      return { bookingId: finalized.id, status: finalized.current_status };
     }
 
     return { bookingId: createdWithImmediateEffects.id, status: createdWithImmediateEffects.current_status };
@@ -442,13 +449,37 @@ export async function confirmBookingEmail(
     ctx,
   );
 
-  return applyImmediateReservationForTransition({
+  const finalizedBooking = await applyImmediateReservationForTransition({
     transitionEventType: 'EMAIL_CONFIRMED',
     sourceOperation: 'confirm_booking_email',
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, ctx);
+
+  const reservationEffects = transitioned.sideEffects.filter((effect) => effect.effect_intent === 'reserve_slot');
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_sync_outcome',
+    message: 'Completed synchronous confirmation handling and evaluated immediate calendar reservation outcome',
+    context: {
+      booking_id: finalizedBooking.id,
+      booking_kind: finalizedBooking.event_id ? 'event' : 'session',
+      current_status_after_confirmation: finalizedBooking.current_status,
+      has_google_event_id_after_confirmation: Boolean(finalizedBooking.google_event_id),
+      reservation_effect_ids: reservationEffects.map((effect) => effect.id),
+      calendar_synced_immediately: finalizedBooking.event_id ? true : Boolean(finalizedBooking.google_event_id),
+      branch_taken: finalizedBooking.event_id || finalizedBooking.google_event_id
+        ? 'confirmation_completed_with_immediate_calendar_sync'
+        : 'confirmation_completed_calendar_sync_pending_retry',
+      deny_reason: finalizedBooking.event_id || finalizedBooking.google_event_id
+        ? null
+        : 'calendar_reservation_failed_or_not_written',
+    },
+  });
+
+  return finalizedBooking;
 }
 
 // ── Payment success (webhook/dev) ──────────────────────────────────────────
@@ -570,13 +601,37 @@ export async function expireBooking(
     ctx,
   );
 
-  return applyImmediateNonCronSideEffectsForTransition({
+  const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
     transitionEventType: 'BOOKING_EXPIRED',
     sourceOperation: 'expire_booking',
     bookingBeforeTransition: booking,
     bookingAfterTransition: result.booking,
     transitionSideEffects: result.sideEffects,
   }, ctx);
+
+  const expiryNotificationEffects = result.sideEffects
+    .filter((effect) => effect.effect_intent === 'send_booking_failed_notification');
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_expiry_notification_sync_outcome',
+    message: 'Completed synchronous expiry side effects and evaluated expiry email notification outcome',
+    context: {
+      booking_id: finalizedBooking.id,
+      booking_kind: finalizedBooking.event_id ? 'event' : 'session',
+      current_status_after_expiry: finalizedBooking.current_status,
+      expiry_notification_effect_ids: expiryNotificationEffects.map((effect) => effect.id),
+      expiry_notification_attempted_immediately: expiryNotificationEffects.length > 0,
+      branch_taken: expiryNotificationEffects.length > 0
+        ? 'expiry_notification_intent_executed_or_queued'
+        : 'no_expiry_notification_intent_for_transition',
+      deny_reason: expiryNotificationEffects.length > 0
+        ? null
+        : 'expiry_notification_effect_not_created',
+    },
+  });
+
+  return finalizedBooking;
 }
 
 export async function rescheduleBooking(
@@ -682,11 +737,15 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
 
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
   const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const paymentMode = await inferPaymentModeForBooking(booking.id, ctx.providers.repository);
+  const payUrl = paymentMode === 'pay_later'
+    ? await ensurePayLaterCheckoutUrlForBooking(booking, ctx)
+    : null;
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const invoiceUrl = payment?.invoice_url ?? null;
 
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl);
+    await ctx.providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl, payUrl);
     return;
   }
 
@@ -1243,7 +1302,15 @@ async function applyImmediateReservationForTransition(
     },
   });
 
-  if (!shouldReserveNow) return input.bookingAfterTransition;
+  if (!shouldReserveNow) {
+    return applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: input.transitionEventType,
+      sourceOperation: `${input.sourceOperation}:non_reservation`,
+      bookingBeforeTransition: input.bookingBeforeTransition,
+      bookingAfterTransition: input.bookingAfterTransition,
+      transitionSideEffects: input.transitionSideEffects,
+    }, ctx);
+  }
 
   if (reservationEffects.length === 0) {
     logger.logError?.({
@@ -1470,6 +1537,119 @@ async function resolveSessionTypeForKind(
     throw badRequest('Unable to resolve session type');
   }
   return selected;
+}
+
+async function inferPaymentModeForBooking(
+  bookingId: string,
+  repository: Providers['repository'],
+): Promise<'free' | 'pay_now' | 'pay_later' | null> {
+  const events = await repository.listBookingEvents(bookingId);
+  const submitted = [...events]
+    .reverse()
+    .find((event) =>
+      event.event_type === 'BOOKING_FORM_SUBMITTED_FREE' ||
+      event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_NOW' ||
+      event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER',
+    );
+
+  if (!submitted) return null;
+  if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_FREE') return 'free';
+  if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_PAY_NOW') return 'pay_now';
+  return 'pay_later';
+}
+
+async function ensurePayLaterCheckoutUrlForBooking(
+  booking: Booking,
+  ctx: BookingContext,
+): Promise<string | null> {
+  const { logger } = ctx;
+  const existingPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'pay_later_checkout_link_decision',
+    message: 'Evaluated pay-later checkout link readiness for confirmation email',
+    context: {
+      booking_id: booking.id,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      session_type_id: booking.session_type_id,
+      payment_exists: Boolean(existingPayment),
+      payment_status: existingPayment?.status ?? null,
+      has_checkout_url: Boolean(existingPayment?.checkout_url),
+      branch_taken: existingPayment?.checkout_url
+        ? 'reuse_existing_checkout_url'
+        : booking.event_id
+          ? 'skip_event_booking_no_pay_later_checkout'
+          : 'evaluate_checkout_creation',
+      deny_reason: existingPayment?.checkout_url
+        ? null
+        : booking.event_id
+          ? 'event_bookings_do_not_use_pay_later_checkout'
+          : null,
+    },
+  });
+
+  if (existingPayment?.checkout_url) return existingPayment.checkout_url;
+  if (booking.event_id) return null;
+  if (!booking.session_type_id) {
+    logger.logWarn?.({
+      source: 'backend',
+      eventType: 'pay_later_checkout_link_missing_session_type',
+      message: 'Cannot create pay-later checkout link because session type is missing',
+      context: {
+        booking_id: booking.id,
+        booking_kind: 'session',
+        deny_reason: 'session_type_id_missing',
+      },
+    });
+    return null;
+  }
+
+  const sessionTypes = await ctx.providers.repository.getAllSessionTypes();
+  const sessionType = sessionTypes.find((row) => row.id === booking.session_type_id) ?? null;
+  if (!sessionType) {
+    logger.logWarn?.({
+      source: 'backend',
+      eventType: 'pay_later_checkout_link_missing_session_type_record',
+      message: 'Cannot create pay-later checkout link because session type record is missing',
+      context: {
+        booking_id: booking.id,
+        session_type_id: booking.session_type_id,
+        deny_reason: 'session_type_record_not_found',
+      },
+    });
+    return null;
+  }
+
+  if (sessionType.price <= 0) {
+    logger.logInfo?.({
+      source: 'backend',
+      eventType: 'pay_later_checkout_link_not_required',
+      message: 'Skipped pay-later checkout link for free session type',
+      context: {
+        booking_id: booking.id,
+        session_type_id: sessionType.id,
+        session_price: sessionType.price,
+        branch_taken: 'free_session_no_checkout_link',
+        deny_reason: 'session_price_is_zero',
+      },
+    });
+    return null;
+  }
+
+  const checkout = await ensureCheckoutForBooking(booking, sessionType, ctx);
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'pay_later_checkout_link_created',
+    message: 'Created pay-later checkout link for confirmation email',
+    context: {
+      booking_id: booking.id,
+      session_type_id: sessionType.id,
+      checkout_url_present: Boolean(checkout.checkoutUrl),
+      branch_taken: 'created_checkout_for_pay_later_confirmation',
+    },
+  });
+  return checkout.checkoutUrl;
 }
 
 async function ensureCheckoutForBooking(

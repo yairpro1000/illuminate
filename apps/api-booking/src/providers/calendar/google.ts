@@ -10,6 +10,13 @@ interface GoogleEnv {
   GOOGLE_CALENDAR_ID: string;
 }
 
+interface ParsedGoogleApiError {
+  code: number | null;
+  status: string | null;
+  message: string | null;
+  reason: string | null;
+}
+
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
 const freeBusyCache = new Map<string, { data: TimeSlot[]; expires: number }>();
@@ -19,6 +26,43 @@ const MAX_FREEBUSY_CHUNK_DAYS = 90;
 
 function b64url(str: string): string {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function normalizeCalendarId(raw: string | null | undefined): { value: string; wasTrimmed: boolean } {
+  const original = String(raw ?? '');
+  const trimmed = original.trim();
+  return {
+    value: trimmed,
+    wasTrimmed: trimmed !== original,
+  };
+}
+
+function parseGoogleApiError(body: string): ParsedGoogleApiError {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: {
+        code?: unknown;
+        status?: unknown;
+        message?: unknown;
+        errors?: Array<{ reason?: unknown }>;
+      };
+    };
+    const error = parsed.error;
+    if (!error || typeof error !== 'object') {
+      return { code: null, status: null, message: null, reason: null };
+    }
+    const firstReason = Array.isArray(error.errors) && error.errors.length > 0
+      ? error.errors[0]?.reason
+      : null;
+    return {
+      code: typeof error.code === 'number' ? error.code : null,
+      status: typeof error.status === 'string' ? error.status : null,
+      message: typeof error.message === 'string' ? error.message : null,
+      reason: typeof firstReason === 'string' ? firstReason : null,
+    };
+  } catch {
+    return { code: null, status: null, message: null, reason: null };
+  }
 }
 
 async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
@@ -100,10 +144,17 @@ async function getAccessToken(env: GoogleEnv, logger?: Logger): Promise<string> 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export class GoogleCalendarProvider implements ICalendarProvider {
-  constructor(private env: GoogleEnv, private logger?: Logger) {}
+  private readonly calendarId: string;
+  private readonly calendarIdWasTrimmed: boolean;
+
+  constructor(private env: GoogleEnv, private logger?: Logger) {
+    const normalized = normalizeCalendarId(env.GOOGLE_CALENDAR_ID);
+    this.calendarId = normalized.value;
+    this.calendarIdWasTrimmed = normalized.wasTrimmed;
+  }
 
   async getBusyTimes(from: string, to: string): Promise<TimeSlot[]> {
-    const cacheKey = `${this.env.GOOGLE_CALENDAR_ID}:${from}:${to}`;
+    const cacheKey = `${this.calendarId}:${from}:${to}`;
     const cached   = freeBusyCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       return cached.data;
@@ -131,10 +182,14 @@ export class GoogleCalendarProvider implements ICalendarProvider {
   }
 
   private async fetchFreeBusyChunk(token: string, from: string, to: string): Promise<TimeSlot[]> {
+    if (!this.calendarId) {
+      throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
+    }
+
     const payload = {
       timeMin: `${from}T00:00:00Z`,
       timeMax: `${to}T23:59:59Z`,
-      items:   [{ id: this.env.GOOGLE_CALENDAR_ID }],
+      items:   [{ id: this.calendarId }],
     };
 
     const body = JSON.stringify(payload);
@@ -175,12 +230,30 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       calendars: Record<string, { busy: Array<{ start: string; end: string }> }>;
     };
 
-    return data.calendars[this.env.GOOGLE_CALENDAR_ID]?.busy ?? [];
+    return data.calendars[this.calendarId]?.busy ?? [];
   }
 
   async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<{ eventId: string }> {
+    if (!this.calendarId) {
+      throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
+    }
+
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_insert_request',
+      message: 'Preparing Google Calendar events.insert request',
+      context: {
+        calendar_id_present: this.calendarId.length > 0,
+        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
+        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
+        has_event_id_hint: Boolean(options?.eventIdHint),
+        branch_taken: 'call_google_events_insert',
+        deny_reason: null,
+      },
+    });
+
     const token = await getAccessToken(this.env, this.logger);
-    const calId = encodeURIComponent(this.env.GOOGLE_CALENDAR_ID);
+    const calId = encodeURIComponent(this.calendarId);
     const body = JSON.stringify({
       ...(options?.eventIdHint ? { id: options.eventIdHint } : {}),
       summary:     event.title,
@@ -219,6 +292,24 @@ export class GoogleCalendarProvider implements ICalendarProvider {
         return { eventId: options.eventIdHint };
       }
       const body = await res.text();
+      const googleError = parseGoogleApiError(body);
+      this.logger?.logError?.({
+        source: 'backend',
+        eventType: 'google_calendar_insert_failed',
+        message: 'Google Calendar events.insert failed',
+        context: {
+          calendar_id_was_trimmed: this.calendarIdWasTrimmed,
+          calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
+          has_event_id_hint: Boolean(options?.eventIdHint),
+          google_http_status: res.status,
+          google_error_code: googleError.code,
+          google_error_status: googleError.status,
+          google_error_reason: googleError.reason,
+          google_error_message: googleError.message,
+          branch_taken: 'google_events_insert_failed',
+          deny_reason: googleError.reason ?? googleError.message ?? `google_events_insert_http_${res.status}`,
+        },
+      });
       throw new Error(`Google createEvent failed (${res.status}): ${body}`);
     }
 
@@ -227,8 +318,11 @@ export class GoogleCalendarProvider implements ICalendarProvider {
   }
 
   async updateEvent(eventId: string, event: CalendarEvent): Promise<void> {
+    if (!this.calendarId) {
+      throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
+    }
     const token = await getAccessToken(this.env, this.logger);
-    const calId = encodeURIComponent(this.env.GOOGLE_CALENDAR_ID);
+    const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
     const body = JSON.stringify({
       summary:     event.title,
@@ -268,8 +362,11 @@ export class GoogleCalendarProvider implements ICalendarProvider {
   }
 
   async deleteEvent(eventId: string): Promise<void> {
+    if (!this.calendarId) {
+      throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
+    }
     const token = await getAccessToken(this.env, this.logger);
-    const calId = encodeURIComponent(this.env.GOOGLE_CALENDAR_ID);
+    const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
     const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}`;
     const res = this.logger

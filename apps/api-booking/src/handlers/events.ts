@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, notFound, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest, notFound, errorResponse } from '../lib/errors.js';
 import {
   createEventBooking,
   createEventBookingWithAccess,
@@ -112,15 +112,75 @@ export async function handleEventBookWithAccess(
     const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
     const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
 
-    if (!event.is_paid && !phoneRaw) {
+    const isPhoneRequired = !event.is_paid;
+    const hasPhone = Boolean(phoneRaw);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_with_access_phone_gate_decision',
+      message: 'Evaluated late-access phone requirement gate',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        event_is_paid: event.is_paid,
+        has_phone: hasPhone,
+        phone_required: isPhoneRequired,
+        branch_taken: isPhoneRequired
+          ? (hasPhone ? 'allow_phone_present' : 'deny_phone_missing')
+          : 'skip_phone_requirement_for_paid_event',
+        deny_reason: isPhoneRequired && !hasPhone ? 'phone_required_for_free_event' : null,
+      },
+    });
+    if (isPhoneRequired && !hasPhone) {
       throw badRequest('phone is required for free events');
     }
 
     const tokenHash = await hashToken(accessToken);
+    const nowIso = new Date().toISOString();
     const link = await ctx.providers.repository.getEventLateAccessLinkByTokenHash(event.id, tokenHash);
-    if (!link || link.revoked_at !== null || new Date(link.expires_at) <= new Date()) {
+    const linkRevoked = Boolean(link && link.revoked_at !== null);
+    const linkExpired = Boolean(link && new Date(link.expires_at).getTime() <= new Date(nowIso).getTime());
+    const linkDenyReason = !link
+      ? 'late_access_link_not_found'
+      : linkRevoked
+        ? 'late_access_link_revoked'
+        : linkExpired
+          ? 'late_access_link_expired'
+          : null;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_with_access_token_gate_decision',
+      message: 'Evaluated late-access token gate',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        has_access_token: Boolean(accessToken),
+        late_access_link_found: Boolean(link),
+        late_access_link_revoked: linkRevoked,
+        late_access_link_expired: linkExpired,
+        late_access_link_expires_at: link?.expires_at ?? null,
+        branch_taken: linkDenyReason ? 'deny_invalid_or_expired_access_link' : 'allow_valid_access_link',
+        deny_reason: linkDenyReason,
+      },
+    });
+    if (linkDenyReason) {
       throw badRequest('Invalid or expired access token');
     }
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_with_access_creation_started',
+      message: 'Creating booking from validated late-access request',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        event_is_paid: event.is_paid,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        email_mode: ctx.env.EMAIL_MODE,
+        calendar_mode: ctx.env.CALENDAR_MODE,
+        antibot_mode: ctx.env.ANTIBOT_MODE,
+        branch_taken: 'create_event_booking_with_access',
+      },
+    });
 
     const result = await createEventBookingWithAccess(
       {
@@ -142,6 +202,19 @@ export async function handleEventBookWithAccess(
       },
     );
 
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_with_access_creation_completed',
+      message: 'Late-access booking created',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        booking_id: result.bookingId,
+        booking_status: result.status,
+        branch_taken: 'booking_created_with_late_access',
+      },
+    });
+
     return ok({
       booking_id: result.bookingId,
       status: result.status,
@@ -149,6 +222,35 @@ export async function handleEventBookWithAccess(
       ...(result.checkoutHoldExpiresAt ? { checkout_hold_expires_at: result.checkoutHoldExpiresAt } : {}),
     });
   } catch (err) {
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'event_booking_with_access_failed',
+        message: err.message,
+        context: {
+          path: new URL(request.url).pathname,
+          event_slug: params['slug'] ?? null,
+          status_code: statusCode,
+          error_code: err.code,
+          branch_taken: 'handled_api_error',
+          deny_reason: err.message,
+        },
+      });
+    } else {
+      ctx.logger.captureException({
+        source: 'backend',
+        eventType: 'uncaught_exception',
+        message: 'Late-access event booking failed',
+        error: err,
+        context: {
+          path: new URL(request.url).pathname,
+          event_slug: params['slug'] ?? null,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    }
     return errorResponse(err);
   }
 }
@@ -180,13 +282,95 @@ async function getBookableEventBySlug(
   ctx: AppContext,
   options?: { skipPublicCutoffCheck?: boolean },
 ) {
-  if (!slug) throw notFound('Event not found');
+  if (!slug) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'event_booking_slug_gate_decision',
+      message: 'Event booking denied because slug was missing',
+      context: {
+        skip_public_cutoff_check: Boolean(options?.skipPublicCutoffCheck),
+        branch_taken: 'deny_missing_slug',
+        deny_reason: 'event_slug_missing',
+      },
+    });
+    throw notFound('Event not found');
+  }
   const event = await ctx.providers.repository.getEventBySlug(slug);
-  if (!event) throw notFound('Event not found');
+  if (!event) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'event_booking_slug_gate_decision',
+      message: 'Event booking denied because event slug was not found',
+      context: {
+        event_slug: slug,
+        skip_public_cutoff_check: Boolean(options?.skipPublicCutoffCheck),
+        branch_taken: 'deny_event_not_found',
+        deny_reason: 'event_not_found',
+      },
+    });
+    throw notFound('Event not found');
+  }
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'event_booking_publish_gate_decision',
+    message: 'Evaluated event publish gate for booking',
+    context: {
+      event_id: event.id,
+      event_slug: event.slug,
+      event_status: event.status,
+      skip_public_cutoff_check: Boolean(options?.skipPublicCutoffCheck),
+      branch_taken: event.status === 'published' ? 'allow_event_published' : 'deny_event_not_published',
+      deny_reason: event.status === 'published' ? null : 'event_not_published',
+    },
+  });
   if (event.status !== 'published') throw badRequest('Event is not open for booking');
 
-  if (!options?.skipPublicCutoffCheck) {
+  if (options?.skipPublicCutoffCheck) {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_public_cutoff_gate_decision',
+      message: 'Skipped public cutoff gate for event booking',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        skip_public_cutoff_check: true,
+        branch_taken: 'skip_public_cutoff_check',
+        deny_reason: null,
+      },
+    });
+    return event;
+  }
+
+  try {
     await ensureEventPublicBookable(event);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_booking_public_cutoff_gate_decision',
+      message: 'Evaluated public cutoff gate for event booking',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        skip_public_cutoff_check: false,
+        branch_taken: 'allow_public_booking_window',
+        deny_reason: null,
+      },
+    });
+  } catch (error) {
+    const denyReason = error instanceof ApiError ? error.message : 'public_cutoff_gate_check_failed';
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'event_booking_public_cutoff_gate_decision',
+      message: 'Event booking denied by public cutoff gate',
+      context: {
+        event_id: event.id,
+        event_slug: event.slug,
+        skip_public_cutoff_check: false,
+        branch_taken: 'deny_public_booking_window',
+        deny_reason: denyReason,
+      },
+    });
+    throw error;
   }
 
   return event;

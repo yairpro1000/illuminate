@@ -110,14 +110,18 @@ export function getEffectsForEvent(
       ];
     }
     case 'EMAIL_CONFIRMED':
-      return shouldReserveSlotForTransition({
+      if (shouldReserveSlotForTransition({
         booking: input.booking,
         eventType: input.eventType,
         previousStatus,
         nextStatus,
-      })
-        ? [make('reserve_slot', null)]
-        : [];
+      })) {
+        return [make('reserve_slot', null)];
+      }
+      if (input.booking.event_id) {
+        return [make('send_booking_confirmation', null)];
+      }
+      return [];
     case 'BOOKING_RESCHEDULED':
       return [make('update_reserved_slot', null)];
     case 'BOOKING_EXPIRED':
@@ -145,7 +149,7 @@ export function getEffectsForEvent(
       if (dateReminderEligible) {
         effects.push(make('send_date_reminder', new Date(startsAtMs).toISOString()));
       }
-      if (paymentMode === 'pay_now') {
+      if (paymentMode === 'free' || paymentMode === 'pay_now' || paymentMode === 'pay_later') {
         effects.push(make('send_booking_confirmation', null));
       }
       if (paymentMode === 'pay_later') {

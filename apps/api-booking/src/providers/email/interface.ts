@@ -26,7 +26,12 @@ export interface IEmailProvider {
   sendBookingPaymentDue(booking: Booking, payUrl: string, manageUrl: string): Promise<SendResult>;
 
   /** Session confirmation after payment/cash. */
-  sendBookingConfirmation(booking: Booking, manageUrl: string, invoiceUrl: string | null): Promise<SendResult>;
+  sendBookingConfirmation(
+    booking: Booking,
+    manageUrl: string,
+    invoiceUrl: string | null,
+    payUrl?: string | null,
+  ): Promise<SendResult>;
 
   /** Session reminder before pay-later due threshold. */
   sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult>;

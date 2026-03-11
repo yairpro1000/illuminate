@@ -26,7 +26,7 @@ describe('booking effect policy', () => {
     expect(effects[2]?.expires_at).toBe('2026-03-10T11:00:00.000Z');
   });
 
-  it('maps slot-confirmed pay-later to date reminder + payment reminder', () => {
+  it('maps slot-confirmed pay-later to date reminder + confirmation + payment reminder', () => {
     const effects = getEffectsForEvent({
       booking: {
         id: 'b2',
@@ -41,9 +41,10 @@ describe('booking effect policy', () => {
 
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'send_date_reminder',
+      'send_booking_confirmation',
       'send_payment_reminder',
     ]);
-    expect(effects[1]?.expires_at).toBe('2026-03-19T10:00:00.000Z');
+    expect(effects[2]?.expires_at).toBe('2026-03-19T10:00:00.000Z');
   });
 
   it('maps payment settled to PAID cached status', () => {
@@ -66,6 +67,24 @@ describe('booking effect policy', () => {
 
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'send_date_reminder',
+      'send_booking_confirmation',
+    ]);
+  });
+
+  it('maps event email-confirmed to immediate booking confirmation email', () => {
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b4',
+        event_id: 'evt_1',
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'PENDING_CONFIRMATION',
+      },
+      eventType: 'EMAIL_CONFIRMED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentMode: 'free',
+    });
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'send_booking_confirmation',
     ]);
   });

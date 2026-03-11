@@ -1,7 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest, errorResponse } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
-import { resolveServiceAccountFromEnv, uploadToGoogleDrive, getOrCreateDriveFolderPath } from '../lib/google-drive.js';
+// import { resolveServiceAccountFromEnv, uploadToGoogleDrive, getOrCreateDriveFolderPath } from '../lib/google-drive.js'; // Drive backup disabled — service accounts have no storage quota
 
 function getExtFromMime(mime: string): string | null {
   const map: Record<string, string> = {
@@ -66,62 +66,10 @@ export async function handleAdminUploadImage(request: Request, ctx: AppContext):
       throw e; // R2 is required — propagate
     }
 
-    // ── Google Drive backup ──────────────────────────────────────────────────
-    let driveFileId: string | null = null;
-    try {
-      log('drive: resolving service account');
-      const sa = resolveServiceAccountFromEnv(ctx.env);
-      log('drive: service account resolved', { clientEmail: sa.client_email });
-
-      const driveSubfolder = entityType === 'event' ? 'events' : 'session_types';
-      const rootFolderId = ctx.env.GOOGLE_DRIVE_FOLDER_ID || null;
-      log('drive: resolving images folder', { rootFolderName: 'illuminate-website', rootFolderId, subfolderName: 'images' });
-
-      let imagesFolderId: string;
-      try {
-        imagesFolderId = await getOrCreateDriveFolderPath({
-          rootFolderName: 'illuminate-website',
-          rootFolderId,
-          subfolderName: 'images',
-          serviceAccount: sa,
-          logger: ctx.logger,
-        });
-        log('drive: images folder resolved', { imagesFolderId });
-      } catch (e) {
-        err('drive: failed to resolve images folder', e);
-        throw e;
-      }
-
-      log('drive: resolving entity subfolder', { subfolderName: driveSubfolder, parentId: imagesFolderId });
-      let folderId: string;
-      try {
-        folderId = await getOrCreateDriveFolderPath({
-          rootFolderName: 'images',
-          rootFolderId: imagesFolderId,
-          subfolderName: driveSubfolder,
-          serviceAccount: sa,
-          logger: ctx.logger,
-        });
-        log('drive: entity folder resolved', { folderId, driveSubfolder });
-      } catch (e) {
-        err('drive: failed to resolve entity subfolder', e);
-        throw e;
-      }
-
-      log('drive: uploading file', { filename, folderId, mimeType, bytes: arrayBuffer.byteLength });
-      try {
-        const result = await uploadToGoogleDrive({ file: arrayBuffer, mimeType, filename, folderId, serviceAccount: sa, logger: ctx.logger });
-        driveFileId = result.fileId;
-        log('drive: upload succeeded', { driveFileId });
-      } catch (e) {
-        err('drive: file upload failed', e);
-        throw e;
-      }
-    } catch (e) {
-      // Drive is optional — log but don't fail the request
-      err('drive: backup skipped due to error (R2 already succeeded)', e);
-      ctx.logger.captureException?.({ eventType: 'drive_backup_failed', message: 'Google Drive backup failed', error: e, context: { key } });
-    }
+    // ── Google Drive backup (disabled — service accounts have no storage quota) ──
+    // To re-enable: use a Shared Drive (Workspace) or personal OAuth token.
+    // const driveFileId: string | null = null;
+    const driveFileId: string | null = null;
 
     const base = (ctx.env.IMAGE_BASE_URL || '').replace(/\/+$/g, '');
     const url = base ? `${base}/${key}` : null;

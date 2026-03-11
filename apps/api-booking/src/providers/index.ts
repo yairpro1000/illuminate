@@ -45,6 +45,8 @@ function getSupabaseRepository(env: Env): SupabaseRepository {
 function wrapProvider<T extends object>(providerName: string, provider: T, logger?: Logger): T {
   if (!logger) return provider;
 
+  const shouldLogSuccess = providerName !== 'repository';
+
   return new Proxy(provider, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
@@ -54,13 +56,15 @@ function wrapProvider<T extends object>(providerName: string, provider: T, logge
         const startedAt = Date.now();
         try {
           const result = await value.apply(target, args);
-          logger.logProviderCall({
-            provider: providerName,
-            operation: String(prop),
-            success: true,
-            durationMs: Date.now() - startedAt,
-            context: { args_count: args.length },
-          });
+          if (shouldLogSuccess) {
+            logger.logProviderCall({
+              provider: providerName,
+              operation: String(prop),
+              success: true,
+              durationMs: Date.now() - startedAt,
+              context: { args_count: args.length },
+            });
+          }
           return result;
         } catch (error) {
           logger.logProviderCall({
