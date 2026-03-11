@@ -17,9 +17,9 @@ export interface BookingPolicyConfig {
 }
 
 export const DEFAULT_BOOKING_POLICY: BookingPolicyConfig = {
-  nonPaidConfirmationWindowMinutes: 15,
-  payNowCheckoutWindowMinutes: 45,
-  payNowReminderGraceMinutes: 15,
+  nonPaidConfirmationWindowMinutes: 1,
+  payNowCheckoutWindowMinutes: 2,
+  payNowReminderGraceMinutes: 1,
   paymentDueBeforeStartHours: 24,
   processingMaxAttempts: 5,
 };

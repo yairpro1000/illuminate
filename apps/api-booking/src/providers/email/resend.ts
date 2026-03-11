@@ -92,6 +92,20 @@ function bookingConfirmationBody(
 }
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
+//
+// Palette (hex equivalents of the site's OKLCH tokens, email-safe):
+//   #0d1820  body bg         (oklch 11% 0.022 210)
+//   #111f2a  card bg         (oklch 14% 0.025 208)
+//   #0a1219  header bg       (darkest)
+//   #1a9db8  lake teal       (oklch 59% 0.160 200)
+//   #0c7a91  lake deep       (oklch 44% 0.155 204)
+//   #4fc3d8  lake light      (oklch 73% 0.130 195)
+//   #ddeef2  text primary    (oklch 91% 0.015 200)
+//   #88abb5  text muted      (oklch 65% 0.020 207)
+//   #1d3848  border          (teal-tinted dark)
+//   #dff3f7  detail bg       (very light teal — for info containers)
+//   #0a3d50  detail label    (dark teal text inside light container)
+//   #0d2e3e  detail value    (darkest teal text)
 
 function htmlLayout(bodyContent: string): string {
   return `<!DOCTYPE html>
@@ -100,28 +114,38 @@ function htmlLayout(bodyContent: string): string {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  body { margin:0; padding:0; background:#f5f5f0; font-family:Georgia,serif; color:#1a1a1a; }
-  .wrap { max-width:560px; margin:40px auto; background:#ffffff; border-radius:4px; overflow:hidden; }
-  .header { background:#1a1a1a; padding:32px 40px; }
-  .header h1 { margin:0; font-size:18px; letter-spacing:0.12em; text-transform:uppercase; color:#e8e0d0; font-weight:400; }
-  .body { padding:36px 40px; }
-  .body p { margin:0 0 16px; font-size:15px; line-height:1.65; color:#1a1a1a; }
-  .detail-block { background:#f9f8f5; border-left:3px solid #c4a882; padding:20px 24px; margin:24px 0; border-radius:0 4px 4px 0; }
-  .detail-block p { margin:0 0 8px; font-size:14px; }
-  .detail-block p:last-child { margin:0; }
-  .detail-block strong { color:#1a1a1a; }
-  .btn { display:inline-block; margin-top:8px; padding:12px 28px; background:#1a1a1a; color:#e8e0d0 !important; text-decoration:none; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; border-radius:2px; }
-  .link-row { margin:8px 0; font-size:14px; }
-  .link-row a { color:#7a5c3a; }
-  .footer { padding:24px 40px; border-top:1px solid #ececec; }
-  .footer p { margin:0; font-size:13px; color:#888; line-height:1.6; }
+  body,table,td,p,a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+  body { margin:0; padding:0; background:#0d1820; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
+  .wrap { max-width:560px; margin:0 auto; background:#0d1820; }
+  .header { background:#0a1219; padding:36px 40px 28px; border-bottom:2px solid #1a9db8; text-align:center; }
+  .header__logo { display:block; width:180px; max-width:100%; margin:0 auto 0; }
+  .body { background:#111f2a; padding:36px 40px 32px; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
+  .body p { margin:0 0 18px; font-size:15px; line-height:1.7; color:#ddeef2; }
+  .body p:last-child { margin-bottom:0; }
+  .detail-block { background:#dff3f7; border-left:3px solid #1a9db8; border-radius:0 6px 6px 0; margin:24px auto; overflow:hidden; text-align:left; max-width:400px; }
+  .detail-block table { width:100%; border-collapse:collapse; }
+  .detail-block td { padding:6px 20px; font-size:14px; vertical-align:top; line-height:1.5; }
+  .detail-block tr:first-child td { padding-top:18px; }
+  .detail-block tr:last-child td { padding-bottom:18px; }
+  .detail-block .lbl { color:#0a5068; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.07em; width:100px; padding-right:8px; white-space:nowrap; }
+  .detail-block .val { color:#0d2e3e; font-weight:500; }
+  .detail-block .val a { color:#0c7a91; }
+  .btn { display:inline-block; margin-top:4px; padding:13px 30px; background:#1a9db8; color:#ffffff !important; text-decoration:none; font-size:14px; font-weight:600; letter-spacing:0.03em; border-radius:6px; }
+  .btn:hover { background:#0c7a91; }
+  .secondary-link { margin-top:12px; font-size:14px; }
+  .secondary-link a { color:#4fc3d8; text-decoration:none; }
+  .footer { background:#0a1219; padding:22px 40px; border-top:1px solid #1d3848; border-left:1px solid #1d3848; border-right:1px solid #1d3848; }
+  .footer p { margin:0; font-size:12px; color:#4a6a78; line-height:1.6; }
+  .footer a { color:#4a6a78; text-decoration:none; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="header"><h1>Illuminate</h1></div>
+  <div class="header">
+    <img class="header__logo" src="https://letsilluminate.co/img/ILLUMINATE_hero.png" alt="ILLUMINATE by Yair Benharroch" />
+  </div>
   <div class="body">${bodyContent}</div>
-  <div class="footer"><p>Illuminate · Zürich · <a href="https://yairb.ch" style="color:#888;">yairb.ch</a></p></div>
+  <div class="footer"><p>Illuminate &middot; Zürich &middot; <a href="https://yairb.ch">yairb.ch</a></p></div>
 </div>
 </body>
 </html>`;
@@ -131,50 +155,67 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Renders a detail info box (light teal bg, dark teal text) from an array of [label, value] rows. */
+function detailBlock(rows: Array<[string, string]>): string {
+  const trs = rows.map(([label, value]) =>
+    `<tr><td class="lbl">${label}</td><td class="val">${value}</td></tr>`,
+  ).join('');
+  return `<div class="detail-block"><table>${trs}</table></div>`;
+}
+
 function bookingConfirmationHtml(
   booking: Booking,
   manageUrl: string,
   invoiceUrl: string | null,
   payUrl: string | null | undefined,
 ): string {
-  const extraLinks = [
-    payUrl ? `<p class="link-row">Complete payment: <a href="${esc(payUrl)}">${esc(payUrl)}</a></p>` : '',
-    invoiceUrl ? `<p class="link-row">Invoice: <a href="${esc(invoiceUrl)}">${esc(invoiceUrl)}</a></p>` : '',
-  ].join('');
+  const rows: Array<[string, string]> = [
+    ['Session', esc(sessionLabel(booking))],
+    ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+    ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+    ['Location', esc(booking.address_line ?? '')],
+  ];
+  if (booking.maps_url) {
+    rows.push(['Map', `<a href="${esc(booking.maps_url)}">Open in Maps</a>`]);
+  }
 
-  const mapsLink = booking.maps_url
-    ? `<p><strong>Map:</strong> <a href="${esc(booking.maps_url)}" style="color:#7a5c3a;">Open in Maps</a></p>`
-    : '';
+  const extraLinks = [
+    payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
+    invoiceUrl ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>` : '',
+  ].join('');
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
     <p>Your session is confirmed.</p>
-    <div class="detail-block">
-      <p><strong>Session:</strong> ${esc(sessionLabel(booking))}</p>
-      <p><strong>Date:</strong> ${esc(fmtBodyDate(booking.starts_at, booking.timezone))}</p>
-      <p><strong>Time:</strong> ${esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))}</p>
-      <p><strong>Location:</strong> ${esc(booking.address_line ?? '')}</p>
-      ${mapsLink}
-    </div>
-    <p>A calendar invitation has been sent to you. If you don't see it, please check your spam folder.</p>
-    <p>Need to reschedule or cancel?<br />
-      <a class="btn" href="${esc(manageUrl)}">Manage booking</a>
-    </p>
+    ${detailBlock(rows)}
+    <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
+    <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
-    <p>Looking forward to meeting you,<br /><strong>Yair</strong></p>
+    <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
 }
 
-function simpleHtml(greeting: string, paragraphs: string[], ctaLabel: string, ctaUrl: string, extraLines: string[] = []): string {
-  const paras = paragraphs.map(p => `<p>${esc(p)}</p>`).join('\n');
-  const extras = extraLines.map(l => `<p class="link-row">${l}</p>`).join('\n');
+/** extraLinks: pre-built HTML snippets (e.g. `<a href="…">label</a>`), each wrapped in a secondary-link paragraph. */
+function simpleHtml(
+  greeting: string,
+  rows: Array<[string, string]> | null,
+  bodyLines: string[],
+  ctaLabel: string,
+  ctaUrl: string,
+  extraLinks: string[] = [],
+): string {
+  const detail = rows && rows.length ? detailBlock(rows) : '';
+  const paras = bodyLines.map(l => `<p>${l}</p>`).join('');
+  const extras = extraLinks.map(l => `<p class="secondary-link">${l}</p>`).join('');
   const body = `
+    <p>${esc(greeting)},</p>
     ${paras}
+    ${detail}
     <p><a class="btn" href="${esc(ctaUrl)}">${esc(ctaLabel)}</a></p>
     ${extras}
   `;
-  return htmlLayout(`<p>${esc(greeting)},</p>` + body);
+  return htmlLayout(body);
 }
 
 function eventConfirmationHtml(
@@ -183,24 +224,26 @@ function eventConfirmationHtml(
   manageUrl: string,
   invoiceUrl: string | null,
 ): string {
+  const rows: Array<[string, string]> = [
+    ['Event', `<strong>${esc(event.title)}</strong>`],
+    ['Date &amp; time', esc(fmt(event.starts_at))],
+    ['Location', esc(event.address_line ?? '')],
+  ];
+  if (event.maps_url) {
+    rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
+  }
+
   const invoiceLine = invoiceUrl
-    ? `<p class="link-row">Invoice: <a href="${esc(invoiceUrl)}">${esc(invoiceUrl)}</a></p>`
-    : '';
-  const mapsLink = event.maps_url
-    ? `<p><strong>Map:</strong> <a href="${esc(event.maps_url)}" style="color:#7a5c3a;">Open in Maps</a></p>`
+    ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
     : '';
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
-    <p>You're confirmed for <strong>${esc(event.title)}</strong>.</p>
-    <div class="detail-block">
-      <p><strong>Date &amp; time:</strong> ${esc(fmt(event.starts_at))}</p>
-      <p><strong>Location:</strong> ${esc(event.address_line ?? '')}</p>
-      ${mapsLink}
-    </div>
+    <p>You're confirmed.</p>
+    ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
-    <p>Looking forward to seeing you,<br /><strong>Yair</strong></p>
+    <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
 }
@@ -273,7 +316,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nPlease confirm your 1:1 session booking.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\n\nConfirm: ${confirmUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      ['Please confirm your 1:1 session booking.', `Date & time: ${fmt(booking.starts_at)}`, `Address: ${booking.address_line}`],
+      [['Date &amp; time', esc(fmt(booking.starts_at))], ['Location', esc(booking.address_line ?? '')]],
+      ['Please confirm your 1:1 session booking.'],
       'Confirm booking',
       confirmUrl,
     );
@@ -286,27 +330,20 @@ export class ResendEmailProvider implements IEmailProvider {
     manageUrl: string,
     expiryGraceMinutes: number,
   ): Promise<SendResult> {
-    const expiryGraceLabel = `${expiryGraceMinutes} minutes`;
+    const expiryGraceLabel = expiryGraceMinutes === 1 ? '1 minute' : `${expiryGraceMinutes} minutes`;
     const text = `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in ${expiryGraceLabel} unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
+      [['Date &amp; time', esc(fmt(booking.starts_at))]],
       [
         'You have not completed payment for your held slot.',
-        `Date & time: ${fmt(booking.starts_at)}`,
-        `Your hold will expire in ${expiryGraceLabel} unless payment is completed.`,
+        `Your hold expires in <strong style="color:#4fc3d8;">${esc(expiryGraceLabel)}</strong>.`,
       ],
       'Complete payment',
       payUrl,
-      [`Manage booking: <a href="${esc(manageUrl)}">${esc(manageUrl)}</a>`],
+      [`<a href="${esc(manageUrl)}">Manage booking &rarr;</a>`],
     );
-    return this.sendEmail(
-      clientEmail(booking),
-      'booking_payment_due',
-      `Action needed: complete payment in ${expiryGraceLabel}`,
-      text,
-      undefined,
-      html,
-    );
+    return this.sendEmail(clientEmail(booking), 'booking_payment_due', `Action needed: complete payment in ${expiryGraceLabel}`, text, undefined, html);
   }
 
   async sendBookingConfirmation(
@@ -329,7 +366,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nPayment reminder for your session on ${fmt(booking.starts_at)}.\n\nPay: ${payUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [`Payment reminder for your session on ${fmt(booking.starts_at)}.`],
+      [['Session', esc(sessionLabel(booking))], ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))]],
+      ['Payment is due for your upcoming session.'],
       'Pay now',
       payUrl,
     );
@@ -340,7 +378,13 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nReminder: your session is tomorrow at ${fmt(booking.starts_at)}.\n\nManage: ${manageUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [`Reminder: your session is tomorrow at ${fmt(booking.starts_at)}.`],
+      [
+        ['Session', esc(sessionLabel(booking))],
+        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+        ['Location', esc(booking.address_line ?? '')],
+      ],
+      ['Your session is tomorrow.'],
       'Manage booking',
       manageUrl,
     );
@@ -351,7 +395,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nYour booking is still waiting for confirmation.\n\nConfirm: ${confirmUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      ['Your booking is still waiting for confirmation.'],
+      null,
+      ['Your booking is still waiting for your email confirmation.'],
       'Confirm booking',
       confirmUrl,
     );
@@ -361,12 +406,13 @@ export class ResendEmailProvider implements IEmailProvider {
   async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
     const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
     const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
-    const extraLinks = startNewBookingUrl
-      ? [`Start a new booking: <a href="${esc(startNewBookingUrl)}">${esc(startNewBookingUrl)}</a>`]
-      : [];
-    const html = startNewBookingUrl
-      ? simpleHtml(`Hi ${clientName(booking)}`, [`Your session on ${fmt(booking.starts_at)} has been cancelled.`], 'Start a new booking', startNewBookingUrl, extraLinks)
-      : htmlLayout(`<p>${esc(`Hi ${clientName(booking)},`)}</p><p>${esc(`Your session on ${fmt(booking.starts_at)} has been cancelled.`)}</p><p>If you'd like to rebook, visit <a href="https://yairb.ch" style="color:#7a5c3a;">yairb.ch</a>.</p>`);
+    const html = simpleHtml(
+      `Hi ${clientName(booking)}`,
+      [['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))]],
+      ['Your session has been cancelled.'],
+      startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
+      startNewBookingUrl ?? 'https://yairb.ch',
+    );
     return this.sendEmail(clientEmail(booking), 'booking_cancellation', 'Your booking has been cancelled', text, undefined, html);
   }
 
@@ -374,7 +420,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [`Please confirm your booking for ${event.title}.`, `Date & time: ${fmt(event.starts_at)}`, `Address: ${event.address_line}`],
+      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+      ['Please confirm your spot.'],
       'Confirm my spot',
       confirmUrl,
     );
@@ -396,7 +443,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.\n\nManage: ${manageUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [`Reminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.`],
+      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+      ['Your event is tomorrow.'],
       'Manage booking',
       manageUrl,
     );
@@ -407,7 +455,8 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is still pending.\n\nContinue: ${actionUrl}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [`Your booking for ${event.title} is still pending.`],
+      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))]],
+      ['Your booking is still pending.'],
       'Continue',
       actionUrl,
     );

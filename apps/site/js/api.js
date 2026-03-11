@@ -20,6 +20,14 @@ function getSessionTypes() {
   return _get('/api/session-types');
 }
 
+/**
+ * GET /api/config
+ * Returns: { config_version, booking_policy }
+ */
+function getPublicConfig() {
+  return _get('/api/config');
+}
+
 /* ── Slot availability ───────────────────────────────────── */
 
 /**

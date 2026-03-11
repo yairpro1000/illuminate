@@ -5,6 +5,7 @@ import { headerByteLength } from '../../shared/observability/backend.js';
 
 import { handleGetSlots } from './handlers/slots.js';
 import { handleHealth } from './handlers/health.js';
+import { handleGetPublicConfig } from './handlers/config.js';
 import { handlePayNow, handlePayLater } from './handlers/bookings.js';
 import { handleConfirm } from './handlers/confirm.js';
 import { handlePaymentStatus } from './handlers/payment-status.js';
@@ -80,6 +81,7 @@ function route(method: string, path: string, handler: Handler): Route {
 
 const ROUTES: Route[] = [
   route('GET', '/api/health', handleHealth),
+  route('GET', '/api/config', handleGetPublicConfig),
   route('POST', '/api/observability/frontend', handleFrontendObservability),
   route('GET', '/api/slots', handleGetSlots),
 

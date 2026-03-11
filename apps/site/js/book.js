@@ -81,6 +81,7 @@ const S = {
   phone: '',
   errors: {},
   submitting: false,
+  publicConfig: null,
 
   // Flow A — Calendar
   calYear:       new Date().getFullYear(),
@@ -162,6 +163,21 @@ function escHtml(str) {
     .replace(/>/g,  '&gt;')
     .replace(/"/g,  '&quot;')
     .replace(/'/g,  '&#39;');
+}
+
+function getNonPaidConfirmationWindowMinutes() {
+  const minutes = Number(
+    S.publicConfig &&
+    S.publicConfig.booking_policy &&
+    S.publicConfig.booking_policy.non_paid_confirmation_window_minutes,
+  );
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return minutes;
+}
+
+function formatMinutesLabel(minutes) {
+  if (minutes === 1) return '1 minute';
+  return `${minutes} minutes`;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -708,6 +724,7 @@ function buildConfirmation() {
   if (!isPaid) {
     const isConfirmedNow = S.submissionStatus === 'confirmed';
     const noun = isEvent ? 'registration' : 'booking';
+    const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes();
     const widget = _buildConfirmationWidget(isEvent);
     return `
       <div class="confirmation">
@@ -728,7 +745,11 @@ function buildConfirmation() {
             isConfirmedNow
               ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.`
               : `A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.
-          Please confirm your ${noun} using the link in that email.`
+          ${
+            confirmWindowMinutes
+              ? `Please confirm your ${noun} within ${formatMinutesLabel(confirmWindowMinutes)}.`
+              : `Please confirm your ${noun} using the link in that email.`
+          }`
           }
         </p>
         ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}
@@ -1097,6 +1118,50 @@ async function loadRescheduleContext() {
   }
 }
 
+async function loadPublicConfig() {
+  try {
+    const data = await getPublicConfig();
+    const minutes = Number(
+      data &&
+      data.booking_policy &&
+      data.booking_policy.non_paid_confirmation_window_minutes,
+    );
+    const validConfig = Number.isFinite(minutes) && minutes > 0;
+    S.publicConfig = validConfig ? data : null;
+
+    if (!validConfig) {
+      console.warn('[Book] Public config returned invalid booking policy:', data);
+      if (BOOK_OBS) {
+        BOOK_OBS.logError({
+          eventType: 'public_config_invalid',
+          message: 'Public booking policy config is invalid',
+          context: {
+            branch_taken: 'deny_invalid_public_booking_policy_payload',
+            deny_reason: 'non_paid_confirmation_window_minutes_invalid',
+          },
+        });
+      }
+      return;
+    }
+
+    if (BOOK_OBS) {
+      BOOK_OBS.logMilestone('public_config_loaded', {
+        config_version: data.config_version || null,
+        non_paid_confirmation_window_minutes: minutes,
+      });
+    }
+  } catch (err) {
+    console.warn('[Book] Failed to load public config:', err);
+    S.publicConfig = null;
+    if (BOOK_OBS) {
+      BOOK_OBS.logError({
+        eventType: 'public_config_load_failed',
+        message: err && err.message ? err.message : 'Public config request failed',
+      });
+    }
+  }
+}
+
 /* ══════════════════════════════════════════════════════════
    9. INIT
    ══════════════════════════════════════════════════════════ */
@@ -1109,6 +1174,7 @@ async function init() {
       mode: CTX.mode,
     });
   }
+  await loadPublicConfig();
   try {
     await loadRescheduleContext();
   } catch (err) {

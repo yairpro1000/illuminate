@@ -128,7 +128,9 @@ export class MockEmailProvider implements IEmailProvider {
     manageUrl: string,
     expiryGraceMinutes: number,
   ): Promise<SendResult> {
-    const expiryGraceLabel = `${expiryGraceMinutes} minutes`;
+    const expiryGraceLabel = expiryGraceMinutes === 1
+      ? '1 minute'
+      : `${expiryGraceMinutes} minutes`;
     return this.send(
       clientEmail(booking),
       'booking_payment_due',
