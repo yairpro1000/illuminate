@@ -116,13 +116,13 @@ function htmlLayout(bodyContent: string): string {
 <style>
   body,table,td,p,a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
   body { margin:0; padding:0; background:#0d1820; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
-  .wrap { max-width:560px; margin:0 auto; background:#0d1820; }
-  .header { background:#0a1219; padding:36px 40px 28px; border-bottom:2px solid #1a9db8; text-align:center; }
-  .header__logo { display:block; width:180px; max-width:100%; margin:0 auto 0; }
+  .wrap { max-width:560px; margin:0 auto; background:#0d1820; border-radius:12px; overflow:hidden; }
+  .header { background:#0a1219; padding:32px 0 24px; border-bottom:2px solid #1a9db8; text-align:center; }
+  .header__logo { display:block; width:100%; max-width:100%; height:auto; }
   .body { background:#111f2a; padding:36px 40px 32px; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
   .body p { margin:0 0 18px; font-size:15px; line-height:1.7; color:#ddeef2; }
   .body p:last-child { margin-bottom:0; }
-  .detail-block { background:#dff3f7; border-left:3px solid #1a9db8; border-radius:0 6px 6px 0; margin:24px auto; overflow:hidden; text-align:left; max-width:400px; }
+  .detail-block { background:#dff3f7; border-left:3px solid #1a9db8; border-radius:6px; margin:24px auto; overflow:hidden; text-align:left; max-width:400px; }
   .detail-block table { width:100%; border-collapse:collapse; }
   .detail-block td { padding:6px 20px; font-size:14px; vertical-align:top; line-height:1.5; }
   .detail-block tr:first-child td { padding-top:18px; }
@@ -312,16 +312,23 @@ export class ResendEmailProvider implements IEmailProvider {
     return this.sendEmail('hello@yairb.ch', 'contact_message', `New message from ${name}`, body, email);
   }
 
-  async sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nPlease confirm your 1:1 session booking.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\n\nConfirm: ${confirmUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Date &amp; time', esc(fmt(booking.starts_at))], ['Location', esc(booking.address_line ?? '')]],
-      ['Please confirm your 1:1 session booking.'],
-      'Confirm booking',
-      confirmUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_confirm_request', 'Please confirm your booking – ILLUMINATE', text, undefined, html);
+  async sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult> {
+    const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
+    const text = `Hi ${clientName(booking)},\n\nPlease confirm your session booking.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+    const rows: Array<[string, string]> = [
+      ['Session', esc(sessionLabel(booking))],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ];
+    const body = `
+      <p>Hi ${esc(clientName(booking))},</p>
+      <p>Please confirm your session booking.</p>
+      ${detailBlock(rows)}
+      <p style="font-size:14px;color:#88abb5;">The slot is kindly held for you for the next <strong style="color:#4fc3d8;">${esc(windowLabel)}</strong> before expiring.</p>
+      <p><a class="btn" href="${esc(confirmUrl)}">Confirm booking</a></p>
+    `;
+    return this.sendEmail(clientEmail(booking), 'booking_confirm_request', 'Please confirm your booking – ILLUMINATE', text, undefined, htmlLayout(body));
   }
 
   async sendBookingPaymentDue(
@@ -331,19 +338,22 @@ export class ResendEmailProvider implements IEmailProvider {
     expiryGraceMinutes: number,
   ): Promise<SendResult> {
     const expiryGraceLabel = expiryGraceMinutes === 1 ? '1 minute' : `${expiryGraceMinutes} minutes`;
-    const text = `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in ${expiryGraceLabel} unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Date &amp; time', esc(fmt(booking.starts_at))]],
-      [
-        'You have not completed payment for your held slot.',
-        `Your hold expires in <strong style="color:#4fc3d8;">${esc(expiryGraceLabel)}</strong>.`,
-      ],
-      'Complete payment',
-      payUrl,
-      [`<a href="${esc(manageUrl)}">Manage booking &rarr;</a>`],
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_payment_due', `Action needed: complete payment in ${expiryGraceLabel}`, text, undefined, html);
+    const text = `Hi ${clientName(booking)},\n\nWe noticed you haven't yet completed your payment for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${expiryGraceLabel} before expiring.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
+    const rows: Array<[string, string]> = [
+      ['Session', esc(sessionLabel(booking))],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ];
+    const body = `
+      <p>Hi ${esc(clientName(booking))},</p>
+      <p>We noticed you haven't yet completed your payment for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
+      ${detailBlock(rows)}
+      <p style="font-size:14px;color:#88abb5;">The slot is kindly held for you for the next <strong style="color:#4fc3d8;">${esc(expiryGraceLabel)}</strong> before expiring.</p>
+      <p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>
+      <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
+    `;
+    return this.sendEmail(clientEmail(booking), 'booking_payment_due', `Action needed: complete payment in ${expiryGraceLabel}`, text, undefined, htmlLayout(body));
   }
 
   async sendBookingConfirmation(

@@ -20,7 +20,7 @@ export interface IEmailProvider {
   sendContactMessage(name: string, email: string, message: string, topic?: string | null): Promise<SendResult>;
 
   /** Session pay-later: ask user to confirm email. */
-  sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult>;
+  sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult>;
 
   /** Checkout follow-up: payment not completed and hold nearing expiry. */
   sendBookingPaymentDue(

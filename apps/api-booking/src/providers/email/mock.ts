@@ -113,12 +113,13 @@ export class MockEmailProvider implements IEmailProvider {
     return this.send('hello@yairb.ch', 'contact_message', `New message from ${name}`, body);
   }
 
-  async sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult> {
+  async sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult> {
+    const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
     return this.send(
       clientEmail(booking),
       'booking_confirm_request',
       'Please confirm your booking – ILLUMINATE',
-      `Hi ${clientName(booking)},\n\nPlease confirm your 1:1 Clarity Session booking.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\n\nConfirm:\n${confirmUrl}`,
+      `Hi ${clientName(booking)},\n\nPlease confirm your session booking.\n\nSession: ${booking.session_type_title ?? '1:1 Session'}\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${windowLabel} before expiring.\n\nConfirm:\n${confirmUrl}`,
     );
   }
 

@@ -980,7 +980,7 @@ function parseStableManageToken(rawToken: string): { bookingId: string } | null 
 
 async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: BookingContext): Promise<void> {
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl);
+    await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl, DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes);
     return;
   }
 
