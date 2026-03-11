@@ -124,7 +124,7 @@ function htmlLayout(bodyContent: string): string {
   .body p:last-child { margin-bottom:0; }
   .detail-block { background:#dff3f7; border-left:3px solid #1a9db8; border-radius:6px; margin:24px auto; overflow:hidden; text-align:left; max-width:400px; }
   .detail-block table { width:100%; border-collapse:collapse; }
-  .detail-block td { padding:6px 20px; font-size:14px; vertical-align:top; line-height:1.5; }
+  .detail-block td { padding:6px 20px; font-size:14px; vertical-align:bottom; line-height:1.5; }
   .detail-block tr:first-child td { padding-top:18px; }
   .detail-block tr:last-child td { padding-bottom:18px; }
   .detail-block .lbl { color:#0a5068; font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:0.07em; width:100px; padding-right:8px; white-space:nowrap; }
