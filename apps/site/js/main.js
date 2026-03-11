@@ -513,6 +513,12 @@ function setTheme(theme, save = true) {
     const tip = btn.querySelector('.theme-toggle__tip');
     if (tip) tip.textContent = theme === 'light' ? 'dark mode' : 'light mode';
   }
+
+  const mobileBtn = document.getElementById('mobile-theme-toggle');
+  if (mobileBtn) {
+    const label = mobileBtn.querySelector('.mobile-theme-label');
+    if (label) label.textContent = theme === 'light' ? 'Dark Mode' : 'Light Mode';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -524,6 +530,24 @@ document.addEventListener('DOMContentLoaded', () => {
       // Dismiss hint on click
       toggleBtn.classList.remove('theme-toggle--hint');
       localStorage.setItem('yb-theme-hint-seen', '1');
+    });
+  }
+
+  const mobileToggleBtn = document.getElementById('mobile-theme-toggle');
+  if (mobileToggleBtn) {
+    mobileToggleBtn.addEventListener('click', () => {
+      const isLight = document.body.classList.contains('theme-light');
+      setTheme(isLight ? 'dark' : 'light');
+      localStorage.setItem('yb-theme-hint-seen', '1');
+      // Close the menu
+      const menu = document.querySelector('.nav__mobile');
+      const hamburger = document.querySelector('.nav__hamburger');
+      if (menu) menu.classList.remove('open');
+      if (hamburger) {
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        hamburger.setAttribute('aria-label', 'Open menu');
+      }
     });
   }
 

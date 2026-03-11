@@ -43,6 +43,10 @@
   --color-border-hover: oklch(59%  0.160 200 / 0.42);
   --color-white:        oklch(99%  0.005 200);
 
+  /* Theme toggle: white bg + dark-teal icon (dark mode, shows sun) */
+  --toggle-bg:          var(--color-white);
+  --toggle-icon-color:  var(--color-lake-deep);
+
   /* Typography */
   --font: 'Inter', system-ui, -apple-system, sans-serif;
 
@@ -441,6 +445,41 @@ ul, ol { list-style: none; }
 
 .nav__mobile a:last-child { border-bottom: none; }
 .nav__mobile a:hover { color: var(--color-lake-light); }
+
+.nav__mobile-theme {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.75rem 0;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.2s;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.nav__mobile-theme:hover { color: var(--color-lake-light); }
+.nav__mobile-theme svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Dark mode: show sun icon, hide moon */
+.nav__mobile-theme .icon-moon { display: none; }
+.nav__mobile-theme .icon-sun { display: block; }
+/* Light mode: show moon icon, hide sun */
+body.theme-light .nav__mobile-theme .icon-moon { display: block; }
+body.theme-light .nav__mobile-theme .icon-sun { display: none; }
 
 /* ============================================================
    HERO
@@ -1551,13 +1590,8 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   .nav__cta { display: none; }
   .nav__hamburger { display: flex; }
   .nav__inner { padding-block-end: 0.35rem; }
-  .theme-toggle { width: 2.1rem; height: 2.1rem; order: -1; }
   .nav__logo { order: 0; }
   .nav__hamburger { order: 1; }
-  /* Tooltip anchored left on mobile (button is on left side) */
-  .theme-toggle__tip { left: 0; right: auto; transform: translateX(0) translateY(-4px); }
-  .theme-toggle--hint .theme-toggle__tip { transform: translateX(0) translateY(0); }
-  .theme-toggle__tip::before, .theme-toggle__tip::after { left: 1rem; right: auto; transform: none; }
 
   .hero__content { padding-block: 4rem 3rem; }
   .hero__actions { flex-direction: column; align-items: stretch; }
@@ -1697,15 +1731,15 @@ body {
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+  background: var(--toggle-bg);
+  border: 1px solid var(--color-lake-deep);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  color: var(--color-lake-light);
+  color: var(--toggle-icon-color);
   box-shadow: var(--shadow-card);
   transition:
     background 0.3s var(--ease),
@@ -1717,7 +1751,7 @@ body {
 }
 
 .theme-toggle:hover {
-  border-color: var(--color-border-hover);
+  border-color: var(--color-lake);
   transform: scale(1.1);
   box-shadow: 0 0 22px var(--color-lake-glow), var(--shadow-card);
 }
@@ -1793,24 +1827,28 @@ body {
     transform 0.4s var(--ease-spring);
 }
 
-/* Dark mode: show moon, hide sun */
+/* Dark mode: show sun (switch to light), hide moon */
 .theme-toggle .icon-moon {
+  opacity: 0;
+  transform: scale(0.4) rotate(-90deg);
+}
+.theme-toggle .icon-sun {
   opacity: 1;
   transform: scale(1) rotate(0deg);
 }
-.theme-toggle .icon-sun {
+
+/* Light mode: show moon (switch to dark), hide sun */
+body.theme-light .theme-toggle .icon-moon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+body.theme-light .theme-toggle .icon-sun {
   opacity: 0;
   transform: scale(0.4) rotate(90deg);
 }
 
-/* Light mode: show sun, hide moon */
-body.theme-light .theme-toggle .icon-moon {
-  opacity: 0;
-  transform: scale(0.4) rotate(-90deg);
-}
-body.theme-light .theme-toggle .icon-sun {
-  opacity: 1;
-  transform: scale(1) rotate(0deg);
+@media (max-width: 47.9375rem) {
+  .theme-toggle { display: none; }
 }
 
 /* ============================================================
@@ -1842,6 +1880,10 @@ body.theme-light {
   /* Shadows */
   --shadow-glow: 0 0 22px oklch(44% 0.152 200 / 0.18);
   --shadow-card: 0 4px 24px oklch(14% 0.025 210 / 0.08), 0 1px 4px oklch(14% 0.025 210 / 0.06);
+
+  /* Theme toggle: dark-teal bg + white icon (light mode, shows moon) */
+  --toggle-bg:          oklch(from var(--color-lake-deep) l c h / 0.7);
+  --toggle-icon-color:  var(--color-white);
 }
 
 /* ── Light body background: raw alpine lake image —
