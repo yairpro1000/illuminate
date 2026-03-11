@@ -3,6 +3,10 @@
 alter table bookings
   drop constraint if exists bookings_current_status_check;
 
+update bookings
+set current_status = 'COMPLETED'
+where current_status = 'CLOSED';
+
 alter table bookings
   add constraint bookings_current_status_check
   check (current_status in ('PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID', 'EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW', 'REFUNDED'));

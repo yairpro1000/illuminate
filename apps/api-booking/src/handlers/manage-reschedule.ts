@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
-import { resolveBookingByManageToken, rescheduleBooking } from '../services/booking-service.js';
+import { resolveBookingManageAccess, rescheduleBooking } from '../services/booking-service.js';
 
 // POST /api/bookings/reschedule
 // Body: { token: string, new_start: string, new_end: string, timezone?: string }
@@ -9,6 +9,7 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
   try {
     const body = await request.json() as Record<string, unknown>;
     const token = body['token'] as string | undefined;
+    const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
     const newStart = body['new_start'] as string | undefined;
     const newEnd = body['new_end'] as string | undefined;
 
@@ -29,7 +30,13 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       throw badRequest('token, new_start, and new_end are required');
     }
 
-    const booking = await resolveBookingByManageToken(token, ctx.providers.repository);
+    const access = await resolveBookingManageAccess(token, adminToken, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    });
+    const booking = access.booking;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_reschedule_started',
@@ -59,8 +66,8 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         requestId: ctx.requestId,
       },
       {
-        source: 'public_ui',
-        bypassPolicyWindow: false,
+        source: access.actorSource,
+        bypassPolicyWindow: access.bypassPolicyWindow,
       },
     );
     if (!result.ok) throw badRequest(result.message, result.code);

@@ -47,6 +47,7 @@ export interface Env {
   TURNSTILE_SECRET_KEY: string;
 
   JOB_SECRET: string; // Bearer token required on POST /api/jobs/:name
+  ADMIN_MANAGE_TOKEN_SECRET?: string;
 
   // R2 images
   IMAGES_BUCKET: R2Bucket;

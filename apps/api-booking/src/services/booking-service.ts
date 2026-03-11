@@ -11,7 +11,7 @@ import type {
   SessionTypeRecord,
 } from '../types.js';
 import type { CalendarEvent } from '../providers/calendar/interface.js';
-import { generateToken, hashToken } from './token-service.js';
+import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
@@ -582,6 +582,39 @@ export async function resolveBookingByManageToken(
   return booking;
 }
 
+export async function resolveBookingManageAccess(
+  rawToken: string,
+  rawAdminToken: string | null,
+  ctx: BookingContext,
+): Promise<{ booking: Booking; actorSource: 'public_ui' | 'admin_ui'; bypassPolicyWindow: boolean }> {
+  const booking = await resolveBookingByManageToken(rawToken, ctx.providers.repository);
+  if (!rawAdminToken) {
+    return { booking, actorSource: 'public_ui', bypassPolicyWindow: false };
+  }
+  const secret = (ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
+  if (!secret) {
+    return { booking, actorSource: 'public_ui', bypassPolicyWindow: false };
+  }
+  const verified = await verifyAdminManageToken(rawAdminToken, secret);
+  if (!verified || verified.bookingId !== booking.id) {
+    return { booking, actorSource: 'public_ui', bypassPolicyWindow: false };
+  }
+  return { booking, actorSource: 'admin_ui', bypassPolicyWindow: true };
+}
+
+export async function buildAdminManageUrl(
+  booking: Booking,
+  ctx: BookingContext,
+): Promise<{ url: string; adminToken: string; expiresAt: string }> {
+  const secret = (ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
+  if (!secret) throw badRequest('Admin manage token secret is not configured');
+  const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+  const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
+  const manageToken = generateStableManageToken(booking.id);
+  const url = `${ctx.env.SITE_URL}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
+  return { url, adminToken, expiresAt };
+}
+
 export async function cancelBooking(
   booking: Booking,
   ctx: BookingContext,
@@ -772,6 +805,7 @@ export async function rescheduleBooking(
     };
   }
 
+  const reschedulableStatuses: BookingCurrentStatus[] = ['PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID'];
   if (booking.event_id) {
     return {
       ok: false,
@@ -782,6 +816,14 @@ export async function rescheduleBooking(
   }
 
   if (isTerminalStatus(booking.current_status)) {
+    return {
+      ok: false,
+      code: 'INVALID_STATUS',
+      message: 'Booking cannot be rescheduled in its current state',
+      booking,
+    };
+  }
+  if (!reschedulableStatuses.includes(booking.current_status)) {
     return {
       ok: false,
       code: 'INVALID_STATUS',

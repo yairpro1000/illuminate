@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
-import { resolveBookingByManageToken, cancelBooking } from '../services/booking-service.js';
+import { cancelBooking, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // POST /api/bookings/cancel
 // Body: { token: string }
@@ -9,6 +9,7 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
   try {
     const body = await request.json() as Record<string, unknown>;
     const token = body['token'] as string | undefined;
+    const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
     if (!token) {
       ctx.logger.logWarn?.({
         source: 'backend',
@@ -23,7 +24,13 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       throw badRequest('token is required');
     }
 
-    const booking = await resolveBookingByManageToken(token, ctx.providers.repository);
+    const access = await resolveBookingManageAccess(token, adminToken, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    });
+    const booking = access.booking;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_cancel_started',
@@ -42,8 +49,8 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       logger: ctx.logger,
       requestId: ctx.requestId,
     }, {
-      source: 'public_ui',
-      bypassPolicyWindow: false,
+      source: access.actorSource,
+      bypassPolicyWindow: access.bypassPolicyWindow,
     });
     if (!result.ok) throw badRequest(result.message, result.code);
 

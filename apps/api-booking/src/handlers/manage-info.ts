@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
-import { evaluateManageBookingPolicy, resolveBookingByManageToken } from '../services/booking-service.js';
+import { evaluateManageBookingPolicy, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // GET /api/bookings/manage?token=<raw>
 export async function handleManageInfo(request: Request, ctx: AppContext): Promise<Response> {
@@ -8,6 +8,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
   try {
     const url = new URL(request.url);
     const token = url.searchParams.get('token');
+    const adminToken = url.searchParams.get('admin_token');
     if (!token) {
       ctx.logger.logWarn?.({
         source: 'backend',
@@ -33,7 +34,13 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       },
     });
 
-    const booking = await resolveBookingByManageToken(token, ctx.providers.repository);
+    const access = await resolveBookingManageAccess(token, adminToken, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    });
+    const booking = access.booking;
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
     const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
     const policy = evaluateManageBookingPolicy(booking.starts_at);
@@ -41,8 +48,11 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
 
     const source = booking.event_id ? 'event' : 'session';
     const blockedStatuses = ['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW', 'REFUNDED'];
-    const canReschedule = source === 'session' && policy.canSelfServeChange && !blockedStatuses.includes(booking.current_status);
-    const canCancel = policy.canSelfServeChange && !blockedStatuses.includes(booking.current_status);
+    const canReschedule = source === 'session'
+      && (access.bypassPolicyWindow || policy.canSelfServeChange)
+      && !blockedStatuses.includes(booking.current_status);
+    const canCancel = (access.bypassPolicyWindow || policy.canSelfServeChange)
+      && !blockedStatuses.includes(booking.current_status);
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_actions_gate_decision',
@@ -55,6 +65,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         starts_at: booking.starts_at,
         hours_before_start: policy.hoursBeforeStart,
         paid,
+        actor_source: access.actorSource,
+        policy_bypass_applied: access.bypassPolicyWindow,
         can_reschedule: canReschedule,
         can_cancel: canCancel,
         branch_taken: 'return_manage_booking_payload',
@@ -85,7 +97,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       is_paid: paid,
       policy: {
         text: policy.policyText,
-        can_self_serve_change: policy.canSelfServeChange,
+        can_self_serve_change: access.bypassPolicyWindow ? true : policy.canSelfServeChange,
         lock_window_hours: 24,
         locked_message: 'This session starts in less than 24 hours.\nAccording to the booking policy:\n• cancellations are not refundable\n• rescheduling is no longer available online\nIf you have an emergency, please contact Yair directly.',
       },

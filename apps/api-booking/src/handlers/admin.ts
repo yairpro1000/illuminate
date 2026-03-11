@@ -5,7 +5,7 @@ import type { BookingCurrentStatus, EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { generateToken, hashToken } from '../services/token-service.js';
-import { cancelBooking, rescheduleBooking } from '../services/booking-service.js';
+import { buildAdminManageUrl } from '../services/booking-service.js';
 import {
   SERVICE_MODES,
   getAllOverrides,
@@ -240,43 +240,39 @@ export async function handleAdminUpdateBooking(
         await ctx.providers.repository.updateBooking(booking.id, updates);
       }
 
-      const action = typeof bookingPatch.action === 'string' ? bookingPatch.action : null;
-      if (action === 'cancel') {
-        const result = await cancelBooking(booking, {
-          providers: ctx.providers,
-          env: ctx.env,
-          logger: ctx.logger,
-          requestId: ctx.requestId,
-        }, {
-          source: 'admin_ui',
-          bypassPolicyWindow: true,
-        });
-        if (!result.ok) throw badRequest(result.message, result.code);
-      }
-      if (action === 'reschedule') {
-        const newStart = typeof bookingPatch.new_start === 'string' ? bookingPatch.new_start : null;
-        const newEnd = typeof bookingPatch.new_end === 'string' ? bookingPatch.new_end : null;
-        if (!newStart || !newEnd) throw badRequest('new_start and new_end are required for reschedule action');
-        const result = await rescheduleBooking(booking, {
-          newStart,
-          newEnd,
-          timezone: typeof bookingPatch.timezone === 'string' ? bookingPatch.timezone : booking.timezone,
-        }, {
-          providers: ctx.providers,
-          env: ctx.env,
-          logger: ctx.logger,
-          requestId: ctx.requestId,
-        }, {
-          source: 'admin_ui',
-          bypassPolicyWindow: true,
-        });
-        if (!result.ok) throw badRequest(result.message, result.code);
-      }
     }
 
     const refreshedRows = await ctx.providers.repository.getOrganizerBookings({ client_id: booking.client_id });
     const refreshed = refreshedRows.find((row) => row.booking_id === booking.id) ?? null;
     return ok({ ok: true, booking: refreshed });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// POST /api/admin/bookings/:bookingId/manage-link
+export async function handleAdminCreateBookingManageLink(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  try {
+    await requireAdminAccess(request, ctx.env);
+    const bookingId = params.bookingId?.trim();
+    if (!bookingId) throw badRequest('bookingId is required');
+    const booking = await ctx.providers.repository.getBookingById(bookingId);
+    if (!booking) throw notFound('Booking not found');
+    const link = await buildAdminManageUrl(booking, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+    });
+    return ok({
+      booking_id: booking.id,
+      url: link.url,
+      expires_at: link.expiresAt,
+    });
   } catch (err) {
     return errorResponse(err);
   }

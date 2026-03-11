@@ -3,6 +3,7 @@
   const API_BASE = window.getSiteApiBase ? window.getSiteApiBase() : (window.API_BASE || '');
   const params = new URLSearchParams(window.location.search);
   const token  = params.get('token');
+  const adminToken = params.get('admin_token');
   const card   = document.getElementById('manage-card');
 
   function renderLoadError(title, message) {
@@ -61,7 +62,9 @@
 
   let data;
   try {
-    const res = await fetch(`${API_BASE}/api/bookings/manage?token=${encodeURIComponent(token)}`);
+    const query = new URLSearchParams({ token });
+    if (adminToken) query.set('admin_token', adminToken);
+    const res = await fetch(`${API_BASE}/api/bookings/manage?${query.toString()}`);
     data = await parseResponseBody(res);
     if (!res.ok) {
       const message = typeof data?.message === 'string' ? data.message : '';
@@ -75,7 +78,14 @@
   const isBooking = data.source === 'session';
   const cancellable = Boolean(data.actions && data.actions.can_cancel);
   const reschedulable = Boolean(data.actions && data.actions.can_reschedule);
-  const rescheduleHref = `book.html?type=${encodeURIComponent(data.session_type || 'intro')}&mode=reschedule&token=${encodeURIComponent(token)}&id=${encodeURIComponent(data.booking_id)}`;
+  const rescheduleParams = new URLSearchParams({
+    type: data.session_type || 'intro',
+    mode: 'reschedule',
+    token,
+    id: data.booking_id,
+  });
+  if (adminToken) rescheduleParams.set('admin_token', adminToken);
+  const rescheduleHref = `book.html?${rescheduleParams.toString()}`;
   const policyText = data.policy?.text || '';
   const lockedMessage = data.policy?.locked_message || '';
   const showLockedMessage = Boolean(data.policy && data.policy.can_self_serve_change === false);
@@ -126,7 +136,7 @@
         const res = await fetch(`${API_BASE}/api/bookings/cancel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify(adminToken ? { token, admin_token: adminToken } : { token }),
         });
         const result = await parseResponseBody(res);
         if (!res.ok) {

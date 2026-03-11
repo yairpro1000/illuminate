@@ -44,6 +44,7 @@ function parseBookingContext() {
     slotType,
     mode,
     manageToken: p.get('token') || '',
+    adminToken: p.get('admin_token') || '',
     bookingId: p.get('id') || '',
   };
 }
@@ -1077,6 +1078,7 @@ async function submitReschedule() {
     new_start: S.selectedSlot.start,
     new_end:   S.selectedSlot.end,
     timezone:  'Europe/Zurich',
+    ...(CTX.adminToken ? { admin_token: CTX.adminToken } : {}),
   };
 
   if (BOOK_OBS) BOOK_OBS.logMilestone('checkout_started', { flow: 'site_reschedule', booking_id: CTX.bookingId });
@@ -1111,6 +1113,7 @@ async function loadRescheduleContext() {
   if (!CTX.manageToken || !CTX.bookingId) throw new Error('Invalid reschedule link.');
 
   const params = new URLSearchParams({ token: CTX.manageToken });
+  if (CTX.adminToken) params.set('admin_token', CTX.adminToken);
   const data = await _get('/api/bookings/manage?' + params.toString());
   S.currentBooking = data;
   S.firstName = data.client?.first_name || '';
