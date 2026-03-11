@@ -1,6 +1,21 @@
 const rawBase = (import.meta as any).env?.VITE_API_BASE ?? "/api";
 const API_BASE = String(rawBase).trim().replace(/\/+$/g, "");
 const OBS_ENDPOINT = `${API_BASE}/observability/frontend`;
+const obsEnabledRaw = (import.meta as any).env?.VITE_FRONTEND_OBSERVABILITY_ENABLED;
+const localHosts = new Set(["localhost", "127.0.0.1", "::1"]);
+const isLocalHost = typeof window !== "undefined" && localHosts.has(window.location.hostname);
+
+function parseBooleanFlag(value: unknown): boolean | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return null;
+}
+
+const parsedObsEnabled = parseBooleanFlag(obsEnabledRaw);
+let observabilityEnabled = parsedObsEnabled ?? isLocalHost;
 let currentFlowId =
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? (crypto as any).randomUUID()
@@ -58,9 +73,10 @@ function baseEvent(payload: Record<string, unknown>) {
 }
 
 async function send(payload: Record<string, unknown>) {
+  if (!observabilityEnabled) return;
   try {
     const event = baseEvent(payload);
-    await fetch(OBS_ENDPOINT, {
+    const res = await fetch(OBS_ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -71,6 +87,8 @@ async function send(payload: Record<string, unknown>) {
       keepalive: true,
       body: JSON.stringify(event),
     });
+    // Endpoint unavailable on this deployment: stop retrying to avoid console noise.
+    if (!res.ok && (res.status === 404 || res.status === 405)) observabilityEnabled = false;
   } catch {
     // Best-effort only.
   }

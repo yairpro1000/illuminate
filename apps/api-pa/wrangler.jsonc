@@ -3,11 +3,14 @@
   "name": "letsilluminate-api-pa",
   "main": "src/index.ts",
   "compatibility_date": "2026-03-05",
+  // Production route ownership for deployed worker.
+  // Local `wrangler dev` still serves on localhost and does not require this host for PA_DEV_EMAIL bypass.
   "routes": [
     { "pattern": "pa.letsilluminate.co/api/*", "zone_name": "letsilluminate.co" }
   ],
   "vars": {
-    "PA_ADMIN_USER": "admin",
+    "PA_ADMIN_USER": "yairpro@gmail.com",
+    "PA_DEV_EMAIL": "yairpro@gmail.com",
     "PA_LLM_PROVIDER": "openai",
     "OPENAI_MODEL": "gpt-4.1-nano",
     "PA_LOG_LLM_TEXT": "1",
@@ -37,6 +40,5 @@
 
   // Secrets (set via `wrangler secret put`):
   // - SUPABASE_SECRET_KEY
-  // - PA_DEV_EMAIL (optional localhost-only Access bypass)
   // - OPENAI_API_KEY (optional)
 }

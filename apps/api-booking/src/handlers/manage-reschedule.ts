@@ -1,10 +1,11 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
 import { resolveBookingByManageToken, rescheduleBooking } from '../services/booking-service.js';
 
 // POST /api/bookings/reschedule
 // Body: { token: string, new_start: string, new_end: string, timezone?: string }
 export async function handleManageReschedule(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
     const body = await request.json() as Record<string, unknown>;
     const token = body['token'] as string | undefined;
@@ -12,10 +13,38 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
     const newEnd = body['new_end'] as string | undefined;
 
     if (!token || !newStart || !newEnd) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'manage_booking_reschedule_input_gate_decision',
+        message: 'Manage booking reschedule request denied because required fields were missing',
+        context: {
+          path,
+          has_token: Boolean(token),
+          has_new_start: Boolean(newStart),
+          has_new_end: Boolean(newEnd),
+          branch_taken: 'deny_missing_required_fields',
+          deny_reason: 'token_new_start_or_new_end_missing',
+        },
+      });
       throw badRequest('token, new_start, and new_end are required');
     }
 
     const booking = await resolveBookingByManageToken(token, ctx.providers.repository);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'manage_booking_reschedule_started',
+      message: 'Starting public manage-booking reschedule',
+      context: {
+        path,
+        booking_id: booking.id,
+        booking_status: booking.current_status,
+        new_start: newStart,
+        new_end: newEnd,
+        timezone: (body['timezone'] as string | undefined) ?? booking.timezone,
+        branch_taken: 'reschedule_booking',
+      },
+    });
+
     const updated = await rescheduleBooking(
       booking,
       {
@@ -31,6 +60,20 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       },
     );
 
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'manage_booking_reschedule_completed',
+      message: 'Public manage-booking reschedule completed',
+      context: {
+        path,
+        booking_id: updated.id,
+        updated_status: updated.current_status,
+        updated_start: updated.starts_at,
+        updated_end: updated.ends_at,
+        branch_taken: 'return_reschedule_success',
+      },
+    });
+
     return ok({
       booking_id: updated.id,
       status: updated.current_status,
@@ -39,6 +82,33 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       timezone: updated.timezone,
     });
   } catch (err) {
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'manage_booking_reschedule_failed',
+        message: err.message,
+        context: {
+          path,
+          status_code: statusCode,
+          error_code: err.code,
+          branch_taken: 'handled_api_error',
+          deny_reason: err.message,
+        },
+      });
+    } else {
+      ctx.logger.captureException({
+        source: 'backend',
+        eventType: 'uncaught_exception',
+        message: 'Manage booking reschedule failed unexpectedly',
+        error: err,
+        context: {
+          path,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    }
     return errorResponse(err);
   }
 }

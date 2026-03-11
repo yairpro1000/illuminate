@@ -558,6 +558,9 @@ export async function resolveBookingByManageToken(
 ): Promise<Booking> {
   const parsed = parseStableManageToken(rawToken);
   const bookingId = parsed?.bookingId ?? rawToken;
+  if (!isUuidLike(bookingId)) {
+    throw badRequest('Invalid manage token');
+  }
 
   const booking = await repository.getBookingById(bookingId);
   if (!booking) throw notFound('Booking not found');
@@ -976,6 +979,10 @@ function parseStableManageToken(rawToken: string): { bookingId: string } | null 
     return { bookingId: parts[1] };
   }
   return null;
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: BookingContext): Promise<void> {

@@ -5,6 +5,14 @@
   const token  = params.get('token');
   const card   = document.getElementById('manage-card');
 
+  function renderLoadError(title, message) {
+    card.innerHTML = `
+      <h1 class="manage-title">${title}</h1>
+      <p class="manage-subtitle">${message}</p>
+      <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
+    `;
+  }
+
   function statusBadge(status) {
     const cls = ['confirmed','cash_ok'].includes(status)
       ? 'confirmed'
@@ -22,18 +30,45 @@
     });
   }
 
+  async function parseResponseBody(res) {
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+      return await res.json();
+    }
+
+    const text = await res.text();
+    const trimmed = text.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try { return JSON.parse(text); } catch (_) {}
+    }
+    return { message: text.slice(0, 300) };
+  }
+
+  function toFriendlyError(status, message) {
+    if (status === 400 || status === 404) {
+      return 'This manage link is invalid or expired. Please use the latest link from your email.';
+    }
+    if (status >= 500) {
+      return 'We could not open your booking right now. Please try again in a moment.';
+    }
+    return message || 'Could not load booking details.';
+  }
+
   if (!token) {
-    card.innerHTML = '<p style="color:oklch(50% 0.15 25)">Invalid manage link. Please use the link from your email.</p>';
+    renderLoadError('Invalid Manage Link', 'Please use the latest manage link from your email.');
     return;
   }
 
   let data;
   try {
     const res = await fetch(`${API_BASE}/api/bookings/manage?token=${encodeURIComponent(token)}`);
-    data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Error');
+    data = await parseResponseBody(res);
+    if (!res.ok) {
+      const message = typeof data?.message === 'string' ? data.message : '';
+      throw Object.assign(new Error(toFriendlyError(res.status, message)), { status: res.status });
+    }
   } catch (err) {
-    card.innerHTML = `<p style="color:oklch(50% 0.15 25)">${err.message || 'Could not load booking details.'}</p><a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>`;
+    renderLoadError('Could Not Open Booking', err.message || 'Could not load booking details.');
     return;
   }
 
@@ -84,8 +119,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
         });
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.message || 'Error');
+        const result = await parseResponseBody(res);
+        if (!res.ok) {
+          const resultMessage = typeof result?.message === 'string' ? result.message : '';
+          throw new Error(toFriendlyError(res.status, resultMessage));
+        }
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
@@ -95,7 +133,7 @@
       } catch (err) {
         document.getElementById('cancel-yes').textContent = 'Yes, cancel';
         document.getElementById('cancel-yes').disabled = false;
-        alert('Could not cancel: ' + (err.message || 'Unknown error'));
+        alert(err.message || 'Could not cancel booking.');
       }
     });
   }

@@ -51,8 +51,25 @@ export function App() {
       : config?.llmProvider
         ? config.llmProvider
         : "—";
+  const isLocalHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "127.0.0.1" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "::1");
 
   if (!me) {
+    if (isLocalHost) {
+      return (
+        <>
+          {err ? (
+            <div className="container">
+              <div className="card error">API: {err}</div>
+            </div>
+          ) : null}
+          <Main email="local-dev" llmLabel={llmLabel} />
+        </>
+      );
+    }
     return (
       <div className="container">
         <div className="card">Loading…</div>
@@ -61,6 +78,18 @@ export function App() {
   }
 
   if (!me.user) {
+    if (isLocalHost) {
+      return (
+        <>
+          {err ? (
+            <div className="container">
+              <div className="card error">API: {err}</div>
+            </div>
+          ) : null}
+          <Main email="local-dev" llmLabel={llmLabel} />
+        </>
+      );
+    }
     return (
       <div className="container">
         <div className="topbar">
@@ -70,17 +99,18 @@ export function App() {
               <span className="muted">LLM</span>
               <span>{llmLabel}</span>
             </div>
-            <div className="muted small">Cloudflare Access • Supabase</div>
+            <div className="muted small">Supabase</div>
           </div>
         </div>
         {err ? <div className="card error">API: {err}</div> : null}
         <div className="card" style={{ maxWidth: 620 }}>
           <div className="title" style={{ marginBottom: 8 }}>
-            Access required
+            Authentication required
           </div>
           <div className="muted small">
-            This app is protected by Cloudflare Access. If you can see this page, Access is either not configured for
-            this route, or the API is not reachable.
+            {isLocalHost
+              ? "Local API auth was not resolved. Verify apps/api-pa is running with PA_DEV_EMAIL and that GET /api/me returns 200."
+              : "Your authenticated session is missing or expired. Reload to continue."}
           </div>
           <div style={{ marginTop: 12 }} className="btnrow">
             <button className="primary" onClick={refresh}>

@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import type { Db } from "./repo/supabase";
+import { getLogger } from "./observability";
 
 function normalizeEmailLike(raw: string): string {
   let s = String(raw ?? "").trim();
@@ -22,33 +23,120 @@ function headerValue(c: Context, name: string): string | null {
 function isLocalhostRequest(c: Context): boolean {
   try {
     const url = new URL(c.req.url);
-    return url.hostname === "127.0.0.1" || url.hostname === "localhost";
+    const host = url.hostname.toLowerCase();
+    return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "0.0.0.0";
   } catch {
     return false;
   }
 }
 
-export function getAccessEmail(c: Context): string | null {
+type AccessDecision =
+  | {
+      allowed: true;
+      email: string;
+      branch: "cf_access_header" | "localhost_dev_email";
+      host: string;
+      devEmailConfigured: boolean;
+    }
+  | {
+      allowed: false;
+      denyReason: "missing_access_header_and_no_local_bypass" | "non_localhost_request_for_dev_bypass";
+      branch: "deny";
+      host: string;
+      devEmailConfigured: boolean;
+    };
+
+function resolveAccessDecision(c: Context): AccessDecision {
+  const host = (() => {
+    try {
+      return new URL(c.req.url).hostname.toLowerCase();
+    } catch {
+      return "unknown_host";
+    }
+  })();
   const fromAccess =
     headerValue(c, "cf-access-authenticated-user-email") ??
     headerValue(c, "Cf-Access-Authenticated-User-Email");
-  if (fromAccess) return normalizeEmailLike(fromAccess);
+  if (fromAccess) {
+    return {
+      allowed: true,
+      email: normalizeEmailLike(fromAccess),
+      branch: "cf_access_header",
+      host,
+      devEmailConfigured: Boolean((c as any)?.env?.PA_DEV_EMAIL),
+    };
+  }
 
   // Local dev fallback: allow bypassing Access only on localhost and only when explicitly configured.
   const devEmail = (c as any)?.env?.PA_DEV_EMAIL;
-  if (typeof devEmail === "string" && devEmail.trim() && isLocalhostRequest(c)) return normalizeEmailLike(devEmail);
+  const devEmailConfigured = typeof devEmail === "string" && Boolean(devEmail.trim());
+  const localhostRequest = isLocalhostRequest(c);
+  if (devEmailConfigured && localhostRequest) {
+    return {
+      allowed: true,
+      email: normalizeEmailLike(devEmail),
+      branch: "localhost_dev_email",
+      host,
+      devEmailConfigured: true,
+    };
+  }
 
-  return null;
+  if (devEmailConfigured && !localhostRequest) {
+    return {
+      allowed: false,
+      branch: "deny",
+      denyReason: "non_localhost_request_for_dev_bypass",
+      host,
+      devEmailConfigured: true,
+    };
+  }
+
+  return {
+    allowed: false,
+    branch: "deny",
+    denyReason: "missing_access_header_and_no_local_bypass",
+    host,
+    devEmailConfigured,
+  };
+}
+
+export function getAccessEmail(c: Context): string | null {
+  const decision = resolveAccessDecision(c);
+  return decision.allowed ? decision.email : null;
 }
 
 export function requireAccess(c: Context): { email: string } {
-  const email = getAccessEmail(c);
-  if (!email) {
+  const logger = getLogger(c);
+  const decision = resolveAccessDecision(c);
+  logger.logMilestone("auth_access_evaluated", {
+    auth_branch: decision.branch,
+    auth_allowed: decision.allowed,
+    auth_host: decision.host,
+    auth_dev_email_configured: decision.devEmailConfigured,
+    auth_deny_reason: decision.allowed ? null : decision.denyReason,
+  });
+  if (!decision.allowed) {
     const err = new Error("unauthorized");
     (err as any).status = 401;
+    (err as any).details = `auth denied: ${decision.denyReason}; host=${decision.host}; devEmailConfigured=${decision.devEmailConfigured}`;
+    logger.logWarn({
+      eventType: "auth_denied",
+      message: "Access denied by auth gate.",
+      context: {
+        auth_branch: decision.branch,
+        auth_host: decision.host,
+        auth_dev_email_configured: decision.devEmailConfigured,
+        auth_deny_reason: decision.denyReason,
+      },
+    });
     throw err;
   }
-  return { email };
+  logger.logMilestone("auth_access_granted", {
+    auth_branch: decision.branch,
+    auth_host: decision.host,
+    auth_dev_email_configured: decision.devEmailConfigured,
+  });
+  return { email: decision.email };
 }
 
 const userIdCache = new Map<string, { userId: string; expiresAt: number }>();
