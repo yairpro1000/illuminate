@@ -3,6 +3,12 @@ import type { TimeSlot } from '../../types.js';
 import type { Logger } from '../../lib/observability.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
 
+/**
+ * Intentional split auth model for Google Calendar provider:
+ * - Availability reads (getBusyTimes/freeBusy) use service-account JWT credentials.
+ * - Booking writes (createEvent/updateEvent/deleteEvent) use OAuth refresh-token credentials.
+ * Canonical reference: docs/calendar_integration.md -> "Google Calendar Auth Model (Canonical)".
+ */
 interface GoogleEnv {
   GOOGLE_CLIENT_CALENDAR: string;
   GOOGLE_CLIENT_SECRET_CALENDAR: string;

@@ -14,19 +14,20 @@
       padding: 3rem 1rem;
     }
     .manage-card {
-      background: var(--color-surface, #fff);
-      border-radius: 1rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
       padding: 2.5rem 2rem;
       max-width: 520px;
       width: 100%;
-      box-shadow: 0 2px 24px rgba(0,0,0,.08);
+      box-shadow: var(--shadow-card);
     }
-    .manage-title { font-size: 1.5rem; font-weight: 700; margin: 0 0 .25rem; }
-    .manage-subtitle { color: var(--color-muted, #666); margin: 0 0 2rem; }
+    .manage-title { font-size: 1.5rem; font-weight: 700; margin: 0 0 .25rem; color: var(--color-text); }
+    .manage-subtitle { color: var(--color-text-muted); margin: 0 0 2rem; }
     .detail-table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
     .detail-table th, .detail-table td { padding: .5rem 0; vertical-align: top; text-align: left; }
-    .detail-table th { color: var(--color-muted, #888); font-weight: 500; width: 40%; font-size: .9rem; }
-    .detail-table td { font-weight: 600; }
+    .detail-table th { color: var(--color-text-muted); font-weight: 500; width: 40%; font-size: .9rem; }
+    .detail-table td { font-weight: 600; color: var(--color-text); }
     .status-badge {
       display: inline-block;
       padding: .25rem .75rem;
@@ -36,22 +37,30 @@
       text-transform: uppercase;
       letter-spacing: .05em;
     }
-    .status-badge--confirmed  { background: oklch(90% 0.08 150); color: oklch(40% 0.12 150); }
-    .status-badge--pending    { background: oklch(95% 0.08 60);  color: oklch(45% 0.12 60); }
-    .status-badge--cancelled  { background: oklch(93% 0.05 0);   color: oklch(45% 0.1 0); }
+    /* Dark-mode first */
+    .status-badge--confirmed { background: oklch(40% 0.12 150 / 0.25); color: oklch(73% 0.12 150); }
+    .status-badge--pending   { background: oklch(40% 0.12 60  / 0.25); color: oklch(78% 0.10 60); }
+    .status-badge--cancelled { background: oklch(40% 0.02 210 / 0.20); color: var(--color-text-muted); }
+    /* Light-mode overrides */
+    body.theme-light .status-badge--confirmed { background: oklch(90% 0.08 150); color: oklch(35% 0.12 150); }
+    body.theme-light .status-badge--pending   { background: oklch(95% 0.08 60);  color: oklch(40% 0.12 60); }
+    body.theme-light .status-badge--cancelled { background: oklch(92% 0.03 210); color: oklch(40% 0.02 210); }
     .manage-actions { display: flex; gap: 1rem; flex-wrap: wrap; }
     .confirm-dialog {
       position: fixed; inset: 0;
-      background: rgba(0,0,0,.5);
+      background: oklch(0% 0 0 / 0.6);
       display: flex; align-items: center; justify-content: center;
       padding: 1rem; z-index: 100;
     }
     .confirm-dialog__box {
-      background: #fff; border-radius: 1rem; padding: 2rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 2rem;
       max-width: 400px; width: 100%;
     }
-    .confirm-dialog__title { font-size: 1.1rem; font-weight: 700; margin: 0 0 .5rem; }
-    .confirm-dialog__msg   { color: var(--color-muted,#666); margin: 0 0 1.5rem; }
+    .confirm-dialog__title { font-size: 1.1rem; font-weight: 700; margin: 0 0 .5rem; color: var(--color-text); }
+    .confirm-dialog__msg   { color: var(--color-text-muted); margin: 0 0 1.5rem; }
     .confirm-dialog__btns  { display: flex; gap: .75rem; justify-content: flex-end; }
     [hidden] { display: none !important; }
   </style>

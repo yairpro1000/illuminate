@@ -14,17 +14,18 @@
       padding: 2rem 1rem;
     }
     .result-card {
-      background: var(--color-surface, #fff);
-      border-radius: 1rem;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
       padding: 3rem 2rem;
       max-width: 480px;
       width: 100%;
       text-align: center;
-      box-shadow: 0 2px 24px rgba(0,0,0,.08);
+      box-shadow: var(--shadow-card);
     }
     .result-icon { width: 72px; height: 72px; margin: 0 auto 1.5rem; }
-    .result-title { font-size: 1.75rem; font-weight: 700; margin: 0 0 .75rem; }
-    .result-msg { color: var(--color-muted, #666); margin: 0 0 2rem; line-height: 1.6; }
+    .result-title { font-size: 1.75rem; font-weight: 700; margin: 0 0 .75rem; color: var(--color-text); }
+    .result-msg { color: var(--color-text-muted); margin: 0 0 2rem; line-height: 1.6; }
     .result-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
   </style>
 </head>

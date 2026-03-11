@@ -63,6 +63,23 @@ For local `wrangler dev --env local`, email and calendar also remain mocked by d
 - `ADMIN_ALLOWED_EMAILS` or `ADMIN_DEV_EMAIL` for organizer access
 - optional real-provider secrets only if intentionally testing non-mock paths
 
+If `CALENDAR_MODE=google`, set both calendar auth groups:
+
+- Shared calendar id (both paths):
+  - `GOOGLE_CALENDAR_ID`
+- Availability-read path (service account, `getBusyTimes`/`freeBusy`):
+  - `GOOGLE_CLIENT_EMAIL`
+  - `GOOGLE_PRIVATE_KEY`
+  - `GOOGLE_TOKEN_URI`
+- Booking-write path (OAuth refresh token, `createEvent`/`updateEvent`/`deleteEvent`):
+  - `GOOGLE_CLIENT_CALENDAR`
+  - `GOOGLE_CLIENT_SECRET_CALENDAR`
+  - `GOOGLE_REFRESH_TOKEN_CALENDAR`
+
+Canonical split-auth reference:
+
+- [docs/calendar_integration.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/calendar_integration.md) section "Google Calendar Auth Model (Canonical)".
+
 ### PA worker
 
 - `SUPABASE_SECRET_KEY`

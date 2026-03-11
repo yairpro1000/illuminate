@@ -1725,10 +1725,13 @@ async function ensureCheckoutForBooking(
   chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'>,
   ctx: BookingContext,
 ): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string }> {
+  const checkoutWindowMs = DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000;
   const existing = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   if (existing?.checkout_url) {
     const event = await ctx.providers.repository.getLatestBookingEvent(booking.id);
-    const fallbackExpiry = event ? new Date(new Date(event.created_at).getTime() + 45 * 60_000).toISOString() : new Date(Date.now() + 45 * 60_000).toISOString();
+    const fallbackExpiry = event
+      ? new Date(new Date(event.created_at).getTime() + checkoutWindowMs).toISOString()
+      : new Date(Date.now() + checkoutWindowMs).toISOString();
     return {
       checkoutUrl: existing.checkout_url,
       expiresAt: fallbackExpiry,
@@ -1765,8 +1768,8 @@ async function ensureCheckoutForBooking(
 
   const latestEvent = await ctx.providers.repository.getLatestBookingEvent(booking.id);
   const expiresAt = latestEvent
-    ? new Date(new Date(latestEvent.created_at).getTime() + 45 * 60_000).toISOString()
-    : new Date(Date.now() + 45 * 60_000).toISOString();
+    ? new Date(new Date(latestEvent.created_at).getTime() + checkoutWindowMs).toISOString()
+    : new Date(Date.now() + checkoutWindowMs).toISOString();
 
   return {
     checkoutUrl: session.checkoutUrl,

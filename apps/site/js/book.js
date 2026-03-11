@@ -708,7 +708,6 @@ function buildConfirmation() {
   if (!isPaid) {
     const isConfirmedNow = S.submissionStatus === 'confirmed';
     const noun = isEvent ? 'registration' : 'booking';
-    const confirmWindowMinutes = isEvent ? 15 : 60;
     const widget = _buildConfirmationWidget(isEvent);
     return `
       <div class="confirmation">
@@ -729,7 +728,7 @@ function buildConfirmation() {
             isConfirmedNow
               ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.`
               : `A confirmation email is on its way to <strong>${escHtml(S.email)}</strong>.
-          Please confirm your ${noun} within ${confirmWindowMinutes} minutes.`
+          Please confirm your ${noun} using the link in that email.`
           }
         </p>
         ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}

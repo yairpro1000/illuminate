@@ -20,6 +20,7 @@ import {
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
+import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
 
 export interface JobContext {
   providers: Providers;
@@ -756,7 +757,12 @@ async function executeSideEffect(
       if (alreadySettled) return;
 
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
-      await ctx.providers.email.sendBookingPaymentDue(booking, payUrl, manageUrl);
+      await ctx.providers.email.sendBookingPaymentDue(
+        booking,
+        payUrl,
+        manageUrl,
+        DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+      );
       ctx.logger.logInfo({
         source: jobLogSource(ctx),
         eventType: 'checkout_followup_payment_link_sent',

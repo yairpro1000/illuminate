@@ -22,14 +22,18 @@ export interface Env {
 
   RESEND_API_KEY: string;
 
+  // Used by both calendar paths (availability reads and booking writes).
   GOOGLE_CALENDAR_ID: string;
 
-  // Google Calendar OAuth refresh-token credentials (used by GoogleCalendarProvider)
+  // Google Calendar OAuth refresh-token credentials.
+  // Used only by calendar write operations: createEvent/updateEvent/deleteEvent.
   GOOGLE_CLIENT_CALENDAR: string;
   GOOGLE_CLIENT_SECRET_CALENDAR: string;
   GOOGLE_REFRESH_TOKEN_CALENDAR: string;
 
-  // Service account credentials (used by Google Calendar freeBusy reads + Google Drive backup)
+  // Service account credentials.
+  // Used by calendar availability reads: getBusyTimes/freeBusy.
+  // Also reused by optional Google Drive backup code.
   GOOGLE_CLIENT_EMAIL: string;
   GOOGLE_PRIVATE_KEY: string;
   GOOGLE_TOKEN_URI: string;

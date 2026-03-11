@@ -16,7 +16,10 @@
       "WebFetch(domain:developers.cloudflare.com)",
       "Bash(git checkout:*)",
       "Bash(npx wrangler:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cd apps/api-booking && bun tsc --noEmit 2>&1 | head -40)",
+      "Bash(which node:*)",
+      "Bash(ls /Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/node_modules/.bin/tsc 2>/dev/null && /Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/node_modules/.bin/tsc --noEmit -p apps/api-booking/tsconfig.json 2>&1 | head -40)"
     ]
   }
 }

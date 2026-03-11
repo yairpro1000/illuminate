@@ -23,7 +23,12 @@ export interface IEmailProvider {
   sendBookingConfirmRequest(booking: Booking, confirmUrl: string): Promise<SendResult>;
 
   /** Checkout follow-up: payment not completed and hold nearing expiry. */
-  sendBookingPaymentDue(booking: Booking, payUrl: string, manageUrl: string): Promise<SendResult>;
+  sendBookingPaymentDue(
+    booking: Booking,
+    payUrl: string,
+    manageUrl: string,
+    expiryGraceMinutes: number,
+  ): Promise<SendResult>;
 
   /** Session confirmation after payment/cash. */
   sendBookingConfirmation(

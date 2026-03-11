@@ -122,12 +122,18 @@ export class MockEmailProvider implements IEmailProvider {
     );
   }
 
-  async sendBookingPaymentDue(booking: Booking, payUrl: string, manageUrl: string): Promise<SendResult> {
+  async sendBookingPaymentDue(
+    booking: Booking,
+    payUrl: string,
+    manageUrl: string,
+    expiryGraceMinutes: number,
+  ): Promise<SendResult> {
+    const expiryGraceLabel = `${expiryGraceMinutes} minutes`;
     return this.send(
       clientEmail(booking),
       'booking_payment_due',
-      'Action needed: complete payment in 15 minutes',
-      `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in 15 minutes unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
+      `Action needed: complete payment in ${expiryGraceLabel}`,
+      `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in ${expiryGraceLabel} unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
     );
   }
 
