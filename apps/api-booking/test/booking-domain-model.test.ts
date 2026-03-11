@@ -228,9 +228,31 @@ describe('booking domain model', () => {
       (email) => email.kind === 'booking_confirmation' && email.to === 'maya@example.com',
     );
     expect(finalConfirmationEmail).toBeTruthy();
-    expect(finalConfirmationEmail?.body).toContain('Manage: https://example.com/manage.html?token=');
+    expect(finalConfirmationEmail?.subject).toContain('is confirmed');
+    expect(finalConfirmationEmail?.body).toContain('Your session is confirmed.');
+    expect(finalConfirmationEmail?.body).toContain('Session: ');
+    expect(finalConfirmationEmail?.body).toContain('Time: ');
+    expect(finalConfirmationEmail?.body).toContain('A calendar invitation has been sent to you.');
+    expect(finalConfirmationEmail?.body).toContain('Need to reschedule or cancel?');
+    expect(finalConfirmationEmail?.body).toContain('Manage booking: https://example.com/manage.html?token=');
     expect(finalConfirmationEmail?.body).toContain('Complete payment:');
     expect(finalConfirmationEmail?.body).toContain(payment?.checkout_url ?? '');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirmation_email_dispatch_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'allow_confirmation_email_dispatch',
+        deny_reason: null,
+        has_google_event_id: true,
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirmation_email_dispatch_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'session_confirmation_email_sent',
+      }),
+    }));
   });
 
   it('rejects pay-later confirmation when token is older than 15 minutes', async () => {
@@ -299,7 +321,9 @@ describe('booking domain model', () => {
       (email) => email.kind === 'booking_confirmation' && email.to === 'intro@example.com',
     );
     expect(introConfirmationEmail).toBeTruthy();
-    expect(introConfirmationEmail?.body).toContain('Manage: https://example.com/manage.html?token=');
+    expect(introConfirmationEmail?.body).toContain('Session: ');
+    expect(introConfirmationEmail?.body).toContain('A calendar invitation has been sent to you.');
+    expect(introConfirmationEmail?.body).toContain('Manage booking: https://example.com/manage.html?token=');
     expect(introConfirmationEmail?.body).not.toContain('Complete payment:');
   });
 

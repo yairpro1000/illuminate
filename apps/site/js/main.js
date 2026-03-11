@@ -16,6 +16,31 @@ const __API_BASE_FOR_OBS = (function(){
   return 'https://api.letsilluminate.co';
 })();
 const OBS_API_PATH = __API_BASE_FOR_OBS + '/api/observability/frontend';
+const OBS_LEVEL_RANK = { debug: 10, info: 20, warn: 30, error: 40, fatal: 50 };
+const OBS_DEFAULT_MIN_LEVEL = 'warn';
+
+function normalizeObsLevel(raw) {
+  const key = String(raw || '').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(OBS_LEVEL_RANK, key) ? key : OBS_DEFAULT_MIN_LEVEL;
+}
+
+function getSiteMinObsLevel() {
+  try {
+    const fromStorage = localStorage.getItem('site_observability_min_level');
+    if (fromStorage && fromStorage.trim()) return normalizeObsLevel(fromStorage);
+  } catch (_) {}
+  const fromEnv =
+    (window.ENV && (window.ENV.VITE_SITE_OBSERVABILITY_MIN_LEVEL || window.ENV.VITE_FRONTEND_OBSERVABILITY_MIN_LEVEL)) ||
+    undefined;
+  return normalizeObsLevel(fromEnv);
+}
+
+function shouldSendObsLevel(level) {
+  const resolved = normalizeObsLevel(level);
+  const minLevel = getSiteMinObsLevel();
+  return OBS_LEVEL_RANK[resolved] >= OBS_LEVEL_RANK[minLevel];
+}
+
 function makeObsId(prefix) {
   return (crypto.randomUUID && crypto.randomUUID()) || (prefix + '_' + Date.now().toString(36));
 }
@@ -46,6 +71,31 @@ function createSiteObservability() {
   const sessionId = getSiteSessionId();
   let currentFlowId = makeObsId('cid');
 
+  function sendEvent(event) {
+    let payload = '';
+    try {
+      payload = JSON.stringify(event);
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        const queued = navigator.sendBeacon(
+          OBS_API_PATH,
+          new Blob([payload], { type: 'text/plain;charset=UTF-8' }),
+        );
+        if (queued) return;
+      }
+    } catch (_) {
+      return;
+    }
+
+    try {
+      fetch(OBS_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: payload,
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_) {}
+  }
+
   function emit(level, payload) {
     const requestId = payload.requestId || makeObsId('rid');
     const event = {
@@ -65,19 +115,14 @@ function createSiteObservability() {
       error: payload.error || undefined,
     };
 
-    try {
-      fetch(OBS_API_PATH, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-correlation-id': event.correlationId, 'x-request-id': requestId },
-        body: JSON.stringify(event),
-        keepalive: true,
-      }).catch(function () {});
-    } catch (_) {}
+    if (shouldSendObsLevel(level)) sendEvent(event);
 
     const line = JSON.stringify(event);
-    if (level === 'error' || level === 'fatal') console.error('[site-observability]', line);
-    else if (level === 'warn') console.warn('[site-observability]', line);
-    else console.log('[site-observability]', line);
+    if (shouldSendObsLevel(level)) {
+      if (level === 'error' || level === 'fatal') console.error('[site-observability]', line);
+      else if (level === 'warn') console.warn('[site-observability]', line);
+      else console.log('[site-observability]', line);
+    }
     return requestId;
   }
 

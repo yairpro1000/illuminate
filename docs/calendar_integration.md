@@ -1,25 +1,36 @@
 # calendar_integration.md
 
-## 1. Google Auth Mode
+## 1. Google Calendar Auth Model (Canonical)
 
--   Calendar **writes** (`events.insert`, `events.update`, `events.delete`) use Google **OAuth refresh-token**.
--   Calendar **availability reads** (`freeBusy` for slot generation) use the existing Google **service account JWT** flow.
--   Required env vars:
-    - `GOOGLE_CALENDAR_ID`
-    - `GOOGLE_CLIENT_CALENDAR`
-    - `GOOGLE_CLIENT_SECRET_CALENDAR`
-    - `GOOGLE_REFRESH_TOKEN_CALENDAR`
-    - `GOOGLE_CLIENT_EMAIL`
-    - `GOOGLE_PRIVATE_KEY`
-    - `GOOGLE_TOKEN_URI`
+This worker intentionally uses split Google auth, by operation:
 
-------------------------------------------------------------------------
+| Operation path | Provider method(s) | Google API call(s) | Auth mode | Required env vars |
+| --- | --- | --- | --- | --- |
+| Availability reads | `getBusyTimes()` | `calendar.freeBusy.query` | Service account JWT | `GOOGLE_CALENDAR_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `GOOGLE_TOKEN_URI` |
+| Booking writes | `createEvent()` | `events.insert` | OAuth refresh token | `GOOGLE_CALENDAR_ID`, `GOOGLE_CLIENT_CALENDAR`, `GOOGLE_CLIENT_SECRET_CALENDAR`, `GOOGLE_REFRESH_TOKEN_CALENDAR` |
+| Reschedule writes | `updateEvent()` | `events.update` | OAuth refresh token | `GOOGLE_CALENDAR_ID`, `GOOGLE_CLIENT_CALENDAR`, `GOOGLE_CLIENT_SECRET_CALENDAR`, `GOOGLE_REFRESH_TOKEN_CALENDAR` |
+| Cancellation writes | `deleteEvent()` | `events.delete` | OAuth refresh token | `GOOGLE_CALENDAR_ID`, `GOOGLE_CLIENT_CALENDAR`, `GOOGLE_CLIENT_SECRET_CALENDAR`, `GOOGLE_REFRESH_TOKEN_CALENDAR` |
+
+Why this split exists (intentional):
+
+- `freeBusy` availability reads are stable and reliable with service-account credentials.
+- Booking create/update/delete operations are reliable with OAuth refresh-token credentials for the real target calendar behavior/permissions.
+- This is a deliberate reliability choice, not an accidental mixed implementation.
+
+Operational rule:
+
+- Do not assume a unified auth path during debugging.
+- When `CALENDAR_MODE=google`, both credential groups must be configured, or one half of the calendar flow will fail.
+
+Canonical ownership:
+
+- This section is the single source of truth for calendar auth path ownership.
 
 ## 2. Token Storage
 
 -   Access tokens are never stored in client.
--   For writes: Worker exchanges refresh token at runtime and fetches a fresh OAuth access token before each write call.
--   For freeBusy reads: Worker mints service-account JWT assertions server-side and exchanges them for short-lived access tokens.
+-   For writes: Worker exchanges refresh token at runtime and fetches a fresh OAuth access token before each write call (`createEvent`, `updateEvent`, `deleteEvent`).
+-   For freeBusy reads: Worker mints service-account JWT assertions server-side and exchanges them for short-lived access tokens (`getBusyTimes`).
 -   Refresh token and private key remain in Worker secrets.
 
 ------------------------------------------------------------------------

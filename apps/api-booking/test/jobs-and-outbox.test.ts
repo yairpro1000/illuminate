@@ -345,6 +345,26 @@ describe('Jobs and side-effect dispatcher', () => {
       providers: {
         repository: {
           getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getBookingById: vi.fn().mockResolvedValue({
+            id: 'b1',
+            client_id: 'c1',
+            event_id: null,
+            session_type_id: 's1',
+            starts_at: '2026-04-10T10:00:00.000Z',
+            ends_at: '2026-04-10T11:00:00.000Z',
+            timezone: 'Europe/Zurich',
+            google_event_id: 'g1',
+            address_line: 'Somewhere 1, Zurich',
+            maps_url: 'https://maps.example',
+            current_status: 'SLOT_CONFIRMED',
+            notes: null,
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+            client_first_name: 'Test',
+            client_last_name: 'User',
+            client_email: 'test@example.com',
+            client_phone: '+41000000000',
+          }),
           getPaymentByBookingId: vi.fn().mockResolvedValue(null),
         },
       },
@@ -356,6 +376,53 @@ describe('Jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({ booking_side_effect_id: 'se-booking-confirm-1', status: 'success', attempt_num: 1 }),
     );
+  });
+
+  it('keeps session confirmation side effects retryable when calendar invite is missing', async () => {
+    const effect = {
+      id: 'se-booking-confirm-missing-cal-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'send_booking_confirmation',
+      entity: 'email',
+      status: 'pending',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getPaymentByBookingId: vi.fn().mockResolvedValue(null),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendBookingConfirmation).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        booking_side_effect_id: 'se-booking-confirm-missing-cal-1',
+        status: 'fail',
+        attempt_num: 1,
+        error_message: expect.stringContaining('session_calendar_invite_missing_before_confirmation_email'),
+      }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
+      'se-booking-confirm-missing-cal-1',
+      expect.objectContaining({ status: 'failed' }),
+    );
+    const denyLogExists = ctx.logger.logInfo.mock.calls.some(([entry]: [any]) =>
+      entry?.eventType === 'booking_confirmation_email_dispatch_decision' &&
+      entry?.context?.booking_id === 'b1' &&
+      entry?.context?.branch_taken === 'deny_session_confirmation_until_calendar_synced' &&
+      entry?.context?.deny_reason === 'session_calendar_invite_missing_before_confirmation_email',
+    );
+    expect(denyLogExists).toBe(true);
   });
 
   it('does not first-run create_stripe_checkout in sweeper', async () => {

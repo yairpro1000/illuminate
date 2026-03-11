@@ -17,6 +17,76 @@ function clientEmail(booking: Booking): string {
   return booking.client_email ?? 'unknown@example.com';
 }
 
+function fmtSubjectDate(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: timezone,
+  }).format(new Date(iso));
+}
+
+function fmtBodyDate(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: timezone,
+  }).format(new Date(iso));
+}
+
+function fmtBodyTimeRange(startIso: string, endIso: string, timezone: string): string {
+  const timeFmt = new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: timezone,
+  });
+  const start = timeFmt.format(new Date(startIso));
+  const end = timeFmt.format(new Date(endIso));
+  return `${start}–${end} (${timezone})`;
+}
+
+function sessionLabel(booking: Booking): string {
+  return booking.session_type_title?.trim() || '1:1 Session';
+}
+
+function bookingConfirmationSubject(booking: Booking): string {
+  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`;
+}
+
+function bookingConfirmationBody(
+  booking: Booking,
+  manageUrl: string,
+  invoiceUrl: string | null,
+  payUrl: string | null | undefined,
+): string {
+  const lines = [
+    `Hi ${clientName(booking)},`,
+    '',
+    'Your session is confirmed.',
+    '',
+    `Session: ${sessionLabel(booking)}`,
+    `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
+    `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
+    `Location: ${booking.address_line}`,
+    booking.maps_url ? `Map: ${booking.maps_url}` : null,
+    '',
+    'A calendar invitation has been sent to you.',
+    "If you don't see it, please check your spam folder.",
+    '',
+    'Need to reschedule or cancel?',
+    `Manage booking: ${manageUrl}`,
+    payUrl ? `Complete payment: ${payUrl}` : null,
+    invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
+    '',
+    'Looking forward to meeting you,',
+    'Yair',
+  ];
+
+  return lines.filter((line): line is string => line !== null).join('\n');
+}
+
 export class MockEmailProvider implements IEmailProvider {
   private send(to: string, kind: string, subject: string, body: string): SendResult {
     const messageId = `mock_msg_${crypto.randomUUID()}`;
@@ -70,8 +140,8 @@ export class MockEmailProvider implements IEmailProvider {
     return this.send(
       clientEmail(booking),
       'booking_confirmation',
-      'Your session is confirmed – ILLUMINATE',
-      `Hi ${clientName(booking)},\n\nYour 1:1 session is confirmed.\n\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\nMap: ${booking.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\nComplete payment: ${payUrl}` : ''}\n\nManage: ${manageUrl}`,
+      bookingConfirmationSubject(booking),
+      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl),
     );
   }
 

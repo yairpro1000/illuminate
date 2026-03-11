@@ -743,15 +743,82 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
     : null;
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const invoiceUrl = payment?.invoice_url ?? null;
+  const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirmation_email_dispatch_decision',
+    message: 'Evaluated final booking confirmation email dispatch eligibility',
+    context: {
+      booking_id: booking.id,
+      booking_kind: bookingKind,
+      booking_status: booking.current_status,
+      payment_mode: paymentMode,
+      has_google_event_id: Boolean(booking.google_event_id),
+      has_manage_url: Boolean(manageUrl),
+      has_invoice_url: Boolean(invoiceUrl),
+      has_pay_url: Boolean(payUrl),
+      branch_taken: !booking.event_id && !booking.google_event_id
+        ? 'deny_session_confirmation_until_calendar_synced'
+        : 'allow_confirmation_email_dispatch',
+      deny_reason: !booking.event_id && !booking.google_event_id
+        ? 'session_calendar_invite_missing_before_confirmation_email'
+        : null,
+    },
+  });
 
   if (!booking.event_id) {
+    if (!booking.google_event_id) {
+      throw new Error('session_calendar_invite_missing_before_confirmation_email');
+    }
     await ctx.providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl, payUrl);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'booking_confirmation_email_dispatch_completed',
+      message: 'Session confirmation email sent',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        payment_mode: paymentMode,
+        branch_taken: 'session_confirmation_email_sent',
+        deny_reason: null,
+      },
+    });
     return;
   }
 
   const event = await ctx.providers.repository.getEventById(booking.event_id);
-  if (!event) return;
+  if (!event) {
+    ctx.logger.logError?.({
+      source: 'backend',
+      eventType: 'booking_confirmation_email_dispatch_failed',
+      message: 'Event confirmation email denied because event record is missing',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        event_id: booking.event_id,
+        branch_taken: 'deny_event_confirmation_event_missing',
+        deny_reason: 'event_not_found_for_confirmation_email',
+      },
+    });
+    throw new Error('event_not_found_for_confirmation_email');
+  }
   await ctx.providers.email.sendEventConfirmation(booking, event, manageUrl, invoiceUrl);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirmation_email_dispatch_completed',
+    message: 'Event confirmation email sent',
+    context: {
+      booking_id: booking.id,
+      booking_kind: bookingKind,
+      booking_status: booking.current_status,
+      event_id: event.id,
+      branch_taken: 'event_confirmation_email_sent',
+      deny_reason: null,
+    },
+  });
 }
 
 export async function getBookingPublicActionInfo(

@@ -127,6 +127,7 @@ const ROUTES: Route[] = [
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const isAdminEventsPath = url.pathname === '/api/admin/events';
+  const isFrontendObservabilityPath = url.pathname === '/api/observability/frontend';
   const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS, !!ctx.env.ADMIN_DEV_EMAIL);
   const requestSizeBytes = headerByteLength(request.headers);
   if (isAdminEventsPath) {
@@ -181,10 +182,12 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     return finalRes;
   }
 
-  ctx.logger.logMilestone('incoming_request_received', {
-    method: request.method,
-    path: url.pathname,
-  });
+  if (!isFrontendObservabilityPath) {
+    ctx.logger.logMilestone('incoming_request_received', {
+      method: request.method,
+      path: url.pathname,
+    });
+  }
 
   let patternMatched = false;
   for (const r of ROUTES) {
@@ -201,17 +204,19 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
 
     try {
       const res = await r.handler(request, ctx, params);
-      ctx.logger.logRequest({
-        method: request.method,
-        url: request.url,
-        path: url.pathname,
-        statusCode: res.status,
-        durationMs: Date.now() - startedAt,
-        success: res.status < 500,
-        requestSizeBytes,
-        responseSizeBytes: headerByteLength(res.headers),
-      });
-      if (res.status < 500) {
+      if (!isFrontendObservabilityPath || res.status >= 400) {
+        ctx.logger.logRequest({
+          method: request.method,
+          url: request.url,
+          path: url.pathname,
+          statusCode: res.status,
+          durationMs: Date.now() - startedAt,
+          success: res.status < 500,
+          requestSizeBytes,
+          responseSizeBytes: headerByteLength(res.headers),
+        });
+      }
+      if (res.status < 500 && !isFrontendObservabilityPath) {
         ctx.logger.logMilestone('response_completed', {
           status_code: res.status,
           path: url.pathname,
