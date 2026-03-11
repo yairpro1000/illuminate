@@ -117,7 +117,7 @@ function htmlLayout(bodyContent: string): string {
   body,table,td,p,a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
   body { margin:0; padding:0; background:#0d1820; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
   .wrap { max-width:560px; margin:0 auto; background:#0d1820; border-radius:12px; overflow:hidden; }
-  .header { background:#0a1219; padding:32px 0 24px; border-bottom:2px solid #1a9db8; text-align:center; }
+  .header { background:#0a1219; padding:32px 0 24px; text-align:center; }
   .header__logo { display:block; width:100%; max-width:100%; height:auto; }
   .body { background:#111f2a; padding:36px 40px 32px; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
   .body p { margin:0 0 18px; font-size:15px; line-height:1.7; color:#ddeef2; }
@@ -340,7 +340,6 @@ export class ResendEmailProvider implements IEmailProvider {
     const expiryGraceLabel = expiryGraceMinutes === 1 ? '1 minute' : `${expiryGraceMinutes} minutes`;
     const text = `Hi ${clientName(booking)},\n\nWe noticed you haven't yet completed your payment for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${expiryGraceLabel} before expiring.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
     const rows: Array<[string, string]> = [
-      ['Session', esc(sessionLabel(booking))],
       ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
@@ -418,7 +417,12 @@ export class ResendEmailProvider implements IEmailProvider {
     const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
     const html = simpleHtml(
       `Hi ${clientName(booking)}`,
-      [['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))]],
+      [
+        ['Session', esc(sessionLabel(booking))],
+        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+        ['Location', esc(booking.address_line ?? '')],
+      ],
       ['Your session has been cancelled.'],
       startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
       startNewBookingUrl ?? 'https://yairb.ch',
