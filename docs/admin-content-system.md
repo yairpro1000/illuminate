@@ -134,6 +134,15 @@ webhook
 system
 ```
 
+`booking_side_effects.entity`:
+
+```text
+email
+calendar
+payment
+system
+```
+
 `booking_side_effects.status`:
 
 ```text

@@ -144,7 +144,7 @@ create index if not exists idx_booking_events_confirm_token_hash
 create table if not exists booking_side_effects (
   id uuid primary key default gen_random_uuid(),
   booking_event_id uuid not null references booking_events(id) on delete cascade,
-  entity text not null check (entity in ('email', 'calendar', 'payment', 'whatsapp')),
+  entity text not null check (entity in ('email', 'calendar', 'payment', 'whatsapp', 'system')),
   effect_intent text not null check (
     effect_intent in (
       'send_email_confirmation',

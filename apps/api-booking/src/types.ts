@@ -26,7 +26,7 @@ export type BookingEventType =
 
 export type BookingEventSource = 'public_ui' | 'admin_ui' | 'job' | 'webhook' | 'system';
 
-export type BookingSideEffectEntity = 'email' | 'calendar' | 'payment' | 'whatsapp';
+export type BookingSideEffectEntity = 'email' | 'calendar' | 'payment' | 'system';
 
 export type BookingSideEffectStatus = 'pending' | 'processing' | 'success' | 'failed' | 'dead';
 

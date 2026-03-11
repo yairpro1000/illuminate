@@ -638,7 +638,11 @@ async function executeSideEffect(
         if (!event) throw new Error('event_not_found');
         await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
       } else {
-        await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl);
+        await ctx.providers.email.sendBookingConfirmRequest(
+          booking,
+          confirmUrl,
+          DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
+        );
       }
       return;
     }

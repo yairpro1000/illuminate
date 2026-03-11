@@ -53,6 +53,15 @@ webhook
 system
 ```
 
+`booking_side_effects.entity` values:
+
+```text
+email
+calendar
+payment
+system
+```
+
 ## Side-Effect Policy
 
 The event-to-effect mapping is centralized in `booking-effect-policy.ts`.

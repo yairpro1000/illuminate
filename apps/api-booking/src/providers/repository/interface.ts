@@ -171,5 +171,5 @@ export function inferEntityFromIntent(intent: BookingEffectIntent): BookingSideE
   if (intent.startsWith('send_')) return 'email';
   if (intent.includes('stripe') || intent.includes('payment')) return 'payment';
   if (intent.includes('slot')) return 'calendar';
-  return 'whatsapp';
+  return 'system';
 }

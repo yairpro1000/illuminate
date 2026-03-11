@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { currentStatusForEvent, getEffectsForEvent, shouldReserveSlotForTransition } from '../src/domain/booking-effect-policy.js';
+import {
+  DEFAULT_BOOKING_POLICY,
+  currentStatusForEvent,
+  getEffectsForEvent,
+  shouldReserveSlotForTransition,
+} from '../src/domain/booking-effect-policy.js';
 
 describe('booking effect policy', () => {
   it('maps pay-now submission to checkout + payment-link + expire intents', () => {
+    const eventAtIso = '2026-03-10T10:00:00.000Z';
     const effects = getEffectsForEvent({
       booking: {
         id: 'b1',
@@ -11,7 +17,7 @@ describe('booking effect policy', () => {
         current_status: 'PENDING_CONFIRMATION',
       },
       eventType: 'BOOKING_FORM_SUBMITTED_PAY_NOW',
-      eventAtIso: '2026-03-10T10:00:00.000Z',
+      eventAtIso,
       paymentMode: 'pay_now',
     });
 
@@ -20,10 +26,22 @@ describe('booking effect policy', () => {
       'send_payment_link',
       'expire_booking',
     ]);
+    expect(effects.map((effect) => effect.entity)).toEqual([
+      'payment',
+      'email',
+      'system',
+    ]);
 
+    const eventAtMs = new Date(eventAtIso).getTime();
+    const reminderIso = new Date(
+      eventAtMs + DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000,
+    ).toISOString();
+    const expiryIso = new Date(
+      eventAtMs + (DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes + DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes) * 60_000,
+    ).toISOString();
     expect(effects[0]?.expires_at).toBeNull();
-    expect(effects[1]?.expires_at).toBe('2026-03-10T10:45:00.000Z');
-    expect(effects[2]?.expires_at).toBe('2026-03-10T11:00:00.000Z');
+    expect(effects[1]?.expires_at).toBe(reminderIso);
+    expect(effects[2]?.expires_at).toBe(expiryIso);
   });
 
   it('maps slot-confirmed pay-later to date reminder + confirmation + payment reminder', () => {
@@ -87,6 +105,26 @@ describe('booking effect policy', () => {
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'send_booking_confirmation',
     ]);
+  });
+
+  it('maps close-booking intent to system entity', () => {
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b5',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'CANCELED',
+      },
+      eventType: 'BOOKING_CLOSED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentMode: 'pay_later',
+    });
+
+    expect(effects).toHaveLength(1);
+    expect(effects[0]).toMatchObject({
+      effect_intent: 'close_booking',
+      entity: 'system',
+    });
   });
 
   it('reserves on finalized transitions, not on submission', () => {
