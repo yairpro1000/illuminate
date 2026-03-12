@@ -1,5 +1,6 @@
 import type { AppContext } from '../src/router.js';
 import type { Env } from '../src/env.js';
+import { createOperationContext } from '../src/lib/execution.js';
 import { vi } from 'vitest';
 
 export function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -69,6 +70,7 @@ export function makeCtx(partial: Partial<AppContext> = {}): AppContext {
     logger: makeLogger((partial as any).logger || {}),
     requestId: 'req-1',
     correlationId: 'corr-1',
+    operation: createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' }),
     executionCtx: undefined,
     ...partial,
   } as AppContext;

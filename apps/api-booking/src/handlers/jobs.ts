@@ -6,6 +6,7 @@ import type { Providers } from '../providers/index.js';
 import type { Env } from '../env.js';
 import type { Logger } from '../lib/logger.js';
 import type { AppContext } from '../router.js';
+import { consumeLatestProviderApiLogId, extendOperationContext, type OperationContext } from '../lib/execution.js';
 import { ok, unauthorized } from '../lib/errors.js';
 import {
   applyImmediateNonCronSideEffectsForTransition,
@@ -27,6 +28,8 @@ export interface JobContext {
   env: Env;
   logger: Logger;
   requestId: string;
+  correlationId?: string;
+  operation?: OperationContext;
   triggerSource: 'cron' | 'manual';
 }
 
@@ -100,6 +103,8 @@ export async function handleJobTrigger(
     env: ctx.env,
     logger: ctx.logger,
     requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
+    operation: ctx.operation,
     triggerSource: 'manual',
   });
   return ok({ ok: true, job: name });
@@ -526,7 +531,14 @@ async function dispatchSideEffect(
   }
 
   const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
-  const apiLogId = crypto.randomUUID();
+  const apiLogId = null;
+  if (ctx.operation) {
+    extendOperationContext(ctx.operation, {
+      bookingId: effect.booking_id,
+      sideEffectId: effect.id,
+      latestProviderApiLogId: null,
+    });
+  }
 
   if (timing === 'expired') {
     await ctx.providers.repository.createBookingSideEffectAttempt({
@@ -544,11 +556,12 @@ async function dispatchSideEffect(
 
   try {
     await executeSideEffect(effect, ctx);
+    const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation);
 
     await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
-      api_log_id: apiLogId,
+      api_log_id: providerApiLogId ?? apiLogId,
       status: 'success',
       error_message: null,
     });
@@ -579,7 +592,7 @@ async function dispatchSideEffect(
     await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
-      api_log_id: apiLogId,
+      api_log_id: consumeLatestProviderApiLogId(ctx.operation) ?? apiLogId,
       status: 'fail',
       error_message: errorMessage,
     });
@@ -708,6 +721,8 @@ async function executeSideEffect(
     env: ctx.env,
     logger: ctx.logger,
     requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
+    operation: ctx.operation,
   };
 
   switch (effect.effect_intent) {
@@ -960,6 +975,8 @@ async function appendSlotConfirmedIfMissing(
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
     },
   );
 
@@ -968,6 +985,8 @@ async function appendSlotConfirmedIfMissing(
     env: ctx.env,
     logger: ctx.logger,
     requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
+    operation: ctx.operation,
   };
   const bookingBeforeSlotConfirmed = slotConfirmedTransition.booking;
   await applyImmediateNonCronSideEffectsForTransition(

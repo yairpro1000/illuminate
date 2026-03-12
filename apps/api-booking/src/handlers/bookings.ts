@@ -1,94 +1,90 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ok, badRequest } from '../lib/errors.js';
 import { createPayNowBooking, createPayLaterBooking } from '../services/booking-service.js';
 
 // POST /api/bookings/pay-now
 export async function handlePayNow(request: Request, ctx: AppContext): Promise<Response> {
-  try {
-    const body = await request.json() as Record<string, unknown>;
+  const body = await request.json() as Record<string, unknown>;
 
-    const slotStart = requireString(body, 'slot_start');
-    const slotEnd = requireString(body, 'slot_end');
-    const clientEmail = requireString(body, 'client_email');
-    const clientName = resolveClientName(body);
+  const slotStart = requireString(body, 'slot_start');
+  const slotEnd = requireString(body, 'slot_end');
+  const clientEmail = requireString(body, 'client_email');
+  const clientName = resolveClientName(body);
 
-    const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
-    const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
+  const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
+  const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
 
-    const result = await createPayNowBooking(
-      {
-        slotStart,
-        slotEnd,
-        timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
-        sessionType,
-        clientName,
-        clientEmail,
-        clientPhone: (body['client_phone'] as string | null) ?? null,
-        reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
-        reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
-        turnstileToken: (body['turnstile_token'] as string) ?? '',
-        remoteIp: request.headers.get('CF-Connecting-IP'),
-      },
-      {
-        providers: ctx.providers,
-        env: ctx.env,
-        logger: ctx.logger,
-        requestId: ctx.requestId,
-      },
-    );
+  const result = await createPayNowBooking(
+    {
+      slotStart,
+      slotEnd,
+      timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
+      sessionType,
+      clientName,
+      clientEmail,
+      clientPhone: (body['client_phone'] as string | null) ?? null,
+      reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
+      reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
+      turnstileToken: (body['turnstile_token'] as string) ?? '',
+      remoteIp: request.headers.get('CF-Connecting-IP'),
+    },
+    {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
+    },
+  );
 
-    return ok({
-      booking_id: result.bookingId,
-      checkout_url: result.checkoutUrl,
-      checkout_hold_expires_at: result.checkoutHoldExpiresAt,
-    });
-  } catch (err) {
-    return errorResponse(err);
-  }
+  return ok({
+    booking_id: result.bookingId,
+    checkout_url: result.checkoutUrl,
+    checkout_hold_expires_at: result.checkoutHoldExpiresAt,
+  });
 }
 
 // POST /api/bookings/pay-later
 export async function handlePayLater(request: Request, ctx: AppContext): Promise<Response> {
-  try {
-    const body = await request.json() as Record<string, unknown>;
+  const body = await request.json() as Record<string, unknown>;
 
-    const slotStart = requireString(body, 'slot_start');
-    const slotEnd = requireString(body, 'slot_end');
-    const clientEmail = requireString(body, 'client_email');
-    const clientName = resolveClientName(body);
+  const slotStart = requireString(body, 'slot_start');
+  const slotEnd = requireString(body, 'slot_end');
+  const clientEmail = requireString(body, 'client_email');
+  const clientName = resolveClientName(body);
 
-    const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
-    const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
+  const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
+  const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
 
-    const result = await createPayLaterBooking(
-      {
-        slotStart,
-        slotEnd,
-        timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
-        sessionType,
-        clientName,
-        clientEmail,
-        clientPhone: (body['client_phone'] as string | null) ?? null,
-        reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
-        reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
-        turnstileToken: (body['turnstile_token'] as string) ?? '',
-        remoteIp: request.headers.get('CF-Connecting-IP'),
-      },
-      {
-        providers: ctx.providers,
-        env: ctx.env,
-        logger: ctx.logger,
-        requestId: ctx.requestId,
-      },
-    );
+  const result = await createPayLaterBooking(
+    {
+      slotStart,
+      slotEnd,
+      timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
+      sessionType,
+      clientName,
+      clientEmail,
+      clientPhone: (body['client_phone'] as string | null) ?? null,
+      reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
+      reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
+      turnstileToken: (body['turnstile_token'] as string) ?? '',
+      remoteIp: request.headers.get('CF-Connecting-IP'),
+    },
+    {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
+    },
+  );
 
-    return ok({
-      booking_id: result.bookingId,
-      status: result.status,
-    });
-  } catch (err) {
-    return errorResponse(err);
-  }
+  return ok({
+    booking_id: result.bookingId,
+    status: result.status,
+  });
 }
 
 function requireString(body: Record<string, unknown>, key: string): string {

@@ -1,6 +1,7 @@
 import type { Providers } from '../providers/index.js';
 import type { Env } from '../env.js';
 import type { Logger } from '../lib/logger.js';
+import type { OperationContext } from '../lib/execution.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -21,6 +22,8 @@ export interface TransitionContext {
   env: Env;
   logger: Logger;
   requestId: string;
+  correlationId?: string;
+  operation?: OperationContext;
 }
 
 export interface TransitionResult {

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Lean"
+  short_description: "Lean pre-launch backend test policy"
+  default_prompt: "Use $test-lean to apply the lean pre-launch automated backend testing policy for this project."

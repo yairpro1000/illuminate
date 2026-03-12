@@ -1,5 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
+
+const updateEq = vi.fn().mockResolvedValue({ error: null });
+const update = vi.fn().mockReturnValue({ eq: updateEq });
+const selectSingle = vi.fn().mockResolvedValue({ data: { id: 'api-log-1' }, error: null });
+const select = vi.fn().mockReturnValue({ single: selectSingle });
+const insert = vi.fn().mockReturnValue({ select });
+
+vi.mock('../src/repo/supabase.js', () => ({
+  makeSupabase: vi.fn(() => ({
+    schema: vi.fn(() => ({
+      from: vi.fn(() => ({
+        insert,
+        update,
+      })),
+    })),
+  })),
+}));
 import { createProviders } from '../src/providers/index.js';
+import { createOperationContext } from '../src/lib/execution.js';
+import { wrapProvidersForOperation } from '../src/lib/technical-observability.js';
 
 function makeEnv() {
   return {
@@ -11,8 +30,9 @@ function makeEnv() {
     SITE_URL: 'https://example.com',
     SESSION_ADDRESS: 'Somewhere 1',
     SESSION_MAPS_URL: 'https://maps.example',
-    SUPABASE_URL: 'https://supabase.example',
+    SUPABASE_URL: 'https://supabase.test',
     SUPABASE_SECRET_KEY: 'secret',
+    OBSERVABILITY_SCHEMA: 'observability',
     RESEND_API_KEY: 'resend-secret',
     GOOGLE_CALENDAR_ID: 'calendar@example.com',
     GOOGLE_CLIENT_CALENDAR: 'client-id',
@@ -33,38 +53,42 @@ function makeEnv() {
 
 function makeLogger() {
   return {
-    logProviderCall: vi.fn(),
+    logInfo: vi.fn(),
+    logWarn: vi.fn(),
+    logError: vi.fn(),
   } as any;
 }
 
 describe('provider observability wrapper', () => {
-  it('suppresses repository success logs but keeps repository failure logs', async () => {
+  it('wraps only external providers and leaves repository calls outside the outbound wrapper', async () => {
+    insert.mockClear();
+    updateEq.mockClear();
     const logger = makeLogger();
-    const providers = createProviders(makeEnv(), logger);
+    const operation = createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' });
+    const providers = wrapProvidersForOperation(createProviders(makeEnv(), logger), makeEnv(), logger, operation);
 
     await providers.repository.createClient({
       first_name: 'Repo',
-      last_name: 'Success',
-      email: 'repo-success@example.com',
+      last_name: 'Only',
+      email: 'repo@example.com',
       phone: null,
     });
 
-    expect(logger.logProviderCall).not.toHaveBeenCalled();
-
-    await expect(
-      providers.repository.updateBooking('missing-booking-id', { notes: 'x' }),
-    ).rejects.toThrow();
-
-    expect(logger.logProviderCall).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'repository',
-      operation: 'updateBooking',
-      success: false,
+    expect(logger.logInfo).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'provider_wrapper_started',
+      context: expect.objectContaining({
+        provider: 'repository',
+      }),
     }));
   });
 
-  it('keeps success logs for non-repository providers', async () => {
+  it('routes external provider calls through the shared outbound wrapper', async () => {
+    insert.mockClear();
+    updateEq.mockClear();
     const logger = makeLogger();
-    const providers = createProviders(makeEnv(), logger);
+    const env = makeEnv();
+    const operation = createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' });
+    const providers = wrapProvidersForOperation(createProviders(env, logger), env, logger, operation);
 
     await providers.email.sendContactMessage(
       'Test User',
@@ -73,10 +97,16 @@ describe('provider observability wrapper', () => {
       'test_topic',
     );
 
-    expect(logger.logProviderCall).toHaveBeenCalledWith(expect.objectContaining({
-      provider: 'email',
-      operation: 'sendContactMessage',
-      success: true,
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'provider_wrapper_started',
+      context: expect.objectContaining({
+        provider: 'email',
+        provider_operation: 'sendContactMessage',
+        branch_taken: 'execute_provider_call_via_shared_wrapper',
+      }),
     }));
+    expect(operation.latestProviderApiLogId).toBe('api-log-1');
+    expect(insert).toHaveBeenCalled();
+    expect(updateEq).toHaveBeenCalledWith('id', 'api-log-1');
   });
 });

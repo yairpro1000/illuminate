@@ -5,7 +5,6 @@ import type { ICalendarProvider } from './calendar/interface.js';
 import type { IPaymentsProvider } from './payments/interface.js';
 import type { IAntiBotProvider } from './antibot/interface.js';
 import type { Logger } from '../lib/observability.js';
-import { errorMessage } from '../../../shared/observability/backend.js';
 import { getOverride } from '../lib/config-overrides.js';
 
 import { MockRepository } from './repository/mock.js';
@@ -40,49 +39,6 @@ function getSupabaseRepository(env: Env): SupabaseRepository {
     _supabaseRepository = new SupabaseRepository(makeSupabase(env));
   }
   return _supabaseRepository;
-}
-
-function wrapProvider<T extends object>(providerName: string, provider: T, logger?: Logger): T {
-  if (!logger) return provider;
-
-  const shouldLogSuccess = providerName !== 'repository';
-
-  return new Proxy(provider, {
-    get(target, prop, receiver) {
-      const value = Reflect.get(target, prop, receiver);
-      if (typeof value !== 'function') return value;
-
-      return async (...args: unknown[]) => {
-        const startedAt = Date.now();
-        try {
-          const result = await value.apply(target, args);
-          if (shouldLogSuccess) {
-            logger.logProviderCall({
-              provider: providerName,
-              operation: String(prop),
-              success: true,
-              durationMs: Date.now() - startedAt,
-              context: { args_count: args.length },
-            });
-          }
-          return result;
-        } catch (error) {
-          logger.logProviderCall({
-            provider: providerName,
-            operation: String(prop),
-            success: false,
-            durationMs: Date.now() - startedAt,
-            error,
-            context: {
-              args_count: args.length,
-              provider_error: errorMessage(error),
-            },
-          });
-          throw error;
-        }
-      };
-    },
-  }) as T;
 }
 
 export function createProviders(env: Env, logger?: Logger): Providers {
@@ -141,10 +97,10 @@ export function createProviders(env: Env, logger?: Logger): Providers {
   }
 
   return {
-    repository: wrapProvider('repository', repository, logger),
-    email: wrapProvider('email', email, logger),
-    calendar: wrapProvider('calendar', calendar, logger),
-    payments: wrapProvider('payments', payments, logger),
-    antibot: wrapProvider('antibot', antibot, logger),
+    repository,
+    email,
+    calendar,
+    payments,
+    antibot,
   };
 }

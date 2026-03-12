@@ -1,6 +1,12 @@
 import type { Providers } from '../providers/index.js';
 import type { Env } from '../env.js';
 import type { Logger } from '../lib/logger.js';
+import {
+  consumeLatestProviderApiLogId,
+  extendOperationContext,
+  loggerForOperation,
+  type OperationContext,
+} from '../lib/execution.js';
 import type {
   Booking,
   BookingCurrentStatus,
@@ -49,6 +55,29 @@ export interface BookingContext {
   env: Env;
   logger: Logger;
   requestId: string;
+  correlationId?: string;
+  operation?: OperationContext;
+}
+
+function withBookingOperationContext(ctx: BookingContext, bookingId: string): BookingContext {
+  const operation = extendOperationContext(
+    ctx.operation ?? {
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId ?? ctx.requestId,
+      bookingId: null,
+      bookingEventId: null,
+      sideEffectId: null,
+      sideEffectAttemptId: null,
+      latestProviderApiLogId: null,
+    },
+    { bookingId },
+  );
+  return {
+    ...ctx,
+    operation,
+    correlationId: operation.correlationId,
+    logger: loggerForOperation(ctx.logger, operation),
+  };
 }
 
 // ── Session booking inputs ─────────────────────────────────────────────────
@@ -175,6 +204,7 @@ export async function createPayNowBooking(
     current_status: 'PENDING_CONFIRMATION',
     notes: null,
   });
+  const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
@@ -185,11 +215,11 @@ export async function createPayNowBooking(
       session_type_id: sessionType.id,
       session_type_slug: sessionType.slug,
     },
-    ctx,
+    bookingCtx,
   );
 
-  const checkout = await ensureCheckoutForBooking(transitioned.booking, sessionType, ctx);
-  await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'success', null, ctx);
+  const checkout = await ensureCheckoutForBooking(transitioned.booking, sessionType, bookingCtx);
+  await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'success', null, bookingCtx);
 
   return {
     bookingId: transitioned.booking.id,
@@ -232,6 +262,7 @@ export async function createPayLaterBooking(
     current_status: 'PENDING_CONFIRMATION',
     notes: null,
   });
+  const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
@@ -244,7 +275,7 @@ export async function createPayLaterBooking(
       confirm_token: confirmToken,
       confirm_token_hash: confirmTokenHash,
     },
-    ctx,
+    bookingCtx,
   );
 
   const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
@@ -253,7 +284,7 @@ export async function createPayLaterBooking(
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx);
+  }, bookingCtx);
 
   return {
     bookingId: finalizedBooking.id,
@@ -313,6 +344,7 @@ async function createEventBookingInternal(
     current_status: 'PENDING_CONFIRMATION',
     notes: null,
   });
+  const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
   if (!input.event.is_paid) {
     const confirmToken = options.viaLateAccess ? null : generateToken();
@@ -328,7 +360,7 @@ async function createEventBookingInternal(
         confirm_token_hash: confirmTokenHash,
         via_late_access: options.viaLateAccess,
       },
-      ctx,
+      bookingCtx,
     );
     const createdWithImmediateEffects = await applyImmediateNonCronSideEffectsForTransition({
       transitionEventType: 'BOOKING_FORM_SUBMITTED_FREE',
@@ -336,7 +368,7 @@ async function createEventBookingInternal(
       bookingBeforeTransition: booking,
       bookingAfterTransition: created.booking,
       transitionSideEffects: created.sideEffects,
-    }, ctx);
+    }, bookingCtx);
 
     if (options.viaLateAccess) {
       const confirmed = await appendBookingEventWithEffects(
@@ -344,7 +376,7 @@ async function createEventBookingInternal(
         'EMAIL_CONFIRMED',
         'system',
         { reason: 'late_access_booking' },
-        ctx,
+        bookingCtx,
       );
       const finalized = await applyImmediateReservationForTransition({
         transitionEventType: 'EMAIL_CONFIRMED',
@@ -352,7 +384,7 @@ async function createEventBookingInternal(
         bookingBeforeTransition: createdWithImmediateEffects,
         bookingAfterTransition: confirmed.booking,
         transitionSideEffects: confirmed.sideEffects,
-      }, ctx);
+      }, bookingCtx);
       return { bookingId: finalized.id, status: finalized.current_status };
     }
 
@@ -367,7 +399,7 @@ async function createEventBookingInternal(
       payment_mode: 'pay_now',
       event_id: input.event.id,
     },
-    ctx,
+    bookingCtx,
   );
 
   const checkout = await ensureCheckoutForBooking(
@@ -377,10 +409,10 @@ async function createEventBookingInternal(
       price: input.event.price_per_person_cents ?? 0,
       currency: input.event.currency,
     },
-    ctx,
+    bookingCtx,
   );
 
-  await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'success', null, ctx);
+  await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'success', null, bookingCtx);
 
   return {
     bookingId: transitioned.booking.id,
@@ -399,8 +431,9 @@ export async function confirmBookingEmail(
   const tokenHash = await hashToken(rawToken);
   const booking = await ctx.providers.repository.getBookingByConfirmTokenHash(tokenHash);
   if (!booking) throw notFound('Booking not found');
+  const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
-  const bookingEvents = await ctx.providers.repository.listBookingEvents(booking.id);
+  const bookingEvents = await bookingCtx.providers.repository.listBookingEvents(booking.id);
   const submissionWithToken = [...bookingEvents]
     .reverse()
     .find((event) => {
@@ -419,7 +452,7 @@ export async function confirmBookingEmail(
     ? Date.now() > new Date(confirmationDeadlineIso).getTime()
     : true;
 
-  ctx.logger.logInfo?.({
+  bookingCtx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_email_confirmation_decision',
     message: 'Evaluated email confirmation token redemption',
@@ -461,7 +494,7 @@ export async function confirmBookingEmail(
     'EMAIL_CONFIRMED',
     'public_ui',
     { token_hash: tokenHash },
-    ctx,
+    bookingCtx,
   );
 
   const finalizedBooking = await applyImmediateReservationForTransition({
@@ -470,11 +503,11 @@ export async function confirmBookingEmail(
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx);
+  }, bookingCtx);
 
   const reservationEffects = transitioned.sideEffects.filter((effect) => effect.effect_intent === 'reserve_slot');
 
-  ctx.logger.logInfo?.({
+  bookingCtx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_email_confirmation_sync_outcome',
     message: 'Completed synchronous confirmation handling and evaluated immediate calendar reservation outcome',
@@ -522,6 +555,7 @@ export async function confirmBookingPayment(
     logger.error('Booking not found for payment', { paymentId: payment.id });
     return;
   }
+  const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
   if (isTerminalStatus(booking.current_status)) {
     logger.warn('Late payment for inactive booking — not reviving', {
@@ -553,7 +587,7 @@ export async function confirmBookingPayment(
       invoice_id: stripeData.invoiceId,
       invoice_url: stripeData.invoiceUrl,
     },
-    ctx,
+    bookingCtx,
   );
 
   await applyImmediateReservationForTransition({
@@ -562,7 +596,7 @@ export async function confirmBookingPayment(
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx);
+  }, bookingCtx);
 }
 
 // ── Manage-token resolution ────────────────────────────────────────────────
@@ -1492,7 +1526,13 @@ export async function applyImmediateNonCronSideEffectsForTransition(
     try {
       await markSideEffectsProcessing([effect], ctx);
       currentBooking = await executeImmediateTransitionSideEffect(effect, currentBooking, input, ctx);
-      await markSideEffectAttemptForEffects([effect], 'success', null, ctx);
+      await markSideEffectAttemptForEffects(
+        [effect],
+        'success',
+        null,
+        consumeLatestProviderApiLogId(ctx.operation),
+        ctx,
+      );
 
       logger.logInfo?.({
         source: 'backend',
@@ -1512,7 +1552,13 @@ export async function applyImmediateNonCronSideEffectsForTransition(
       const failureReason = toSyncFailureReason(error);
 
       try {
-        await markSideEffectAttemptForEffects([effect], 'fail', failureReason, ctx);
+        await markSideEffectAttemptForEffects(
+          [effect],
+          'fail',
+          failureReason,
+          consumeLatestProviderApiLogId(ctx.operation),
+          ctx,
+        );
       } catch (attemptError) {
         logger.logError?.({
           source: 'backend',
@@ -1770,6 +1816,7 @@ async function applyImmediateReservationForTransition(
       reservationEffects,
       'fail',
       failureReason,
+      consumeLatestProviderApiLogId(ctx.operation),
       ctx,
     );
 
@@ -1805,6 +1852,7 @@ async function applyImmediateReservationForTransition(
     reservationEffects,
     'success',
     null,
+    consumeLatestProviderApiLogId(ctx.operation),
     ctx,
   );
 
@@ -2069,7 +2117,7 @@ async function ensureCheckoutForBooking(
   booking: Booking,
   chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'>,
   ctx: BookingContext,
-): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string }> {
+): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string | null }> {
   const checkoutWindowMs = DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000;
   const existing = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   if (existing?.checkout_url) {
@@ -2080,7 +2128,7 @@ async function ensureCheckoutForBooking(
     return {
       checkoutUrl: existing.checkout_url,
       expiresAt: fallbackExpiry,
-      effectApiLogId: crypto.randomUUID(),
+      effectApiLogId: null,
     };
   }
 
@@ -2119,13 +2167,13 @@ async function ensureCheckoutForBooking(
   return {
     checkoutUrl: session.checkoutUrl,
     expiresAt,
-    effectApiLogId: crypto.randomUUID(),
+    effectApiLogId: consumeLatestProviderApiLogId(ctx.operation),
   };
 }
 
 async function markCheckoutSideEffectAttempt(
   effects: Array<{ id: string; effect_intent: string; max_attempts: number }>,
-  apiLogId: string,
+  apiLogId: string | null,
   status: 'success' | 'fail',
   errorMessage: string | null,
   ctx: BookingContext,
@@ -2139,7 +2187,7 @@ async function markCheckoutSideEffectAttempt(
   await ctx.providers.repository.createBookingSideEffectAttempt({
     booking_side_effect_id: checkoutEffect.id,
     attempt_num: attemptNum,
-    api_log_id: apiLogId,
+    api_log_id: apiLogId || null,
     status,
     error_message: errorMessage,
   });
@@ -2157,6 +2205,7 @@ async function markSideEffectAttemptForEffects(
   effects: Array<Pick<BookingSideEffect, 'id' | 'max_attempts'>>,
   status: 'success' | 'fail',
   errorMessage: string | null,
+  apiLogId: string | null,
   ctx: BookingContext,
 ): Promise<void> {
   for (const effect of effects) {
@@ -2165,7 +2214,7 @@ async function markSideEffectAttemptForEffects(
     await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
-      api_log_id: crypto.randomUUID(),
+      api_log_id: apiLogId,
       status,
       error_message: errorMessage,
     });

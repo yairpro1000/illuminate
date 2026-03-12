@@ -46,7 +46,15 @@ import {
 } from './handlers/dev.js';
 
 import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
-import { ApiError, jsonResponse } from './lib/errors.js';
+import { ApiError, errorBody, jsonResponse } from './lib/errors.js';
+import { createOperationContext, type OperationContext } from './lib/execution.js';
+import {
+  finalizeApiLog,
+  recordExceptionLog,
+  responseUrl,
+  startApiLog,
+  wrapProvidersForOperation,
+} from './lib/technical-observability.js';
 import {
   handleGetSessionTypes,
   handleAdminGetSessionTypes,
@@ -60,6 +68,7 @@ export interface AppContext {
   logger: Logger;
   requestId: string;
   correlationId: string;
+  operation: OperationContext;
   executionCtx?: ExecutionContext;
 }
 
@@ -74,32 +83,33 @@ interface Route {
   pattern: RegExp;
   keys: string[];
   handler: Handler;
+  executionLayer: 'default' | 'booking';
 }
 
-function route(method: string, path: string, handler: Handler): Route {
+function route(method: string, path: string, handler: Handler, executionLayer: Route['executionLayer'] = 'default'): Route {
   const keys: string[] = [];
   const src = path.replace(/:([^/]+)/g, (_, k) => { keys.push(k); return '([^/]+)'; });
-  return { method, pattern: new RegExp('^' + src + '$'), keys, handler };
+  return { method, pattern: new RegExp('^' + src + '$'), keys, handler, executionLayer };
 }
 
 const ROUTES: Route[] = [
   route('GET', '/api/health', handleHealth),
   route('GET', '/api/config', handleGetPublicConfig),
   route('POST', '/api/observability/frontend', handleFrontendObservability),
-  route('GET', '/api/slots', handleGetSlots),
+  route('GET', '/api/slots', handleGetSlots, 'booking'),
 
-  route('POST', '/api/bookings/pay-now', handlePayNow),
-  route('POST', '/api/bookings/pay-later', handlePayLater),
-  route('GET', '/api/bookings/confirm', handleConfirm),
-  route('GET', '/api/bookings/payment-status', handlePaymentStatus),
-  route('GET', '/api/bookings/manage', handleManageInfo),
-  route('POST', '/api/bookings/cancel', handleManageCancel),
-  route('POST', '/api/bookings/reschedule', handleManageReschedule),
+  route('POST', '/api/bookings/pay-now', handlePayNow, 'booking'),
+  route('POST', '/api/bookings/pay-later', handlePayLater, 'booking'),
+  route('GET', '/api/bookings/confirm', handleConfirm, 'booking'),
+  route('GET', '/api/bookings/payment-status', handlePaymentStatus, 'booking'),
+  route('GET', '/api/bookings/manage', handleManageInfo, 'booking'),
+  route('POST', '/api/bookings/cancel', handleManageCancel, 'booking'),
+  route('POST', '/api/bookings/reschedule', handleManageReschedule, 'booking'),
 
   route('GET', '/api/events', handleGetEvents),
   route('GET', '/api/events/:slug', handleGetEvent),
-  route('POST', '/api/events/:slug/book', handleEventBook),
-  route('POST', '/api/events/:slug/book-with-access', handleEventBookWithAccess),
+  route('POST', '/api/events/:slug/book', handleEventBook, 'booking'),
+  route('POST', '/api/events/:slug/book-with-access', handleEventBookWithAccess, 'booking'),
   route('POST', '/api/events/reminder-subscriptions', handleCreateEventReminderSubscription),
 
   route('GET', '/api/session-types', handleGetSessionTypes),
@@ -123,8 +133,8 @@ const ROUTES: Route[] = [
   route('GET', '/api/admin/session-types', handleAdminGetSessionTypes),
   route('POST', '/api/admin/session-types', handleAdminCreateSessionType),
   route('PATCH', '/api/admin/session-types/:id', handleAdminUpdateSessionType),
-  route('POST', '/api/stripe/webhook', handleStripeWebhook),
-  route('POST', '/api/jobs/:name', handleJobTrigger),
+  route('POST', '/api/stripe/webhook', handleStripeWebhook, 'booking'),
+  route('POST', '/api/jobs/:name', handleJobTrigger, 'booking'),
 
   route('POST', '/api/__dev/simulate-payment', handleSimulatePayment),
   route('GET', '/api/__dev/emails', handleDevEmails),
@@ -211,9 +221,11 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     const startedAt = Date.now();
 
     try {
-      const res = await r.handler(request, ctx, params);
+      const res = r.executionLayer === 'booking'
+        ? await executeBookingRoute(request, ctx, params, r.handler)
+        : await r.handler(request, ctx, params);
       if (!isFrontendObservabilityPath || res.status >= 400) {
-        ctx.logger.logRequest({
+        ctx.logger.logRequest?.({
           method: request.method,
           url: request.url,
           path: url.pathname,
@@ -225,7 +237,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         });
       }
       if (res.status < 500 && !isFrontendObservabilityPath) {
-        ctx.logger.logMilestone('response_completed', {
+        ctx.logger.logMilestone?.('response_completed', {
           status_code: res.status,
           path: url.pathname,
         });
@@ -243,7 +255,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     } catch (error) {
       const statusCode = error instanceof ApiError ? error.statusCode : 500;
       if (statusCode >= 500) {
-        ctx.logger.captureException({
+        ctx.logger.captureException?.({
           eventType: 'uncaught_exception',
           message: 'Route handler failed',
           error,
@@ -255,7 +267,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
           },
         });
       } else {
-        ctx.logger.logWarn({
+        ctx.logger.logWarn?.({
           eventType: 'handled_exception',
           message: error instanceof Error ? error.message : String(error),
           context: {
@@ -267,9 +279,9 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         });
       }
       const res = error instanceof ApiError
-        ? jsonResponse({ error: error.code, message: error.message }, error.statusCode)
-        : jsonResponse({ error: 'INTERNAL_ERROR', message: 'Internal server error' }, 500);
-      ctx.logger.logRequest({
+        ? jsonResponse(errorBody(error, ctx.requestId), error.statusCode)
+        : jsonResponse(errorBody(error, ctx.requestId), 500);
+      ctx.logger.logRequest?.({
         method: request.method,
         url: request.url,
         path: url.pathname,
@@ -315,4 +327,113 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     }));
   }
   return finalRes;
+}
+
+async function executeBookingRoute(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+  handler: Handler,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const startedAtMs = Date.now();
+  const routeCtx: AppContext = {
+    ...ctx,
+    operation: createOperationContext({
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+    }),
+  };
+  routeCtx.providers = wrapProvidersForOperation(routeCtx.providers, routeCtx.env, routeCtx.logger, routeCtx.operation);
+  const inboundApiLogId = await startApiLog(routeCtx.env, {
+    operation: routeCtx.operation,
+    direction: 'inbound',
+    method: request.method,
+    url: request.url,
+    requestHeaders: request.headers,
+    requestBody: request.method === 'GET' || request.method === 'HEAD' ? null : '[stream body omitted]',
+  });
+
+  routeCtx.logger.logInfo({
+    source: 'worker',
+    eventType: 'booking_route_execution_started',
+    message: 'Executing booking route through shared inbound wrapper',
+    context: {
+      method: request.method,
+      path,
+      params,
+      branch_taken: 'execute_booking_route_wrapper',
+    },
+  });
+
+  try {
+    const response = await handler(request, routeCtx, params);
+    await finalizeApiLog(routeCtx.env, inboundApiLogId, {
+      responseStatus: response.status,
+      responseHeaders: response.headers,
+      responseBody: response.status >= 400 ? await response.clone().text() : { ok: response.ok, path: responseUrl(request) },
+      startedAtMs,
+    });
+    routeCtx.logger.logInfo({
+      source: 'worker',
+      eventType: 'booking_route_execution_completed',
+      message: 'Booking route completed through shared inbound wrapper',
+      context: {
+        method: request.method,
+        path,
+        status_code: response.status,
+        branch_taken: 'return_booking_route_response',
+      },
+    });
+    return response;
+  } catch (error) {
+    const statusCode = error instanceof ApiError ? error.statusCode : 500;
+    if (statusCode >= 500) {
+      routeCtx.logger.captureException({
+        eventType: 'booking_route_execution_failed',
+        message: 'Booking route failed in shared inbound wrapper',
+        error,
+        context: {
+          method: request.method,
+          path,
+          params,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    } else {
+      routeCtx.logger.logWarn({
+        source: 'worker',
+        eventType: 'booking_route_execution_failed',
+        message: error instanceof Error ? error.message : String(error),
+        context: {
+          method: request.method,
+          path,
+          params,
+          status_code: statusCode,
+          error_code: error instanceof ApiError ? error.code : 'INTERNAL_ERROR',
+          branch_taken: 'handled_api_error',
+          deny_reason: error instanceof ApiError ? error.code : 'unexpected_error',
+        },
+      });
+    }
+
+    await finalizeApiLog(routeCtx.env, inboundApiLogId, {
+      responseStatus: statusCode,
+      responseBody: errorBody(error, routeCtx.requestId),
+      errorCode: error instanceof ApiError ? error.code : 'INTERNAL_ERROR',
+      errorMessage: error instanceof ApiError ? error.message : 'Internal server error',
+      startedAtMs,
+    });
+    if (statusCode >= 500) {
+      await recordExceptionLog(routeCtx.env, routeCtx.operation, error, {
+        method: request.method,
+        path,
+        params,
+        status_code: statusCode,
+      }, error instanceof ApiError ? error.code : 'INTERNAL_ERROR');
+    }
+
+    return jsonResponse(errorBody(error, routeCtx.requestId), statusCode);
+  }
 }

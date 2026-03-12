@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { resolveBookingManageAccess, rescheduleBooking } from '../services/booking-service.js';
 
 // POST /api/bookings/reschedule
@@ -35,6 +35,8 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
     });
     const booking = access.booking;
     ctx.logger.logInfo?.({
@@ -64,6 +66,8 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         env: ctx.env,
         logger: ctx.logger,
         requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
       },
       {
         source: access.actorSource,
@@ -124,6 +128,6 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }

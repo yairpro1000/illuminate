@@ -52,48 +52,46 @@ export async function handleEventBook(
   ctx: AppContext,
   params: Record<string, string>,
 ): Promise<Response> {
-  try {
-    const event = await getBookableEventBySlug(params['slug'], ctx);
+  const event = await getBookableEventBySlug(params['slug'], ctx);
 
-    const body = await request.json() as Record<string, unknown>;
-    const firstName = requireString(body, 'first_name');
-    const email = requireString(body, 'email');
-    const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
-    const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
+  const body = await request.json() as Record<string, unknown>;
+  const firstName = requireString(body, 'first_name');
+  const email = requireString(body, 'email');
+  const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
+  const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
 
-    if (!event.is_paid && !phoneRaw) {
-      throw badRequest('phone is required for free events');
-    }
-
-    const result = await createEventBooking(
-      {
-        event,
-        firstName,
-        lastName: lastNameRaw || null,
-        email,
-        phone: phoneRaw || null,
-        reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
-        reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
-        turnstileToken: (body['turnstile_token'] as string) ?? '',
-        remoteIp: request.headers.get('CF-Connecting-IP'),
-      },
-      {
-        providers: ctx.providers,
-        env: ctx.env,
-        logger: ctx.logger,
-        requestId: ctx.requestId,
-      },
-    );
-
-    return ok({
-      booking_id: result.bookingId,
-      status: result.status,
-      ...(result.checkoutUrl ? { checkout_url: result.checkoutUrl } : {}),
-      ...(result.checkoutHoldExpiresAt ? { checkout_hold_expires_at: result.checkoutHoldExpiresAt } : {}),
-    });
-  } catch (err) {
-    return errorResponse(err);
+  if (!event.is_paid && !phoneRaw) {
+    throw badRequest('phone is required for free events');
   }
+
+  const result = await createEventBooking(
+    {
+      event,
+      firstName,
+      lastName: lastNameRaw || null,
+      email,
+      phone: phoneRaw || null,
+      reminderEmailOptIn: Boolean(body['reminder_email_opt_in']),
+      reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
+      turnstileToken: (body['turnstile_token'] as string) ?? '',
+      remoteIp: request.headers.get('CF-Connecting-IP'),
+    },
+    {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
+    },
+  );
+
+  return ok({
+    booking_id: result.bookingId,
+    status: result.status,
+    ...(result.checkoutUrl ? { checkout_url: result.checkoutUrl } : {}),
+    ...(result.checkoutHoldExpiresAt ? { checkout_hold_expires_at: result.checkoutHoldExpiresAt } : {}),
+  });
 }
 
 // POST /api/events/:slug/book-with-access
@@ -199,6 +197,8 @@ export async function handleEventBookWithAccess(
         env: ctx.env,
         logger: ctx.logger,
         requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
       },
     );
 
@@ -251,7 +251,7 @@ export async function handleEventBookWithAccess(
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }
 

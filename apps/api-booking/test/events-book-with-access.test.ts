@@ -8,7 +8,6 @@ vi.mock('../src/services/booking-service.js', async (importOriginal) => {
   };
 });
 
-import { handleEventBookWithAccess } from '../src/handlers/events.js';
 import { handleRequest } from '../src/router.js';
 import { hashToken } from '../src/services/token-service.js';
 import { createEventBookingWithAccess } from '../src/services/booking-service.js';
@@ -58,22 +57,19 @@ describe('events book-with-access handler diagnostics', () => {
     };
     const ctx = makeCtx({ providers: { repository } });
 
-    const res = await handleEventBookWithAccess(
-      makeRequest({
-        access_token: 'bad-token',
-        first_name: 'Yair',
-        email: 'yair@example.com',
-        phone: '+41000000111',
-        turnstile_token: 'ok',
-      }),
-      ctx,
-      { slug: 'ev-04-new-earth' },
-    );
+    const res = await handleRequest(makeRequest({
+      access_token: 'bad-token',
+      first_name: 'Yair',
+      email: 'yair@example.com',
+      phone: '+41000000111',
+      turnstile_token: 'ok',
+    }), ctx);
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
       error: 'BAD_REQUEST',
       message: 'Invalid or expired access token',
+      request_id: 'req-1',
     });
     expect(mockedCreateEventBookingWithAccess).not.toHaveBeenCalled();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -88,6 +84,13 @@ describe('events book-with-access handler diagnostics', () => {
       context: expect.objectContaining({
         status_code: 400,
         error_code: 'BAD_REQUEST',
+      }),
+    }));
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_route_execution_failed',
+      context: expect.objectContaining({
+        status_code: 400,
+        branch_taken: 'handled_api_error',
       }),
     }));
   });
@@ -113,26 +116,23 @@ describe('events book-with-access handler diagnostics', () => {
     mockedCreateEventBookingWithAccess.mockRejectedValue(new Error('boom'));
     const ctx = makeCtx({ providers: { repository } });
 
-    const res = await handleEventBookWithAccess(
-      makeRequest({
-        access_token: token,
-        first_name: 'Yair',
-        email: 'yair@example.com',
-        phone: '+41000000111',
-        turnstile_token: 'ok',
-      }),
-      ctx,
-      { slug: 'ev-04-new-earth' },
-    );
+    const res = await handleRequest(makeRequest({
+      access_token: token,
+      first_name: 'Yair',
+      email: 'yair@example.com',
+      phone: '+41000000111',
+      turnstile_token: 'ok',
+    }), ctx);
 
     expect(res.status).toBe(500);
     await expect(res.json()).resolves.toEqual({
       error: 'INTERNAL_ERROR',
       message: 'Internal server error',
+      request_id: 'req-1',
     });
     expect(ctx.logger.captureException).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'uncaught_exception',
-      message: 'Late-access event booking failed',
+      eventType: 'booking_route_execution_failed',
+      message: 'Booking route failed in shared inbound wrapper',
       context: expect.objectContaining({
         path: '/api/events/ev-04-new-earth/book-with-access',
         status_code: 500,
@@ -182,6 +182,7 @@ describe('events book-with-access handler diagnostics', () => {
     await expect(res.json()).resolves.toEqual({
       error: 'INTERNAL_ERROR',
       message: 'Internal server error',
+      request_id: 'req-1',
     });
   });
 });

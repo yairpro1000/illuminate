@@ -72,7 +72,6 @@ export function createWorkerObservability(
   const correlationId = pickCorrelationId(request, requestId);
   const url = new URL(request.url);
   const logger = createObservabilityLogger({
-    sink: makeSink(env),
     schedule: scheduleWith(executionCtx),
     consoleTag: "[worker]",
     shouldPersist: shouldPersistWorkerLogEvent,
@@ -98,7 +97,6 @@ export function createCronObservability(
 ): WorkerObservabilityContext {
   const requestId = crypto.randomUUID();
   const logger = createObservabilityLogger({
-    sink: makeSink(env),
     schedule: scheduleWith(executionCtx),
     consoleTag: "[worker-cron]",
     shouldPersist: shouldPersistWorkerLogEvent,

@@ -123,7 +123,7 @@ describe('Jobs and side-effect dispatcher', () => {
     await runSideEffectsOutbox(ctx);
 
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'success', attempt_num: 1 }),
+      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'success', attempt_num: 1, api_log_id: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
       'se1',
@@ -213,7 +213,7 @@ describe('Jobs and side-effect dispatcher', () => {
     await runSideEffectsOutbox(ctx);
 
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se2', status: 'fail', attempt_num: 2 }),
+      expect.objectContaining({ booking_side_effect_id: 'se2', status: 'fail', attempt_num: 2, api_log_id: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
       'se2',

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor Observability Booking"
+  short_description: "Phase-gated observability and booking refactor"
+  default_prompt: "Use $refactor-observability-and-booking to run the staged observability-first, booking-second replacement refactor workflow for this project."

@@ -84,7 +84,7 @@ export async function verifyAdminManageToken(
   const actualBytes = base64urlToBytes(signature);
   if (expectedBytes.length !== actualBytes.length) return null;
   let diff = 0;
-  for (let i = 0; i < expectedBytes.length; i++) diff |= expectedBytes[i] ^ actualBytes[i];
+  for (let i = 0; i < expectedBytes.length; i++) diff |= (expectedBytes[i] ?? 0) ^ (actualBytes[i] ?? 0);
   if (diff !== 0) return null;
   if (Math.floor(Date.now() / 1000) > exp) return null;
   return { bookingId, exp };

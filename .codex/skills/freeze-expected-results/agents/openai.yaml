@@ -1,0 +1,4 @@
+interface:
+  display_name: "Freeze Expected Results"
+  short_description: "Freeze user-facing expected outcomes"
+  default_prompt: "Use $freeze-expected-results to scan the codebase, freeze production user scenarios, and report contradictions before later changes are implemented."

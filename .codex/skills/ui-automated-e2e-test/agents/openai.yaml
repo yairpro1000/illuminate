@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI E2E Test"
+  short_description: "Lean UI end-to-end automation"
+  default_prompt: "Use $ui-automated-e2e-test to design, implement, run, and report a lean Playwright-first UI end-to-end suite from the project docs I provide."

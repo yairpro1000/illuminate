@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { cancelBooking, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // POST /api/bookings/cancel
@@ -45,6 +45,8 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
     });
     const booking = access.booking;
     ctx.logger.logInfo?.({
@@ -64,6 +66,8 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
     }, {
       source: access.actorSource,
       bypassPolicyWindow: access.bypassPolicyWindow,
@@ -134,6 +138,6 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }

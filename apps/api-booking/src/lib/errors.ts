@@ -58,10 +58,17 @@ export function created(body: unknown): Response {
   return jsonResponse(body, 201);
 }
 
+export function errorBody(err: unknown, requestId?: string): { error: string; message: string; request_id?: string } {
+  const base = err instanceof ApiError
+    ? { error: err.code, message: err.message }
+    : { error: 'INTERNAL_ERROR', message: 'Internal server error' };
+  return requestId ? { ...base, request_id: requestId } : base;
+}
+
 export function errorResponse(err: unknown): Response {
   if (err instanceof ApiError) {
-    return jsonResponse({ error: err.code, message: err.message }, err.statusCode);
+    return jsonResponse(errorBody(err), err.statusCode);
   }
   console.error('[worker] Unhandled error:', err);
-  return jsonResponse({ error: 'INTERNAL_ERROR', message: 'Internal server error' }, 500);
+  return jsonResponse(errorBody(err), 500);
 }

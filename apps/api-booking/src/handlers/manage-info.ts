@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { evaluateManageBookingPolicy, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // GET /api/bookings/manage?token=<raw>
@@ -39,6 +39,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
     });
     const booking = access.booking;
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
@@ -138,7 +140,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }
 
