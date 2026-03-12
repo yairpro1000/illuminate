@@ -489,6 +489,42 @@ async function dispatchSideEffect(
   const timing = sideEffectTiming(effect, nowIso);
   if (timing === 'wait') return 'skipped';
 
+  const relevance = await evaluateSideEffectRelevance(effect, ctx);
+  ctx.logger.logInfo({
+    source: jobLogSource(ctx),
+    eventType: 'side_effect_relevance_decision',
+    message: 'Evaluated side effect relevance before persistence writes',
+    context: {
+      trigger_source: ctx.triggerSource,
+      booking_id: effect.booking_id,
+      side_effect_id: effect.id,
+      side_effect_intent: effect.effect_intent,
+      should_process: relevance.shouldProcess,
+      branch_taken: relevance.branchTaken,
+      deny_reason: relevance.denyReason,
+      ...relevance.context,
+    },
+  });
+
+  if (!relevance.shouldProcess) {
+    await ctx.providers.repository.deleteBookingSideEffect(effect.id);
+    ctx.logger.logInfo({
+      source: jobLogSource(ctx),
+      eventType: 'side_effect_irrelevant_discarded',
+      message: 'Discarded irrelevant side effect before booking-event/attempt writes',
+      context: {
+        trigger_source: ctx.triggerSource,
+        booking_id: effect.booking_id,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        branch_taken: 'discard_irrelevant_side_effect',
+        deny_reason: relevance.denyReason,
+        ...relevance.context,
+      },
+    });
+    return 'skipped';
+  }
+
   const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
   const apiLogId = crypto.randomUUID();
 
@@ -522,6 +558,24 @@ async function dispatchSideEffect(
   } catch (error) {
     const errorMessage = String(error);
 
+    if (errorMessage === 'Error: irrelevant_payment_link_already_settled') {
+      await ctx.providers.repository.deleteBookingSideEffect(effect.id);
+      ctx.logger.logInfo({
+        source: jobLogSource(ctx),
+        eventType: 'side_effect_irrelevant_discarded',
+        message: 'Discarded irrelevant side effect during execution guard',
+        context: {
+          trigger_source: ctx.triggerSource,
+          booking_id: effect.booking_id,
+          side_effect_id: effect.id,
+          side_effect_intent: effect.effect_intent,
+          branch_taken: 'discard_irrelevant_side_effect_runtime_guard',
+          deny_reason: 'payment_already_settled',
+        },
+      });
+      return 'skipped';
+    }
+
     await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
@@ -533,6 +587,40 @@ async function dispatchSideEffect(
     const nextStatus = sideEffectStatusAfterAttempt('fail', attemptNum, effect.max_attempts);
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus, updated_at: new Date().toISOString() });
     throw error;
+  }
+}
+
+async function evaluateSideEffectRelevance(
+  effect: BookingSideEffect & { booking_id: string },
+  ctx: JobContext,
+): Promise<{
+  shouldProcess: boolean;
+  branchTaken: string;
+  denyReason: string | null;
+  context: Record<string, unknown>;
+}> {
+  switch (effect.effect_intent) {
+    case 'send_payment_link': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
+      const paymentStatus = payment?.status ?? null;
+      const alreadySettled = paymentStatus === 'succeeded';
+      return {
+        shouldProcess: !alreadySettled,
+        branchTaken: alreadySettled ? 'deny_irrelevant_payment_link_already_settled' : 'allow_payment_link_effect',
+        denyReason: alreadySettled ? 'payment_already_settled' : null,
+        context: {
+          payment_status: paymentStatus,
+          has_checkout_url: Boolean(payment?.checkout_url),
+        },
+      };
+    }
+    default:
+      return {
+        shouldProcess: true,
+        branchTaken: 'allow_non_guarded_effect',
+        denyReason: null,
+        context: {},
+      };
   }
 }
 
@@ -758,7 +846,9 @@ async function executeSideEffect(
         },
       });
 
-      if (alreadySettled) return;
+      if (alreadySettled) {
+        throw new Error('irrelevant_payment_link_already_settled');
+      }
 
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
       await ctx.providers.email.sendBookingPaymentDue(

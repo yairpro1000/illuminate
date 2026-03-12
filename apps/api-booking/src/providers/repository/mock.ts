@@ -215,6 +215,12 @@ export class MockRepository implements IRepository {
       .slice(0, Math.max(1, limit));
   }
 
+  async deleteBookingSideEffect(id: string): Promise<void> {
+    const index = mockState.sideEffects.findIndex((effect) => effect.id === id);
+    if (index < 0) return;
+    mockState.sideEffects.splice(index, 1);
+  }
+
   async updateBookingSideEffect(
     id: string,
     updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,

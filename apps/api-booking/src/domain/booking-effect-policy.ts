@@ -94,12 +94,10 @@ export function getEffectsForEvent(
     }
     case 'BOOKING_FORM_SUBMITTED_PAY_NOW': {
       const reminderIso = inMinutes(policy.payNowCheckoutWindowMinutes);
-      const expiryIso = inMinutes(policy.payNowCheckoutWindowMinutes + policy.payNowReminderGraceMinutes);
       return [
         // Checkout is created synchronously in submit flow; keep this as audit intent only.
         make('create_stripe_checkout', null),
         make('send_payment_link', reminderIso),
-        make('expire_booking', expiryIso),
       ];
     }
     case 'BOOKING_FORM_SUBMITTED_PAY_LATER': {

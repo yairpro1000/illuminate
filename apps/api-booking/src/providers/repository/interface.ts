@@ -94,6 +94,7 @@ export interface IRepository {
     limit: number,
     nowIso: string,
   ): Promise<Array<BookingSideEffect & { booking_id: string }>>;
+  deleteBookingSideEffect(id: string): Promise<void>;
 
   updateBookingSideEffect(
     id: string,

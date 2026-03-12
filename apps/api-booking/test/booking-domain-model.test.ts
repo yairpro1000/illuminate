@@ -167,7 +167,8 @@ describe('booking domain model', () => {
     const payNowEffects = mockState.sideEffects
       .filter((effect) => effect.booking_id === payNow.bookingId)
       .map((effect) => effect.effect_intent);
-    expect(payNowEffects).toEqual(expect.arrayContaining(['create_stripe_checkout', 'send_payment_link', 'expire_booking']));
+    expect(payNowEffects).toEqual(expect.arrayContaining(['create_stripe_checkout', 'send_payment_link']));
+    expect(payNowEffects).not.toContain('expire_booking');
     expect(payNowEffects).not.toContain('reserve_slot');
 
     const payNowAttempts = mockState.sideEffectAttempts.filter((attempt) => {

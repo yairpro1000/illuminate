@@ -26,6 +26,7 @@ function makeCtx(overrides: any = {}) {
   const repository = {
     markStaleProcessingSideEffectsAsPending: vi.fn().mockResolvedValue(0),
     getPendingBookingSideEffects: vi.fn().mockResolvedValue([]),
+    deleteBookingSideEffect: vi.fn().mockResolvedValue(undefined),
     updateBookingSideEffect: vi.fn().mockResolvedValue(undefined),
     getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue(null),
     createBookingSideEffectAttempt: vi.fn().mockResolvedValue(undefined),
@@ -128,6 +129,59 @@ describe('Jobs and side-effect dispatcher', () => {
       'se1',
       expect.objectContaining({ status: 'success' }),
     );
+  });
+
+  it('discards irrelevant send_payment_link side effects before attempt writes', async () => {
+    const effect = {
+      id: 'se-checkout-followup-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'send_payment_link',
+      entity: 'email',
+      status: 'pending',
+      expires_at: '2026-03-01T00:00:00.000Z',
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    };
+
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getPaymentByBookingId: vi.fn().mockResolvedValue({
+            id: 'p1',
+            booking_id: 'b1',
+            provider: 'stripe',
+            provider_ref: 'cs_test_123',
+            amount_cents: 15000,
+            currency: 'CHF',
+            status: 'succeeded',
+            checkout_url: 'https://checkout.local',
+            paid_at: '2026-03-01T00:00:00.000Z',
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+          }),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.repository.deleteBookingSideEffect).toHaveBeenCalledWith('se-checkout-followup-1');
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.updateBookingSideEffect).not.toHaveBeenCalledWith(
+      'se-checkout-followup-1',
+      expect.objectContaining({ status: 'processing' }),
+    );
+    expect(ctx.providers.email.sendBookingPaymentDue).not.toHaveBeenCalled();
+    const relevanceLogExists = ctx.logger.logInfo.mock.calls.some(([entry]: [any]) =>
+      entry?.eventType === 'side_effect_relevance_decision' &&
+      entry?.context?.side_effect_id === 'se-checkout-followup-1' &&
+      entry?.context?.branch_taken === 'deny_irrelevant_payment_link_already_settled' &&
+      entry?.context?.deny_reason === 'payment_already_settled',
+    );
+    expect(relevanceLogExists).toBe(true);
   });
 
   it('marks side effect dead when max attempts is reached', async () => {

@@ -307,6 +307,13 @@ export class SupabaseRepository implements IRepository {
       }));
   }
 
+  async deleteBookingSideEffect(id: string): Promise<void> {
+    await requireData<Array<{ id: string }>>(
+      this.db.from('booking_side_effects').delete().eq('id', id).select('id'),
+      `Failed to delete booking side effect ${id}`,
+    );
+  }
+
   async updateBookingSideEffect(
     id: string,
     updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,

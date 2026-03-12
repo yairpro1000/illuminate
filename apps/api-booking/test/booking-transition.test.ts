@@ -7,7 +7,7 @@ import {
 } from '../src/domain/booking-effect-policy.js';
 
 describe('booking effect policy', () => {
-  it('maps pay-now submission to checkout + payment-link + expire intents', () => {
+  it('maps pay-now submission to checkout + payment-link intents', () => {
     const eventAtIso = '2026-03-10T10:00:00.000Z';
     const effects = getEffectsForEvent({
       booking: {
@@ -24,24 +24,18 @@ describe('booking effect policy', () => {
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'create_stripe_checkout',
       'send_payment_link',
-      'expire_booking',
     ]);
     expect(effects.map((effect) => effect.entity)).toEqual([
       'payment',
       'email',
-      'system',
     ]);
 
     const eventAtMs = new Date(eventAtIso).getTime();
     const reminderIso = new Date(
       eventAtMs + DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000,
     ).toISOString();
-    const expiryIso = new Date(
-      eventAtMs + (DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes + DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes) * 60_000,
-    ).toISOString();
     expect(effects[0]?.expires_at).toBeNull();
     expect(effects[1]?.expires_at).toBe(reminderIso);
-    expect(effects[2]?.expires_at).toBe(expiryIso);
   });
 
   it('maps slot-confirmed pay-later to date reminder + confirmation + payment reminder', () => {
