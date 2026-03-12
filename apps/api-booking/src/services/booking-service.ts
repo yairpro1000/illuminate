@@ -610,7 +610,7 @@ export async function buildAdminManageUrl(
   if (!secret) throw badRequest('Admin manage token secret is not configured');
   const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
   const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
-  const manageToken = generateStableManageToken(booking.id);
+  const manageToken = buildStableManageToken(booking.id);
   const url = `${ctx.env.SITE_URL}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
   return { url, adminToken, expiresAt };
 }
