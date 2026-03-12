@@ -68,6 +68,66 @@
     return escapeHtml(value).replace(/\bcontact\b/gi, (word) => `<a href="contact.html">${word}</a>`);
   }
 
+  const DEFAULT_BOOKING_POLICY_LINES = [
+    'Booking policy',
+    'You can reschedule or cancel your booking up to 24 hours before the session.',
+    'Within 24 hours of the session, bookings can no longer be changed online and are non-refundable.',
+    'If an emergency occurs, please contact me directly.',
+  ];
+
+  function getBookingPolicyLines(rawText) {
+    const lines = String(rawText || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return lines.length >= 4 ? lines.slice(0, 4) : DEFAULT_BOOKING_POLICY_LINES;
+  }
+
+  function escapeWithContactLink(value) {
+    return String(value || '')
+      .split(/(contact)/gi)
+      .map((part) => part.toLowerCase() === 'contact' ? '<a href="contact.html">contact</a>' : escapeHtml(part))
+      .join('');
+  }
+
+  function bookingPolicyHtml(rawText) {
+    const [title, firstRule, secondRule, thirdRule] = getBookingPolicyLines(rawText);
+    return `
+      <section class="policy-box policy-box--booking" aria-label="Booking policy">
+        <p class="policy-box__title"><strong><u>${escapeHtml(title)}</u></strong></p>
+        <ul class="policy-box__list">
+          <li>${escapeHtml(firstRule)}</li>
+          <li>${escapeHtml(secondRule)}</li>
+          <li>${escapeWithContactLink(thirdRule)}</li>
+        </ul>
+      </section>
+    `;
+  }
+
+  function resolveRescheduleSlotType(payload) {
+    const explicitType = String(payload?.session_type || payload?.slot_type || '').toLowerCase();
+    if (explicitType === 'intro' || explicitType === 'session') {
+      return { slotType: explicitType, reason: 'explicit_type' };
+    }
+
+    const startMs = Date.parse(payload?.starts_at || '');
+    const endMs = Date.parse(payload?.ends_at || '');
+    if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+      const durationMinutes = Math.round((endMs - startMs) / 60000);
+      return {
+        slotType: durationMinutes <= 45 ? 'intro' : 'session',
+        reason: 'duration_heuristic',
+      };
+    }
+
+    const title = String(payload?.title || '').toLowerCase();
+    if (title.includes('intro')) {
+      return { slotType: 'intro', reason: 'title_heuristic' };
+    }
+
+    return { slotType: 'session', reason: 'fallback_default_session' };
+  }
+
   if (!token) {
     renderLoadError('Invalid Manage Link', 'Please use the latest manage link from your email.');
     return;
@@ -91,8 +151,15 @@
   const isBooking = data.source === 'session';
   const cancellable = Boolean(data.actions && data.actions.can_cancel);
   const reschedulable = Boolean(data.actions && data.actions.can_reschedule);
+  const rescheduleType = resolveRescheduleSlotType(data);
+  console.info('[Manage] Reschedule slot type resolved', {
+    booking_id: data.booking_id || null,
+    source: data.source || null,
+    slot_type: rescheduleType.slotType,
+    reason: rescheduleType.reason,
+  });
   const rescheduleParams = new URLSearchParams({
-    type: data.session_type || 'intro',
+    type: rescheduleType.slotType,
     mode: 'reschedule',
     token,
     id: data.booking_id,
@@ -122,8 +189,8 @@
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
-    ${policyText ? `<div class="policy-box">${withContactLink(policyText)}</div>` : ''}
-    ${showLockedMessage ? `<div class="policy-box">${withContactLink(lockedMessage)}</div>` : ''}
+    ${policyText ? bookingPolicyHtml(policyText) : ''}
+    ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}

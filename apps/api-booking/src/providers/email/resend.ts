@@ -5,6 +5,7 @@ import type { Booking, Event } from '../../types.js';
 
 const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 const EMAIL_REPLY_TO = 'hello@yairb.ch';
+const CONTACT_PAGE_URL = 'https://letsilluminate.co/contact.html';
 const BOOKING_POLICY_TEXT = 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.';
 
 function fmt(iso: string): string {
@@ -137,6 +138,11 @@ function htmlLayout(bodyContent: string): string {
   .btn:hover { background:#0c7a91; }
   .secondary-link { margin-top:12px; font-size:14px; }
   .secondary-link a { color:#4fc3d8; text-decoration:none; }
+  .policy { text-align:left; max-width:420px; margin:16px auto 0; color:#88abb5; }
+  .policy__title { margin:0 0 8px; color:#ddeef2; font-size:14px; line-height:1.6; }
+  .policy__list { margin:0; padding-left:18px; }
+  .policy__list li { margin:4px 0; font-size:14px; line-height:1.6; }
+  .policy a { color:#4fc3d8; }
   .footer { background:#0a1219; padding:28px 40px; border-top:1px solid #1d3848; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
   .footer__brand { margin:0; font-size:12px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:#4fc3d8; }
   .footer__sub { font-weight:400; letter-spacing:0.03em; text-transform:none; color:#88abb5; }
@@ -164,6 +170,28 @@ function detailBlock(rows: Array<[string, string]>): string {
     `<tr><td class="lbl">${label}</td><td class="val">${value}</td></tr>`,
   ).join('');
   return `<div class="detail-block"><table>${trs}</table></div>`;
+}
+
+function bookingPolicyHtml(): string {
+  const lines = BOOKING_POLICY_TEXT.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const [title, firstRule, secondRule, thirdRule] = lines;
+  const linkedThirdRule = String(thirdRule || '')
+    .split(/(contact)/gi)
+    .map((part) => part.toLowerCase() === 'contact'
+      ? `<a href="${esc(CONTACT_PAGE_URL)}">contact</a>`
+      : esc(part))
+    .join('');
+
+  return `
+    <section class="policy" aria-label="Booking policy">
+      <p class="policy__title"><strong><u>${esc(title || 'Booking policy')}</u></strong></p>
+      <ul class="policy__list">
+        <li>${esc(firstRule || '')}</li>
+        <li>${esc(secondRule || '')}</li>
+        <li>${linkedThirdRule}</li>
+      </ul>
+    </section>
+  `;
 }
 
 function bookingConfirmationHtml(
@@ -194,7 +222,7 @@ function bookingConfirmationHtml(
     <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
-    <p style="white-space:pre-line;text-align:left;max-width:420px;margin:16px auto 0;">${esc(BOOKING_POLICY_TEXT)}</p>
+    ${bookingPolicyHtml()}
     <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -247,7 +275,7 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
-    <p style="white-space:pre-line;text-align:left;max-width:420px;margin:16px auto 0;">${esc(BOOKING_POLICY_TEXT)}</p>
+    ${bookingPolicyHtml()}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);

@@ -1265,6 +1265,40 @@ async function syncSessionBookingCalendar(
       const updated = await providers.repository.updateBooking(booking.id, { google_event_id: null });
       return { booking: updated, calendarSynced: true, failureReason: null };
     } catch (error) {
+      if (isCalendarEventMissingError(error)) {
+        logger.logWarn?.({
+          source: 'backend',
+          eventType: 'calendar_event_missing_on_cancel',
+          message: 'Calendar event was missing during cancellation; proceeding with successful cancellation.',
+          context: {
+            booking_id: booking.id,
+            operation: options.operation,
+            google_event_id: booking.google_event_id,
+            special_case_code: 'CALENDAR_EVENT_MISSING_ON_CANCEL',
+            branch_taken: 'calendar_event_missing_treated_as_cancel_success',
+            deny_reason: 'calendar_event_not_found',
+          },
+        });
+        try {
+          const updated = await providers.repository.updateBooking(booking.id, { google_event_id: null });
+          return { booking: updated, calendarSynced: true, failureReason: null };
+        } catch (persistError) {
+          logger.logError?.({
+            source: 'backend',
+            eventType: 'calendar_event_missing_on_cancel_persist_failed',
+            message: 'Calendar event was missing on cancel, but clearing stale google_event_id failed.',
+            context: {
+              booking_id: booking.id,
+              operation: options.operation,
+              google_event_id: booking.google_event_id,
+              special_case_code: 'CALENDAR_EVENT_MISSING_ON_CANCEL',
+              branch_taken: 'calendar_event_missing_cancel_persist_failed',
+              deny_reason: toSyncFailureReason(persistError),
+            },
+          });
+          return { booking, calendarSynced: false, failureReason: toSyncFailureReason(persistError) };
+        }
+      }
       logger.error('Calendar delete failed', {
         bookingId: booking.id,
         operation: options.operation,
@@ -1284,6 +1318,55 @@ async function syncSessionBookingCalendar(
       await providers.calendar.updateEvent(booking.google_event_id, payload);
       return { booking, calendarSynced: true, failureReason: null };
     } catch (error) {
+      if (isCalendarEventMissingError(error)) {
+        logger.logWarn?.({
+          source: 'backend',
+          eventType: 'calendar_event_missing_on_reschedule',
+          message: 'Calendar event was missing during reschedule; creating a replacement event.',
+          context: {
+            booking_id: booking.id,
+            operation: options.operation,
+            google_event_id: booking.google_event_id,
+            special_case_code: 'CALENDAR_EVENT_MISSING_ON_RESCHEDULE',
+            branch_taken: 'calendar_event_missing_recreate_on_reschedule',
+            deny_reason: 'calendar_event_not_found',
+          },
+        });
+        try {
+          const created = await providers.calendar.createEvent(payload);
+          const updated = await providers.repository.updateBooking(booking.id, { google_event_id: created.eventId });
+          logger.logInfo?.({
+            source: 'backend',
+            eventType: 'calendar_event_recreated_after_missing',
+            message: 'Recreated calendar event after missing event was detected during reschedule.',
+            context: {
+              booking_id: booking.id,
+              operation: options.operation,
+              previous_google_event_id: booking.google_event_id,
+              replacement_google_event_id: created.eventId,
+              special_case_code: 'CALENDAR_EVENT_RECREATED_AFTER_MISSING',
+              branch_taken: 'calendar_event_recreated_and_booking_updated',
+              deny_reason: null,
+            },
+          });
+          return { booking: updated, calendarSynced: true, failureReason: null };
+        } catch (recreateError) {
+          logger.logError?.({
+            source: 'backend',
+            eventType: 'calendar_event_recreate_failed_after_missing',
+            message: 'Failed to recreate calendar event after missing event was detected during reschedule.',
+            context: {
+              booking_id: booking.id,
+              operation: options.operation,
+              previous_google_event_id: booking.google_event_id,
+              special_case_code: 'CALENDAR_EVENT_RECREATED_AFTER_MISSING',
+              branch_taken: 'calendar_event_recreate_failed_after_missing',
+              deny_reason: toSyncFailureReason(recreateError),
+            },
+          });
+          return { booking, calendarSynced: false, failureReason: toSyncFailureReason(recreateError) };
+        }
+      }
       logger.error('Calendar update failed', {
         bookingId: booking.id,
         operation: options.operation,
@@ -1306,6 +1389,26 @@ async function syncSessionBookingCalendar(
     });
     return { booking, calendarSynced: false, failureReason: toSyncFailureReason(error) };
   }
+}
+
+function isCalendarEventMissingError(error: unknown): boolean {
+  if (!error) return false;
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as Record<string, unknown>;
+    const status = Number(candidate['status'] ?? candidate['statusCode'] ?? candidate['httpStatus']);
+    if (status === 404 || status === 410) return true;
+    const code = String(candidate['code'] ?? '').toLowerCase();
+    if (code === 'notfound' || code === '404' || code === '410') return true;
+  }
+
+  const message = String((error as { message?: unknown })?.message ?? error).toLowerCase();
+  if (message.includes('not found')) return true;
+  if (message.includes('status: 404') || message.includes('status 404')) return true;
+  if (message.includes('status: 410') || message.includes('status 410')) return true;
+  if (message.includes('failed (404)') || message.includes('failed (410)')) return true;
+  if (message.includes('"code":404') || message.includes('"code":410')) return true;
+  if (message.includes('"reason":"notfound"')) return true;
+  return false;
 }
 
 function reservationSkipReason(

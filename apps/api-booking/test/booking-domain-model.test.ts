@@ -73,6 +73,26 @@ function makeCtx(overrides?: {
   };
 }
 
+class MissingOnCancelCalendarProvider extends MockCalendarProvider {
+  override async deleteEvent(_eventId: string): Promise<void> {
+    throw new Error('Google deleteEvent failed (404): {"error":{"code":404,"message":"Not Found"}}');
+  }
+}
+
+class MissingOnRescheduleCalendarProvider extends MockCalendarProvider {
+  public recreatedEventId: string | null = null;
+
+  override async updateEvent(_eventId: string, _event: any): Promise<void> {
+    throw new Error('Google updateEvent failed (404): {"error":{"code":404,"reason":"notFound"}}');
+  }
+
+  override async createEvent(event: any): Promise<{ eventId: string }> {
+    const created = await super.createEvent(event);
+    this.recreatedEventId = created.eventId;
+    return created;
+  }
+}
+
 function iso(date: string) {
   return new Date(date).toISOString();
 }
@@ -684,6 +704,108 @@ describe('booking domain model', () => {
     expect(updateReservedSlotEffect?.status).toBe('success');
     expect(cancelReservedSlotEffect?.status).toBe('success');
     expect(cancellationEmailEffect?.status).toBe('success');
+  });
+
+  it('treats missing calendar event on cancel as success and logs the special case', async () => {
+    const calendar = new MissingOnCancelCalendarProvider();
+    const ctx = makeCtx({ calendar });
+
+    const created = await createPayLaterBooking(
+      {
+        slotStart: '2026-03-23T10:00:00.000Z',
+        slotEnd: '2026-03-23T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        sessionType: 'session',
+        clientName: 'Cancel Missing',
+        clientEmail: 'cancel-missing@example.com',
+        clientPhone: '+41000000009',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      },
+      ctx,
+    );
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    const confirmed = await confirmBookingEmail(token, ctx);
+    expect(confirmed.google_event_id).toBeTruthy();
+
+    const canceled = await cancelBooking(confirmed, ctx);
+    expect(canceled.ok).toBe(true);
+    expect(canceled.booking.current_status).toBe('CANCELED');
+    expect(canceled.booking.google_event_id).toBeNull();
+
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'calendar_event_missing_on_cancel',
+      context: expect.objectContaining({
+        special_case_code: 'CALENDAR_EVENT_MISSING_ON_CANCEL',
+        branch_taken: 'calendar_event_missing_treated_as_cancel_success',
+        deny_reason: 'calendar_event_not_found',
+      }),
+    }));
+  });
+
+  it('recreates calendar event on reschedule when stored google_event_id is missing', async () => {
+    const calendar = new MissingOnRescheduleCalendarProvider();
+    const ctx = makeCtx({ calendar });
+
+    const created = await createPayLaterBooking(
+      {
+        slotStart: '2026-03-23T10:00:00.000Z',
+        slotEnd: '2026-03-23T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        sessionType: 'session',
+        clientName: 'Reschedule Missing',
+        clientEmail: 'reschedule-missing@example.com',
+        clientPhone: '+41000000010',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      },
+      ctx,
+    );
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const oldGoogleEventId = confirmed.google_event_id;
+    expect(oldGoogleEventId).toBeTruthy();
+
+    const rescheduled = await rescheduleBooking(
+      confirmed,
+      {
+        newStart: '2026-03-24T10:00:00.000Z',
+        newEnd: '2026-03-24T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+      },
+      ctx,
+    );
+    expect(rescheduled.ok).toBe(true);
+    expect(rescheduled.booking.starts_at).toBe('2026-03-24T10:00:00.000Z');
+    expect(rescheduled.booking.google_event_id).toBeTruthy();
+    expect(rescheduled.booking.google_event_id).not.toBe(oldGoogleEventId);
+    expect(rescheduled.booking.google_event_id).toBe(calendar.recreatedEventId);
+
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'calendar_event_missing_on_reschedule',
+      context: expect.objectContaining({
+        special_case_code: 'CALENDAR_EVENT_MISSING_ON_RESCHEDULE',
+        branch_taken: 'calendar_event_missing_recreate_on_reschedule',
+        deny_reason: 'calendar_event_not_found',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'calendar_event_recreated_after_missing',
+      context: expect.objectContaining({
+        special_case_code: 'CALENDAR_EVENT_RECREATED_AFTER_MISSING',
+        branch_taken: 'calendar_event_recreated_and_booking_updated',
+      }),
+    }));
   });
 
   it('tracks side-effect retry attempts, eventual success, and dead-path exhaustion', async () => {

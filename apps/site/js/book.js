@@ -166,6 +166,44 @@ function escHtml(str) {
     .replace(/'/g,  '&#39;');
 }
 
+const DEFAULT_BOOKING_POLICY_LINES = [
+  'Booking policy',
+  'You can reschedule or cancel your booking up to 24 hours before the session.',
+  'Within 24 hours of the session, bookings can no longer be changed online and are non-refundable.',
+  'If an emergency occurs, please contact me directly.',
+];
+
+function getBookingPolicyLines(rawText) {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length >= 4 ? lines.slice(0, 4) : DEFAULT_BOOKING_POLICY_LINES;
+}
+
+function escapeWithContactLink(text, href) {
+  return String(text || '')
+    .split(/(contact)/gi)
+    .map((part) => part.toLowerCase() === 'contact'
+      ? `<a href="${escHtml(href)}">contact</a>`
+      : escHtml(part))
+    .join('');
+}
+
+function buildBookingPolicyBlock(rawText, contactHref = 'contact.html') {
+  const [title, firstRule, secondRule, thirdRule] = getBookingPolicyLines(rawText);
+  return `
+    <section class="booking-policy" aria-label="Booking policy">
+      <p class="booking-policy__title"><strong><u>${escHtml(title)}</u></strong></p>
+      <ul class="booking-policy__list">
+        <li>${escHtml(firstRule)}</li>
+        <li>${escHtml(secondRule)}</li>
+        <li>${escapeWithContactLink(thirdRule, contactHref)}</li>
+      </ul>
+    </section>
+  `;
+}
+
 function getNonPaidConfirmationWindowMinutes() {
   const minutes = Number(
     S.publicConfig &&
@@ -596,10 +634,7 @@ function buildBookingReview() {
     <div class="form-step">
       <p class="step-eyebrow">Review your booking</p>
       ${buildReviewTable(rows)}
-      <p class="form-hint" style="white-space:pre-line">${escHtml(
-        S.publicConfig?.booking_policy_text
-          || 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.',
-      )}</p>
+      ${buildBookingPolicyBlock(S.publicConfig?.booking_policy_text)}
       <div class="step-footer">
         <button class="btn btn-ghost" data-back>← Back</button>
         <button class="btn btn-primary" data-submit ${S.submitting ? 'disabled' : ''}>
@@ -688,10 +723,7 @@ function buildEventReview() {
     <div class="form-step">
       <p class="step-eyebrow">Review your registration</p>
       ${buildReviewTable(rows)}
-      <p class="form-hint" style="white-space:pre-line">${escHtml(
-        S.publicConfig?.booking_policy_text
-          || 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.',
-      )}</p>
+      ${buildBookingPolicyBlock(S.publicConfig?.booking_policy_text)}
       <div class="step-footer">
         <button class="btn btn-ghost" data-back>← Back</button>
         <button class="btn btn-primary" data-submit ${S.submitting ? 'disabled' : ''}>
