@@ -375,6 +375,29 @@
   margin-bottom: 1rem;
 }
 
+.reschedule-current__new-label {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-lake-light);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.reschedule-current__new-time {
+  margin: 0.2rem 0 0;
+  font-size: 1.02rem;
+  color: var(--color-lake-light);
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.reschedule-current__divider {
+  margin: 0.75rem 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
 .reschedule-current__label {
   margin: 0 0 0.35rem;
   font-size: 0.75rem;
@@ -390,16 +413,15 @@
   font-weight: 600;
 }
 
+.reschedule-current__row--quiet {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
 .reschedule-current__meta {
   margin: 0.2rem 0 0;
   font-size: 0.8rem;
   color: var(--color-text-muted);
-}
-
-.reschedule-current__next {
-  margin: 0.5rem 0 0;
-  font-size: 0.84rem;
-  color: var(--color-lake-light);
 }
 
 /* ── Form elements ───────────────────────────────────────── */
@@ -497,6 +519,8 @@
 .booking-policy__list {
   margin: 0;
   padding-left: 1.25rem;
+  list-style-type: disc;
+  list-style-position: outside;
 }
 
 .booking-policy__list li {
@@ -690,6 +714,12 @@
   font-size: 0.9rem;
   color: var(--color-text-muted);
   line-height: 1.5;
+}
+
+.review-row--highlight dt,
+.review-row--highlight dd {
+  color: var(--color-lake-light);
+  font-weight: 700;
 }
 
 /* ── Payment simulation spinner ─────────────────────────── */

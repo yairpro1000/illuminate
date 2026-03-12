@@ -464,16 +464,18 @@ function buildCurrentBookingPanel() {
   const nextStart = S.selectedSlot?.start || S.rescheduleUpdated?.starts_at || null;
   return `
     <div class="reschedule-current">
-      <p class="reschedule-current__label">Current booking</p>
-      <p class="reschedule-current__row">${formatDateLong(current.starts_at)} · ${formatTime(current.starts_at)}</p>
+      ${nextStart ? `
+        <div class="reschedule-current__new">
+          <p class="reschedule-current__new-label">NEW SLOT SELECTED</p>
+          <p class="reschedule-current__new-time">${formatDateLong(nextStart)} · ${formatTime(nextStart)}</p>
+        </div>
+        <hr class="reschedule-current__divider" />
+      ` : ''}
+      <p class="reschedule-current__label">CURRENT BOOKING</p>
+      <p class="reschedule-current__row reschedule-current__row--quiet">${formatDateLong(current.starts_at)} · ${formatTime(current.starts_at)}</p>
       <p class="reschedule-current__meta">
         Status: ${escHtml(String(current.status || '—').replace('_', ' '))}
       </p>
-      ${nextStart ? `
-        <p class="reschedule-current__next">
-          New slot: ${formatDateLong(nextStart)} · ${formatTime(nextStart)}
-        </p>
-      ` : ''}
     </div>
   `;
 }
@@ -481,7 +483,7 @@ function buildCurrentBookingPanel() {
 /* ── Contact form (Flow A, Step 2) ──────────────────────── */
 
 function buildContactForm(requirePhone) {
-  const slotLine = S.selectedSlot
+  const slotLine = CTX.mode !== 'reschedule' && S.selectedSlot
     ? `<p class="selected-slot-chip">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true" style="vertical-align:-.15em">
           <rect x=".75" y="1.75" width="11.5" height="10.5" rx="1.75" stroke="currentColor" stroke-width="1.2"/>
@@ -546,16 +548,22 @@ function buildContactForm(requirePhone) {
 function buildRescheduleReview() {
   const slot = S.selectedSlot;
   const rows = [
-    ['Current slot', S.currentBooking ? `${formatDateLong(S.currentBooking.starts_at)} · ${formatTime(S.currentBooking.starts_at)}` : '—'],
-    ['New slot', slot ? `${formatDateLong(slot.start)} · ${formatTime(slot.start)}` : '—'],
-    ['Name', [S.firstName, S.lastName].filter(Boolean).join(' ')],
-    ['Email', S.email],
-    S.phone ? ['Phone', S.phone] : null,
+    {
+      label: 'Current slot',
+      value: S.currentBooking ? `${formatDateLong(S.currentBooking.starts_at)} · ${formatTime(S.currentBooking.starts_at)}` : '—',
+    },
+    {
+      label: 'New slot',
+      value: slot ? `${formatDateLong(slot.start)} · ${formatTime(slot.start)}` : '—',
+      rowClass: 'review-row--highlight',
+    },
+    { label: 'Name', value: [S.firstName, S.lastName].filter(Boolean).join(' ') },
+    { label: 'Email', value: S.email },
+    S.phone ? { label: 'Phone', value: S.phone } : null,
   ].filter(Boolean);
 
   return `
     <div class="form-step">
-      ${buildCurrentBookingPanel()}
       <p class="step-eyebrow">Review your reschedule</p>
       ${buildReviewTable(rows)}
       <div class="step-footer">
@@ -853,12 +861,18 @@ function _buildConfirmationWidget(isEvent) {
 /* ── Review table helper ─────────────────────────────────── */
 
 function buildReviewTable(rows) {
-  const items = rows.map(([label, value]) => `
-    <div class="review-row">
-      <dt>${escHtml(label)}</dt>
-      <dd>${escHtml(String(value))}</dd>
-    </div>
-  `).join('');
+  const items = rows.map((row) => {
+    const rowObj = Array.isArray(row)
+      ? { label: row[0], value: row[1], rowClass: '' }
+      : row;
+    const extraClass = rowObj.rowClass ? ` ${rowObj.rowClass}` : '';
+    return `
+      <div class="review-row${extraClass}">
+        <dt>${escHtml(rowObj.label)}</dt>
+        <dd>${escHtml(String(rowObj.value))}</dd>
+      </div>
+    `;
+  }).join('');
   return `<dl class="review-table">${items}</dl>`;
 }
 
