@@ -141,9 +141,26 @@
         z-index: 1000;
       }
       .modal {
-        width: min(760px, 94vw);
+        width: min(980px, 96vw);
         max-height: min(92vh, 880px);
         overflow: auto;
+      }
+      .details-grid {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 14px;
+      }
+      .details-grid td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.9rem;
+        vertical-align: top;
+      }
+      .details-grid td:first-child {
+        width: 180px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
       }
       .btnrow {
         display: flex;
@@ -264,6 +281,7 @@
     <div id="editOverlay" class="overlay hidden" aria-hidden="true">
       <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
         <h1 id="editTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit booking</h1>
+        <table class="details-grid" id="editReadonlyDetails" aria-label="Booking details"></table>
         <div class="row">
           <div class="col" style="flex: 1 1 200px;">
             <label for="editFirstName">First name</label>
@@ -313,6 +331,7 @@
 
         <div class="btnrow" style="margin-top: 10px;">
           <button id="editOpenManage" type="button" class="secondary">Manage booking</button>
+          <button id="editCopyClientManage" type="button" class="secondary">Copy client manage link</button>
           <button id="editClose" type="button" class="secondary">Close</button>
           <button id="editSave" type="button">Save</button>
         </div>
@@ -368,6 +387,7 @@
         const editNotesEl = document.getElementById("editNotes");
         const editMsgEl = document.getElementById("editMsg");
         const editSaveEl = document.getElementById("editSave");
+        const editReadonlyDetailsEl = document.getElementById("editReadonlyDetails");
 
         function setStatus(text, isError) {
           statusEl.className = isError ? "status err" : "status ok";
@@ -481,7 +501,7 @@
             const tr = document.createElement("tr");
             tr.className = "clickable";
             const fullName = [row.client_first_name || "", row.client_last_name || ""].join(" ").trim();
-            tr.appendChild(createCell(row.event_id ? (row.event_title || "Event") : "Session"));
+            tr.appendChild(createCell(row.event_id ? (row.event_title || "Event") : (row.session_type_title || "Session")));
             tr.appendChild(createCell(new Date(row.starts_at).toLocaleString()));
             tr.appendChild(createCell(fullName));
             tr.appendChild(createCell(row.client_email || ""));
@@ -490,6 +510,56 @@
             tr.addEventListener("click", () => openEditModal(row));
             rowsBody.appendChild(tr);
           }
+        }
+
+        function detailRow(label, value) {
+          const safe = (value == null || value === "") ? "—" : value;
+          return `<tr><td>${label}</td><td>${safe}</td></tr>`;
+        }
+
+        function detailSection(title) {
+          return `<tr><td colspan="2" style="font-weight:700;padding-top:12px;color:var(--ink)">${title}</td></tr>`;
+        }
+
+        function fmtDateTime(value) {
+          return value ? new Date(value).toLocaleString() : "—";
+        }
+
+        function renderReadonlyDetails(row) {
+          const kindLabel = row.event_id ? "Event booking" : "1:1 booking";
+          const title = row.event_id ? (row.event_title || "Event") : (row.session_type_title || "Session");
+          const maps = row.maps_url ? `<a href="${row.maps_url}" target="_blank" rel="noreferrer">Open map</a>` : "—";
+          const paymentAmount = (row.payment_amount_cents != null && row.payment_currency)
+            ? `${(row.payment_amount_cents / 100).toFixed(2)} ${row.payment_currency}`
+            : "—";
+          return [
+            detailSection("Booking"),
+            detailRow("Booking ID", row.booking_id),
+            detailRow("Booking type", kindLabel),
+            detailRow("Title", title),
+            detailRow("Latest booking event", row.latest_event_type || "—"),
+            detailRow("Latest booking event at", fmtDateTime(row.latest_event_at)),
+            detailRow("Status", row.current_status || "—"),
+            detailRow("Starts at", fmtDateTime(row.starts_at)),
+            detailRow("Ends at", fmtDateTime(row.ends_at)),
+            detailRow("Timezone", row.timezone || "—"),
+            detailRow("Address", row.address_line || "—"),
+            detailRow("Map", maps),
+            detailRow("Latest side-effect attempt", row.latest_side_effect_attempt_status || "—"),
+            detailRow("Latest side-effect attempt at", fmtDateTime(row.latest_side_effect_attempt_at)),
+            detailRow("Google event ID", row.google_event_id || "—"),
+            detailRow("Event ID", row.event_id || "—"),
+            detailRow("Session type ID", row.session_type_id || "—"),
+            detailRow("Created", fmtDateTime(row.created_at)),
+            detailRow("Updated", fmtDateTime(row.updated_at)),
+            detailSection("Payment"),
+            detailRow("Amount", paymentAmount),
+            detailRow("Payment status", row.payment_status || "—"),
+            detailRow("Payment booking event", row.payment_latest_event_type || "—"),
+            detailRow("Payment event datetime", fmtDateTime(row.payment_latest_event_at)),
+            detailRow("Payment side-effect attempt", row.payment_latest_side_effect_attempt_status || "—"),
+            detailRow("Payment side-effect at", fmtDateTime(row.payment_latest_side_effect_attempt_at)),
+          ].join("");
         }
 
         function syncSourceMode() {
@@ -580,6 +650,7 @@
 
         function openEditModal(row) {
           state.editing = row;
+          editReadonlyDetailsEl.innerHTML = renderReadonlyDetails(row);
           editFirstNameEl.value = row.client_first_name || "";
           editLastNameEl.value = row.client_last_name || "";
           editEmailEl.value = row.client_email || "";
@@ -649,6 +720,25 @@
           }
         }
 
+        async function copyClientManageLink() {
+          if (!state.editing || state.saving) return;
+          state.saving = true;
+          setEditMessage("Generating client manage link...", false);
+          try {
+            const data = await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}/client-manage-link`, {
+              method: "POST",
+            });
+            const url = data && data.url ? String(data.url) : "";
+            if (!url) throw new Error("No URL returned");
+            await navigator.clipboard.writeText(url);
+            setEditMessage("Client manage link copied to clipboard.", false);
+          } catch (err) {
+            setEditMessage(String(err), true);
+          } finally {
+            state.saving = false;
+          }
+        }
+
         sourceEl.addEventListener("change", () => {
           syncSourceMode();
           void loadRows();
@@ -682,6 +772,9 @@
         });
         document.getElementById("editOpenManage").addEventListener("click", () => {
           void openManageBooking();
+        });
+        document.getElementById("editCopyClientManage").addEventListener("click", () => {
+          void copyClientManageLink();
         });
 
         editOverlayEl.addEventListener("click", (e) => {

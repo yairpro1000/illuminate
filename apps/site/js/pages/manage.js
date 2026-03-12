@@ -55,6 +55,19 @@
     return message || 'Could not load booking details.';
   }
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function withContactLink(value) {
+    return escapeHtml(value).replace(/\bcontact\b/gi, (word) => `<a href="contact.html">${word}</a>`);
+  }
+
   if (!token) {
     renderLoadError('Invalid Manage Link', 'Please use the latest manage link from your email.');
     return;
@@ -109,8 +122,8 @@
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
-    ${policyText ? `<div class="policy-box">${policyText}</div>` : ''}
-    ${showLockedMessage ? `<div class="policy-box">${lockedMessage}</div>` : ''}
+    ${policyText ? `<div class="policy-box">${withContactLink(policyText)}</div>` : ''}
+    ${showLockedMessage ? `<div class="policy-box">${withContactLink(lockedMessage)}</div>` : ''}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}

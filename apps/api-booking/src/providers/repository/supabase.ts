@@ -567,12 +567,148 @@ export class SupabaseRepository implements IRepository {
     }
 
     const rows = await requireData<BookingRow[]>(query, 'Failed to load organizer bookings');
+    const bookings = rows.map((row) => toBooking(row));
+    const bookingIds = bookings.map((booking) => booking.id);
+    const eventByBooking = new Map<string, { event_type: OrganizerBookingRow['latest_event_type']; created_at: string }>();
+    const paymentEventByBooking = new Map<string, { event_type: OrganizerBookingRow['payment_latest_event_type']; created_at: string }>();
+    const paymentByBooking = new Map<string, { amount_cents: number; currency: string; status: OrganizerBookingRow['payment_status'] }>();
+    const latestAttemptByBooking = new Map<string, { status: OrganizerBookingRow['latest_side_effect_attempt_status']; created_at: string }>();
+    const paymentAttemptByBooking = new Map<string, { status: OrganizerBookingRow['payment_latest_side_effect_attempt_status']; created_at: string }>();
 
-    return rows.map((row) => {
-      const booking = toBooking(row);
+    if (bookingIds.length > 0) {
+      const bookingEvents = await requireData<Array<{
+        id: string;
+        booking_id: string;
+        event_type: OrganizerBookingRow['latest_event_type'];
+        created_at: string;
+      }>>(
+        this.db
+          .from('booking_events')
+          .select('id, booking_id, event_type, created_at')
+          .in('booking_id', bookingIds)
+          .order('created_at', { ascending: false }),
+        'Failed to load organizer booking events',
+      );
+
+      const bookingEventIds: string[] = [];
+      for (const bookingEvent of bookingEvents) {
+        bookingEventIds.push(bookingEvent.id);
+        if (!eventByBooking.has(bookingEvent.booking_id)) {
+          eventByBooking.set(bookingEvent.booking_id, {
+            event_type: bookingEvent.event_type,
+            created_at: bookingEvent.created_at,
+          });
+        }
+        if (
+          !paymentEventByBooking.has(bookingEvent.booking_id)
+          && isPaymentRelatedBookingEventType(bookingEvent.event_type)
+        ) {
+          paymentEventByBooking.set(bookingEvent.booking_id, {
+            event_type: bookingEvent.event_type,
+            created_at: bookingEvent.created_at,
+          });
+        }
+      }
+
+      const payments = await requireData<Array<{
+        booking_id: string;
+        amount_cents: number;
+        currency: string;
+        status: OrganizerBookingRow['payment_status'];
+        created_at: string;
+      }>>(
+        this.db
+          .from('payments')
+          .select('booking_id, amount_cents, currency, status, created_at')
+          .in('booking_id', bookingIds)
+          .order('created_at', { ascending: false }),
+        'Failed to load organizer booking payments',
+      );
+      for (const payment of payments) {
+        if (!paymentByBooking.has(payment.booking_id)) {
+          paymentByBooking.set(payment.booking_id, {
+            amount_cents: payment.amount_cents,
+            currency: payment.currency,
+            status: payment.status,
+          });
+        }
+      }
+
+      if (bookingEventIds.length > 0) {
+        const sideEffects = await requireData<Array<{
+          id: string;
+          booking_event_id: string;
+          effect_intent: string;
+          created_at: string;
+        }>>(
+          this.db
+            .from('booking_side_effects')
+            .select('id, booking_event_id, effect_intent, created_at')
+            .in('booking_event_id', bookingEventIds)
+            .order('created_at', { ascending: false }),
+          'Failed to load organizer booking side effects',
+        );
+
+        const bookingIdBySideEffectId = new Map<string, string>();
+        const paymentSideEffectIds = new Set<string>();
+        const bookingIdByEventId = new Map<string, string>();
+        for (const event of bookingEvents) bookingIdByEventId.set(event.id, event.booking_id);
+        for (const sideEffect of sideEffects) {
+          const ownerBookingId = bookingIdByEventId.get(sideEffect.booking_event_id);
+          if (!ownerBookingId) continue;
+          bookingIdBySideEffectId.set(sideEffect.id, ownerBookingId);
+          if (isPaymentRelatedSideEffectIntent(sideEffect.effect_intent)) {
+            paymentSideEffectIds.add(sideEffect.id);
+          }
+        }
+
+        const sideEffectIds = sideEffects.map((effect) => effect.id);
+        if (sideEffectIds.length > 0) {
+          const attempts = await requireData<Array<{
+            booking_side_effect_id: string;
+            status: OrganizerBookingRow['latest_side_effect_attempt_status'];
+            created_at: string;
+          }>>(
+            this.db
+              .from('booking_side_effect_attempts')
+              .select('booking_side_effect_id, status, created_at')
+              .in('booking_side_effect_id', sideEffectIds)
+              .order('created_at', { ascending: false }),
+            'Failed to load organizer booking side effect attempts',
+          );
+
+          for (const attempt of attempts) {
+            const ownerBookingId = bookingIdBySideEffectId.get(attempt.booking_side_effect_id);
+            if (!ownerBookingId) continue;
+            if (!latestAttemptByBooking.has(ownerBookingId)) {
+              latestAttemptByBooking.set(ownerBookingId, {
+                status: attempt.status,
+                created_at: attempt.created_at,
+              });
+            }
+            if (
+              paymentSideEffectIds.has(attempt.booking_side_effect_id)
+              && !paymentAttemptByBooking.has(ownerBookingId)
+            ) {
+              paymentAttemptByBooking.set(ownerBookingId, {
+                status: attempt.status,
+                created_at: attempt.created_at,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return bookings.map((booking) => {
       if (!booking.client_first_name || !booking.client_email) {
         throw new Error(`Booking ${booking.id} is missing organizer join data`);
       }
+      const latestEvent = eventByBooking.get(booking.id);
+      const latestAttempt = latestAttemptByBooking.get(booking.id);
+      const payment = paymentByBooking.get(booking.id);
+      const paymentEvent = paymentEventByBooking.get(booking.id);
+      const paymentAttempt = paymentAttemptByBooking.get(booking.id);
 
       return {
         booking_id: booking.id,
@@ -584,7 +720,23 @@ export class SupabaseRepository implements IRepository {
         starts_at: booking.starts_at,
         ends_at: booking.ends_at,
         timezone: booking.timezone,
+        google_event_id: booking.google_event_id,
+        address_line: booking.address_line,
+        maps_url: booking.maps_url,
+        payment_amount_cents: payment?.amount_cents ?? null,
+        payment_currency: payment?.currency ?? null,
+        payment_status: payment?.status ?? null,
+        latest_event_type: latestEvent?.event_type ?? null,
+        latest_event_at: latestEvent?.created_at ?? null,
+        latest_side_effect_attempt_status: latestAttempt?.status ?? null,
+        latest_side_effect_attempt_at: latestAttempt?.created_at ?? null,
+        payment_latest_event_type: paymentEvent?.event_type ?? null,
+        payment_latest_event_at: paymentEvent?.created_at ?? null,
+        payment_latest_side_effect_attempt_status: paymentAttempt?.status ?? null,
+        payment_latest_side_effect_attempt_at: paymentAttempt?.created_at ?? null,
         notes: booking.notes,
+        created_at: booking.created_at,
+        updated_at: booking.updated_at,
         client_id: booking.client_id,
         client_first_name: booking.client_first_name,
         client_last_name: booking.client_last_name ?? null,
@@ -674,6 +826,17 @@ function toBooking(row: BookingRow): Booking {
     event_title: row.event?.title ?? null,
     session_type_title: row.session_type?.title ?? null,
   };
+}
+
+function isPaymentRelatedBookingEventType(eventType: OrganizerBookingRow['latest_event_type']): boolean {
+  return eventType === 'PAYMENT_SETTLED'
+    || eventType === 'REFUND_REQUESTED'
+    || eventType === 'REFUND_CREATED'
+    || eventType === 'REFUND_VERIFIED';
+}
+
+function isPaymentRelatedSideEffectIntent(effectIntent: string): boolean {
+  return effectIntent.includes('stripe') || effectIntent.includes('payment');
 }
 
 function normalizeEmail(email: string): string {

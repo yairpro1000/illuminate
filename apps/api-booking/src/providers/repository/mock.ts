@@ -461,6 +461,35 @@ export class MockRepository implements IRepository {
       const client = mockState.clients.get(hydrated.client_id);
       if (!client) continue;
       const event = hydrated.event_id ? mockState.events.get(hydrated.event_id) : null;
+      const payment = [...mockState.payments.values()]
+        .filter((entry) => entry.booking_id === hydrated.id)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null;
+      const bookingEvents = [...mockState.bookingEvents]
+        .filter((entry) => entry.booking_id === hydrated.id)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const latestEvent = bookingEvents[0] ?? null;
+      const latestPaymentEvent = bookingEvents.find((entry) =>
+        entry.event_type === 'PAYMENT_SETTLED'
+        || entry.event_type === 'REFUND_REQUESTED'
+        || entry.event_type === 'REFUND_CREATED'
+        || entry.event_type === 'REFUND_VERIFIED',
+      ) ?? null;
+
+      const eventIds = new Set(bookingEvents.map((entry) => entry.id));
+      const sideEffects = mockState.sideEffects
+        .filter((entry) => eventIds.has(entry.booking_event_id))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const sideEffectIds = new Set(sideEffects.map((entry) => entry.id));
+      const paymentSideEffectIds = new Set(
+        sideEffects
+          .filter((entry) => entry.effect_intent.includes('stripe') || entry.effect_intent.includes('payment'))
+          .map((entry) => entry.id),
+      );
+      const attempts = [...mockState.sideEffectAttempts]
+        .filter((entry) => sideEffectIds.has(entry.booking_side_effect_id))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const latestAttempt = attempts[0] ?? null;
+      const latestPaymentAttempt = attempts.find((entry) => paymentSideEffectIds.has(entry.booking_side_effect_id)) ?? null;
 
       rows.push({
         booking_id: hydrated.id,
@@ -472,7 +501,23 @@ export class MockRepository implements IRepository {
         starts_at: hydrated.starts_at,
         ends_at: hydrated.ends_at,
         timezone: hydrated.timezone,
+        google_event_id: hydrated.google_event_id,
+        address_line: hydrated.address_line,
+        maps_url: hydrated.maps_url,
+        payment_amount_cents: payment?.amount_cents ?? null,
+        payment_currency: payment?.currency ?? null,
+        payment_status: payment?.status ?? null,
+        latest_event_type: latestEvent?.event_type ?? null,
+        latest_event_at: latestEvent?.created_at ?? null,
+        latest_side_effect_attempt_status: latestAttempt?.status ?? null,
+        latest_side_effect_attempt_at: latestAttempt?.created_at ?? null,
+        payment_latest_event_type: latestPaymentEvent?.event_type ?? null,
+        payment_latest_event_at: latestPaymentEvent?.created_at ?? null,
+        payment_latest_side_effect_attempt_status: latestPaymentAttempt?.status ?? null,
+        payment_latest_side_effect_attempt_at: latestPaymentAttempt?.created_at ?? null,
         notes: hydrated.notes,
+        created_at: hydrated.created_at,
+        updated_at: hydrated.updated_at,
         client_id: client.id,
         client_first_name: client.first_name,
         client_last_name: client.last_name,

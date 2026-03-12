@@ -5,7 +5,7 @@ import type { BookingCurrentStatus, EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { generateToken, hashToken } from '../services/token-service.js';
-import { buildAdminManageUrl } from '../services/booking-service.js';
+import { buildAdminManageUrl, buildManageUrl } from '../services/booking-service.js';
 import {
   SERVICE_MODES,
   getAllOverrides,
@@ -290,6 +290,51 @@ export async function handleAdminCreateBookingManageLink(
     ctx.logger.logWarn?.({
       source: 'backend',
       eventType: 'admin_manage_link_create_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        booking_id: params.bookingId ?? null,
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+        branch_taken: err instanceof Error ? 'handled_error' : 'non_error_throwable',
+        deny_reason: err instanceof Error ? err.message : String(err),
+      },
+    });
+    return errorResponse(err);
+  }
+}
+
+// POST /api/admin/bookings/:bookingId/client-manage-link
+export async function handleAdminCreateClientManageLink(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    await requireAdminAccess(request, ctx.env);
+    const bookingId = params.bookingId?.trim();
+    if (!bookingId) throw badRequest('bookingId is required');
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_manage_link_create_started',
+      message: 'Starting client manage-link generation for admin share flow',
+      context: {
+        path,
+        booking_id: bookingId,
+        branch_taken: 'resolve_booking_and_build_client_manage_link',
+      },
+    });
+    const booking = await ctx.providers.repository.getBookingById(bookingId);
+    if (!booking) throw notFound('Booking not found');
+    const url = await buildManageUrl(ctx.env.SITE_URL, booking);
+    return ok({
+      booking_id: booking.id,
+      url,
+    });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_client_manage_link_create_failed',
       message: err instanceof Error ? err.message : String(err),
       context: {
         path,
