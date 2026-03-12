@@ -51,6 +51,19 @@ describe('Router integration (admin)', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
   });
 
+  it('adds CORS headers to admin contact messages auth errors', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/api/admin/contact-messages', {
+      method: 'GET',
+      headers: { Origin: 'https://admin.letsilluminate.co' },
+    });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(401);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
+    const body = await res.json();
+    expect(body).toEqual({ error: 'UNAUTHORIZED', message: expect.any(String) });
+  });
+
   it('adds CORS headers to non-api 404 responses', async () => {
     const ctx = makeCtx();
     const req = new Request('https://api.local/nope', {

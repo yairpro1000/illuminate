@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ILLUMINATE Admin — Contact Messages</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <style>
+      :root {
+        --bg: #f7f6f2;
+        --card: #ffffff;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --line: #d1d5db;
+        --accent: #0d9488;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", Tahoma, sans-serif; }
+      main { width: min(1180px, 96vw); margin: 22px auto 44px; }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+      h1 { margin: 0 0 10px; font-size: 1.4rem; }
+      .muted { color: var(--muted); font-size: 0.92rem; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+      .col { display: flex; flex-direction: column; }
+      .status { margin-top: 8px; min-height: 1.4em; }
+      .ok { color: #047857; }
+      .err { color: var(--danger); white-space: pre-wrap; }
+      .hidden { display: none !important; }
+      label { display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--muted); }
+      input, select, button {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+      button {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #fff;
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      a { color: var(--accent); }
+      table { width: 100%; border-collapse: collapse; background: #fff; table-layout: fixed; }
+      th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px; font-size: 0.9rem; vertical-align: top; }
+      th { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; }
+      .w-when { width: 170px; }
+      .w-first { width: 150px; }
+      .w-last { width: 150px; }
+      .w-email { width: 240px; }
+      .w-phone { width: 160px; }
+      .w-message { width: auto; }
+      .message-preview {
+        border: 0;
+        background: transparent;
+        padding: 0;
+        margin: 0;
+        color: inherit;
+        text-align: left;
+        width: 100%;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sort-btn {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        padding: 0;
+        cursor: pointer;
+        text-transform: inherit;
+        letter-spacing: inherit;
+      }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      .modal {
+        width: min(1080px, 96vw);
+        max-height: min(92vh, 900px);
+        overflow: auto;
+      }
+      .message-full {
+        white-space: pre-wrap;
+        line-height: 1.45;
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px;
+        font-size: 0.95rem;
+      }
+      .btnrow { display: flex; justify-content: flex-end; margin-top: 12px; }
+      .admin-layout { display: flex; min-height: 100vh; }
+      .admin-sidebar {
+        flex: 0 0 180px;
+        width: 180px;
+        background: var(--card);
+        border-right: 1px solid var(--line);
+        padding: 16px 10px;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+      }
+      .admin-logo { font-weight: 700; margin: 2px 0 10px; font-size: 0.95rem; color: var(--muted); }
+      .admin-nav { display: flex; flex-direction: column; gap: 4px; }
+      .admin-nav-link { display: block; padding: 7px 10px; border-radius: 8px; color: inherit; text-decoration: none; }
+      .admin-nav-link:hover { background: #f3f4f6; }
+      .admin-nav-link.active { background: var(--accent); color: #fff; }
+      .admin-content { flex: 1; min-width: 0; }
+      @media (max-width: 860px) {
+        main { width: min(96vw, 96vw); }
+        .w-phone { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="admin-layout">
+      <nav class="admin-sidebar">
+        <div class="admin-logo">Admin</div>
+        <div class="admin-nav">
+          <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
+          <a href="session-types.html" class="admin-nav-link" data-page="session-types">Edit Offers</a>
+          <a href="contact-messages.html" class="admin-nav-link" data-page="contact-messages">Contact Messages</a>
+        </div>
+      </nav>
+      <main class="admin-content">
+        <section class="card">
+          <h1>Contact Messages</h1>
+          <div class="row">
+            <div class="col" style="min-width: 190px;">
+              <label for="date">Date</label>
+              <input id="date" type="date" />
+            </div>
+            <div class="col" style="min-width: 220px;">
+              <label for="clientId">Client</label>
+              <select id="clientId">
+                <option value="">All clients</option>
+              </select>
+            </div>
+            <div class="col" style="flex: 1 1 260px;">
+              <label for="q">Free text</label>
+              <input id="q" type="search" placeholder="Name, email, phone, message…" />
+            </div>
+            <div class="col">
+              <button id="loadRows" type="button">Load messages</button>
+            </div>
+          </div>
+          <div id="status" class="status muted"></div>
+        </section>
+
+        <section class="card">
+          <table>
+            <thead>
+              <tr>
+                <th class="w-when"><button class="sort-btn" type="button" data-sort="created_at">When</button></th>
+                <th class="w-first"><button class="sort-btn" type="button" data-sort="client_first_name">First Name</button></th>
+                <th class="w-last"><button class="sort-btn" type="button" data-sort="client_last_name">Last Name</button></th>
+                <th class="w-email"><button class="sort-btn" type="button" data-sort="client_email">Email</button></th>
+                <th class="w-phone">Phone</th>
+                <th class="w-message">Message</th>
+              </tr>
+            </thead>
+            <tbody id="rowsBody"></tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <div id="messageOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="messageTitle">
+        <h1 id="messageTitle" style="font-size: 1.2rem; margin-bottom: 10px;">Message</h1>
+        <div id="messageMeta" class="muted" style="margin-bottom: 10px;"></div>
+        <div id="messageFull" class="message-full"></div>
+        <div class="btnrow">
+          <button id="closeMessage" type="button" class="secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function(){
+        var page = (location.pathname.split('/').pop() || 'index.html');
+        if (page === '' || page === '/') page = 'index.html';
+        var map = { 'index.html': 'index', 'session-types.html': 'session-types', 'contact-messages.html': 'contact-messages' };
+        var key = map[page] || 'index';
+        var el = document.querySelector('.admin-nav-link[data-page="'+key+'"]');
+        if (el) el.classList.add('active');
+      })();
+    </script>
+    <script src="js/api-base.js"></script>
+    <script src="js/admin-auth.js"></script>
+    <script>
+      (function () {
+        const state = {
+          allRows: [],
+          rows: [],
+          sortKey: 'created_at',
+          sortDir: 'desc',
+        };
+
+        const dateEl = document.getElementById('date');
+        const clientIdEl = document.getElementById('clientId');
+        const qEl = document.getElementById('q');
+        const rowsBody = document.getElementById('rowsBody');
+        const statusEl = document.getElementById('status');
+        const messageOverlayEl = document.getElementById('messageOverlay');
+        const messageMetaEl = document.getElementById('messageMeta');
+        const messageFullEl = document.getElementById('messageFull');
+
+        function resolveUrl(path) { return window.resolveAdminUrl(path); }
+
+        function buildRequestInit(init) {
+          const next = { method: 'GET', credentials: 'include', ...init };
+          const headers = new Headers(init && init.headers ? init.headers : undefined);
+          if (next.body != null && !headers.has('Content-Type')) {
+            headers.set('Content-Type', 'text/plain;charset=UTF-8');
+          }
+          next.headers = headers;
+          return next;
+        }
+
+        async function api(path, init) {
+          const res = await fetch(resolveUrl(path), buildRequestInit(init));
+          if (res.status === 401 && window.adminAuth) {
+            try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
+          }
+          const text = await res.text();
+          let body = {};
+          try { body = text ? JSON.parse(text) : {}; } catch { body = { raw: text }; }
+          if (!res.ok) throw new Error(res.status + ' ' + res.statusText + ': ' + JSON.stringify(body));
+          return body;
+        }
+
+        function setStatus(text, isError) {
+          statusEl.className = isError ? 'status err' : 'status ok';
+          statusEl.textContent = text || '';
+        }
+
+        function createCell(content) {
+          const td = document.createElement('td');
+          if (typeof content === 'string') td.textContent = content;
+          else if (content) td.appendChild(content);
+          return td;
+        }
+
+        function rowClientName(row) {
+          return [row.client_first_name || '', row.client_last_name || ''].join(' ').trim() || row.client_id;
+        }
+
+        function sortRows(rows) {
+          const sorted = [...rows];
+          sorted.sort((a, b) => {
+            let av = a[state.sortKey];
+            let bv = b[state.sortKey];
+            if (state.sortKey === 'created_at') {
+              av = new Date(av || 0).getTime();
+              bv = new Date(bv || 0).getTime();
+            } else {
+              av = String(av || '').toLowerCase();
+              bv = String(bv || '').toLowerCase();
+            }
+            if (av < bv) return state.sortDir === 'asc' ? -1 : 1;
+            if (av > bv) return state.sortDir === 'asc' ? 1 : -1;
+            return 0;
+          });
+          return sorted;
+        }
+
+        function renderRows() {
+          rowsBody.innerHTML = '';
+          if (!state.rows.length) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = 6;
+            td.className = 'muted';
+            td.textContent = 'No messages.';
+            tr.appendChild(td);
+            rowsBody.appendChild(tr);
+            return;
+          }
+
+          for (const row of state.rows) {
+            const tr = document.createElement('tr');
+            tr.appendChild(createCell(new Date(row.created_at).toLocaleString()));
+            tr.appendChild(createCell(row.client_first_name || ''));
+            tr.appendChild(createCell(row.client_last_name || ''));
+
+            const emailLink = document.createElement('a');
+            emailLink.href = 'mailto:' + (row.client_email || '');
+            emailLink.textContent = row.client_email || '';
+            tr.appendChild(createCell(emailLink));
+
+            const phoneValue = row.client_phone || '';
+            if (phoneValue) {
+              const phoneLink = document.createElement('a');
+              phoneLink.href = 'tel:' + phoneValue;
+              phoneLink.textContent = phoneValue;
+              tr.appendChild(createCell(phoneLink));
+            } else {
+              tr.appendChild(createCell(''));
+            }
+
+            const msgBtn = document.createElement('button');
+            msgBtn.type = 'button';
+            msgBtn.className = 'message-preview';
+            msgBtn.textContent = row.message || '';
+            msgBtn.title = 'Open full message';
+            msgBtn.addEventListener('click', () => openMessageModal(row));
+            tr.appendChild(createCell(msgBtn));
+
+            rowsBody.appendChild(tr);
+          }
+        }
+
+        function populateClientDropdown() {
+          const selected = clientIdEl.value;
+          const clients = new Map();
+          for (const row of state.allRows) {
+            const id = row.client_id || '';
+            if (id && !clients.has(id)) clients.set(id, rowClientName(row));
+          }
+          const sorted = [...clients.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+          clientIdEl.innerHTML = '';
+          const allOpt = document.createElement('option');
+          allOpt.value = '';
+          allOpt.textContent = 'All clients';
+          clientIdEl.appendChild(allOpt);
+          for (const entry of sorted) {
+            const opt = document.createElement('option');
+            opt.value = entry[0];
+            opt.textContent = entry[1];
+            clientIdEl.appendChild(opt);
+          }
+          if (selected && [...clientIdEl.options].some((o) => o.value === selected)) {
+            clientIdEl.value = selected;
+          }
+        }
+
+        function openMessageModal(row) {
+          messageMetaEl.textContent = rowClientName(row) + ' · ' + new Date(row.created_at).toLocaleString();
+          messageFullEl.textContent = row.message || '';
+          messageOverlayEl.classList.remove('hidden');
+          messageOverlayEl.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeMessageModal() {
+          messageOverlayEl.classList.add('hidden');
+          messageOverlayEl.setAttribute('aria-hidden', 'true');
+          messageFullEl.textContent = '';
+          messageMetaEl.textContent = '';
+        }
+
+        async function loadRows() {
+          setStatus('Loading messages...', false);
+          try {
+            const params = new URLSearchParams();
+            if (dateEl.value) params.set('date', dateEl.value);
+            if (clientIdEl.value) params.set('client_id', clientIdEl.value);
+            const q = qEl.value.trim();
+            if (q) params.set('q', q);
+            const suffix = params.toString() ? '?' + params.toString() : '';
+            const data = await api('/admin/contact-messages' + suffix);
+            state.allRows = Array.isArray(data.rows) ? data.rows : [];
+            populateClientDropdown();
+            state.rows = sortRows(state.allRows);
+            renderRows();
+            setStatus('Loaded ' + state.rows.length + ' messages.', false);
+          } catch (err) {
+            state.allRows = [];
+            state.rows = [];
+            renderRows();
+            setStatus(String(err), true);
+          }
+        }
+
+        function toggleSort(sortKey) {
+          if (state.sortKey === sortKey) {
+            state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.sortKey = sortKey;
+            state.sortDir = sortKey === 'created_at' ? 'desc' : 'asc';
+          }
+          state.rows = sortRows(state.allRows);
+          renderRows();
+        }
+
+        document.getElementById('loadRows').addEventListener('click', () => { void loadRows(); });
+        clientIdEl.addEventListener('change', () => { void loadRows(); });
+        document.querySelectorAll('.sort-btn').forEach((btn) => {
+          btn.addEventListener('click', () => toggleSort(btn.getAttribute('data-sort')));
+        });
+        document.getElementById('closeMessage').addEventListener('click', closeMessageModal);
+        messageOverlayEl.addEventListener('click', (e) => {
+          if (e.target === messageOverlayEl) closeMessageModal();
+        });
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && !messageOverlayEl.classList.contains('hidden')) {
+            closeMessageModal();
+          }
+        });
+
+        void loadRows();
+      })();
+    </script>
+  </body>
+</html>

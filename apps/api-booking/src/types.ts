@@ -299,6 +299,21 @@ export interface OrganizerBookingRow {
   client_phone: string | null;
 }
 
+export interface AdminContactMessageRow {
+  id: string;
+  client_id: string;
+  topic: string | null;
+  message: string;
+  status: ContactMessage['status'];
+  source: string;
+  created_at: string;
+  updated_at: string;
+  client_first_name: string;
+  client_last_name: string | null;
+  client_email: string;
+  client_phone: string | null;
+}
+
 // ── Repository input types ──────────────────────────────────────────────────
 
 export type NewClient = Omit<Client, 'id' | 'created_at' | 'updated_at'>;

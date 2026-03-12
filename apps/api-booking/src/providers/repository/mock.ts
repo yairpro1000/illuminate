@@ -1,5 +1,5 @@
 import { mockState } from '../mock-state.js';
-import type { OrganizerBookingFilters, IRepository } from './interface.js';
+import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
 import type {
   Booking,
@@ -21,6 +21,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminContactMessageRow,
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
@@ -441,6 +442,51 @@ export class MockRepository implements IRepository {
     };
     mockState.contactMessages.set(created.id, created);
     return created;
+  }
+
+  async getAdminContactMessages(filters: AdminContactMessageFilters): Promise<AdminContactMessageRow[]> {
+    const rows: AdminContactMessageRow[] = [];
+
+    for (const message of mockState.contactMessages.values()) {
+      if (filters.client_id && message.client_id !== filters.client_id) continue;
+      if (filters.date && message.created_at.slice(0, 10) !== filters.date) continue;
+
+      const client = mockState.clients.get(message.client_id);
+      if (!client) continue;
+
+      rows.push({
+        id: message.id,
+        client_id: message.client_id,
+        topic: message.topic,
+        message: message.message,
+        status: message.status,
+        source: message.source,
+        created_at: message.created_at,
+        updated_at: message.updated_at,
+        client_first_name: client.first_name,
+        client_last_name: client.last_name,
+        client_email: client.email,
+        client_phone: client.phone,
+      });
+    }
+
+    rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    if (!filters.q) return rows;
+    const q = filters.q.toLowerCase();
+    return rows.filter((row) => {
+      const haystack = [
+        row.client_first_name,
+        row.client_last_name,
+        row.client_email,
+        row.client_phone,
+        row.topic,
+        row.message,
+        row.status,
+        row.source,
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
   }
 
   // ── Organizer reads ───────────────────────────────────────────────────────

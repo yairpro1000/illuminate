@@ -7,7 +7,23 @@ import { cancelBooking, resolveBookingManageAccess } from '../services/booking-s
 export async function handleManageCancel(request: Request, ctx: AppContext): Promise<Response> {
   const path = new URL(request.url).pathname;
   try {
-    const body = await request.json() as Record<string, unknown>;
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json() as Record<string, unknown>;
+    } catch (parseError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'manage_booking_cancel_input_gate_decision',
+        message: 'Manage booking cancel request denied because JSON body was invalid',
+        context: {
+          path,
+          branch_taken: 'deny_invalid_json_body',
+          deny_reason: 'request_json_parse_failed',
+          parse_error: parseError instanceof Error ? parseError.message : String(parseError),
+        },
+      });
+      throw badRequest('Invalid JSON body');
+    }
     const token = body['token'] as string | undefined;
     const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
     if (!token) {
@@ -52,7 +68,25 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       source: access.actorSource,
       bypassPolicyWindow: access.bypassPolicyWindow,
     });
-    if (!result.ok) throw badRequest(result.message, result.code);
+    if (!result.ok) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'manage_booking_cancel_result_gate_decision',
+        message: 'Manage booking cancel denied by booking service result gate',
+        context: {
+          path,
+          booking_id: booking.id,
+          booking_status: booking.current_status,
+          result_code: result.code,
+          result_message: result.message,
+          actor_source: access.actorSource,
+          policy_bypass_applied: access.bypassPolicyWindow,
+          branch_taken: 'deny_cancel_result_not_ok',
+          deny_reason: result.code,
+        },
+      });
+      throw badRequest(result.message, result.code);
+    }
 
     ctx.logger.logInfo?.({
       source: 'backend',

@@ -160,6 +160,7 @@
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
           <a href="session-types.html" class="admin-nav-link" data-page="session-types">Session Types</a>
+          <a href="contact-messages.html" class="admin-nav-link" data-page="contact-messages">Contact Messages</a>
         </div>
       </nav>
       <main class="admin-content">
@@ -182,7 +183,7 @@
       (function(){
         var page = (location.pathname.split('/').pop() || 'index.html');
         if (page === '' || page === '/') page = 'index.html';
-        var map = { 'index.html': 'index', 'session-types.html': 'session-types' };
+        var map = { 'index.html': 'index', 'session-types.html': 'session-types', 'contact-messages.html': 'contact-messages' };
         var key = map[page] || 'index';
         var el = document.querySelector('.admin-nav-link[data-page="'+key+'"]');
         if (el) el.classList.add('active');

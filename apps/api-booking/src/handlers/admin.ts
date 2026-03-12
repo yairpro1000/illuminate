@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
-import type { OrganizerBookingFilters } from '../providers/repository/interface.js';
+import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
@@ -75,6 +75,17 @@ function parseBookingFilters(url: URL): OrganizerBookingFilters {
     date: date?.trim() || undefined,
     client_id: clientId?.trim() || undefined,
     current_status: status?.trim() as OrganizerBookingFilters['current_status'] | undefined,
+  };
+}
+
+function parseContactMessageFilters(url: URL): AdminContactMessageFilters {
+  const date = url.searchParams.get('date');
+  const clientId = url.searchParams.get('client_id');
+  const q = url.searchParams.get('q');
+  return {
+    date: date?.trim() || undefined,
+    client_id: clientId?.trim() || undefined,
+    q: q?.trim() || undefined,
   };
 }
 
@@ -179,6 +190,67 @@ export async function handleAdminGetBookings(request: Request, ctx: AppContext):
     const rows = await ctx.providers.repository.getOrganizerBookings(filters);
     return ok({ rows });
   } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+// GET /api/admin/contact-messages
+export async function handleAdminGetContactMessages(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    const filters = parseContactMessageFilters(new URL(request.url));
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_contact_messages_request_started',
+      message: 'Starting admin contact-message listing request',
+      context: {
+        path,
+        branch_taken: 'auth_check_pending',
+        has_date_filter: Boolean(filters.date),
+        has_client_filter: Boolean(filters.client_id),
+        has_text_filter: Boolean(filters.q),
+      },
+    });
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_contact_messages_auth_passed',
+      message: 'Admin contact-message listing auth passed',
+      context: {
+        path,
+        branch_taken: 'fetch_contact_messages',
+        filter_date: filters.date ?? null,
+        filter_client_id: filters.client_id ?? null,
+        filter_q: filters.q ?? null,
+      },
+    });
+    const rows = await ctx.providers.repository.getAdminContactMessages(filters);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_contact_messages_request_succeeded',
+      message: 'Admin contact-message listing request succeeded',
+      context: {
+        path,
+        branch_taken: 'return_rows',
+        row_count: rows.length,
+        filter_date: filters.date ?? null,
+        filter_client_id: filters.client_id ?? null,
+        filter_q: filters.q ?? null,
+      },
+    });
+    return ok({ rows });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_contact_messages_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        branch_taken: 'error_response',
+        deny_reason: err instanceof Error ? err.message : String(err),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
     return errorResponse(err);
   }
 }

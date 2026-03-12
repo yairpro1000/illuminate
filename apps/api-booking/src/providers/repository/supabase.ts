@@ -1,5 +1,5 @@
 import type { Db } from '../../repo/supabase.js';
-import type { OrganizerBookingFilters, IRepository } from './interface.js';
+import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
 import type {
   Booking,
@@ -21,6 +21,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminContactMessageRow,
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
@@ -76,6 +77,25 @@ type BookingRow = Omit<
 type PendingSideEffectRow = BookingSideEffect & {
   booking_event: {
     booking_id: string;
+  } | null;
+};
+
+const CONTACT_MESSAGE_SELECT = `
+  *,
+  client:clients!contact_messages_client_id_fkey (
+    first_name,
+    last_name,
+    email,
+    phone
+  )
+`;
+
+type ContactMessageRow = ContactMessage & {
+  client?: {
+    first_name: string;
+    last_name: string | null;
+    email: string;
+    phone: string | null;
   } | null;
 };
 
@@ -548,6 +568,57 @@ export class SupabaseRepository implements IRepository {
       'Failed to create contact message',
     );
     return row;
+  }
+
+  async getAdminContactMessages(filters: AdminContactMessageFilters): Promise<AdminContactMessageRow[]> {
+    let query: any = this.db
+      .from('contact_messages')
+      .select(CONTACT_MESSAGE_SELECT)
+      .order('created_at', { ascending: false });
+
+    if (filters.client_id) query = query.eq('client_id', filters.client_id);
+    if (filters.date) {
+      query = query
+        .gte('created_at', startOfDayIso(filters.date))
+        .lte('created_at', endOfDayIso(filters.date));
+    }
+
+    const rows = await requireData<ContactMessageRow[]>(query, 'Failed to load admin contact messages');
+    let result = rows
+      .filter((row) => row.client)
+      .map((row) => ({
+        id: row.id,
+        client_id: row.client_id,
+        topic: row.topic,
+        message: row.message,
+        status: row.status,
+        source: row.source,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        client_first_name: row.client!.first_name,
+        client_last_name: row.client!.last_name,
+        client_email: row.client!.email,
+        client_phone: row.client!.phone,
+      }));
+
+    if (filters.q) {
+      const q = filters.q.toLowerCase();
+      result = result.filter((row) => {
+        const haystack = [
+          row.client_first_name,
+          row.client_last_name,
+          row.client_email,
+          row.client_phone,
+          row.topic,
+          row.message,
+          row.status,
+          row.source,
+        ].join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    return result;
   }
 
   // ── Organizer reads ───────────────────────────────────────────────────────

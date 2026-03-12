@@ -663,7 +663,7 @@ export async function cancelBooking(
     return {
       ok: false,
       code: 'INVALID_STATUS',
-      message: 'Booking cannot be cancelled in its current state',
+      message: `Booking cannot be cancelled in its current state (status: ${booking.current_status})`,
       booking,
     };
   }

@@ -24,6 +24,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminContactMessageRow,
   OrganizerBookingRow,
   Payment,
   PaymentUpdate,
@@ -40,6 +41,12 @@ export interface OrganizerBookingFilters {
   date?: string; // YYYY-MM-DD
   client_id?: string;
   current_status?: BookingCurrentStatus;
+}
+
+export interface AdminContactMessageFilters {
+  date?: string; // YYYY-MM-DD
+  client_id?: string;
+  q?: string;
 }
 
 /**
@@ -137,6 +144,7 @@ export interface IRepository {
   // ── Organizer/admin reads ───────────────────────────────────────────────
 
   getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]>;
+  getAdminContactMessages(filters: AdminContactMessageFilters): Promise<AdminContactMessageRow[]>;
 
   // ── Session types (offers) ──────────────────────────────────────────────
 
