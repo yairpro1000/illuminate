@@ -1,25 +1,10 @@
 import { getFrontendCorrelationId, logFrontendError, logFrontendInfo, startFrontendFlow } from "./observability";
-
-const rawBase = (import.meta as any).env?.VITE_API_BASE ?? "/api";
-export const API_BASE = String(rawBase).trim().replace(/\/+$/g, "");
+import { API_BASE, makeRuntimeId, readStorageId } from "./runtime";
+export { API_BASE } from "./runtime";
 
 function getDeviceId() {
   if (typeof window === "undefined") return "unknown_device";
-  const key = "pa_device_id";
-  let id = "";
-  try {
-    id = window.localStorage.getItem(key) ?? "";
-    if (!id) {
-      id =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? (crypto as any).randomUUID()
-          : `dev_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-      window.localStorage.setItem(key, id);
-    }
-  } catch {
-    id = "unknown_device";
-  }
-  return id;
+  return readStorageId(window.localStorage, "pa_device_id", "dev");
 }
 
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -28,9 +13,7 @@ export async function api<T>(url: string, init?: RequestInit): Promise<T> {
     : `${API_BASE}${url.startsWith("/") ? url : `/${url}`}`;
   const method = String(init?.method ?? "GET").toUpperCase();
   const requestId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? (crypto as any).randomUUID()
-      : `rid_${Date.now().toString(16)}`;
+    makeRuntimeId("rid");
   const correlationId = method === "GET" ? getFrontendCorrelationId() : startFrontendFlow(`pa_${method.toLowerCase()}_${url.replace(/[^a-z0-9]+/gi, "_")}`);
   const startedAt = Date.now();
   const res = await fetch(fullUrl, {

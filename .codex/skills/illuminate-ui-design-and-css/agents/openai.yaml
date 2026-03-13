@@ -1,0 +1,4 @@
+interface:
+  display_name: "Illuminate UI Design & CSS"
+  short_description: "Apply the Illuminate design system"
+  default_prompt: "Use $illuminate-ui-design-and-css to apply the Illuminate design system to a page or app."

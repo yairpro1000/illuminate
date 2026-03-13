@@ -95,11 +95,13 @@ function createEventReminderSubscription(payload) {
 
 /* ── Base URL ───────────────────────────────────────────── */
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const SITE_CLIENT = window.siteClient || null;
 // Prefer precomputed global base (from js/api-base.js) when available.
 const ENV_BASE = (window.ENV && window.ENV.VITE_API_BASE) || undefined;
 const DEFAULT_LOCAL = 'http://localhost:8788';
 const DEFAULT_PROD  = 'https://api.letsilluminate.co';
 const API_BASE = (function computeApiBase() {
+  if (SITE_CLIENT && typeof SITE_CLIENT.getApiBase === 'function') return SITE_CLIENT.getApiBase().replace(/\/+$/g, '');
   if (typeof window !== 'undefined' && window.API_BASE) return window.API_BASE.replace(/\/+$/g, '');
   const fromStorage = (function(){ try { return localStorage.getItem('API_BASE') || null; } catch (_) { return null; } })();
   if (fromStorage && fromStorage.trim()) return fromStorage.replace(/\/+$/g, '');
@@ -199,6 +201,9 @@ async function requestJson(method, path, body) {
 }
 
 async function parseApiResponseBody(res) {
+  if (SITE_CLIENT && typeof SITE_CLIENT.parseJsonishResponse === 'function') {
+    return SITE_CLIENT.parseJsonishResponse(res);
+  }
   const contentType = (res.headers.get('content-type') || '').toLowerCase();
   if (contentType.includes('application/json')) return res.json();
 

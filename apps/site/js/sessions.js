@@ -6,6 +6,7 @@
 'use strict';
 
 (function () {
+  const SITE_CLIENT = window.siteClient || null;
 
   const FALLBACK_URL = '/fallback_local_data/session_types.json';
   const DELAY_CLASSES = ['', ' fade-up--delay-1', ' fade-up--delay-2', ' fade-up--delay-3'];
@@ -131,29 +132,12 @@
   }
 
   /* ── Resolve the API base URL (mirrors api.js logic) ────── */
-  function resolveApiBase() {
-    if (window.API_BASE) return window.API_BASE.replace(/\/+$/, '');
-    try {
-      const stored = localStorage.getItem('API_BASE');
-      if (stored && stored.trim()) return stored.replace(/\/+$/, '');
-    } catch (_) { /* ignore */ }
-    const localHosts = ['localhost', '127.0.0.1', '::1'];
-    if (localHosts.indexOf(location.hostname) !== -1) return 'http://localhost:8788';
-    return '';
-  }
-
   /* ── Fetch with fallback ──────────────────────────────── */
   async function fetchSessionTypes() {
     // Try the live API first
     try {
-      const base = resolveApiBase();
-      const res = await fetch(base + '/api/session-types', {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.session_types)) return data.session_types;
-      }
+      const data = await SITE_CLIENT.requestJson('/api/session-types');
+      if (Array.isArray(data.session_types)) return data.session_types;
     } catch (_) {
       // API unavailable — fall through to local fallback
     }

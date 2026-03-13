@@ -1,6 +1,6 @@
 (async function () {
   'use strict';
-  const API_BASE = window.getSiteApiBase ? window.getSiteApiBase() : (window.API_BASE || '');
+  const siteClient = window.siteClient || null;
   const content = document.getElementById('content');
 
   function formatTime(iso) {
@@ -14,8 +14,7 @@
   async function load() {
     content.innerHTML = '<p style="color:#aaa">Loading…</p>';
     try {
-      const res  = await fetch(API_BASE + '/api/__dev/emails');
-      const data = await res.json();
+      const data = await siteClient.requestJson('/api/__dev/emails');
       const emails = data.emails || [];
 
       if (!emails.length) {

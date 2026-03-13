@@ -7,6 +7,8 @@
 
 (function () {
   const OBS = window.siteObservability || null;
+  const SITE_CLIENT = window.siteClient || null;
+  const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
 
   const form       = document.getElementById('contact-form');
   const formWrap   = document.getElementById('contact-form-wrap');
@@ -111,7 +113,7 @@
         email,
         topic: topic || null,
         message,
-        turnstile_token: 'placeholder',
+        turnstile_token: SITE_CONFIG.turnstilePlaceholderToken || 'placeholder',
       });
 
       // Show success

@@ -1,6 +1,6 @@
 (async function () {
   'use strict';
-  const API_BASE = window.getSiteApiBase ? window.getSiteApiBase() : (window.API_BASE || '');
+  const siteClient = window.siteClient || null;
   const params  = new URLSearchParams(window.location.search);
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
@@ -32,37 +32,34 @@
   }
 
   try {
-    const url = `${API_BASE}/api/bookings/confirm?token=${encodeURIComponent(token)}`;
-    const res  = await fetch(url);
-    const data = await res.json();
-
-    if (!res.ok) {
-      const expired = res.status === 410;
-      show(
-        warnSvg,
-        expired ? 'Link expired' : 'Could not confirm',
-        expired
-          ? 'This confirmation link has expired. Please make a new booking.'
-          : (data.message || 'Something went wrong. Please try again or contact us.'),
-        'index.html',
-        '← Homepage',
-      );
-      return;
-    }
-
+    const data = await siteClient.requestJson(`/api/bookings/confirm?token=${encodeURIComponent(token)}`);
     const isEvent = data.source === 'event';
+    const awaitsPayment = data.status === 'PENDING';
     show(
       checkSvg,
       'Confirmed!',
       isEvent
         ? 'Your event booking is confirmed.'
-        : (data.status === 'pending_payment'
+        : (awaitsPayment
           ? 'Your booking is confirmed and awaiting payment.'
           : 'Your booking is confirmed.'),
       data.next_action_url || 'index.html',
       data.next_action_label || '← Back to homepage',
     );
   } catch (err) {
+    const expired = err && err.status === 410;
+    if (expired || (err && err.status)) {
+      show(
+        warnSvg,
+        expired ? 'Link expired' : 'Could not confirm',
+        expired
+          ? 'This confirmation link has expired. Please make a new booking.'
+          : (err.message || 'Something went wrong. Please try again or contact us.'),
+        'index.html',
+        '← Homepage',
+      );
+      return;
+    }
     show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', '', '');
   }
 })();

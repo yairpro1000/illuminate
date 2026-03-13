@@ -11,21 +11,6 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-function buildJsonResponse(payload, status = 200) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: {
-      get(name) {
-        if (String(name).toLowerCase() === 'content-type') return 'application/json; charset=utf-8'
-        return null
-      },
-    },
-    async json() { return payload },
-    async text() { return JSON.stringify(payload) },
-  }
-}
-
 describe('manage page reschedule link type', () => {
   beforeEach(() => {
     document.body.innerHTML = `
@@ -37,14 +22,17 @@ describe('manage page reschedule link type', () => {
     `
     window.API_BASE = ''
     window.getSiteApiBase = () => ''
+    window.siteClient = {
+      requestJson: async () => ({}),
+    }
     window.history.replaceState({}, '', '/manage.html?token=tok-123')
   })
 
   it('uses session slots for a 90-minute first session reschedule', async () => {
-    window.fetch = async () => buildJsonResponse({
+    window.siteClient.requestJson = async () => ({
       source: 'session',
       booking_id: 'booking-1',
-      status: 'SLOT_CONFIRMED',
+      status: 'CONFIRMED',
       starts_at: '2026-03-20T09:00:00.000Z',
       ends_at: '2026-03-20T10:30:00.000Z',
       title: 'First Clarity Session',
@@ -64,10 +52,10 @@ describe('manage page reschedule link type', () => {
   })
 
   it('keeps intro slots for a 30-minute intro reschedule', async () => {
-    window.fetch = async () => buildJsonResponse({
+    window.siteClient.requestJson = async () => ({
       source: 'session',
       booking_id: 'booking-2',
-      status: 'SLOT_CONFIRMED',
+      status: 'CONFIRMED',
       starts_at: '2026-03-20T09:00:00.000Z',
       ends_at: '2026-03-20T09:30:00.000Z',
       title: 'Introductory Clarity Conversation',

@@ -1,6 +1,6 @@
 (async function () {
   'use strict';
-  const API_BASE = window.getSiteApiBase ? window.getSiteApiBase() : (window.API_BASE || '');
+  const siteClient = window.siteClient || null;
   const params     = new URLSearchParams(window.location.search);
   const sessionId  = params.get('session_id');
   const amount     = params.get('amount');
@@ -22,12 +22,10 @@
     btn.textContent = 'Processing…';
 
     try {
-      const res = await fetch(
-        `${API_BASE}/api/__dev/simulate-payment?session_id=${encodeURIComponent(sessionId)}&result=${result}`,
+      await siteClient.requestJson(
+        `/api/__dev/simulate-payment?session_id=${encodeURIComponent(sessionId)}&result=${result}`,
         { method: 'POST' },
       );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Error');
 
       if (result === 'success') {
         window.location.href = 'payment-success?session_id=' + encodeURIComponent(sessionId);

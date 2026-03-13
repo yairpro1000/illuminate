@@ -278,6 +278,19 @@ app.get("/lists/:listId/items", async (c) => {
   return c.json({ items });
 });
 
+app.get("/lists/items", async (c) => {
+  const db = makeSupabase(c.env);
+  const { userId } = await requireAccessUser(c, db);
+  const repo = makePaRepo(db, userId);
+  const rows = await repo.readAllListItems();
+  return c.json({
+    rows: rows.map((row) => ({
+      ...row.item,
+      listId: row.listId,
+    })),
+  });
+});
+
 app.post("/lists/:listId/reorder", async (c) => {
   const db = makeSupabase(c.env);
   const { email, userId } = await requireAccessUser(c, db);

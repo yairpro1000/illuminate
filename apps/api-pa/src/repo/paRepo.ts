@@ -228,6 +228,7 @@ export type PaRepo = {
     Array<{ id: string; title: string; description: string; aliases: string[]; fields: Record<string, FieldDef>; ui: any }>
   >;
   readListItems(schema: SchemaRegistry, listId: string): Promise<ListItem[]>;
+  readAllListItems(): Promise<Array<{ listId: string; item: ListItem }>>;
   appendItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, fields: Record<string, unknown>, opts: { updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
   updateItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, patch: Record<string, unknown>, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; item: ListItem }>;
   deleteItem(schema: SchemaRegistry, target: { listId?: string; target?: string }, itemId: string, opts: { expectedUpdatedAt?: string; updatedBy: string }): Promise<{ listId: string; deletedId: string; prev: ListItem }>;
@@ -408,6 +409,24 @@ export function makePaRepo(db: Db, userId: string): PaRepo {
         .order("created_at", { ascending: true });
       if (error) throw error;
       return ((data ?? []) as PaListItemRow[]).map(fromDbRow);
+    },
+
+    async readAllListItems() {
+      const { data, error } = await db
+        .from("pa_list_items")
+        .select(
+          "id,list_id,created_at,updated_at,text,priority,color,status,order,archived_at,unarchived_at,extra_fields",
+        )
+        .eq("user_id", userId)
+        .order("list_id", { ascending: true })
+        .order("priority", { ascending: true })
+        .order("order", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return ((data ?? []) as PaListItemRow[]).map((row) => ({
+        listId: row.list_id,
+        item: fromDbRow(row),
+      }));
     },
 
     async appendItem(schema, target, fields, opts) {

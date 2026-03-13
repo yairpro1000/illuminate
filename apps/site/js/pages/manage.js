@@ -1,6 +1,7 @@
 (async function () {
   'use strict';
-  const API_BASE = window.getSiteApiBase ? window.getSiteApiBase() : (window.API_BASE || '');
+  const siteClient = window.siteClient || null;
+  const siteConfig = siteClient && siteClient.config ? siteClient.config : {};
   const params = new URLSearchParams(window.location.search);
   const token  = params.get('token');
   const adminToken = params.get('admin_token');
@@ -15,9 +16,9 @@
   }
 
   function statusBadge(status) {
-    const cls = ['SLOT_CONFIRMED','PAID','COMPLETED'].includes(status)
+    const cls = ['CONFIRMED', 'COMPLETED'].includes(status)
       ? 'confirmed'
-      : ['PENDING_CONFIRMATION'].includes(status)
+      : ['PENDING'].includes(status)
         ? 'pending'
         : 'cancelled';
     return `<span class="status-badge status-badge--${cls}">${String(status || '').replaceAll('_', ' ')}</span>`;
@@ -30,21 +31,6 @@
       hour:'2-digit', minute:'2-digit',
     });
   }
-
-  async function parseResponseBody(res) {
-    const contentType = (res.headers.get('content-type') || '').toLowerCase();
-    if (contentType.includes('application/json')) {
-      return await res.json();
-    }
-
-    const text = await res.text();
-    const trimmed = text.trim();
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      try { return JSON.parse(text); } catch (_) {}
-    }
-    return { message: text.slice(0, 300) };
-  }
-
   function toFriendlyError(status, message) {
     if (status === 400 || status === 404) {
       return 'This manage link is invalid or expired. Please use the latest link from your email.';
@@ -68,7 +54,7 @@
     return escapeHtml(value).replace(/\bcontact\b/gi, (word) => `<a href="contact.html">${word}</a>`);
   }
 
-  const DEFAULT_BOOKING_POLICY_LINES = [
+  const DEFAULT_BOOKING_POLICY_LINES = siteConfig.defaultBookingPolicyLines || [
     'Booking policy',
     'You can reschedule or cancel your booking up to 24 hours before the session.',
     'Within 24 hours of the session, bookings can no longer be changed online and are non-refundable.',
@@ -137,14 +123,9 @@
   try {
     const query = new URLSearchParams({ token });
     if (adminToken) query.set('admin_token', adminToken);
-    const res = await fetch(`${API_BASE}/api/bookings/manage?${query.toString()}`);
-    data = await parseResponseBody(res);
-    if (!res.ok) {
-      const message = typeof data?.message === 'string' ? data.message : '';
-      throw Object.assign(new Error(toFriendlyError(res.status, message)), { status: res.status });
-    }
+    data = await siteClient.requestJson(`/api/bookings/manage?${query.toString()}`);
   } catch (err) {
-    renderLoadError('Could Not Open Booking', err.message || 'Could not load booking details.');
+    renderLoadError('Could Not Open Booking', toFriendlyError(err.status, err.message || 'Could not load booking details.'));
     return;
   }
 
@@ -213,16 +194,10 @@
       document.getElementById('cancel-yes').textContent = 'Cancelling…';
       document.getElementById('cancel-yes').disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/api/bookings/cancel`, {
+        await siteClient.requestJson('/api/bookings/cancel', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(adminToken ? { token, admin_token: adminToken } : { token }),
         });
-        const result = await parseResponseBody(res);
-        if (!res.ok) {
-          const resultMessage = typeof result?.message === 'string' ? result.message : '';
-          throw new Error(toFriendlyError(res.status, resultMessage));
-        }
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
@@ -232,7 +207,7 @@
       } catch (err) {
         document.getElementById('cancel-yes').textContent = 'Yes, cancel booking';
         document.getElementById('cancel-yes').disabled = false;
-        alert(err.message || 'Could not cancel booking.');
+        alert(toFriendlyError(err.status, err.message || 'Could not cancel booking.'));
       }
     });
   }

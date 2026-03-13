@@ -1,8 +1,7 @@
 import React from "react";
 import { ListBrowser } from "./ListBrowser";
 import { VoicePanel } from "./VoicePanel";
-
-const CF_LOGOUT_TEAM_DOMAIN = "https://yairpro.cloudflareaccess.com/cdn-cgi/access/logout";
+import { PA_LOGOUT_URL } from "../runtime";
 
 export function Main(props: { email: string; llmLabel: string }) {
   const [lastCommittedAt, setLastCommittedAt] = React.useState<number | null>(null);
@@ -22,7 +21,7 @@ export function Main(props: { email: string; llmLabel: string }) {
 
     if (isLocalhost) {
       const returnTo = window.location.href;
-      const logoutUrl = `${CF_LOGOUT_TEAM_DOMAIN}?returnTo=${encodeURIComponent(returnTo)}`;
+      const logoutUrl = `${PA_LOGOUT_URL}?returnTo=${encodeURIComponent(returnTo)}`;
       window.location.replace(logoutUrl);
       return;
     }

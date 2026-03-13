@@ -4,6 +4,8 @@
 
 (function initEventCards() {
   const grid = document.getElementById('events-grid');
+  const SITE_CLIENT = window.siteClient || null;
+  const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
   if (!grid) return;
 
   function formatDateLabel(iso) {
@@ -137,10 +139,8 @@
           if (typeof createEventReminderSubscription === 'function') {
             await createEventReminderSubscription(payload);
           } else {
-            const base = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE : '';
-            await fetch(base + '/api/events/reminder-subscriptions', {
+            await SITE_CLIENT.requestJson('/api/events/reminder-subscriptions', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
             });
           }
@@ -213,11 +213,7 @@
     attachReminderHandlers(grid);
   }
 
-  (function(){
-    const base = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE : '';
-    return fetch(base + '/api/events');
-  })()
-    .then((r) => r.json())
+  SITE_CLIENT.requestJson('/api/events')
     .then((data) => {
       const events = Array.isArray(data.events) ? data.events : [];
       events.sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
