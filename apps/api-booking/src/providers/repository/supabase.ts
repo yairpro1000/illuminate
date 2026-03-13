@@ -196,7 +196,7 @@ export class SupabaseRepository implements IRepository {
         .from('bookings')
         .select('starts_at, ends_at')
         .is('event_id', null)
-        .in('current_status', ['PENDING_CONFIRMATION', 'SLOT_CONFIRMED', 'PAID'])
+        .in('current_status', ['PENDING', 'CONFIRMED'])
         .lte('starts_at', endOfDayIso(to))
         .gte('ends_at', startOfDayIso(from)),
       'Failed to load held slots',
@@ -293,7 +293,7 @@ export class SupabaseRepository implements IRepository {
             booking_id
           )
         `)
-        .in('status', ['pending', 'failed'])
+        .in('status', ['PENDING', 'FAILED'])
         .order('created_at', { ascending: true })
         .limit(Math.max(1, limit)),
       'Failed to load pending booking side effects',
@@ -339,8 +339,8 @@ export class SupabaseRepository implements IRepository {
     const rows = await requireData<Array<{ id: string }>>(
       this.db
         .from('booking_side_effects')
-        .update({ status: 'pending', updated_at: nowIsoValue })
-        .eq('status', 'processing')
+        .update({ status: 'PENDING', updated_at: nowIsoValue })
+        .eq('status', 'PROCESSING')
         .lte('updated_at', threshold)
         .select('id'),
       'Failed to reset stale processing side effects',
@@ -428,7 +428,7 @@ export class SupabaseRepository implements IRepository {
         .from('bookings')
         .select('current_status')
         .eq('event_id', eventId)
-        .not('current_status', 'in', '(EXPIRED,CANCELED,COMPLETED,NO_SHOW,REFUNDED)'),
+        .not('current_status', 'in', '(EXPIRED,CANCELED,COMPLETED,NO_SHOW)'),
       'Failed to count event bookings',
     );
 
@@ -887,6 +887,7 @@ function toBooking(row: BookingRow): Booking {
     client_id: row.client_id,
     event_id: row.event_id,
     session_type_id: row.session_type_id,
+    booking_type: row.booking_type,
     starts_at: row.starts_at,
     ends_at: row.ends_at,
     timezone: row.timezone,
@@ -908,9 +909,7 @@ function toBooking(row: BookingRow): Booking {
 
 function isPaymentRelatedBookingEventType(eventType: OrganizerBookingRow['latest_event_type']): boolean {
   return eventType === 'PAYMENT_SETTLED'
-    || eventType === 'REFUND_REQUESTED'
-    || eventType === 'REFUND_CREATED'
-    || eventType === 'REFUND_VERIFIED';
+    || eventType === 'REFUND_COMPLETED';
 }
 
 function isPaymentRelatedSideEffectIntent(effectIntent: string): boolean {

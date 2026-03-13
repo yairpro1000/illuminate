@@ -71,7 +71,7 @@ Mock providers must:
 
 -   Generate deterministic fake IDs (uuid)
 -   Return structured objects matching real API responses
--   Log actions to console + `observability.logs`
+-   Log actions through the current shared observability/logger path
 -   Allow manual error simulation (e.g. simulate Stripe failure)
 
 ------------------------------------------------------------------------

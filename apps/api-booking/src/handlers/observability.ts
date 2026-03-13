@@ -1,6 +1,6 @@
 import type { AppContext } from "../router.js";
 import { badRequest, ok } from "../lib/errors.js";
-import { persistFrontendLog, type FrontendLogPayload } from "../lib/observability.js";
+import { persistFrontendLog, type FrontendLogPayload } from "../lib/logger.js";
 
 const MAX_OBSERVABILITY_PAYLOAD_BYTES = 16_384;
 

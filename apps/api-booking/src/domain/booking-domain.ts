@@ -11,7 +11,7 @@ export function toEventPayload(payload?: unknown): Record<string, unknown> {
 }
 
 export function isTerminalStatus(status: Booking['current_status']): boolean {
-  return status === 'EXPIRED' || status === 'CANCELED' || status === 'COMPLETED' || status === 'NO_SHOW' || status === 'REFUNDED';
+  return status === 'EXPIRED' || status === 'CANCELED' || status === 'COMPLETED' || status === 'NO_SHOW';
 }
 
 export function bookingEventLogContext(

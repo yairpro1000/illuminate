@@ -4,7 +4,9 @@ import type {
   BookingEffectIntent,
   BookingEventType,
   BookingSideEffectEntity,
+  BookingType,
   NewBookingSideEffect,
+  PaymentStatus,
 } from '../types.js';
 import { inferEntityFromIntent } from '../providers/repository/interface.js';
 
@@ -25,10 +27,10 @@ export const DEFAULT_BOOKING_POLICY: BookingPolicyConfig = {
 };
 
 export interface BookingPolicyContext {
-  booking: Pick<Booking, 'id' | 'event_id' | 'starts_at' | 'current_status'>;
+  booking: Pick<Booking, 'id' | 'event_id' | 'starts_at' | 'current_status' | 'booking_type'>;
   eventType: BookingEventType;
   eventAtIso: string;
-  paymentMode?: 'free' | 'pay_now' | 'pay_later' | null;
+  paymentStatus?: PaymentStatus | null;
 }
 
 export interface BookingEffectSpec {
@@ -39,18 +41,18 @@ export interface BookingEffectSpec {
 }
 
 export interface SlotReservationTransitionInput {
-  booking: Pick<Booking, 'event_id'>;
+  booking: Pick<Booking, 'event_id' | 'booking_type'>;
   eventType: BookingEventType;
   previousStatus: BookingCurrentStatus;
   nextStatus: BookingCurrentStatus;
 }
 
 function isReservationEntitledStatus(status: BookingCurrentStatus): boolean {
-  return status === 'SLOT_CONFIRMED' || status === 'PAID';
+  return status === 'CONFIRMED';
 }
 
 function isReservationFinalizationEvent(eventType: BookingEventType): boolean {
-  return eventType === 'EMAIL_CONFIRMED' || eventType === 'PAYMENT_SETTLED';
+  return eventType === 'PAYMENT_SETTLED' || eventType === 'BOOKING_FORM_SUBMITTED';
 }
 
 export function shouldReserveSlotForTransition(input: SlotReservationTransitionInput): boolean {
@@ -65,12 +67,15 @@ export function getEffectsForEvent(
   input: BookingPolicyContext,
   policy: BookingPolicyConfig = DEFAULT_BOOKING_POLICY,
 ): BookingEffectSpec[] {
-  const paymentMode = input.paymentMode ?? null;
   const previousStatus = input.booking.current_status;
-  const nextStatus = currentStatusForEvent(input.eventType, previousStatus, paymentMode);
+  const nextStatus = currentStatusForEvent(
+    input.eventType,
+    previousStatus,
+    input.booking.booking_type,
+    input.paymentStatus ?? null,
+  );
   const startsAtMs = new Date(input.booking.starts_at).getTime();
   const eventAtMs = new Date(input.eventAtIso).getTime();
-  const nowMs = Date.now();
 
   const inMinutes = (minutes: number): string => new Date(eventAtMs + minutes * 60_000).toISOString();
   const paymentDueThresholdIso = new Date(
@@ -85,88 +90,48 @@ export function getEffectsForEvent(
   });
 
   switch (input.eventType) {
-    case 'BOOKING_FORM_SUBMITTED_FREE': {
-      const windowIso = inMinutes(policy.nonPaidConfirmationWindowMinutes);
-      return [
-        make('send_email_confirmation', windowIso),
-        make('expire_booking', windowIso),
-      ];
-    }
-    case 'BOOKING_FORM_SUBMITTED_PAY_NOW': {
-      const reminderIso = inMinutes(policy.payNowCheckoutWindowMinutes);
-      return [
-        // Checkout is created synchronously in submit flow; keep this as audit intent only.
-        make('create_stripe_checkout', null),
-        make('send_payment_link', reminderIso),
-      ];
-    }
-    case 'BOOKING_FORM_SUBMITTED_PAY_LATER': {
-      const windowIso = inMinutes(policy.nonPaidConfirmationWindowMinutes);
-      return [
-        make('send_email_confirmation', windowIso),
-        make('expire_booking', windowIso),
-      ];
-    }
-    case 'EMAIL_CONFIRMED':
-      if (shouldReserveSlotForTransition({
-        booking: input.booking,
-        eventType: input.eventType,
-        previousStatus,
-        nextStatus,
-      })) {
-        return [make('reserve_slot', null)];
-      }
-      if (input.booking.event_id) {
-        return [make('send_booking_confirmation', null)];
+    case 'BOOKING_FORM_SUBMITTED':
+      switch (input.booking.booking_type) {
+        case 'FREE':
+          return [
+            make('SEND_BOOKING_CONFIRMATION_REQUEST', null),
+            make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
+          ];
+        case 'PAY_LATER':
+          return [
+            make('SEND_BOOKING_CONFIRMATION_REQUEST', null),
+            make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
+          ];
+        case 'PAY_NOW':
+          return [
+            make('CREATE_STRIPE_CHECKOUT', null),
+            make('VERIFY_STRIPE_PAYMENT', inMinutes(policy.payNowCheckoutWindowMinutes)),
+          ];
       }
       return [];
     case 'BOOKING_RESCHEDULED':
-      return [make('update_reserved_slot', null)];
-    case 'BOOKING_EXPIRED':
-      return [
-        make('cancel_reserved_slot', null),
-        make('send_booking_failed_notification', null),
+      return [make('UPDATE_CALENDAR_SLOT', null)];
+    case 'BOOKING_CANCELED': {
+      const effects: BookingEffectSpec[] = [
+        make('CANCEL_CALENDAR_SLOT', null),
+        make('SEND_BOOKING_CANCELLATION_CONFIRMATION', null),
       ];
-    case 'BOOKING_CANCELED':
-      return [
-        make('cancel_reserved_slot', null),
-        make('send_booking_cancellation_confirmation', null),
-      ];
-    case 'REFUND_REQUESTED':
-      return [make('create_stripe_refund', null)];
-    case 'REFUND_CREATED':
-      return [make('verify_stripe_refund', null)];
-    case 'PAYMENT_SETTLED':
-      return shouldReserveSlotForTransition({
-        booking: input.booking,
-        eventType: input.eventType,
-        previousStatus,
-        nextStatus,
-      })
-        ? [make('reserve_slot', null)]
-        : [];
-    case 'SLOT_CONFIRMED': {
-      const effects: BookingEffectSpec[] = [];
-      const dateReminderEligible = startsAtMs > nowMs && !['CANCELED', 'EXPIRED'].includes(input.booking.current_status);
-      if (dateReminderEligible) {
-        effects.push(make('send_date_reminder', new Date(startsAtMs).toISOString()));
-      }
-      if (paymentMode === 'free' || paymentMode === 'pay_now' || paymentMode === 'pay_later') {
-        effects.push(make('send_booking_confirmation', null));
-      }
-      if (paymentMode === 'pay_later') {
-        effects.push(make('send_payment_reminder', paymentDueThresholdIso));
+      if (input.paymentStatus === 'SUCCEEDED') {
+        effects.push(make('CREATE_STRIPE_REFUND', null));
       }
       return effects;
     }
-    case 'BOOKING_CLOSED':
-      return [make('close_booking', null)];
-    case 'REFUND_VERIFIED':
-      return [];
-    case 'SLOT_RESERVATION_REMINDER_SENT':
-    case 'PAYMENT_REMINDER_SENT':
-    case 'DATE_REMINDER_SENT':
-    case 'CASH_AUTHORIZED':
+    case 'BOOKING_EXPIRED':
+      return [
+        make('CANCEL_CALENDAR_SLOT', null),
+        make('SEND_BOOKING_EXPIRATION_NOTIFICATION', null),
+      ];
+    case 'PAYMENT_SETTLED':
+      return [
+        make('RESERVE_CALENDAR_SLOT', null),
+        make('SEND_BOOKING_CONFIRMATION', null),
+      ];
+    case 'REFUND_COMPLETED':
       return [];
     default:
       return [];
@@ -176,27 +141,22 @@ export function getEffectsForEvent(
 export function currentStatusForEvent(
   eventType: BookingEventType,
   previous: BookingCurrentStatus,
-  _paymentMode?: 'free' | 'pay_now' | 'pay_later' | null,
+  bookingType: BookingType,
+  paymentStatus?: PaymentStatus | null,
 ): BookingCurrentStatus {
   switch (eventType) {
-    case 'BOOKING_FORM_SUBMITTED_FREE':
-    case 'BOOKING_FORM_SUBMITTED_PAY_NOW':
-    case 'BOOKING_FORM_SUBMITTED_PAY_LATER':
-      return 'PENDING_CONFIRMATION';
-    case 'EMAIL_CONFIRMED':
-      return 'SLOT_CONFIRMED';
+    case 'BOOKING_FORM_SUBMITTED':
+      return 'PENDING';
     case 'PAYMENT_SETTLED':
-      return 'PAID';
-    case 'SLOT_CONFIRMED':
-      return previous === 'PAID' ? 'PAID' : 'SLOT_CONFIRMED';
+      return 'CONFIRMED';
     case 'BOOKING_EXPIRED':
       return 'EXPIRED';
     case 'BOOKING_CANCELED':
       return 'CANCELED';
-    case 'BOOKING_CLOSED':
-      return 'COMPLETED';
-    case 'REFUND_VERIFIED':
-      return 'REFUNDED';
+    case 'BOOKING_RESCHEDULED':
+    case 'REFUND_COMPLETED':
+      if (paymentStatus === 'REFUNDED') return previous;
+      return previous;
     default:
       return previous;
   }
@@ -210,7 +170,7 @@ export function mapEffectsToRows(
     booking_event_id: bookingEventId,
     entity: effect.entity,
     effect_intent: effect.effect_intent,
-    status: 'pending',
+    status: 'PENDING',
     expires_at: effect.expires_at,
     max_attempts: effect.max_attempts,
   }));

@@ -70,7 +70,7 @@ export function makeCtx(partial: Partial<AppContext> = {}): AppContext {
     logger: makeLogger((partial as any).logger || {}),
     requestId: 'req-1',
     correlationId: 'corr-1',
-    operation: createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' }),
+    operation: createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' }),
     executionCtx: undefined,
     ...partial,
   } as AppContext;

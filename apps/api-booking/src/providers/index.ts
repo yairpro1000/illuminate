@@ -4,7 +4,7 @@ import type { IEmailProvider } from './email/interface.js';
 import type { ICalendarProvider } from './calendar/interface.js';
 import type { IPaymentsProvider } from './payments/interface.js';
 import type { IAntiBotProvider } from './antibot/interface.js';
-import type { Logger } from '../lib/observability.js';
+import type { Logger } from '../lib/logger.js';
 import { getOverride } from '../lib/config-overrides.js';
 
 import { MockRepository } from './repository/mock.js';

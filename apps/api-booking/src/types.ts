@@ -1,65 +1,51 @@
+export type BookingType = 'FREE' | 'PAY_NOW' | 'PAY_LATER';
+
 // ── Booking domain enums ────────────────────────────────────────────────────
 
 export type BookingCurrentStatus =
-  | 'PENDING_CONFIRMATION'
-  | 'SLOT_CONFIRMED'
-  | 'PAID'
+  | 'PENDING'
+  | 'CONFIRMED'
   | 'EXPIRED'
   | 'CANCELED'
   | 'COMPLETED'
-  | 'NO_SHOW'
-  | 'REFUNDED';
+  | 'NO_SHOW';
 
 export type BookingEventType =
-  | 'BOOKING_FORM_SUBMITTED_FREE'
-  | 'BOOKING_FORM_SUBMITTED_PAY_NOW'
-  | 'BOOKING_FORM_SUBMITTED_PAY_LATER'
-  | 'EMAIL_CONFIRMED'
+  | 'BOOKING_FORM_SUBMITTED'
   | 'BOOKING_RESCHEDULED'
-  | 'SLOT_RESERVATION_REMINDER_SENT'
-  | 'PAYMENT_REMINDER_SENT'
-  | 'DATE_REMINDER_SENT'
   | 'BOOKING_EXPIRED'
   | 'BOOKING_CANCELED'
-  | 'CASH_AUTHORIZED'
   | 'PAYMENT_SETTLED'
-  | 'SLOT_CONFIRMED'
-  | 'BOOKING_CLOSED'
-  | 'REFUND_REQUESTED'
-  | 'REFUND_CREATED'
-  | 'REFUND_VERIFIED';
+  | 'REFUND_COMPLETED';
 
-export type BookingEventSource = 'public_ui' | 'admin_ui' | 'job' | 'webhook' | 'system';
+export type BookingEventSource = 'PUBLIC_UI' | 'ADMIN_UI' | 'SYSTEM' | 'WEBHOOK';
 
-export type BookingSideEffectEntity = 'email' | 'calendar' | 'payment' | 'system';
+export type BookingSideEffectEntity = 'EMAIL' | 'CALENDAR' | 'PAYMENT' | 'WHATSAPP' | 'SYSTEM';
 
-export type BookingSideEffectStatus = 'pending' | 'processing' | 'success' | 'failed' | 'dead';
+export type BookingSideEffectStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'DEAD';
 
-export type BookingSideEffectAttemptStatus = 'success' | 'fail';
+export type BookingSideEffectAttemptStatus = 'SUCCESS' | 'FAILED';
 
 export type BookingEffectIntent =
-  | 'send_email_confirmation'
-  | 'send_slot_reservation_reminder'
-  | 'send_payment_reminder'
-  | 'send_date_reminder'
-  | 'send_booking_failed_notification'
-  | 'send_booking_cancellation_confirmation'
-  | 'send_booking_confirmation'
-  | 'reserve_slot'
-  | 'update_reserved_slot'
-  | 'cancel_reserved_slot'
-  | 'create_stripe_checkout'
-  | 'verify_stripe_payment'
-  | 'create_stripe_refund'
-  | 'verify_stripe_refund'
-  | 'send_payment_link'
-  | 'expire_booking'
-  | 'close_booking';
+  | 'SEND_BOOKING_CONFIRMATION_REQUEST'
+  | 'SEND_BOOKING_CONFIRMATION'
+  | 'SEND_PAYMENT_LINK'
+  | 'SEND_PAYMENT_REMINDER'
+  | 'SEND_BOOKING_CANCELLATION_CONFIRMATION'
+  | 'SEND_BOOKING_EXPIRATION_NOTIFICATION'
+  | 'SEND_EVENT_REMINDER'
+  | 'CREATE_STRIPE_CHECKOUT'
+  | 'VERIFY_EMAIL_CONFIRMATION'
+  | 'VERIFY_STRIPE_PAYMENT'
+  | 'CREATE_STRIPE_REFUND'
+  | 'RESERVE_CALENDAR_SLOT'
+  | 'UPDATE_CALENDAR_SLOT'
+  | 'CANCEL_CALENDAR_SLOT';
 
 // ── Other domain enums ──────────────────────────────────────────────────────
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
-export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'refunded';
+export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 export type PaymentProvider = 'stripe' | 'mock';
 
 // ── Core models ─────────────────────────────────────────────────────────────
@@ -79,6 +65,7 @@ export interface Booking {
   client_id: string;
   event_id: string | null;
   session_type_id: string | null;
+  booking_type: BookingType;
   starts_at: string;
   ends_at: string;
   timezone: string;
@@ -345,6 +332,7 @@ export type BookingUpdate = Partial<
     Booking,
     | 'event_id'
     | 'session_type_id'
+    | 'booking_type'
     | 'starts_at'
     | 'ends_at'
     | 'timezone'

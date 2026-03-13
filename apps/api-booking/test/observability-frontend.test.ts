@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/lib/observability.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/lib/observability.js')>();
+vi.mock('../src/lib/logger.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/logger.js')>();
   return {
     ...actual,
     persistFrontendLog: vi.fn(async () => {}),
@@ -10,7 +10,7 @@ vi.mock('../src/lib/observability.js', async (importOriginal) => {
 
 import { handleFrontendObservability } from '../src/handlers/observability.js';
 import { handleRequest } from '../src/router.js';
-import { persistFrontendLog } from '../src/lib/observability.js';
+import { persistFrontendLog } from '../src/lib/logger.js';
 import { makeCtx } from './admin-helpers.js';
 
 const mockedPersistFrontendLog = vi.mocked(persistFrontendLog);
@@ -167,6 +167,7 @@ describe('frontend observability router noise suppression', () => {
     await expect(res.json()).resolves.toEqual({
       error: 'BAD_REQUEST',
       message: 'Expected JSON or plain-text JSON payload.',
+      request_id: 'req-1',
     });
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
     expect(ctx.logger.logRequest).toHaveBeenCalledWith(expect.objectContaining({

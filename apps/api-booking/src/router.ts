@@ -340,6 +340,7 @@ async function executeBookingRoute(
   const routeCtx: AppContext = {
     ...ctx,
     operation: createOperationContext({
+      appArea: ctx.operation.appArea,
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
     }),

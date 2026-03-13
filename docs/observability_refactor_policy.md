@@ -19,6 +19,13 @@ Use exactly two technical tables:
 - `api_logs`
 - `exception_logs`
 
+Each row must also include `app_area` identifying the application surface:
+- `website`
+- `admin`
+- `pa`
+
+This allows filtering logs across multiple surfaces sharing the same backend.
+
 No additional observability tables.
 
 ## Core Rules
@@ -66,6 +73,7 @@ One row per inbound or outbound request.
 
 Required fields:
 - `id`
+- `app_area` (`website`, `admin`, `pa`)
 - `created_at`
 - `completed_at`
 - `request_id`
@@ -96,6 +104,7 @@ One row per uncaught exception.
 
 Required fields:
 - `id`
+- `app_area` (`website`, `admin`, `pa`)
 - `created_at`
 - `request_id`
 - `correlation_id`

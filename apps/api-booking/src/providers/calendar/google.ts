@@ -1,6 +1,6 @@
 import type { ICalendarProvider, CalendarEvent, CreateCalendarEventOptions } from './interface.js';
 import type { TimeSlot } from '../../types.js';
-import type { Logger } from '../../lib/observability.js';
+import type { Logger } from '../../lib/logger.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
 
 /**

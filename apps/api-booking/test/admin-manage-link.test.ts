@@ -16,7 +16,7 @@ describe('Admin manage link creation', () => {
       google_event_id: null,
       address_line: 'Somewhere 1, Zurich',
       maps_url: 'https://maps.example',
-      current_status: 'SLOT_CONFIRMED',
+      current_status: 'CONFIRMED',
       notes: null,
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T00:00:00.000Z',

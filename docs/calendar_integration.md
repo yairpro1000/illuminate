@@ -55,7 +55,7 @@ Canonical ownership:
 -   On failure:
     - record a failed side-effect attempt in `booking_side_effect_attempts`
     - mark side effect as `failed`/`dead` based on `max_attempts`
-    - emit structured error logs in `observability.logs`
+    - emit structured error logs through the shared observability wrappers into `api_logs` / `exception_logs` as applicable
 
 ------------------------------------------------------------------------
 
@@ -77,7 +77,7 @@ Canonical ownership:
     - reminders
     - expirations
     - retrying failed/stuck work
--   Cron execution itself is traced through structured events in `observability.logs`; no separate `job_runs` table is used.
+-   Cron execution itself is traced through structured logs; no separate `job_runs` table is used.
 -   Retry behavior is bounded by `booking_side_effects.max_attempts`. After exhaustion:
     - side effect status moves to `dead`
     - full attempt history remains queryable

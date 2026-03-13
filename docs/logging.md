@@ -1,3 +1,7 @@
+Superseded for runtime/backend implementation by [docs/observability_refactor_policy.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/observability_refactor_policy.md) and [apps/shared/observability/observability_tables_with_app_area.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/apps/shared/observability/observability_tables_with_app_area.sql).
+
+This document remains as older background guidance only. Do not use it as the current observability implementation contract.
+
 Here’s a lightweight, practical **structured logging + correlation ID strategy** for Cloudflare Workers (and it stays portable if you migrate later).
 
 ## 1) One correlation ID per request

@@ -1,5 +1,9 @@
 # Shared Observability Schema
 
+Superseded for runtime/backend truth by [docs/observability_refactor_policy.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/observability_refactor_policy.md) and [apps/shared/observability/observability_tables_with_app_area.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/apps/shared/observability/observability_tables_with_app_area.sql).
+
+This document describes the pre-refactor shared observability model and should not be used as implementation guidance anymore.
+
 ## Why this exists
 
 This repo now uses a shared, server-written observability model for:

@@ -162,23 +162,23 @@ export function deriveBookingKind(booking: Pick<Booking, 'event_id'>): 'event' |
 }
 
 export function sideEffectIsDispatchable(effect: Pick<BookingSideEffect, 'status' | 'expires_at'>, nowIso: string): boolean {
-  if (effect.status !== 'pending') return false;
+  if (effect.status !== 'PENDING') return false;
   if (!effect.expires_at) return true;
-  return new Date(effect.expires_at).getTime() >= new Date(nowIso).getTime();
+  return new Date(effect.expires_at).getTime() <= new Date(nowIso).getTime();
 }
 
 export function sideEffectStatusAfterAttempt(
-  attemptStatus: 'success' | 'fail',
+  attemptStatus: 'SUCCESS' | 'FAILED',
   attemptNum: number,
   maxAttempts: number,
 ): BookingSideEffectStatus {
-  if (attemptStatus === 'success') return 'success';
-  return attemptNum >= Math.max(1, maxAttempts) ? 'dead' : 'failed';
+  if (attemptStatus === 'SUCCESS') return 'SUCCESS';
+  return attemptNum >= Math.max(1, maxAttempts) ? 'DEAD' : 'FAILED';
 }
 
 export function inferEntityFromIntent(intent: BookingEffectIntent): BookingSideEffectEntity {
-  if (intent.startsWith('send_')) return 'email';
-  if (intent.includes('stripe') || intent.includes('payment')) return 'payment';
-  if (intent.includes('slot')) return 'calendar';
-  return 'system';
+  if (intent.startsWith('SEND_')) return intent.includes('WHATSAPP') ? 'WHATSAPP' : 'EMAIL';
+  if (intent.includes('STRIPE') || intent.includes('PAYMENT')) return 'PAYMENT';
+  if (intent.includes('CALENDAR')) return 'CALENDAR';
+  return 'SYSTEM';
 }

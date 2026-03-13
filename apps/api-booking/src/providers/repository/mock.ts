@@ -124,7 +124,7 @@ export class MockRepository implements IRepository {
     return [...mockState.bookings.values()]
       .filter((booking) => {
         if (booking.event_id) return false;
-        if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW' || booking.current_status === 'REFUNDED') {
+        if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW') {
           return false;
         }
         const startMs = new Date(booking.starts_at).getTime();
@@ -210,7 +210,7 @@ export class MockRepository implements IRepository {
     _nowIso: string,
   ): Promise<Array<BookingSideEffect & { booking_id: string }>> {
     return mockState.sideEffects
-      .filter((effect) => effect.status === 'pending' || effect.status === 'failed')
+      .filter((effect) => effect.status === 'PENDING' || effect.status === 'FAILED')
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       .slice(0, Math.max(1, limit));
   }
@@ -238,9 +238,9 @@ export class MockRepository implements IRepository {
     let resetCount = 0;
 
     for (const effect of mockState.sideEffects) {
-      if (effect.status !== 'processing') continue;
+      if (effect.status !== 'PROCESSING') continue;
       if (new Date(effect.updated_at).getTime() > thresholdMs) continue;
-      effect.status = 'pending';
+      effect.status = 'PENDING';
       effect.updated_at = nowIso;
       resetCount += 1;
     }
@@ -311,7 +311,7 @@ export class MockRepository implements IRepository {
 
     for (const booking of mockState.bookings.values()) {
       if (booking.event_id !== eventId) continue;
-      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW' || booking.current_status === 'REFUNDED') {
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED' || booking.current_status === 'COMPLETED' || booking.current_status === 'NO_SHOW') {
         continue;
       }
       count += 1;
@@ -522,9 +522,7 @@ export class MockRepository implements IRepository {
       const latestEvent = bookingEvents[0] ?? null;
       const latestPaymentEvent = bookingEvents.find((entry) =>
         entry.event_type === 'PAYMENT_SETTLED'
-        || entry.event_type === 'REFUND_REQUESTED'
-        || entry.event_type === 'REFUND_CREATED'
-        || entry.event_type === 'REFUND_VERIFIED',
+        || entry.event_type === 'REFUND_COMPLETED',
       ) ?? null;
 
       const eventIds = new Set(bookingEvents.map((entry) => entry.id));

@@ -68,6 +68,7 @@ ADMIN_AUTH_DISABLED = "true"
 # ADMIN_DEV_EMAIL
 # CLOUDFLARE_ACCESS_AUD
 
+# Cloudflare Workers log delivery toggle. This is platform logging, not the retired DB schema.
 [observability.logs]
 enabled = true
 

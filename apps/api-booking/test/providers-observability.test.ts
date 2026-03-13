@@ -18,7 +18,10 @@ vi.mock('../src/repo/supabase.js', () => ({
 }));
 import { createProviders } from '../src/providers/index.js';
 import { createOperationContext } from '../src/lib/execution.js';
-import { wrapProvidersForOperation } from '../src/lib/technical-observability.js';
+import {
+  recordExceptionLog,
+  wrapProvidersForOperation,
+} from '../src/lib/technical-observability.js';
 
 function makeEnv() {
   return {
@@ -64,7 +67,7 @@ describe('provider observability wrapper', () => {
     insert.mockClear();
     updateEq.mockClear();
     const logger = makeLogger();
-    const operation = createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' });
+    const operation = createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' });
     const providers = wrapProvidersForOperation(createProviders(makeEnv(), logger), makeEnv(), logger, operation);
 
     await providers.repository.createClient({
@@ -87,7 +90,7 @@ describe('provider observability wrapper', () => {
     updateEq.mockClear();
     const logger = makeLogger();
     const env = makeEnv();
-    const operation = createOperationContext({ requestId: 'req-1', correlationId: 'corr-1' });
+    const operation = createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' });
     const providers = wrapProvidersForOperation(createProviders(env, logger), env, logger, operation);
 
     await providers.email.sendContactMessage(
@@ -106,7 +109,25 @@ describe('provider observability wrapper', () => {
       }),
     }));
     expect(operation.latestProviderApiLogId).toBe('api-log-1');
-    expect(insert).toHaveBeenCalled();
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      app_area: 'website',
+      direction: 'outbound',
+    }));
     expect(updateEq).toHaveBeenCalledWith('id', 'api-log-1');
+  });
+
+  it('writes app_area on exception log inserts from the wrapper context', async () => {
+    insert.mockClear();
+    const env = makeEnv();
+    const operation = createOperationContext({ appArea: 'admin', requestId: 'req-2', correlationId: 'corr-2' });
+
+    await recordExceptionLog(env, operation, new Error('boom'), { path: '/api/admin/bookings' }, 'INTERNAL_ERROR');
+
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({
+      app_area: 'admin',
+      request_id: 'req-2',
+      correlation_id: 'corr-2',
+      error_code: 'INTERNAL_ERROR',
+    }));
   });
 });

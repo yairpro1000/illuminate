@@ -23,7 +23,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
     return ok({ received: true, handled: false });
   }
 
-  if (payment.status === 'succeeded') {
+  if (payment.status === 'SUCCEEDED') {
     return ok({ received: true, handled: true, idempotent: true });
   }
 

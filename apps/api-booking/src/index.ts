@@ -8,9 +8,14 @@ import { runCron }         from './handlers/jobs.js';
 import { jsonResponse } from './lib/errors.js';
 import { addCorsIfAllowed } from './lib/cors.js';
 
+function inferAppAreaFromPath(pathname: string): 'website' | 'admin' {
+  return pathname.startsWith('/api/admin/') ? 'admin' : 'website';
+}
+
 export default {
   async fetch(request: Request, env: Env, executionCtx: ExecutionContext): Promise<Response> {
       const { logger, requestId, correlationId } = createWorkerObservability(env, request, executionCtx);
+      const pathname = new URL(request.url).pathname;
 
       try {
         const providers = createProviders(env, logger);
@@ -20,7 +25,11 @@ export default {
           logger,
           requestId,
           correlationId,
-          operation: createOperationContext({ requestId, correlationId }),
+          operation: createOperationContext({
+            appArea: inferAppAreaFromPath(pathname),
+            requestId,
+            correlationId,
+          }),
           executionCtx,
         });
       } catch (error) {
@@ -45,7 +54,7 @@ export default {
 
   async scheduled(event: ScheduledEvent, env: Env, executionCtx: ExecutionContext): Promise<void> {
     const { logger, requestId, correlationId } = createCronObservability(env, event.cron, executionCtx);
-    const operation = createOperationContext({ requestId, correlationId });
+    const operation = createOperationContext({ appArea: 'website', requestId, correlationId });
     const providers = wrapProvidersForOperation(createProviders(env, logger), env, logger, operation);
 
     logger.logMilestone('cron_started', { cron: event.cron, request_id: requestId });

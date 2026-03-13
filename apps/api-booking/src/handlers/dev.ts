@@ -40,10 +40,10 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
 
     const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
     if (!payment) throw badRequest('Payment not found for session_id');
-    if (payment.status === 'succeeded') return ok({ already: 'succeeded' });
+    if (payment.status === 'SUCCEEDED') return ok({ already: 'succeeded' });
 
     if (result === 'failure') {
-      await ctx.providers.repository.updatePayment(payment.id, { status: 'failed' });
+      await ctx.providers.repository.updatePayment(payment.id, { status: 'FAILED' });
       return ok({ status: 'failed' });
     }
 
@@ -95,7 +95,7 @@ export async function handleDevFailures(_request: Request, ctx: AppContext): Pro
   try {
     guardMockRepository(ctx);
     const failedAttempts = mockState.sideEffectAttempts
-      .filter((attempt) => attempt.status === 'fail')
+      .filter((attempt) => attempt.status === 'FAILED')
       .slice(-50)
       .reverse()
       .map((attempt) => {

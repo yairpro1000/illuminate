@@ -46,10 +46,10 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
     const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
     const policy = evaluateManageBookingPolicy(booking.starts_at);
-    const paid = payment?.status === 'succeeded' || booking.current_status === 'PAID' || booking.current_status === 'REFUNDED';
+    const paid = payment?.status === 'SUCCEEDED' || payment?.status === 'REFUNDED';
 
     const source = booking.event_id ? 'event' : 'session';
-    const blockedStatuses = ['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW', 'REFUNDED'];
+    const blockedStatuses = ['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW'];
     const canReschedule = source === 'session'
       && (access.bypassPolicyWindow || policy.canSelfServeChange)
       && !blockedStatuses.includes(booking.current_status);

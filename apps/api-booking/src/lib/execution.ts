@@ -1,6 +1,9 @@
 import type { Logger } from './logger.js';
 
+export type AppArea = 'website' | 'admin' | 'pa';
+
 export interface OperationContext {
+  appArea: AppArea;
   requestId: string;
   correlationId: string;
   bookingId: string | null;
@@ -11,10 +14,12 @@ export interface OperationContext {
 }
 
 export function createOperationContext(input: {
+  appArea: AppArea;
   requestId: string;
   correlationId: string;
 }): OperationContext {
   return {
+    appArea: input.appArea,
     requestId: input.requestId,
     correlationId: input.correlationId,
     bookingId: null,
@@ -29,6 +34,7 @@ export function extendOperationContext(
   base: OperationContext,
   overrides: Partial<OperationContext>,
 ): OperationContext {
+  base.appArea = overrides.appArea ?? base.appArea;
   base.requestId = overrides.requestId ?? base.requestId;
   base.correlationId = overrides.correlationId ?? base.correlationId;
   base.bookingId = overrides.bookingId ?? base.bookingId;
@@ -47,6 +53,7 @@ export function loggerForOperation(baseLogger: Logger, operation: OperationConte
     requestId: operation.requestId,
     correlationId: operation.correlationId,
     context: {
+      app_area: operation.appArea,
       booking_id: operation.bookingId,
       booking_event_id: operation.bookingEventId,
       side_effect_id: operation.sideEffectId,

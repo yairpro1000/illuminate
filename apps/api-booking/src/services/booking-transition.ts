@@ -71,20 +71,25 @@ export async function appendBookingEventWithEffects(
     payload: normalizedPayload,
   });
 
-  const paymentMode = await inferPaymentMode(bookingId, ctx);
+  const payment = await ctx.providers.repository.getPaymentByBookingId(bookingId);
 
   const effectSpecs = getEffectsForEvent({
     booking,
     eventType,
     eventAtIso: event.created_at,
-    paymentMode,
+    paymentStatus: payment?.status ?? null,
   });
 
   const sideEffects = effectSpecs.length > 0
     ? await ctx.providers.repository.createBookingSideEffects(mapEffectsToRows(event.id, effectSpecs))
     : [];
 
-  const nextStatus = currentStatusForEvent(eventType, booking.current_status, paymentMode);
+  const nextStatus = currentStatusForEvent(
+    eventType,
+    booking.current_status,
+    booking.booking_type,
+    payment?.status ?? null,
+  );
   const updatedBooking = nextStatus === booking.current_status
     ? booking
     : await ctx.providers.repository.updateBooking(bookingId, { current_status: nextStatus });
@@ -95,7 +100,8 @@ export async function appendBookingEventWithEffects(
     message: 'Booking event persisted and policy side effects generated',
     context: {
       ...bookingEventLogContext(bookingId, eventType, source, normalizedPayload),
-      payment_mode: paymentMode,
+      booking_type: booking.booking_type,
+      payment_status: payment?.status ?? null,
       current_status_before: booking.current_status,
       current_status_after: updatedBooking.current_status,
       side_effect_count: sideEffects.length,
@@ -110,23 +116,4 @@ export async function appendBookingEventWithEffects(
     event,
     sideEffects,
   };
-}
-
-async function inferPaymentMode(
-  bookingId: string,
-  ctx: TransitionContext,
-): Promise<'free' | 'pay_now' | 'pay_later' | null> {
-  const events = await ctx.providers.repository.listBookingEvents(bookingId);
-  const submitted = [...events]
-    .reverse()
-    .find((event) =>
-      event.event_type === 'BOOKING_FORM_SUBMITTED_FREE' ||
-      event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_NOW' ||
-      event.event_type === 'BOOKING_FORM_SUBMITTED_PAY_LATER',
-    );
-
-  if (!submitted) return null;
-  if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_FREE') return 'free';
-  if (submitted.event_type === 'BOOKING_FORM_SUBMITTED_PAY_NOW') return 'pay_now';
-  return 'pay_later';
 }

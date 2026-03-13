@@ -95,6 +95,7 @@ export async function startApiLog(
   },
 ): Promise<string | null> {
   const inserted = await safeInsert(env, 'api_logs', {
+    app_area: input.operation.appArea,
     request_id: input.operation.requestId,
     correlation_id: input.operation.correlationId,
     booking_id: input.operation.bookingId,
@@ -145,6 +146,7 @@ export async function recordExceptionLog(
 ): Promise<void> {
   const details = errorToDetails(error);
   await safeInsert(env, 'exception_logs', {
+    app_area: operation.appArea,
     request_id: operation.requestId,
     correlation_id: operation.correlationId,
     booking_id: operation.bookingId,
