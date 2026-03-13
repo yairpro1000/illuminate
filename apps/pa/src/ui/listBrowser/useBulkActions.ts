@@ -29,7 +29,6 @@ export function useBulkActions(args: {
       }).length,
     [selectedRows],
   );
-  const canBulkUnarchive = selectedRows.length > 0 && selectedArchivedCount === selectedRows.length;
 
   const refreshScope = React.useCallback(async () => {
     if (args.searchAllLists) await args.loadAllRows();
@@ -144,8 +143,8 @@ export function useBulkActions(args: {
     }
   }
 
-  async function bulkToggleArchive() {
-    if (selectedIds.size === 0) return;
+  async function bulkArchiveSelected() {
+    if (selectedRows.length === 0) return;
     args.setBusy(true);
     args.setErr(null);
     try {
@@ -160,7 +159,36 @@ export function useBulkActions(args: {
             confidence: 1,
             listId: row.__listId,
             itemId: row.id,
-            patch: { archivedAt: canBulkUnarchive ? null : now },
+            patch: { archivedAt: now },
+          },
+          { refresh: false, expectedItemUpdatedAt: args.getItemUpdatedAt(row.__listId, row.id) },
+        );
+      }
+      setSelectedIds(new Set());
+      await refreshScope();
+    } catch (e: any) {
+      args.setErr(String(e?.message ?? e));
+    } finally {
+      args.setBusy(false);
+    }
+  }
+
+  async function bulkUnarchiveSelected() {
+    if (selectedRows.length === 0) return;
+    args.setBusy(true);
+    args.setErr(null);
+    try {
+      const listIds = Array.from(new Set(selectedRows.map((r) => r.__listId)));
+      for (const lid of listIds) await args.ensureArchivedField(lid);
+      for (const row of selectedRows) {
+        await args.commit(
+          {
+            type: "update_item",
+            valid: true,
+            confidence: 1,
+            listId: row.__listId,
+            itemId: row.id,
+            patch: { archivedAt: null },
           },
           { refresh: false, expectedItemUpdatedAt: args.getItemUpdatedAt(row.__listId, row.id) },
         );
@@ -176,7 +204,6 @@ export function useBulkActions(args: {
 
   return {
     selectedIds,
-    canBulkUnarchive,
     setSelectedIds,
     toggleSelect,
     toggleSelectAll,
@@ -184,6 +211,8 @@ export function useBulkActions(args: {
     bulkUpdate,
     bulkMove,
     bulkSetStatus,
-    bulkToggleArchive,
+    selectedArchivedCount,
+    bulkArchiveSelected,
+    bulkUnarchiveSelected,
   };
 }

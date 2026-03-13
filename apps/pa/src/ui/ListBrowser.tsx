@@ -205,7 +205,6 @@ export function ListBrowser(props: {
   });
   const {
     selectedIds,
-    canBulkUnarchive,
     setSelectedIds,
     toggleSelect,
     toggleSelectAll,
@@ -213,7 +212,9 @@ export function ListBrowser(props: {
     bulkUpdate,
     bulkMove,
     bulkSetStatus,
-    bulkToggleArchive,
+    selectedArchivedCount,
+    bulkArchiveSelected,
+    bulkUnarchiveSelected,
   } = useBulkActions({
     displayRows,
     searchAllLists,
@@ -1041,8 +1042,9 @@ export function ListBrowser(props: {
         bulkMove={bulkMove}
         bulkUpdate={bulkUpdate}
         bulkSetStatus={bulkSetStatus}
-        bulkArchiveLabel={canBulkUnarchive ? "Unarchive" : "Archive"}
-        bulkArchive={bulkToggleArchive}
+        selectedArchivedCount={selectedArchivedCount}
+        bulkArchiveSelected={bulkArchiveSelected}
+        bulkUnarchiveSelected={bulkUnarchiveSelected}
         deleteSelected={deleteSelected}
         filterText={filterText}
         setFilterText={setFilterText}

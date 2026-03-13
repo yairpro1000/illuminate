@@ -1,7 +1,7 @@
 import React from "react";
 import { API_BASE } from "../../api";
 import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from "./constants";
-import { ColorPicker, ColorSwatch, ToggleSwitch } from "./components";
+import { ColorPicker, ColorSwatch, ToggleSwitch, useDismissibleDetails } from "./components";
 import type { ListInfo } from "./types";
 import type { SortLayer } from "./utils";
 
@@ -47,12 +47,13 @@ export function ListBrowserChrome(props: {
   setSortDraft: React.Dispatch<React.SetStateAction<SortLayer[]>>;
   setSortModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   selectedIdsSize: number;
-  bulkArchiveLabel: string;
+  selectedArchivedCount: number;
   busy: boolean;
   bulkMove: (listId: string) => void;
   bulkUpdate: (patch: { priority?: number; color?: string | null }) => void;
   bulkSetStatus: (status: StatusValue) => void;
-  bulkArchive: () => void;
+  bulkArchiveSelected: () => void;
+  bulkUnarchiveSelected: () => void;
   deleteSelected: () => void;
   filterText: string;
   setFilterText: React.Dispatch<React.SetStateAction<string>>;
@@ -111,12 +112,13 @@ export function ListBrowserChrome(props: {
     setSortDraft,
     setSortModalOpen,
     selectedIdsSize,
-    bulkArchiveLabel,
+    selectedArchivedCount,
     busy,
     bulkMove,
     bulkUpdate,
     bulkSetStatus,
-    bulkArchive,
+    bulkArchiveSelected,
+    bulkUnarchiveSelected,
     deleteSelected,
     filterText,
     setFilterText,
@@ -141,6 +143,8 @@ export function ListBrowserChrome(props: {
     executeUndo,
     undoBusy,
   } = props;
+  const bulkArchiveMenuRef = React.useRef<HTMLDetailsElement | null>(null);
+  useDismissibleDetails(bulkArchiveMenuRef);
 
   return (
     <>
@@ -286,8 +290,43 @@ export function ListBrowserChrome(props: {
             <ColorPicker value={null} onChange={(c) => bulkUpdate({ color: c })} />
           </div>
           <div className="filterItem">
-            <label className="small muted">{bulkArchiveLabel}</label>
-            <button onClick={bulkArchive} disabled={busy}>{bulkArchiveLabel} ({selectedIdsSize})</button>
+            <label className="small muted">Archive</label>
+            <details className="menu" style={{ width: "100%" }} ref={bulkArchiveMenuRef}>
+              <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
+                <span>Archive actions</span>
+                <span className="muted small">({selectedIdsSize})</span>
+              </summary>
+              <div className="menuPanel" style={{ minWidth: 240 }}>
+                <button
+                  className="menuItem"
+                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void archiveAllDoneInScope(); }}
+                  disabled={busy || archiveDoneCandidatesLength === 0}
+                >
+                  Archive done
+                </button>
+                <button
+                  className="menuItem"
+                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void bulkArchiveSelected(); }}
+                  disabled={busy || selectedIdsSize === 0}
+                >
+                  Archive selected
+                </button>
+                <button
+                  className="menuItem"
+                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void bulkUnarchiveSelected(); }}
+                  disabled={busy || selectedArchivedCount === 0}
+                >
+                  Unarchive selected
+                </button>
+                <button
+                  className="menuItem"
+                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void unarchiveAllInScope(); }}
+                  disabled={busy || unarchiveCandidatesLength === 0}
+                >
+                  Unarchive all
+                </button>
+              </div>
+            </details>
           </div>
           <div className="filterItem">
             <label className="small muted">Delete</label>
