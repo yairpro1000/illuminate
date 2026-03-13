@@ -308,10 +308,13 @@ th {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px;
-  z-index: 200;
+  z-index: 280;
   min-width: 180px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
+  isolation: isolate;
 }
 
 .menuItem {
@@ -321,6 +324,9 @@ th {
   border: 1px solid transparent;
   padding: 10px 10px;
   border-radius: 10px;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .menuItem:hover {

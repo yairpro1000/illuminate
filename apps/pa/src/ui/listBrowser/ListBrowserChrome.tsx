@@ -47,6 +47,7 @@ export function ListBrowserChrome(props: {
   setSortDraft: React.Dispatch<React.SetStateAction<SortLayer[]>>;
   setSortModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   selectedIdsSize: number;
+  bulkArchiveLabel: string;
   busy: boolean;
   bulkMove: (listId: string) => void;
   bulkUpdate: (patch: { priority?: number; color?: string | null }) => void;
@@ -110,6 +111,7 @@ export function ListBrowserChrome(props: {
     setSortDraft,
     setSortModalOpen,
     selectedIdsSize,
+    bulkArchiveLabel,
     busy,
     bulkMove,
     bulkUpdate,
@@ -284,8 +286,8 @@ export function ListBrowserChrome(props: {
             <ColorPicker value={null} onChange={(c) => bulkUpdate({ color: c })} />
           </div>
           <div className="filterItem">
-            <label className="small muted">Archive</label>
-            <button onClick={bulkArchive} disabled={busy}>Archive ({selectedIdsSize})</button>
+            <label className="small muted">{bulkArchiveLabel}</label>
+            <button onClick={bulkArchive} disabled={busy}>{bulkArchiveLabel} ({selectedIdsSize})</button>
           </div>
           <div className="filterItem">
             <label className="small muted">Delete</label>
@@ -349,7 +351,7 @@ export function ListBrowserChrome(props: {
             {showArchived ? (
               <button onClick={unarchiveAllInScope} disabled={busy || unarchiveCandidatesLength === 0}>Unarchive all ({unarchiveCandidatesLength})</button>
             ) : (
-              <button onClick={archiveAllDoneInScope} disabled={busy || archiveDoneCandidatesLength === 0}>Archive done ({archiveDoneCandidatesLength})</button>
+              <button onClick={archiveAllDoneInScope} disabled={busy || archiveDoneCandidatesLength === 0}>Archive DONE ({archiveDoneCandidatesLength})</button>
             )}
           </div>
           {activeList ? (

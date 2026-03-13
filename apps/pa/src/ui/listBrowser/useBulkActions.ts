@@ -17,6 +17,20 @@ export function useBulkActions(args: {
 }) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
 
+  const selectedRows = React.useMemo(
+    () => args.displayRows.filter((r) => selectedIds.has(r.id)),
+    [args.displayRows, selectedIds],
+  );
+  const selectedArchivedCount = React.useMemo(
+    () =>
+      selectedRows.filter((row) => {
+        const archivedAt = (row as any).archivedAt;
+        return (typeof archivedAt === "string" && String(archivedAt).trim()) || archivedAt === true;
+      }).length,
+    [selectedRows],
+  );
+  const canBulkUnarchive = selectedRows.length > 0 && selectedArchivedCount === selectedRows.length;
+
   const refreshScope = React.useCallback(async () => {
     if (args.searchAllLists) await args.loadAllRows();
     else await args.loadItems(args.listId);
@@ -130,20 +144,25 @@ export function useBulkActions(args: {
     }
   }
 
-  async function bulkArchive() {
+  async function bulkToggleArchive() {
     if (selectedIds.size === 0) return;
     args.setBusy(true);
     args.setErr(null);
     try {
       const now = new Date().toISOString();
-      const listIds = Array.from(new Set(args.displayRows.filter((r) => selectedIds.has(r.id)).map((r) => r.__listId)));
+      const listIds = Array.from(new Set(selectedRows.map((r) => r.__listId)));
       for (const lid of listIds) await args.ensureArchivedField(lid);
-      for (const id of selectedIds) {
-        const row = args.displayRows.find((r) => r.id === id);
-        if (!row) continue;
+      for (const row of selectedRows) {
         await args.commit(
-          { type: "update_item", valid: true, confidence: 1, listId: row.__listId, itemId: id, patch: { archivedAt: now } },
-          { refresh: false, expectedItemUpdatedAt: args.getItemUpdatedAt(row.__listId, id) },
+          {
+            type: "update_item",
+            valid: true,
+            confidence: 1,
+            listId: row.__listId,
+            itemId: row.id,
+            patch: { archivedAt: canBulkUnarchive ? null : now },
+          },
+          { refresh: false, expectedItemUpdatedAt: args.getItemUpdatedAt(row.__listId, row.id) },
         );
       }
       setSelectedIds(new Set());
@@ -157,6 +176,7 @@ export function useBulkActions(args: {
 
   return {
     selectedIds,
+    canBulkUnarchive,
     setSelectedIds,
     toggleSelect,
     toggleSelectAll,
@@ -164,6 +184,6 @@ export function useBulkActions(args: {
     bulkUpdate,
     bulkMove,
     bulkSetStatus,
-    bulkArchive,
+    bulkToggleArchive,
   };
 }
