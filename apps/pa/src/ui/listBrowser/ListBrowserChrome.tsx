@@ -1,7 +1,7 @@
 import React from "react";
 import { API_BASE } from "../../api";
 import { COLOR_PALETTE, STATUS_OPTIONS, STATUS_STYLE, type StatusValue } from "./constants";
-import { ColorPicker, ColorSwatch, ToggleSwitch, useDismissibleDetails } from "./components";
+import { ColorPicker, ColorSwatch, ToggleSwitch } from "./components";
 import type { ListInfo } from "./types";
 import type { SortLayer } from "./utils";
 
@@ -143,8 +143,27 @@ export function ListBrowserChrome(props: {
     executeUndo,
     undoBusy,
   } = props;
-  const bulkArchiveMenuRef = React.useRef<HTMLDetailsElement | null>(null);
-  useDismissibleDetails(bulkArchiveMenuRef);
+  const [bulkArchiveAction, setBulkArchiveAction] = React.useState("");
+
+  async function runBulkArchiveAction(action: string) {
+    setBulkArchiveAction("");
+    switch (action) {
+      case "archive_done":
+        await archiveAllDoneInScope();
+        break;
+      case "archive_selected":
+        await bulkArchiveSelected();
+        break;
+      case "unarchive_selected":
+        await bulkUnarchiveSelected();
+        break;
+      case "unarchive_all":
+        await unarchiveAllInScope();
+        break;
+      default:
+        break;
+    }
+  }
 
   return (
     <>
@@ -291,42 +310,21 @@ export function ListBrowserChrome(props: {
           </div>
           <div className="filterItem">
             <label className="small muted">Archive</label>
-            <details className="menu" style={{ width: "100%" }} ref={bulkArchiveMenuRef}>
-              <summary className="iconbtn" style={{ width: "100%", justifyContent: "space-between" }}>
-                <span>Archive actions</span>
-                <span className="muted small">({selectedIdsSize})</span>
-              </summary>
-              <div className="menuPanel" style={{ minWidth: 240 }}>
-                <button
-                  className="menuItem"
-                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void archiveAllDoneInScope(); }}
-                  disabled={busy || archiveDoneCandidatesLength === 0}
-                >
-                  Archive done
-                </button>
-                <button
-                  className="menuItem"
-                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void bulkArchiveSelected(); }}
-                  disabled={busy || selectedIdsSize === 0}
-                >
-                  Archive selected
-                </button>
-                <button
-                  className="menuItem"
-                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void bulkUnarchiveSelected(); }}
-                  disabled={busy || selectedArchivedCount === 0}
-                >
-                  Unarchive selected
-                </button>
-                <button
-                  className="menuItem"
-                  onClick={() => { bulkArchiveMenuRef.current?.removeAttribute("open"); void unarchiveAllInScope(); }}
-                  disabled={busy || unarchiveCandidatesLength === 0}
-                >
-                  Unarchive all
-                </button>
-              </div>
-            </details>
+            <select
+              value={bulkArchiveAction}
+              onChange={(e) => {
+                const next = e.target.value;
+                setBulkArchiveAction(next);
+                void runBulkArchiveAction(next);
+              }}
+              disabled={busy}
+            >
+              <option value="">Select archive action</option>
+              <option value="archive_done" disabled={archiveDoneCandidatesLength === 0}>Archive done</option>
+              <option value="archive_selected" disabled={selectedIdsSize === 0}>Archive selected</option>
+              <option value="unarchive_selected" disabled={selectedArchivedCount === 0}>Unarchive selected</option>
+              <option value="unarchive_all" disabled={unarchiveCandidatesLength === 0}>Unarchive all</option>
+            </select>
           </div>
           <div className="filterItem">
             <label className="small muted">Delete</label>
