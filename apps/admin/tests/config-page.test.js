@@ -26,6 +26,18 @@ const initialPayload = {
         description_display: 'מספר הדקות שטוקן ניהול שנוצר על ידי אדמין נשאר תקף.',
       },
       {
+        domain: 'payment',
+        name: 'Pay-now reminder grace period',
+        readable_name: 'Pay-now reminder grace period',
+        keyname: 'payNowReminderGraceMinutes',
+        value_type: 'integer',
+        unit: 'minutes',
+        value: '10',
+        description: 'Delay before sending a reminder to complete an unfinished pay-now checkout.',
+        description_he: 'עיכוב קצר לפני שליחת תזכורת להשלמת תשלום שהתחיל אך לא הסתיים.',
+        description_display: 'עיכוב קצר לפני שליחת תזכורת להשלמת תשלום שהתחיל אך לא הסתיים.',
+      },
+      {
         domain: 'processing',
         name: 'Stale processing timeout',
         readable_name: 'Stale processing timeout',
@@ -77,19 +89,26 @@ describe('admin config page', () => {
     window.adminClient = { requestJson }
   })
 
-  it('renders DB-backed settings and sorts by value', async () => {
+  it('renders DB-backed settings and sorts by domain then value', async () => {
     evalCode(adminConfigCode)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(document.querySelector('.tab-btn.active')?.textContent).toBe('Timing & Delays')
     expect(document.getElementById('configPath')?.textContent).toBe('public.system_settings')
 
+    const domainFilter = document.getElementById('domainFilter')
+    expect(Array.from(domainFilter.options).map((option) => option.value)).toEqual(['', 'admin', 'payment', 'processing'])
+
     const rows = Array.from(document.querySelectorAll('#timingBody tr'))
-    expect(rows).toHaveLength(2)
-    expect(rows[0]?.textContent).toContain('Stale processing timeout')
-    expect(rows[0]?.textContent).toContain('10')
-    expect(rows[1]?.textContent).toContain('Admin manage token expiry')
-    expect(rows[1]?.textContent).toContain('30')
+    expect(rows).toHaveLength(3)
+    expect(rows[0]?.textContent).toContain('admin')
+    expect(rows[0]?.textContent).toContain('Admin manage token expiry')
+    expect(rows[0]?.textContent).toContain('30')
+    expect(rows[1]?.textContent).toContain('payment')
+    expect(rows[1]?.textContent).toContain('Pay-now reminder grace period')
+    expect(rows[1]?.textContent).toContain('10')
+    expect(rows[2]?.textContent).toContain('processing')
+    expect(rows[2]?.textContent).toContain('Stale processing timeout')
   })
 
   it('opens the add-setting modal and posts a new DB setting', async () => {
@@ -124,7 +143,30 @@ describe('admin config page', () => {
       value_type: 'integer',
       value: '15',
     }))
-    expect(document.querySelectorAll('#timingBody tr')).toHaveLength(3)
+    expect(document.querySelectorAll('#timingBody tr')).toHaveLength(4)
+  })
+
+  it('filters by domain and free-text search', async () => {
+    evalCode(adminConfigCode)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    const domainFilter = document.getElementById('domainFilter')
+    domainFilter.value = 'processing'
+    domainFilter.dispatchEvent(new Event('change'))
+
+    let rows = Array.from(document.querySelectorAll('#timingBody tr'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.textContent).toContain('Stale processing timeout')
+
+    domainFilter.value = ''
+    domainFilter.dispatchEvent(new Event('change'))
+    const searchInput = document.getElementById('searchInput')
+    searchInput.value = 'grace'
+    searchInput.dispatchEvent(new Event('input'))
+
+    rows = Array.from(document.querySelectorAll('#timingBody tr'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.textContent).toContain('Pay-now reminder grace period')
   })
 
   it('adds the config link to the side menu across admin pages', () => {

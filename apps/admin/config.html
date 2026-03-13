@@ -172,6 +172,23 @@
         margin-bottom: 0.75rem;
       }
 
+      .row {
+        display: flex;
+        gap: 0.625rem;
+        flex-wrap: wrap;
+        align-items: flex-end;
+      }
+
+      .col {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .search-bar {
+        width: 100%;
+        max-width: 340px;
+      }
+
       .config-path {
         margin-top: 1rem;
         display: inline-flex;
@@ -248,8 +265,8 @@
         cursor: pointer;
       }
 
-      .col-name { width: 20%; }
-      .col-key { width: 26%; }
+      .col-domain { width: 16%; }
+      .col-name { width: 30%; }
       .col-value { width: 12%; }
       .col-description { width: 42%; }
 
@@ -427,11 +444,23 @@
           <div class="page-actions">
             <button id="addSettingBtn" type="button">Add setting</button>
           </div>
+          <div class="row" style="margin-bottom: 0.875rem;">
+            <div class="col" style="min-width: 220px;">
+              <label for="domainFilter">Domain</label>
+              <select id="domainFilter">
+                <option value="">All domains</option>
+              </select>
+            </div>
+            <div class="col" style="flex: 1 1 320px;">
+              <label for="searchInput">Search</label>
+              <input id="searchInput" class="search-bar" type="search" placeholder="Search domain, name, key, value, description…" />
+            </div>
+          </div>
           <table aria-label="Timing and delay configuration">
             <thead>
               <tr>
+                <th class="col-domain">Domain</th>
                 <th class="col-name">Name</th>
-                <th class="col-key">Keyname</th>
                 <th class="col-value">Value</th>
                 <th class="col-description">Description</th>
               </tr>

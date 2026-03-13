@@ -4,17 +4,22 @@
   const NEW_DOMAIN_VALUE = '__enter_new__';
 
   const state = {
+    allRows: [],
     rows: [],
     domains: [],
     valueTypes: ['integer', 'float', 'boolean', 'text', 'json'],
     editingOriginalKeyname: null,
     saving: false,
+    selectedDomain: '',
+    search: '',
   };
 
   const statusEl = document.getElementById('status');
   const configPathEl = document.getElementById('configPath');
   const timingBodyEl = document.getElementById('timingBody');
   const addSettingBtnEl = document.getElementById('addSettingBtn');
+  const domainFilterEl = document.getElementById('domainFilter');
+  const searchInputEl = document.getElementById('searchInput');
 
   const editOverlayEl = document.getElementById('editOverlay');
   const editTitleEl = document.getElementById('editTitle');
@@ -57,12 +62,6 @@
     return td;
   }
 
-  function makeCode(text) {
-    const code = document.createElement('code');
-    code.textContent = text;
-    return code;
-  }
-
   function makeValuePill(value) {
     const pill = document.createElement('span');
     pill.className = 'value-pill';
@@ -72,6 +71,8 @@
 
   function sortRows(rows) {
     return rows.slice().sort((a, b) => {
+      const domainCompare = String(a.domain || '').localeCompare(String(b.domain || ''));
+      if (domainCompare) return domainCompare;
       const aNum = Number(a.value);
       const bNum = Number(b.value);
       const aIsNum = Number.isFinite(aNum);
@@ -85,6 +86,53 @@
     });
   }
 
+  function populateDomainFilter() {
+    const selected = state.selectedDomain;
+    domainFilterEl.innerHTML = '';
+
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = 'All domains';
+    domainFilterEl.appendChild(allOption);
+
+    for (const domain of state.domains) {
+      const option = document.createElement('option');
+      option.value = domain;
+      option.textContent = domain;
+      domainFilterEl.appendChild(option);
+    }
+
+    domainFilterEl.value = state.domains.includes(selected) ? selected : '';
+  }
+
+  function applyFilters() {
+    let rows = state.allRows.slice();
+
+    if (state.selectedDomain) {
+      rows = rows.filter((row) => String(row.domain || '') === state.selectedDomain);
+    }
+
+    if (state.search) {
+      const q = state.search;
+      rows = rows.filter((row) => {
+        const haystack = [
+          row.domain,
+          row.name,
+          row.readable_name,
+          row.keyname,
+          row.value,
+          row.description,
+          row.description_he,
+          row.description_display,
+        ].join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+
+    state.rows = rows;
+    renderRows();
+  }
+
   function renderRows() {
     timingBodyEl.innerHTML = '';
     const rows = sortRows(state.rows);
@@ -94,7 +142,7 @@
       const td = document.createElement('td');
       td.colSpan = 4;
       td.className = 'empty-state';
-      td.textContent = 'No system settings were returned.';
+      td.textContent = 'No system settings match the current filters.';
       tr.appendChild(td);
       timingBodyEl.appendChild(tr);
       return;
@@ -103,8 +151,8 @@
     for (const row of rows) {
       const tr = document.createElement('tr');
       tr.className = 'clickable';
+      tr.appendChild(makeCell('Domain', row.domain || ''));
       tr.appendChild(makeCell('Name', row.name || ''));
-      tr.appendChild(makeCell('Keyname', makeCode(row.keyname || '')));
       tr.appendChild(makeCell('Value', makeValuePill(row.value)));
       tr.appendChild(makeCell('Description', row.description_display || row.description_he || row.description || ''));
       tr.addEventListener('click', () => openEditModal(row));
@@ -222,13 +270,14 @@
 
   function applyResponsePayload(data) {
     const timingDelays = data && data.timing_delays ? data.timing_delays : {};
-    state.rows = Array.isArray(timingDelays.entries) ? timingDelays.entries : [];
+    state.allRows = Array.isArray(timingDelays.entries) ? timingDelays.entries : [];
     state.domains = Array.isArray(timingDelays.domains) ? timingDelays.domains.slice().sort((a, b) => String(a).localeCompare(String(b))) : [];
     state.valueTypes = Array.isArray(timingDelays.value_types) && timingDelays.value_types.length
       ? timingDelays.value_types.slice()
       : state.valueTypes;
     configPathEl.textContent = timingDelays.config_source || '';
-    renderRows();
+    populateDomainFilter();
+    applyFilters();
   }
 
   async function saveSetting() {
@@ -271,6 +320,14 @@
   }
 
   addSettingBtnEl.addEventListener('click', openCreateModal);
+  domainFilterEl.addEventListener('change', function () {
+    state.selectedDomain = domainFilterEl.value;
+    applyFilters();
+  });
+  searchInputEl.addEventListener('input', function () {
+    state.search = String(searchInputEl.value || '').trim().toLowerCase();
+    applyFilters();
+  });
   editSaveEl.addEventListener('click', () => { void saveSetting(); });
   editCloseEl.addEventListener('click', closeEditModal);
   editDomainSelectEl.addEventListener('change', syncDomainInputVisibility);
