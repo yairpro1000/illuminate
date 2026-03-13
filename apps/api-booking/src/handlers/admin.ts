@@ -1,14 +1,11 @@
 import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
-import type { BookingCurrentStatus, EventUpdate } from '../types.js';
+import type { BookingCurrentStatus, EventUpdate, NewSystemSetting, SystemSetting, SystemSettingUpdate, SystemSettingValueType } from '../types.js';
 import { ApiError, created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
-import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
-import {
-  BOOKING_POLICY_CONFIG_RELATIVE_PATH,
-  listBookingPolicyTimingDelayRows,
-} from '../config/booking-policy.js';
+import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
+import { BOOKING_POLICY_CONFIG_SOURCE } from '../config/booking-policy.js';
 import { generateToken, hashToken } from '../services/token-service.js';
 import { buildAdminManageUrl, buildManageUrl } from '../services/booking-service.js';
 import {
@@ -18,6 +15,14 @@ import {
   clearOverride,
   type ServiceKey,
 } from '../lib/config-overrides.js';
+
+const SYSTEM_SETTING_VALUE_TYPES: readonly SystemSettingValueType[] = [
+  'integer',
+  'float',
+  'boolean',
+  'text',
+  'json',
+];
 
 function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
@@ -103,6 +108,116 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
   const raw = await request.text();
   if (!raw.trim()) return {};
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+function coerceRequiredString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string') throw badRequest(`${fieldName} is required`);
+  const trimmed = value.trim();
+  if (!trimmed) throw badRequest(`${fieldName} is required`);
+  return trimmed;
+}
+
+function coerceOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeSystemSettingValue(value: string, valueType: SystemSettingValueType): string {
+  switch (valueType) {
+    case 'integer': {
+      if (!/^-?\d+$/.test(value)) throw badRequest('value must be a valid integer');
+      return String(parseInt(value, 10));
+    }
+    case 'float': {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed)) throw badRequest('value must be a valid number');
+      return String(parsed);
+    }
+    case 'boolean': {
+      const normalized = value.trim().toLowerCase();
+      if (normalized !== 'true' && normalized !== 'false') {
+        throw badRequest('value must be true or false for boolean settings');
+      }
+      return normalized;
+    }
+    case 'json': {
+      try {
+        return JSON.stringify(JSON.parse(value));
+      } catch {
+        throw badRequest('value must be valid JSON');
+      }
+    }
+    case 'text':
+    default:
+      return value;
+  }
+}
+
+function parseSystemSettingValueType(value: unknown): SystemSettingValueType {
+  if (typeof value !== 'string' || !SYSTEM_SETTING_VALUE_TYPES.includes(value as SystemSettingValueType)) {
+    throw badRequest('value_type must be one of integer, float, boolean, text, json');
+  }
+  return value as SystemSettingValueType;
+}
+
+function parseSystemSettingPayload(body: Record<string, unknown>): NewSystemSetting {
+  const domain = coerceRequiredString(body.domain, 'domain');
+  const keyname = coerceRequiredString(body.keyname, 'keyname');
+  const readable_name = coerceRequiredString(body.readable_name, 'readable_name');
+  const value_type = parseSystemSettingValueType(body.value_type);
+  const rawValue = typeof body.value === 'string' ? body.value : String(body.value ?? '');
+  const value = normalizeSystemSettingValue(rawValue, value_type);
+  const description = coerceRequiredString(body.description, 'description');
+  const description_he = coerceOptionalString(body.description_he);
+  const unit = coerceOptionalString(body.unit);
+
+  return {
+    domain,
+    keyname,
+    readable_name,
+    value_type,
+    unit,
+    value,
+    description,
+    description_he,
+  };
+}
+
+function sortSystemSettingsByValue(settings: SystemSetting[]): SystemSetting[] {
+  return settings.slice().sort((a, b) => {
+    const aNum = Number(a.value);
+    const bNum = Number(b.value);
+    const aIsNum = Number.isFinite(aNum);
+    const bIsNum = Number.isFinite(bNum);
+    if (aIsNum && bIsNum) {
+      return aNum - bNum || a.readable_name.localeCompare(b.readable_name);
+    }
+    if (aIsNum) return -1;
+    if (bIsNum) return 1;
+    return a.value.localeCompare(b.value) || a.readable_name.localeCompare(b.readable_name);
+  });
+}
+
+function toAdminSystemSettingRow(setting: SystemSetting) {
+  return {
+    domain: setting.domain,
+    name: setting.readable_name,
+    readable_name: setting.readable_name,
+    keyname: setting.keyname,
+    value_type: setting.value_type,
+    unit: setting.unit,
+    value: setting.value,
+    description: setting.description,
+    description_he: setting.description_he,
+    description_display: setting.description_he ?? setting.description,
+    created_at: setting.created_at,
+    updated_at: setting.updated_at,
+  };
+}
+
+function isServiceOverridePayload(body: Record<string, unknown>): body is { key: ServiceKey; mode: string } {
+  return typeof body.key === 'string' && typeof body.mode === 'string';
 }
 
 // GET /api/admin/events
@@ -441,8 +556,9 @@ export async function handleAdminCreateLateAccessLink(
 
     const rawToken = generateToken();
     const tokenHash = await hashToken(rawToken);
+    const policy = await getBookingPolicyConfig(ctx.providers.repository);
     const expiresAt = new Date(
-      new Date(event.ends_at).getTime() + DEFAULT_BOOKING_POLICY.eventLateAccessLinkExpiryHours * 60 * 60_000,
+      new Date(event.ends_at).getTime() + policy.eventLateAccessLinkExpiryHours * 60 * 60_000,
     ).toISOString();
 
     await ctx.providers.repository.revokeActiveEventLateAccessLinks(event.id);
@@ -479,6 +595,8 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
     });
 
     await requireAdminAccess(request, ctx.env, ctx.logger);
+    const settings = sortSystemSettingsByValue(await ctx.providers.repository.listSystemSettings());
+    const domains = await ctx.providers.repository.listSystemSettingDomains();
     const overrides = getAllOverrides();
     const services = SERVICE_MODES.map(({ key, label, modes }) => {
       const envMode = getEnvMode(key, ctx.env);
@@ -487,8 +605,10 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
       return { key, label, effective_mode: effectiveMode, env_mode: envMode, override_mode: overrideMode, modes };
     });
     const timingDelays = {
-      config_path: BOOKING_POLICY_CONFIG_RELATIVE_PATH,
-      entries: listBookingPolicyTimingDelayRows(),
+      config_source: BOOKING_POLICY_CONFIG_SOURCE,
+      entries: settings.map(toAdminSystemSettingRow),
+      domains,
+      value_types: SYSTEM_SETTING_VALUE_TYPES,
     };
 
     ctx.logger.logInfo?.({
@@ -500,7 +620,7 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
         request_id: ctx.requestId,
         service_count: services.length,
         timing_delay_count: timingDelays.entries.length,
-        config_path: timingDelays.config_path,
+        config_source: timingDelays.config_source,
         branch_taken: 'allow_admin_config_response',
         deny_reason: null,
       },
@@ -560,34 +680,130 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
 // PATCH /api/admin/config
 export async function handleAdminPatchConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    await requireAdminAccess(request, ctx.env);
+    const path = new URL(request.url).pathname;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_config_mutation_started',
+      message: 'Started admin config mutation handling',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        branch_taken: 'authorize_then_route_admin_config_mutation',
+      },
+    });
+
+    await requireAdminAccess(request, ctx.env, ctx.logger);
     const body = await parseJsonBody(request);
-    const key = typeof body.key === 'string' ? body.key as ServiceKey : null;
-    const mode = typeof body.mode === 'string' ? body.mode : null;
-    if (!key || !mode) throw badRequest('key and mode are required');
+    if (isServiceOverridePayload(body)) {
+      const key = body.key;
+      const mode = body.mode;
+      const serviceDef = SERVICE_MODES.find((s) => s.key === key);
+      if (!serviceDef) throw badRequest(`Unknown service: ${key}`);
 
-    const serviceDef = SERVICE_MODES.find((s) => s.key === key);
-    if (!serviceDef) throw badRequest(`Unknown service: ${key}`);
+      const modeDef = serviceDef.modes.find((m) => m.value === mode);
+      if (!modeDef) throw badRequest(`Unknown mode '${mode}' for service '${key}'`);
+      if (!modeDef.wired) throw badRequest(`Mode '${mode}' is not yet wired for '${key}'`);
 
-    const modeDef = serviceDef.modes.find((m) => m.value === mode);
-    if (!modeDef) throw badRequest(`Unknown mode '${mode}' for service '${key}'`);
-    if (!modeDef.wired) throw badRequest(`Mode '${mode}' is not yet wired for '${key}'`);
+      if (mode === getEnvMode(key, ctx.env)) {
+        clearOverride(key);
+      } else {
+        setOverride(key, mode);
+      }
 
-    if (mode === getEnvMode(key, ctx.env)) {
-      clearOverride(key);
-    } else {
-      setOverride(key, mode);
+      const overrides = getAllOverrides();
+      const envMode = getEnvMode(key, ctx.env);
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'admin_config_mutation_decision',
+        message: 'Applied admin service override mutation',
+        context: {
+          path,
+          request_id: ctx.requestId,
+          mutation_scope: 'service_override',
+          service_key: key,
+          requested_mode: mode,
+          effective_mode: overrides[key] ?? envMode,
+          branch_taken: 'service_override_updated',
+          deny_reason: null,
+        },
+      });
+      return ok({
+        key,
+        effective_mode: overrides[key] ?? envMode,
+        env_mode: envMode,
+        override_mode: overrides[key] ?? null,
+      });
     }
 
-    const overrides = getAllOverrides();
-    const envMode = getEnvMode(key, ctx.env);
+    const setting = parseSystemSettingPayload(body);
+    const existingKeyname = request.method === 'PATCH'
+      ? coerceRequiredString(body.original_keyname ?? body.keyname, 'original_keyname')
+      : null;
+    const mutationScope = existingKeyname ? 'system_setting_update' : 'system_setting_create';
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_config_mutation_decision',
+      message: 'Validated admin system setting mutation payload',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        mutation_scope: mutationScope,
+        original_keyname: existingKeyname,
+        keyname: setting.keyname,
+        domain: setting.domain,
+        value_type: setting.value_type,
+        branch_taken: existingKeyname ? 'apply_system_setting_update' : 'apply_system_setting_create',
+        deny_reason: null,
+      },
+    });
+
+    const saved = existingKeyname
+      ? await ctx.providers.repository.updateSystemSetting(existingKeyname, setting as SystemSettingUpdate)
+      : await ctx.providers.repository.createSystemSetting(setting as NewSystemSetting);
+
+    const settings = sortSystemSettingsByValue(await ctx.providers.repository.listSystemSettings());
+    const domains = await ctx.providers.repository.listSystemSettingDomains();
+
     return ok({
-      key,
-      effective_mode: overrides[key] ?? envMode,
-      env_mode: envMode,
-      override_mode: overrides[key] ?? null,
+      setting: toAdminSystemSettingRow(saved),
+      timing_delays: {
+        config_source: BOOKING_POLICY_CONFIG_SOURCE,
+        entries: settings.map(toAdminSystemSettingRow),
+        domains,
+        value_types: SYSTEM_SETTING_VALUE_TYPES,
+      },
     });
   } catch (err) {
+    const path = new URL(request.url).pathname;
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'admin_config_mutation_failed',
+        message: err.message,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          status_code: statusCode,
+          error_code: err.code,
+          branch_taken: 'handled_api_error',
+          deny_reason: err.code,
+        },
+      });
+    } else {
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'uncaught_exception',
+        message: 'Admin config mutation failed unexpectedly',
+        error: err,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    }
     return errorResponse(err);
   }
 }

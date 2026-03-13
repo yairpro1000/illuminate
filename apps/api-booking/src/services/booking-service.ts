@@ -23,7 +23,7 @@ import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
 import {
-  DEFAULT_BOOKING_POLICY,
+  getBookingPolicyConfig,
   getBookingPolicyText,
   shouldReserveSlotForTransition,
 } from '../domain/booking-effect-policy.js';
@@ -55,6 +55,10 @@ export interface BookingContext {
   requestId: string;
   correlationId?: string;
   operation?: OperationContext;
+}
+
+async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
+  return getBookingPolicyConfig(ctx.providers.repository);
 }
 
 function withBookingOperationContext(ctx: BookingContext, bookingId: string): BookingContext {
@@ -299,7 +303,7 @@ export async function createEventBooking(
   input: EventBookingInput,
   ctx: BookingContext,
 ): Promise<EventBookingResult> {
-  await ensureEventPublicBookable(input.event);
+  await ensureEventPublicBookable(input.event, ctx.providers.repository);
   return createEventBookingInternal(input, ctx, { viaLateAccess: false });
 }
 
@@ -421,6 +425,7 @@ export async function confirmBookingEmail(
   rawToken: string,
   ctx: BookingContext,
 ): Promise<Booking> {
+  const policy = await loadBookingPolicy(ctx);
   const tokenHash = await hashToken(rawToken);
   const booking = await ctx.providers.repository.getBookingByConfirmTokenHash(tokenHash);
   if (!booking) throw notFound('Booking not found');
@@ -433,7 +438,7 @@ export async function confirmBookingEmail(
   const confirmationDeadlineIso = submissionWithToken
     ? new Date(
       new Date(submissionWithToken.created_at).getTime() +
-      DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes * 60_000,
+      policy.nonPaidConfirmationWindowMinutes * 60_000,
     ).toISOString()
     : null;
   const isConfirmationWindowExpired = confirmationDeadlineIso
@@ -449,7 +454,7 @@ export async function confirmBookingEmail(
       booking_status: booking.current_status,
       has_submission_with_confirm_token: Boolean(submissionWithToken),
       confirmation_deadline: confirmationDeadlineIso,
-      confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
+      confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
       is_confirmation_window_expired: isConfirmationWindowExpired,
       branch_taken: booking.current_status !== 'PENDING'
         ? 'booking_already_progressed_or_terminal'
@@ -493,7 +498,7 @@ export async function confirmBookingEmail(
         booking,
         paymentUrl,
         manageUrl,
-        DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+        policy.payNowReminderGraceMinutes,
       );
     }
   }
@@ -630,10 +635,11 @@ export async function buildAdminManageUrl(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<{ url: string; adminToken: string; expiresAt: string }> {
+  const policy = await loadBookingPolicy(ctx);
   const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
   if (!secret) throw badRequest('Admin manage token secret is not configured');
   const expiresAt = new Date(
-    Date.now() + DEFAULT_BOOKING_POLICY.adminManageTokenExpiryMinutes * 60_000,
+    Date.now() + policy.adminManageTokenExpiryMinutes * 60_000,
   ).toISOString();
   const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
   const manageToken = buildStableManageToken(booking.id);
@@ -647,7 +653,8 @@ export async function cancelBooking(
   options: { source?: 'PUBLIC_UI' | 'ADMIN_UI'; bypassPolicyWindow?: boolean } = {},
 ): Promise<BookingActionResult> {
   const source = options.source ?? 'PUBLIC_UI';
-  const policy = evaluateManageBookingPolicy(booking.starts_at);
+  const bookingPolicy = await loadBookingPolicy(ctx);
+  const policy = evaluateManageBookingPolicy(booking.starts_at, bookingPolicy.selfServiceLockWindowHours);
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'cancel_booking_policy_gate_decision',
@@ -790,7 +797,8 @@ export async function rescheduleBooking(
   options: { source?: 'PUBLIC_UI' | 'ADMIN_UI'; bypassPolicyWindow?: boolean } = {},
 ): Promise<BookingActionResult> {
   const source = options.source ?? 'PUBLIC_UI';
-  const policy = evaluateManageBookingPolicy(booking.starts_at);
+  const bookingPolicy = await loadBookingPolicy(ctx);
+  const policy = evaluateManageBookingPolicy(booking.starts_at, bookingPolicy.selfServiceLockWindowHours);
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'reschedule_booking_policy_gate_decision',
@@ -923,6 +931,7 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
 }
 
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
+  const policy = await loadBookingPolicy(ctx);
   const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
   const paymentMode = await inferPaymentModeForBooking(booking.id, ctx.providers.repository);
   const payUrl = paymentMode === 'pay_later'
@@ -958,7 +967,13 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
     if (!booking.google_event_id) {
       throw new Error('session_calendar_invite_missing_before_confirmation_email');
     }
-    await ctx.providers.email.sendBookingConfirmation(booking, manageUrl, invoiceUrl, payUrl);
+    await ctx.providers.email.sendBookingConfirmation(
+      booking,
+      manageUrl,
+      invoiceUrl,
+      payUrl,
+      getBookingPolicyText(policy.selfServiceLockWindowHours),
+    );
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'booking_confirmation_email_dispatch_completed',
@@ -992,7 +1007,13 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
     });
     throw new Error('event_not_found_for_confirmation_email');
   }
-  await ctx.providers.email.sendEventConfirmation(booking, event, manageUrl, invoiceUrl);
+  await ctx.providers.email.sendEventConfirmation(
+    booking,
+    event,
+    manageUrl,
+    invoiceUrl,
+    getBookingPolicyText(policy.selfServiceLockWindowHours),
+  );
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_confirmation_email_dispatch_completed',
@@ -1041,7 +1062,7 @@ export async function getBookingPublicActionInfo(
   };
 }
 
-export function evaluateManageBookingPolicy(startsAtIso: string): {
+export function evaluateManageBookingPolicy(startsAtIso: string, selfServiceLockWindowHours: number): {
   canSelfServeChange: boolean;
   hoursBeforeStart: number;
   policyText: string;
@@ -1050,9 +1071,9 @@ export function evaluateManageBookingPolicy(startsAtIso: string): {
   const startsAtMs = new Date(startsAtIso).getTime();
   const hoursBeforeStart = (startsAtMs - nowMs) / 3_600_000;
   return {
-    canSelfServeChange: hoursBeforeStart >= DEFAULT_BOOKING_POLICY.selfServiceLockWindowHours,
+    canSelfServeChange: hoursBeforeStart >= selfServiceLockWindowHours,
     hoursBeforeStart,
-    policyText: getBookingPolicyText(),
+    policyText: getBookingPolicyText(selfServiceLockWindowHours),
   };
 }
 
@@ -1069,12 +1090,16 @@ export async function getBookingPublicActionInfoByPaymentSession(
   return getBookingPublicActionInfo(booking, ctx);
 }
 
-export async function ensureEventPublicBookable(event: Event): Promise<void> {
+export async function ensureEventPublicBookable(
+  event: Event,
+  repository: Pick<BookingContext['providers']['repository'], 'listSystemSettings'>,
+): Promise<void> {
+  const policy = await getBookingPolicyConfig(repository);
   const normalizedEvent = normalizeEventRow(event);
   if (!isEventPublished(normalizedEvent.status)) throw badRequest('Event is not open for booking');
   const nowMs = Date.now();
   const cutoffMs = new Date(normalizedEvent.starts_at).getTime()
-    + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
+    + policy.publicEventCutoffAfterStartMinutes * 60_000;
   if (nowMs > cutoffMs) {
     throw gone('Public event registration is closed');
   }
@@ -1187,8 +1212,9 @@ function isUuidLike(value: string): boolean {
 }
 
 async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: BookingContext): Promise<void> {
+  const policy = await loadBookingPolicy(ctx);
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl, DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes);
+    await ctx.providers.email.sendBookingConfirmRequest(booking, confirmUrl, policy.nonPaidConfirmationWindowMinutes);
     return;
   }
 
@@ -2027,7 +2053,8 @@ async function ensureCheckoutForBooking(
   chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'>,
   ctx: BookingContext,
 ): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string | null }> {
-  const checkoutWindowMs = DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000;
+  const policy = await loadBookingPolicy(ctx);
+  const checkoutWindowMs = policy.payNowCheckoutWindowMinutes * 60_000;
   const existing = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   if (existing?.checkout_url) {
     const event = await ctx.providers.repository.getLatestBookingEvent(booking.id);

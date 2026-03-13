@@ -3,7 +3,7 @@ import { handleAdminGetConfig, handleAdminPatchConfig } from '../src/handlers/ad
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin config overrides', () => {
-  it('lists services and timing delays with diagnostics', async () => {
+  it('lists services and DB-backed settings with diagnostics', async () => {
     const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
     const req = adminRequest('GET', 'https://api.local/api/admin/config');
     const res = await handleAdminGetConfig(req, ctx);
@@ -16,23 +16,25 @@ describe('Admin config overrides', () => {
       expect(svc.env_mode).toBeTruthy();
     }
     expect(body.timing_delays).toEqual(expect.objectContaining({
-      config_path: 'apps/api-booking/src/config/booking-policy.json',
+      config_source: 'public.system_settings',
+      domains: expect.arrayContaining(['admin', 'booking', 'event', 'payment', 'processing', 'reminder']),
       entries: expect.arrayContaining([
         expect.objectContaining({
           name: expect.any(String),
           keyname: 'adminManageTokenExpiryMinutes',
-          value: expect.any(Number),
+          value: expect.any(String),
           description: expect.any(String),
+          description_he: expect.any(String),
         }),
       ]),
     }));
-    const values = body.timing_delays.entries.map((entry: { value: number }) => entry.value);
+    const values = body.timing_delays.entries.map((entry: { value: string }) => Number(entry.value));
     expect(values).toEqual([...values].sort((a, b) => a - b));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_config_request_decision',
       context: expect.objectContaining({
         branch_taken: 'allow_admin_config_response',
-        config_path: 'apps/api-booking/src/config/booking-policy.json',
+        config_source: 'public.system_settings',
         deny_reason: null,
       }),
     }));
@@ -98,5 +100,63 @@ describe('Admin config overrides', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.effective_mode).toBe('resend');
+  });
+
+  it('creates a new system setting and returns refreshed config rows', async () => {
+    const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
+
+    const res = await handleAdminPatchConfig(adminRequest('POST', 'https://api.local/api/admin/config', {
+      domain: 'notifications',
+      keyname: 'welcomeDelayMinutes',
+      readable_name: 'Welcome delay',
+      value_type: 'integer',
+      unit: 'minutes',
+      value: '15',
+      description: 'Delay before the welcome email is sent.',
+      description_he: 'מספר הדקות לפני שליחת מייל ברוכים הבאים.',
+    }), ctx);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.setting).toEqual(expect.objectContaining({
+      domain: 'notifications',
+      keyname: 'welcomeDelayMinutes',
+      value: '15',
+      value_type: 'integer',
+    }));
+    expect(body.timing_delays.domains).toContain('notifications');
+    expect(body.timing_delays.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ keyname: 'welcomeDelayMinutes' }),
+    ]));
+  });
+
+  it('updates an existing system setting and logs the mutation scope', async () => {
+    const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
+
+    const res = await handleAdminPatchConfig(adminRequest('PATCH', 'https://api.local/api/admin/config', {
+      original_keyname: 'adminManageTokenExpiryMinutes',
+      domain: 'admin',
+      keyname: 'adminManageTokenExpiryMinutes',
+      readable_name: 'Admin manage token expiry',
+      value_type: 'integer',
+      unit: 'minutes',
+      value: '45',
+      description: 'Time an admin-generated management token remains valid.',
+      description_he: 'מספר הדקות שטוקן ניהול שנוצר על ידי אדמין נשאר תקף.',
+    }), ctx);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.setting).toEqual(expect.objectContaining({
+      keyname: 'adminManageTokenExpiryMinutes',
+      value: '45',
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_config_mutation_decision',
+      context: expect.objectContaining({
+        mutation_scope: 'system_setting_update',
+        branch_taken: 'apply_system_setting_update',
+      }),
+    }));
   });
 });

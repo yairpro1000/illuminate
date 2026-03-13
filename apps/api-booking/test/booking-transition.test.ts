@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_BOOKING_POLICY,
   currentStatusForEvent,
   getEffectsForEvent,
+  getBookingPolicyConfig,
   shouldReserveSlotForTransition,
 } from '../src/domain/booking-effect-policy.js';
+import { MockRepository } from '../src/providers/repository/mock.js';
 
 describe('booking effect policy', () => {
-  it('maps pay-now submission to checkout creation and pending payment verification', () => {
+  it('maps pay-now submission to checkout creation and pending payment verification', async () => {
     const eventAtIso = '2026-03-10T10:00:00.000Z';
+    const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
         id: 'b1',
@@ -20,7 +22,7 @@ describe('booking effect policy', () => {
       eventType: 'BOOKING_FORM_SUBMITTED',
       eventAtIso,
       paymentStatus: 'PENDING',
-    });
+    }, policy);
 
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'CREATE_STRIPE_CHECKOUT',
@@ -29,12 +31,13 @@ describe('booking effect policy', () => {
     expect(effects.map((effect) => effect.entity)).toEqual(['PAYMENT', 'PAYMENT']);
     expect(effects[1]?.expires_at).toBe(
       new Date(
-        new Date(eventAtIso).getTime() + DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes * 60_000,
+        new Date(eventAtIso).getTime() + policy.payNowCheckoutWindowMinutes * 60_000,
       ).toISOString(),
     );
   });
 
-  it('maps non-paid submission to confirmation request plus verification checkpoint', () => {
+  it('maps non-paid submission to confirmation request plus verification checkpoint', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
         id: 'b2',
@@ -45,7 +48,7 @@ describe('booking effect policy', () => {
       },
       eventType: 'BOOKING_FORM_SUBMITTED',
       eventAtIso: '2026-03-10T10:00:00.000Z',
-    });
+    }, policy);
 
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'SEND_BOOKING_CONFIRMATION_REQUEST',
@@ -54,10 +57,11 @@ describe('booking effect policy', () => {
     expect(effects.map((effect) => effect.entity)).toEqual(['EMAIL', 'SYSTEM']);
   });
 
-  it('maps payment settled to confirmed booking state and downstream work', () => {
+  it('maps payment settled to confirmed booking state and downstream work', async () => {
     const next = currentStatusForEvent('PAYMENT_SETTLED', 'PENDING', 'PAY_NOW', 'SUCCEEDED');
     expect(next).toBe('CONFIRMED');
 
+    const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
         id: 'b3',
@@ -69,7 +73,7 @@ describe('booking effect policy', () => {
       eventType: 'PAYMENT_SETTLED',
       eventAtIso: '2026-03-10T10:00:00.000Z',
       paymentStatus: 'SUCCEEDED',
-    });
+    }, policy);
     expect(effects.map((effect) => effect.effect_intent)).toEqual([
       'RESERVE_CALENDAR_SLOT',
       'SEND_BOOKING_CONFIRMATION',

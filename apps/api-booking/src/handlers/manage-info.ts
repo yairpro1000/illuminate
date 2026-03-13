@@ -1,5 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
+import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import { evaluateManageBookingPolicy, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // GET /api/bookings/manage?token=<raw>
@@ -43,9 +44,10 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       operation: ctx.operation,
     });
     const booking = access.booking;
+    const bookingPolicy = await getBookingPolicyConfig(ctx.providers.repository);
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
     const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-    const policy = evaluateManageBookingPolicy(booking.starts_at);
+    const policy = evaluateManageBookingPolicy(booking.starts_at, bookingPolicy.selfServiceLockWindowHours);
     const paid = payment?.status === 'SUCCEEDED' || payment?.status === 'REFUNDED';
 
     const source = booking.event_id ? 'event' : 'session';
@@ -100,8 +102,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       policy: {
         text: policy.policyText,
         can_self_serve_change: access.bypassPolicyWindow ? true : policy.canSelfServeChange,
-        lock_window_hours: 24,
-        locked_message: 'This session starts in less than 24 hours.\nAccording to the booking policy:\n• cancellations are not refundable\n• rescheduling is no longer available online\nIf you have an emergency, please contact Yair directly.',
+        lock_window_hours: bookingPolicy.selfServiceLockWindowHours,
+        locked_message: `This session starts in less than ${bookingPolicy.selfServiceLockWindowHours} hours.\nAccording to the booking policy:\n• cancellations are not refundable\n• rescheduling is no longer available online\nIf you have an emergency, please contact Yair directly.`,
       },
       event: event
         ? {

@@ -3,10 +3,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { handleGetPublicConfig } from '../src/handlers/config.js';
 import { handleRequest } from '../src/router.js';
 import {
-  DEFAULT_BOOKING_POLICY,
   applyBookingPolicyOverridesForTests,
+  getBookingPolicyConfig,
   resetBookingPolicyForTests,
 } from '../src/domain/booking-effect-policy.js';
+import { MockRepository } from '../src/providers/repository/mock.js';
 import { makeCtx } from './admin-helpers.js';
 
 describe('public config endpoint diagnostics', () => {
@@ -17,6 +18,7 @@ describe('public config endpoint diagnostics', () => {
   it('returns public booking policy from backend source-of-truth with decision logs', async () => {
     const ctx = makeCtx();
     const req = new Request('https://api.local/api/config');
+    const policy = await getBookingPolicyConfig(new MockRepository());
 
     const res = await handleGetPublicConfig(req, ctx);
 
@@ -24,11 +26,11 @@ describe('public config endpoint diagnostics', () => {
     await expect(res.json()).resolves.toEqual({
       config_version: 'booking_policy_v1',
       booking_policy: {
-        non_paid_confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
-        pay_now_checkout_window_minutes: DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes,
-        pay_now_reminder_grace_minutes: DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+        non_paid_confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
+        pay_now_checkout_window_minutes: policy.payNowCheckoutWindowMinutes,
+        pay_now_reminder_grace_minutes: policy.payNowReminderGraceMinutes,
         pay_now_total_expiry_minutes:
-          DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes + DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+          policy.payNowCheckoutWindowMinutes + policy.payNowReminderGraceMinutes,
       },
       booking_policy_text: expect.any(String),
     });
@@ -51,7 +53,7 @@ describe('public config endpoint diagnostics', () => {
   it('returns INTERNAL_ERROR and logs explicit deny reason when policy values are invalid', async () => {
     const ctx = makeCtx();
     const req = new Request('https://api.local/api/config');
-    DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes = 0;
+    applyBookingPolicyOverridesForTests({ payNowReminderGraceMinutes: 0 });
 
     const res = await handleGetPublicConfig(req, ctx);
 
@@ -81,7 +83,7 @@ describe('public config endpoint diagnostics', () => {
   });
 
   it('keeps CORS headers for router-level failures on /api/config', async () => {
-    DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes = 0;
+    applyBookingPolicyOverridesForTests({ payNowReminderGraceMinutes: 0 });
     const ctx = makeCtx({
       env: {
         SITE_URL: 'https://letsilluminate.co',

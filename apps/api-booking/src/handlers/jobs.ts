@@ -20,7 +20,7 @@ import {
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
-import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
+import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 
 export interface JobContext {
   providers: Providers;
@@ -740,10 +740,11 @@ async function executeSideEffect(
         if (!event) throw new Error('event_not_found');
         await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
       } else {
+        const policy = await getBookingPolicyConfig(ctx.providers.repository);
         await ctx.providers.email.sendBookingConfirmRequest(
           booking,
           confirmUrl,
-          DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
+          policy.nonPaidConfirmationWindowMinutes,
         );
       }
       return;
@@ -860,11 +861,12 @@ async function executeSideEffect(
       }
 
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+      const policy = await getBookingPolicyConfig(ctx.providers.repository);
       await ctx.providers.email.sendBookingPaymentDue(
         booking,
         payUrl,
         manageUrl,
-        DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+        policy.payNowReminderGraceMinutes,
       );
       ctx.logger.logInfo({
         source: jobLogSource(ctx),

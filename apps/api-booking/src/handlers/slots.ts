@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { badRequest, errorResponse, jsonResponse } from '../lib/errors.js';
-import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
+import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 
 // ── Slot rules ────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ type SlotType = 'intro' | 'session';
 
 export async function handleGetSlots(request: Request, ctx: AppContext): Promise<Response> {
   try {
+    const policy = await getBookingPolicyConfig(ctx.providers.repository);
     const url      = new URL(request.url);
     const from     = url.searchParams.get('from');
     const to       = url.searchParams.get('to');
@@ -65,11 +66,11 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
 
         if (slotType === 'intro') {
           for (const h of INTRO_STARTS) {
-            addCandidate('intro', ymd, h, INTRO_DURATION_MS, tz, allBusy, slots);
+            addCandidate('intro', ymd, h, INTRO_DURATION_MS, tz, allBusy, slots, policy.slotLeadTimeHours);
           }
         } else {
           for (const h of SESSION_STARTS) {
-            addCandidate('session', ymd, h, SESSION_DURATION_MS, tz, allBusy, slots);
+            addCandidate('session', ymd, h, SESSION_DURATION_MS, tz, allBusy, slots, policy.slotLeadTimeHours);
           }
         }
       }
@@ -95,12 +96,13 @@ function addCandidate(
   tz:         string,
   allBusy:    Array<{ start: string; end: string }>,
   out:        Array<{ type: SlotType; start: string; end: string }>,
+  slotLeadTimeHours: number,
 ): void {
   const startIso = localTimeToISO(ymd, h, 0, tz);
   const startMs  = new Date(startIso).getTime();
   const endMs    = startMs + durationMs;
 
-  if (startMs < Date.now() + DEFAULT_BOOKING_POLICY.slotLeadTimeHours * 60 * 60 * 1000) {
+  if (startMs < Date.now() + slotLeadTimeHours * 60 * 60 * 1000) {
     return;
   }
 

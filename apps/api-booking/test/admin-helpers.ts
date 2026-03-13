@@ -1,6 +1,7 @@
 import type { AppContext } from '../src/router.js';
 import type { Env } from '../src/env.js';
 import { createOperationContext } from '../src/lib/execution.js';
+import { MockRepository } from '../src/providers/repository/mock.js';
 import { vi } from 'vitest';
 
 export function makeEnv(overrides: Partial<Env> = {}): Env {
@@ -57,14 +58,19 @@ export function makeLogger(overrides: any = {}) {
 }
 
 export function makeCtx(partial: Partial<AppContext> = {}): AppContext {
+  const baseRepository = new MockRepository();
+  const providerOverrides = ((partial as any).providers || {}) as Record<string, unknown>;
+  const repository = Object.assign(baseRepository, providerOverrides.repository as Record<string, unknown> | undefined);
+  const { repository: _repositoryOverride, ...otherProviderOverrides } = providerOverrides;
+  const { providers: _providers, ...restPartial } = partial as Record<string, unknown>;
   return {
     providers: {
-      repository: {},
+      repository,
       email: {},
       calendar: {},
       payments: {},
       antibot: {},
-      ...((partial as any).providers || {}),
+      ...otherProviderOverrides,
     } as any,
     env: makeEnv((partial as any).env || {}),
     logger: makeLogger((partial as any).logger || {}),
@@ -72,7 +78,7 @@ export function makeCtx(partial: Partial<AppContext> = {}): AppContext {
     correlationId: 'corr-1',
     operation: createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' }),
     executionCtx: undefined,
-    ...partial,
+    ...(restPartial as Partial<AppContext>),
   } as AppContext;
 }
 

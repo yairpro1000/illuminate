@@ -9,16 +9,16 @@ import type {
   PaymentStatus,
 } from '../types.js';
 import type { BookingPolicyConfig } from '../config/booking-policy.js';
-import { DEFAULT_BOOKING_POLICY } from '../config/booking-policy.js';
-import { inferEntityFromIntent } from '../providers/repository/interface.js';
-
-export type { BookingPolicyConfig } from '../config/booking-policy.js';
-export {
-  DEFAULT_BOOKING_POLICY,
+import {
   applyBookingPolicyOverridesForTests,
+  getBookingPolicyConfig,
   getBookingPolicyText,
   resetBookingPolicyForTests,
 } from '../config/booking-policy.js';
+import { inferEntityFromIntent } from '../providers/repository/interface.js';
+
+export type { BookingPolicyConfig } from '../config/booking-policy.js';
+export { applyBookingPolicyOverridesForTests, getBookingPolicyConfig, getBookingPolicyText, resetBookingPolicyForTests } from '../config/booking-policy.js';
 
 export interface BookingPolicyContext {
   booking: Pick<Booking, 'id' | 'event_id' | 'starts_at' | 'current_status' | 'booking_type'>;
@@ -59,7 +59,7 @@ export function shouldReserveSlotForTransition(input: SlotReservationTransitionI
 
 export function getEffectsForEvent(
   input: BookingPolicyContext,
-  policy: BookingPolicyConfig = DEFAULT_BOOKING_POLICY,
+  policy: BookingPolicyConfig,
 ): BookingEffectSpec[] {
   const previousStatus = input.booking.current_status;
   const nextStatus = currentStatusForEvent(

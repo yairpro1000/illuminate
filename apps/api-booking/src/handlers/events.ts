@@ -6,7 +6,7 @@ import {
   createEventBookingWithAccess,
   ensureEventPublicBookable,
 } from '../services/booking-service.js';
-import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
+import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import { hashToken } from '../services/token-service.js';
 
 // GET /api/events
@@ -384,7 +384,7 @@ async function getBookableEventBySlug(
   }
 
   try {
-    await ensureEventPublicBookable(event);
+    await ensureEventPublicBookable(event, ctx.providers.repository);
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'event_booking_public_cutoff_gate_decision',
@@ -420,11 +420,12 @@ async function getBookableEventBySlug(
 async function buildEventState(eventId: string, nowIso: string, ctx: AppContext) {
   const event = await ctx.providers.repository.getEventById(eventId);
   if (!event) return {};
+  const policy = await getBookingPolicyConfig(ctx.providers.repository);
   const normalizedEvent = normalizeEventRow(event);
 
   const nowMs = new Date(nowIso).getTime();
   const startMs = new Date(normalizedEvent.starts_at).getTime();
-  const cutoffMs = startMs + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
+  const cutoffMs = startMs + policy.publicEventCutoffAfterStartMinutes * 60_000;
 
   const activeBookings = await ctx.providers.repository.countEventActiveBookings(normalizedEvent.id, nowIso);
   const soldOut = activeBookings >= normalizedEvent.capacity;

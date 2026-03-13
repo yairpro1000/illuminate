@@ -47,6 +47,7 @@ export type BookingEffectIntent =
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 export type PaymentProvider = 'stripe' | 'mock';
+export type SystemSettingValueType = 'integer' | 'float' | 'boolean' | 'text' | 'json';
 
 // ── Core models ─────────────────────────────────────────────────────────────
 
@@ -161,6 +162,19 @@ export interface EventReminderSubscription {
   created_at: string;
 }
 
+export interface SystemSetting {
+  domain: string;
+  keyname: string;
+  readable_name: string;
+  value_type: SystemSettingValueType;
+  unit: string | null;
+  value: string;
+  description: string;
+  description_he: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Session types (offers) ─────────────────────────────────────────────────
 
 export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
@@ -220,6 +234,22 @@ export type SessionTypeUpdate = Partial<
     | 'image_key'
     | 'drive_file_id'
     | 'image_alt'
+  >
+>;
+
+export type NewSystemSetting = Omit<SystemSetting, 'created_at' | 'updated_at'>;
+
+export type SystemSettingUpdate = Partial<
+  Pick<
+    SystemSetting,
+    | 'domain'
+    | 'keyname'
+    | 'readable_name'
+    | 'value_type'
+    | 'unit'
+    | 'value'
+    | 'description'
+    | 'description_he'
   >
 >;
 

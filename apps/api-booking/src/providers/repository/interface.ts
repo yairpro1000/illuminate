@@ -31,10 +31,12 @@ import type {
   SessionTypeRecord,
   EventUpdate,
   NewSessionType,
+  NewSystemSetting,
   SessionTypeUpdate,
+  SystemSetting,
+  SystemSettingUpdate,
   TimeSlot,
 } from '../../types.js';
-import { DEFAULT_BOOKING_POLICY } from '../../config/booking-policy.js';
 
 export interface OrganizerBookingFilters {
   booking_kind?: 'event' | 'session';
@@ -154,14 +156,17 @@ export interface IRepository {
   getAllSessionTypes(): Promise<SessionTypeRecord[]>;
   createSessionType(data: NewSessionType): Promise<SessionTypeRecord>;
   updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord>;
+
+  // ── System settings ─────────────────────────────────────────────────────
+
+  listSystemSettings(): Promise<SystemSetting[]>;
+  listSystemSettingDomains(): Promise<string[]>;
+  createSystemSetting(data: NewSystemSetting): Promise<SystemSetting>;
+  updateSystemSetting(existingKeyname: string, updates: SystemSettingUpdate): Promise<SystemSetting>;
 }
 
 export function deriveBookingKind(booking: Pick<Booking, 'event_id'>): 'event' | 'session' {
   return booking.event_id ? 'event' : 'session';
-}
-
-export function getSideEffectProcessingTimeoutMinutes(): number {
-  return DEFAULT_BOOKING_POLICY.sideEffectProcessingTimeoutMinutes;
 }
 
 export function sideEffectIsDispatchable(effect: Pick<BookingSideEffect, 'status' | 'expires_at'>, nowIso: string): boolean {

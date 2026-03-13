@@ -1,6 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ApiError, errorResponse, internalError, ok } from '../lib/errors.js';
-import { DEFAULT_BOOKING_POLICY, getBookingPolicyText } from '../domain/booking-effect-policy.js';
+import { getBookingPolicyConfig, getBookingPolicyText } from '../domain/booking-effect-policy.js';
+import { describeBookingPolicyValidationError } from '../config/booking-policy.js';
 
 interface PublicBookingPolicy {
   [key: string]: number;
@@ -10,13 +11,13 @@ interface PublicBookingPolicy {
   pay_now_total_expiry_minutes: number;
 }
 
-function buildPublicBookingPolicy(): PublicBookingPolicy {
+function buildPublicBookingPolicy(policy: Awaited<ReturnType<typeof getBookingPolicyConfig>>): PublicBookingPolicy {
   return {
-    non_paid_confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
-    pay_now_checkout_window_minutes: DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes,
-    pay_now_reminder_grace_minutes: DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+    non_paid_confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
+    pay_now_checkout_window_minutes: policy.payNowCheckoutWindowMinutes,
+    pay_now_reminder_grace_minutes: policy.payNowReminderGraceMinutes,
     pay_now_total_expiry_minutes:
-      DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes + DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
+      policy.payNowCheckoutWindowMinutes + policy.payNowReminderGraceMinutes,
   };
 }
 
@@ -26,6 +27,13 @@ function findInvalidPolicyField(
   const fields = Object.entries(policy) as Array<[keyof PublicBookingPolicy, number]>;
   const invalid = fields.find(([, value]) => !Number.isFinite(value) || value <= 0);
   return invalid ? { field: invalid[0], value: invalid[1] } : null;
+}
+
+function toPublicPolicyFieldName(field: string | null): keyof PublicBookingPolicy | null {
+  if (field === 'nonPaidConfirmationWindowMinutes') return 'non_paid_confirmation_window_minutes';
+  if (field === 'payNowCheckoutWindowMinutes') return 'pay_now_checkout_window_minutes';
+  if (field === 'payNowReminderGraceMinutes') return 'pay_now_reminder_grace_minutes';
+  return null;
 }
 
 // GET /api/config
@@ -43,8 +51,22 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       },
     });
 
-    const bookingPolicy = buildPublicBookingPolicy();
-    const invalidPolicyField = findInvalidPolicyField(bookingPolicy);
+    let policy;
+    let bookingPolicy: PublicBookingPolicy | null = null;
+    let invalidPolicyField: { field: keyof PublicBookingPolicy; value: number } | null = null;
+    let configLoadError: unknown = null;
+    try {
+      policy = await getBookingPolicyConfig(ctx.providers.repository);
+      bookingPolicy = buildPublicBookingPolicy(policy);
+      invalidPolicyField = findInvalidPolicyField(bookingPolicy);
+    } catch (policyError) {
+      configLoadError = policyError;
+      const invalidConfig = describeBookingPolicyValidationError(policyError);
+      const publicField = toPublicPolicyFieldName(invalidConfig.field);
+      invalidPolicyField = publicField
+        ? { field: publicField, value: Number(invalidConfig.value) }
+        : null;
+    }
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'public_config_request_decision',
@@ -55,21 +77,21 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         booking_policy: bookingPolicy,
         invalid_policy_field: invalidPolicyField?.field ?? null,
         invalid_policy_value: invalidPolicyField?.value ?? null,
-        branch_taken: invalidPolicyField
+        branch_taken: invalidPolicyField || configLoadError
           ? 'deny_invalid_public_booking_policy'
           : 'allow_public_booking_policy',
-        deny_reason: invalidPolicyField ? 'public_booking_policy_invalid' : null,
+        deny_reason: invalidPolicyField || configLoadError ? 'public_booking_policy_invalid' : null,
       },
     });
 
-    if (invalidPolicyField) {
+    if (invalidPolicyField || configLoadError || !policy || !bookingPolicy) {
       throw internalError();
     }
 
     const responseBody = {
       config_version: 'booking_policy_v1',
       booking_policy: bookingPolicy,
-      booking_policy_text: getBookingPolicyText(),
+      booking_policy_text: getBookingPolicyText(policy.selfServiceLockWindowHours),
     };
 
     ctx.logger.logInfo?.({

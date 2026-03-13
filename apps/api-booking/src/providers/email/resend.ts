@@ -2,7 +2,6 @@ import { Resend } from 'resend';
 import { EmailProviderError } from './interface.js';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
-import { getBookingPolicyText } from '../../domain/booking-effect-policy.js';
 
 const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 const EMAIL_REPLY_TO = 'hello@yairb.ch';
@@ -65,6 +64,7 @@ function bookingConfirmationBody(
   manageUrl: string,
   invoiceUrl: string | null,
   payUrl: string | null | undefined,
+  policyText: string,
 ): string {
   const lines = [
     `Hi ${clientName(booking)},`,
@@ -85,7 +85,7 @@ function bookingConfirmationBody(
     payUrl ? `Complete payment: ${payUrl}` : null,
     invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
     '',
-    getBookingPolicyText(),
+    policyText,
     '',
     'Looking forward to meeting you,',
     'Yair',
@@ -171,8 +171,8 @@ function detailBlock(rows: Array<[string, string]>): string {
   return `<div class="detail-block"><table>${trs}</table></div>`;
 }
 
-function bookingPolicyHtml(): string {
-  const lines = getBookingPolicyText().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+function bookingPolicyHtml(policyText: string): string {
+  const lines = policyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const [title, firstRule, secondRule, thirdRule] = lines;
   const linkedThirdRule = String(thirdRule || '')
     .split(/(contact)/gi)
@@ -198,6 +198,7 @@ function bookingConfirmationHtml(
   manageUrl: string,
   invoiceUrl: string | null,
   payUrl: string | null | undefined,
+  policyText: string,
 ): string {
   const rows: Array<[string, string]> = [
     ['Session', esc(sessionLabel(booking))],
@@ -221,7 +222,7 @@ function bookingConfirmationHtml(
     <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
-    ${bookingPolicyHtml()}
+    ${bookingPolicyHtml(policyText)}
     <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -254,6 +255,7 @@ function eventConfirmationHtml(
   event: Event,
   manageUrl: string,
   invoiceUrl: string | null,
+  policyText: string,
 ): string {
   const rows: Array<[string, string]> = [
     ['Event', `<strong>${esc(event.title)}</strong>`],
@@ -274,7 +276,7 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
-    ${bookingPolicyHtml()}
+    ${bookingPolicyHtml(policyText)}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -392,14 +394,15 @@ export class ResendEmailProvider implements IEmailProvider {
     manageUrl: string,
     invoiceUrl: string | null,
     payUrl?: string | null,
+    policyText = '',
   ): Promise<SendResult> {
     return this.sendEmail(
       clientEmail(booking),
       'booking_confirmation',
       bookingConfirmationSubject(booking),
-      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl),
+      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText),
       undefined,
-      bookingConfirmationHtml(booking, manageUrl, invoiceUrl, payUrl),
+      bookingConfirmationHtml(booking, manageUrl, invoiceUrl, payUrl, policyText),
     );
   }
 
@@ -479,9 +482,10 @@ export class ResendEmailProvider implements IEmailProvider {
     event: Event,
     manageUrl: string,
     invoiceUrl: string | null,
+    policyText = '',
   ): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${getBookingPolicyText()}`;
-    const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl);
+    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
+    const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, policyText);
     return this.sendEmail(clientEmail(booking), 'event_confirmation', `You're confirmed – ${event.title}`, text, undefined, html);
   }
 

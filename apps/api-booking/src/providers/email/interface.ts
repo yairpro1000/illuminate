@@ -36,6 +36,7 @@ export interface IEmailProvider {
     manageUrl: string,
     invoiceUrl: string | null,
     payUrl?: string | null,
+    policyText?: string,
   ): Promise<SendResult>;
 
   /** Session reminder before pay-later due threshold. */
@@ -59,6 +60,7 @@ export interface IEmailProvider {
     event: Event,
     manageUrl: string,
     invoiceUrl: string | null,
+    policyText?: string,
   ): Promise<SendResult>;
 
   /** Event reminder 24h before event. */

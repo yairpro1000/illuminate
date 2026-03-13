@@ -1,6 +1,5 @@
 import { mockState } from '../mock-state.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
-import { getSideEffectProcessingTimeoutMinutes } from './interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -26,6 +25,9 @@ import type {
   Payment,
   PaymentUpdate,
   SessionTypeRecord,
+  SystemSetting,
+  SystemSettingUpdate,
+  NewSystemSetting,
   NewSessionType,
   SessionTypeUpdate,
   TimeSlot,
@@ -242,7 +244,7 @@ export class MockRepository implements IRepository {
   }
 
   async markStaleProcessingSideEffectsAsPending(nowIso: string): Promise<number> {
-    const thresholdMs = new Date(nowIso).getTime() - getSideEffectProcessingTimeoutMinutes() * 60_000;
+    const thresholdMs = new Date(nowIso).getTime() - await this.getRequiredIntegerSystemSetting('sideEffectProcessingTimeoutMinutes') * 60_000;
     let resetCount = 0;
 
     for (const effect of mockState.sideEffects) {
@@ -632,6 +634,64 @@ export class MockRepository implements IRepository {
     return MOCK_SESSION_TYPES[index]!;
   }
 
+  async listSystemSettings(): Promise<SystemSetting[]> {
+    return [...mockState.systemSettings.values()]
+      .map((setting) => ({ ...setting }))
+      .sort((a, b) => a.domain.localeCompare(b.domain) || a.keyname.localeCompare(b.keyname));
+  }
+
+  async listSystemSettingDomains(): Promise<string[]> {
+    return [...new Set([...mockState.systemSettings.values()].map((setting) => setting.domain))]
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  async createSystemSetting(data: NewSystemSetting): Promise<SystemSetting> {
+    if (mockState.systemSettings.has(data.keyname)) {
+      throw new Error(`System setting ${data.keyname} already exists`);
+    }
+    const timestamp = now();
+    const created: SystemSetting = {
+      ...data,
+      unit: data.unit ?? null,
+      description_he: data.description_he ?? null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    mockState.systemSettings.set(created.keyname, created);
+    return { ...created };
+  }
+
+  async updateSystemSetting(existingKeyname: string, updates: SystemSettingUpdate): Promise<SystemSetting> {
+    const existing = mockState.systemSettings.get(existingKeyname);
+    if (!existing) throw new Error(`System setting ${existingKeyname} not found`);
+
+    const nextKeyname = typeof updates.keyname === 'string' && updates.keyname.trim()
+      ? updates.keyname.trim()
+      : existing.keyname;
+    if (nextKeyname !== existingKeyname && mockState.systemSettings.has(nextKeyname)) {
+      throw new Error(`System setting ${nextKeyname} already exists`);
+    }
+
+    const updated: SystemSetting = {
+      ...existing,
+      ...updates,
+      keyname: nextKeyname,
+      domain: typeof updates.domain === 'string' ? updates.domain.trim() : existing.domain,
+      readable_name: typeof updates.readable_name === 'string' ? updates.readable_name.trim() : existing.readable_name,
+      unit: updates.unit === undefined ? existing.unit : (updates.unit ?? null),
+      value: typeof updates.value === 'string' ? updates.value : existing.value,
+      description: typeof updates.description === 'string' ? updates.description : existing.description,
+      description_he: updates.description_he === undefined ? existing.description_he : (updates.description_he ?? null),
+      updated_at: now(),
+    };
+
+    if (nextKeyname !== existingKeyname) {
+      mockState.systemSettings.delete(existingKeyname);
+    }
+    mockState.systemSettings.set(nextKeyname, updated);
+    return { ...updated };
+  }
+
   private hydrateBooking(booking: Booking): Booking {
     const client = mockState.clients.get(booking.client_id);
     const event = booking.event_id ? mockState.events.get(booking.event_id) : null;
@@ -645,6 +705,16 @@ export class MockRepository implements IRepository {
       event_title: event?.title ?? null,
       session_type_title: findSessionTypeTitle(booking.session_type_id),
     };
+  }
+
+  private async getRequiredIntegerSystemSetting(keyname: string): Promise<number> {
+    const setting = mockState.systemSettings.get(keyname);
+    if (!setting) throw new Error(`System setting ${keyname} not found`);
+    const parsed = Number(setting.value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`System setting ${keyname} is not a positive integer`);
+    }
+    return parsed;
   }
 }
 

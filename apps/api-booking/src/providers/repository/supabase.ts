@@ -1,6 +1,5 @@
 import type { Db } from '../../repo/supabase.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
-import { getSideEffectProcessingTimeoutMinutes } from './interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -29,6 +28,9 @@ import type {
   SessionTypeRecord,
   NewSessionType,
   SessionTypeUpdate,
+  SystemSetting,
+  NewSystemSetting,
+  SystemSettingUpdate,
 } from '../../types.js';
 import {
   isEventPubliclyListed,
@@ -342,8 +344,9 @@ export class SupabaseRepository implements IRepository {
   }
 
   async markStaleProcessingSideEffectsAsPending(nowIsoValue: string): Promise<number> {
+    const timeoutMinutes = await this.getRequiredIntegerSystemSetting('sideEffectProcessingTimeoutMinutes');
     const threshold = new Date(
-      new Date(nowIsoValue).getTime() - getSideEffectProcessingTimeoutMinutes() * 60_000,
+      new Date(nowIsoValue).getTime() - timeoutMinutes * 60_000,
     ).toISOString();
 
     const rows = await requireData<Array<{ id: string }>>(
@@ -896,12 +899,82 @@ export class SupabaseRepository implements IRepository {
     return normalizeSessionTypeRow(row);
   }
 
+  async listSystemSettings(): Promise<SystemSetting[]> {
+    return requireData<SystemSetting[]>(
+      this.db
+        .from('system_settings')
+        .select('*')
+        .order('domain', { ascending: true })
+        .order('keyname', { ascending: true }),
+      'Failed to load system settings',
+    );
+  }
+
+  async listSystemSettingDomains(): Promise<string[]> {
+    const rows = await requireData<Array<Pick<SystemSetting, 'domain'>>>(
+      this.db
+        .from('system_settings')
+        .select('domain')
+        .order('domain', { ascending: true }),
+      'Failed to load system setting domains',
+    );
+    return [...new Set(rows.map((row) => row.domain))];
+  }
+
+  async createSystemSetting(data: NewSystemSetting): Promise<SystemSetting> {
+    return requireSingle<SystemSetting>(
+      this.db
+        .from('system_settings')
+        .insert({
+          ...data,
+          unit: data.unit ?? null,
+          description_he: data.description_he ?? null,
+        })
+        .select('*')
+        .single(),
+      `Failed to create system setting ${data.keyname}`,
+    );
+  }
+
+  async updateSystemSetting(existingKeyname: string, updates: SystemSettingUpdate): Promise<SystemSetting> {
+    return requireSingle<SystemSetting>(
+      this.db
+        .from('system_settings')
+        .update({
+          ...updates,
+          updated_at: nowIso(),
+        })
+        .eq('keyname', existingKeyname)
+        .select('*')
+        .single(),
+      `Failed to update system setting ${existingKeyname}`,
+    );
+  }
+
   // ── Internal helpers ──────────────────────────────────────────────────────
 
   private async requireBookingById(id: string): Promise<Booking> {
     const booking = await this.getBookingById(id);
     if (!booking) throw new Error(`Booking ${id} not found after write`);
     return booking;
+  }
+
+  private async getRequiredIntegerSystemSetting(keyname: string): Promise<number> {
+    const row = await maybeSingle<Pick<SystemSetting, 'keyname' | 'value'>>(
+      this.db
+        .from('system_settings')
+        .select('keyname, value')
+        .eq('keyname', keyname)
+        .limit(1)
+        .maybeSingle(),
+      `Failed to load system setting ${keyname}`,
+    );
+    if (!row) throw new Error(`System setting ${keyname} not found`);
+    const parsed = Number(row.value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`System setting ${keyname} is not a positive integer`);
+    }
+    return parsed;
   }
 }
 

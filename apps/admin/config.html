@@ -164,6 +164,13 @@
       .status { margin-top: 0.75rem; min-height: 1.4em; font-size: 0.875rem; }
       .ok { color: var(--color-ok); }
       .err { color: var(--color-danger); white-space: pre-wrap; }
+      .hidden { display: none !important; }
+
+      .page-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.75rem;
+      }
 
       .config-path {
         margin-top: 1rem;
@@ -237,6 +244,10 @@
         background: var(--color-lake-mist);
       }
 
+      tbody tr.clickable {
+        cursor: pointer;
+      }
+
       .col-name { width: 20%; }
       .col-key { width: 26%; }
       .col-value { width: 12%; }
@@ -256,6 +267,93 @@
       .empty-state {
         padding: 1rem 0;
         color: var(--color-text-muted);
+      }
+
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: oklch(0% 0 0 / 0.65);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+
+      .modal {
+        width: min(820px, 96vw);
+        max-height: min(92vh, 900px);
+        overflow: auto;
+      }
+
+      .field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .field--full {
+        grid-column: 1 / -1;
+      }
+
+      label {
+        color: var(--color-text-subtle);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--color-border);
+        background: var(--color-bg-alt);
+        color: var(--color-text);
+        border-radius: var(--radius-sm);
+        padding: 0.75rem 0.85rem;
+      }
+
+      textarea {
+        min-height: 6.5rem;
+        resize: vertical;
+      }
+
+      button {
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        background: var(--color-lake-mist);
+        color: var(--color-text);
+        padding: 0.65rem 1rem;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: transparent;
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .btn-row {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 0.85rem;
       }
 
       @media (max-width: 820px) {
@@ -288,6 +386,10 @@
           letter-spacing: 0.08em;
           margin-bottom: 0.2rem;
         }
+
+        .field-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -309,9 +411,9 @@
       <main class="admin-content">
         <section class="card">
           <h1>Config</h1>
-          <p class="muted">Read-only reference for the booking policy timing and delay settings currently wired into the backend.</p>
+          <p class="muted">Editable system settings for timing and delay behavior used by the booking backend.</p>
           <div class="config-path">
-            <span class="config-path__label">Source File</span>
+            <span class="config-path__label">Source</span>
             <code id="configPath">Loading…</code>
           </div>
           <div id="status" class="status muted">Loading…</div>
@@ -322,6 +424,9 @@
         </div>
 
         <section class="card">
+          <div class="page-actions">
+            <button id="addSettingBtn" type="button">Add setting</button>
+          </div>
           <table aria-label="Timing and delay configuration">
             <thead>
               <tr>
@@ -335,6 +440,55 @@
           </table>
         </section>
       </main>
+    </div>
+
+    <div id="editOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <h1 id="editTitle">Edit setting</h1>
+        <div class="field-grid" style="margin-top: 0.9rem;">
+          <div class="field">
+            <label for="editDomainSelect">Domain</label>
+            <select id="editDomainSelect"></select>
+          </div>
+          <div class="field hidden" id="editDomainCustomWrap">
+            <label for="editDomainCustom">New domain</label>
+            <input id="editDomainCustom" type="text" />
+          </div>
+          <div class="field">
+            <label for="editKeyname">Keyname</label>
+            <input id="editKeyname" type="text" />
+          </div>
+          <div class="field">
+            <label for="editReadableName">Readable name</label>
+            <input id="editReadableName" type="text" />
+          </div>
+          <div class="field">
+            <label for="editValueType">Value type</label>
+            <select id="editValueType"></select>
+          </div>
+          <div class="field">
+            <label for="editUnit">Unit</label>
+            <input id="editUnit" type="text" />
+          </div>
+          <div class="field field--full">
+            <label for="editValue">Value</label>
+            <textarea id="editValue"></textarea>
+          </div>
+          <div class="field field--full">
+            <label for="editDescription">Description (EN)</label>
+            <textarea id="editDescription"></textarea>
+          </div>
+          <div class="field field--full">
+            <label for="editDescriptionHe">Description (HE)</label>
+            <textarea id="editDescriptionHe"></textarea>
+          </div>
+        </div>
+        <div id="editMsg" class="status muted"></div>
+        <div class="btn-row">
+          <button id="editClose" type="button" class="secondary">Close</button>
+          <button id="editSave" type="button">Save</button>
+        </div>
+      </div>
     </div>
 
     <script src="js/layout.js"></script>

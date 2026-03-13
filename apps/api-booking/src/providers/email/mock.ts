@@ -1,7 +1,6 @@
 import { mockState } from '../mock-state.js';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
-import { getBookingPolicyText } from '../../domain/booking-effect-policy.js';
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -61,6 +60,7 @@ function bookingConfirmationBody(
   manageUrl: string,
   invoiceUrl: string | null,
   payUrl: string | null | undefined,
+  policyText: string,
 ): string {
   const lines = [
     `Hi ${clientName(booking)},`,
@@ -81,7 +81,7 @@ function bookingConfirmationBody(
     payUrl ? `Complete payment: ${payUrl}` : null,
     invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
     '',
-    getBookingPolicyText(),
+    policyText,
     '',
     'Looking forward to meeting you,',
     'Yair',
@@ -148,12 +148,13 @@ export class MockEmailProvider implements IEmailProvider {
     manageUrl: string,
     invoiceUrl: string | null,
     payUrl?: string | null,
+    policyText = '',
   ): Promise<SendResult> {
     return this.send(
       clientEmail(booking),
       'booking_confirmation',
       bookingConfirmationSubject(booking),
-      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl),
+      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText),
     );
   }
 
@@ -208,12 +209,13 @@ export class MockEmailProvider implements IEmailProvider {
     event: Event,
     manageUrl: string,
     invoiceUrl: string | null,
+    policyText = '',
   ): Promise<SendResult> {
     return this.send(
       clientEmail(booking),
       'event_confirmation',
       `You're confirmed – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${getBookingPolicyText()}`,
+      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
     );
   }
 

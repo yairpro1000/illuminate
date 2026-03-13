@@ -1,4 +1,4 @@
-import { DEFAULT_BOOKING_POLICY } from '../config/booking-policy.js';
+import type { BookingPolicyConfig } from '../config/booking-policy.js';
 
 /**
  * Computes the time to send a payment reminder for a pay-later booking.
@@ -11,13 +11,21 @@ import { DEFAULT_BOOKING_POLICY } from '../config/booking-policy.js';
 export function computePaymentDueReminderTime(
   paymentDueAt: Date,
   timezone: string,
+  policy: Pick<
+    BookingPolicyConfig,
+    | 'paymentDueReminderLeadHours'
+    | 'paymentDueReminderFallbackHourPreviousDay'
+    | 'paymentDueReminderFallbackHourNextMorning'
+    | 'paymentDueReminderSleepHoursStart'
+    | 'paymentDueReminderSleepHoursEnd'
+  >,
   now = new Date(),
 ): Date {
   const preferred = new Date(
-    paymentDueAt.getTime() - DEFAULT_BOOKING_POLICY.paymentDueReminderLeadHours * 60 * 60 * 1000,
+    paymentDueAt.getTime() - policy.paymentDueReminderLeadHours * 60 * 60 * 1000,
   );
 
-  if (!isInSleepHours(preferred, timezone)) {
+  if (!isInSleepHours(preferred, timezone, policy)) {
     return preferred;
   }
 
@@ -26,7 +34,7 @@ export function computePaymentDueReminderTime(
   dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
   const previousDayFallback = setLocalHour(
     dayBefore,
-    DEFAULT_BOOKING_POLICY.paymentDueReminderFallbackHourPreviousDay,
+    policy.paymentDueReminderFallbackHourPreviousDay,
     0,
     timezone,
   );
@@ -39,7 +47,7 @@ export function computePaymentDueReminderTime(
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   return setLocalHour(
     tomorrow,
-    DEFAULT_BOOKING_POLICY.paymentDueReminderFallbackHourNextMorning,
+    policy.paymentDueReminderFallbackHourNextMorning,
     0,
     timezone,
   );
@@ -49,9 +57,13 @@ export function computePaymentDueReminderTime(
  * Computes the configured pre-event reminder time for a confirmed booking/event.
  * Returns null if the window has already passed.
  */
-export function compute24hReminderTime(startsAt: Date, now = new Date()): Date | null {
+export function compute24hReminderTime(
+  startsAt: Date,
+  policy: Pick<BookingPolicyConfig, 'eventReminderLeadHours'>,
+  now = new Date(),
+): Date | null {
   const reminder = new Date(
-    startsAt.getTime() - DEFAULT_BOOKING_POLICY.eventReminderLeadHours * 60 * 60 * 1000,
+    startsAt.getTime() - policy.eventReminderLeadHours * 60 * 60 * 1000,
   );
   return reminder > now ? reminder : null;
 }
@@ -70,10 +82,14 @@ function getLocalHour(date: Date, timezone: string): number {
   return n === 24 ? 0 : n;
 }
 
-function isInSleepHours(date: Date, timezone: string): boolean {
+function isInSleepHours(
+  date: Date,
+  timezone: string,
+  policy: Pick<BookingPolicyConfig, 'paymentDueReminderSleepHoursStart' | 'paymentDueReminderSleepHoursEnd'>,
+): boolean {
   const h = getLocalHour(date, timezone);
-  const start = DEFAULT_BOOKING_POLICY.paymentDueReminderSleepHoursStart;
-  const end = DEFAULT_BOOKING_POLICY.paymentDueReminderSleepHoursEnd;
+  const start = policy.paymentDueReminderSleepHoursStart;
+  const end = policy.paymentDueReminderSleepHoursEnd;
   return start > end ? h >= start || h < end : h >= start && h < end;
 }
 

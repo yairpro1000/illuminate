@@ -5,6 +5,7 @@ import { MockRepository } from '../src/providers/repository/mock.js';
 import { mockState } from '../src/providers/mock-state.js';
 import {
   applyBookingPolicyOverridesForTests,
+  getBookingPolicyConfig,
   resetBookingPolicyForTests,
 } from '../src/domain/booking-effect-policy.js';
 import {
@@ -18,6 +19,7 @@ import {
 import { makeCtx } from './admin-helpers.js';
 
 const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }));
+const seededSystemSettings = [...mockState.systemSettings.values()].map((setting) => ({ ...setting }));
 
 function resetMockState(): void {
   mockState.clients.clear();
@@ -30,6 +32,10 @@ function resetMockState(): void {
   mockState.eventReminderSubscriptions.clear();
   mockState.contactMessages.clear();
   mockState.payments.clear();
+  mockState.systemSettings.clear();
+  for (const setting of seededSystemSettings) {
+    mockState.systemSettings.set(setting.keyname, { ...setting });
+  }
   mockState.sentEmails.length = 0;
   mockState.bookingEvents.length = 0;
   mockState.sideEffects.length = 0;
@@ -43,7 +49,7 @@ describe('booking policy config', () => {
     resetMockState();
   });
 
-  it('uses configured reminder timing values from the shared policy config', () => {
+  it('uses configured reminder timing values from the shared policy config', async () => {
     applyBookingPolicyOverridesForTests({
       paymentDueReminderLeadHours: 4,
       paymentDueReminderSleepHoursStart: 21,
@@ -52,26 +58,28 @@ describe('booking policy config', () => {
       paymentDueReminderFallbackHourNextMorning: 9,
       eventReminderLeadHours: 12,
     });
+    const policy = await getBookingPolicyConfig(new MockRepository());
 
     const paymentDueAt = new Date('2026-03-15T08:00:00.000Z');
     const now = new Date('2026-03-13T10:00:00.000Z');
     expect(
-      computePaymentDueReminderTime(paymentDueAt, 'Europe/Zurich', now).toISOString(),
+      computePaymentDueReminderTime(paymentDueAt, 'Europe/Zurich', policy, now).toISOString(),
     ).toBe('2026-03-14T16:00:00.000Z');
 
     expect(
       compute24hReminderTime(
         new Date('2026-03-15T18:00:00.000Z'),
+        policy,
         new Date('2026-03-15T01:00:00.000Z'),
       )?.toISOString(),
     ).toBe('2026-03-15T06:00:00.000Z');
   });
 
   it('uses configured stale-processing timeout minutes when resetting stuck side effects', async () => {
-    applyBookingPolicyOverridesForTests({
-      sideEffectProcessingTimeoutMinutes: 3,
-    });
     resetMockState();
+    const setting = mockState.systemSettings.get('sideEffectProcessingTimeoutMinutes');
+    if (!setting) throw new Error('Missing seeded sideEffectProcessingTimeoutMinutes setting');
+    setting.value = '3';
 
     mockState.sideEffects.push(
       {
@@ -115,15 +123,16 @@ describe('booking policy config', () => {
       selfServiceLockWindowHours: 36,
       publicEventCutoffAfterStartMinutes: 90,
     });
+    const policy = await getBookingPolicyConfig(new MockRepository());
 
     expect(
-      evaluateManageBookingPolicy('2026-03-02T18:00:00.000Z').canSelfServeChange,
+      evaluateManageBookingPolicy('2026-03-02T18:00:00.000Z', policy.selfServiceLockWindowHours).canSelfServeChange,
     ).toBe(false);
 
     await expect(ensureEventPublicBookable({
       status: 'published',
       starts_at: '2026-03-01T11:00:00.000Z',
-    } as any)).resolves.toBeUndefined();
+    } as any, new MockRepository())).resolves.toBeUndefined();
   });
 
   it('uses configured slot lead time hours when generating slots', async () => {

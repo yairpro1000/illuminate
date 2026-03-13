@@ -11,9 +11,9 @@ import type {
 } from '../types.js';
 import { bookingEventLogContext, toEventPayload } from '../domain/booking-domain.js';
 import {
-  DEFAULT_BOOKING_POLICY,
   currentStatusForEvent,
   getEffectsForEvent,
+  getBookingPolicyConfig,
   mapEffectsToRows,
 } from '../domain/booking-effect-policy.js';
 
@@ -43,6 +43,7 @@ export async function appendBookingEventWithEffects(
   if (!booking) {
     throw new Error(`Booking ${bookingId} not found while appending event ${eventType}`);
   }
+  const policy = await getBookingPolicyConfig(ctx.providers.repository);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -53,11 +54,11 @@ export async function appendBookingEventWithEffects(
       branch_taken: 'append_event_then_generate_side_effects',
       current_status_before: booking.current_status,
       policy: {
-        non_paid_confirmation_window_minutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
-        pay_now_checkout_window_minutes: DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes,
-        pay_now_reminder_grace_minutes: DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
-        payment_due_before_start_hours: DEFAULT_BOOKING_POLICY.paymentDueBeforeStartHours,
-        processing_max_attempts: DEFAULT_BOOKING_POLICY.processingMaxAttempts,
+        non_paid_confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
+        pay_now_checkout_window_minutes: policy.payNowCheckoutWindowMinutes,
+        pay_now_reminder_grace_minutes: policy.payNowReminderGraceMinutes,
+        payment_due_before_start_hours: policy.paymentDueBeforeStartHours,
+        processing_max_attempts: policy.processingMaxAttempts,
       },
     },
   });
@@ -78,7 +79,7 @@ export async function appendBookingEventWithEffects(
     eventType,
     eventAtIso: event.created_at,
     paymentStatus: payment?.status ?? null,
-  });
+  }, policy);
 
   const sideEffects = effectSpecs.length > 0
     ? await ctx.providers.repository.createBookingSideEffects(mapEffectsToRows(event.id, effectSpecs))
