@@ -3,7 +3,7 @@ import { handleAdminGetConfig, handleAdminPatchConfig } from '../src/handlers/ad
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin config overrides', () => {
-  it('lists services with env and effective mode', async () => {
+  it('lists services and timing delays with diagnostics', async () => {
     const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
     const req = adminRequest('GET', 'https://api.local/api/admin/config');
     const res = await handleAdminGetConfig(req, ctx);
@@ -15,6 +15,53 @@ describe('Admin config overrides', () => {
       expect(svc.effective_mode).toBeTruthy();
       expect(svc.env_mode).toBeTruthy();
     }
+    expect(body.timing_delays).toEqual(expect.objectContaining({
+      config_path: 'apps/api-booking/src/config/booking-policy.json',
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          name: expect.any(String),
+          keyname: 'adminManageTokenExpiryMinutes',
+          value: expect.any(Number),
+          description: expect.any(String),
+        }),
+      ]),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_config_request_decision',
+      context: expect.objectContaining({
+        branch_taken: 'allow_admin_config_response',
+        config_path: 'apps/api-booking/src/config/booking-policy.json',
+        deny_reason: null,
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_config_response_ready',
+      context: expect.objectContaining({
+        branch_taken: 'admin_config_response_prepared',
+      }),
+    }));
+  });
+
+  it('returns explicit auth failure diagnostics for missing admin auth', async () => {
+    const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
+    const req = new Request('https://api.local/api/admin/config');
+
+    const res = await handleAdminGetConfig(req, ctx);
+
+    expect(res.status).toBe(401);
+    await expect(res.json()).resolves.toEqual({
+      error: 'UNAUTHORIZED',
+      message: 'Admin authentication required',
+    });
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_config_request_failed',
+      context: expect.objectContaining({
+        status_code: 401,
+        error_code: 'UNAUTHORIZED',
+        branch_taken: 'handled_api_error',
+        deny_reason: 'UNAUTHORIZED',
+      }),
+    }));
   });
 
   it('sets and clears an override', async () => {

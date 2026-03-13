@@ -2,9 +2,13 @@ import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, EventUpdate } from '../types.js';
-import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
+import { ApiError, created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
+import {
+  BOOKING_POLICY_CONFIG_RELATIVE_PATH,
+  listBookingPolicyTimingDelayRows,
+} from '../config/booking-policy.js';
 import { generateToken, hashToken } from '../services/token-service.js';
 import { buildAdminManageUrl, buildManageUrl } from '../services/booking-service.js';
 import {
@@ -462,7 +466,19 @@ export async function handleAdminCreateLateAccessLink(
 // GET /api/admin/config
 export async function handleAdminGetConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    await requireAdminAccess(request, ctx.env);
+    const path = new URL(request.url).pathname;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_config_request_started',
+      message: 'Started admin config request handling',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        branch_taken: 'authorize_then_build_admin_config',
+      },
+    });
+
+    await requireAdminAccess(request, ctx.env, ctx.logger);
     const overrides = getAllOverrides();
     const services = SERVICE_MODES.map(({ key, label, modes }) => {
       const envMode = getEnvMode(key, ctx.env);
@@ -470,8 +486,73 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
       const effectiveMode = overrideMode ?? envMode;
       return { key, label, effective_mode: effectiveMode, env_mode: envMode, override_mode: overrideMode, modes };
     });
-    return ok({ services });
+    const timingDelays = {
+      config_path: BOOKING_POLICY_CONFIG_RELATIVE_PATH,
+      entries: listBookingPolicyTimingDelayRows(),
+    };
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_config_request_decision',
+      message: 'Prepared admin config payload',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        service_count: services.length,
+        timing_delay_count: timingDelays.entries.length,
+        config_path: timingDelays.config_path,
+        branch_taken: 'allow_admin_config_response',
+        deny_reason: null,
+      },
+    });
+
+    const responseBody = { services, timing_delays: timingDelays };
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_config_response_ready',
+      message: 'Admin config response ready',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        service_count: services.length,
+        timing_delay_count: timingDelays.entries.length,
+        branch_taken: 'admin_config_response_prepared',
+      },
+    });
+
+    return ok(responseBody);
   } catch (err) {
+    const path = new URL(request.url).pathname;
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'admin_config_request_failed',
+        message: err.message,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          status_code: statusCode,
+          error_code: err.code,
+          branch_taken: 'handled_api_error',
+          deny_reason: err.code,
+        },
+      });
+    } else {
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'uncaught_exception',
+        message: 'Admin config request failed unexpectedly',
+        error: err,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    }
     return errorResponse(err);
   }
 }

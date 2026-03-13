@@ -1,9 +1,6 @@
 (function () {
   'use strict';
 
-  const apiBase = window.getAdminApiBase();
-  document.getElementById('apiBaseLabel').textContent = apiBase;
-
   function api(path, init) {
     return window.adminClient.requestJson(path, init);
   }
@@ -14,75 +11,63 @@
     el.textContent = text || '';
   }
 
-  function sourceBadge(svc) {
-    const wiredModes = svc.modes.filter((m) => m.wired);
-    const mockOnly = wiredModes.length === 1 && wiredModes[0].value === 'mock';
-    if (mockOnly) return '<span class="badge badge-stub">mock only - not yet wired</span>';
-    if (svc.override_mode) return '<span class="badge badge-override">runtime override</span>';
-    if (svc.effective_mode !== 'mock') return '<span class="badge badge-real">live</span>';
-    return '<span class="badge badge-env">env default</span>';
+  function makeCell(label, content) {
+    const td = document.createElement('td');
+    td.setAttribute('data-label', label);
+    if (content instanceof Node) {
+      td.appendChild(content);
+    } else {
+      td.textContent = content;
+    }
+    return td;
   }
 
-  function renderService(svc) {
-    const card = document.createElement('div');
-    card.className = 'service-card';
-    card.dataset.key = svc.key;
+  function makeCode(text) {
+    const code = document.createElement('code');
+    code.textContent = text;
+    return code;
+  }
 
-    const info = document.createElement('div');
-    info.innerHTML = `
-      <div class="service-label">${svc.label}</div>
-      <div class="service-sub">env: <code>${svc.env_mode}</code></div>
-    `;
+  function makeValuePill(value) {
+    const pill = document.createElement('span');
+    pill.className = 'value-pill';
+    pill.textContent = String(value);
+    return pill;
+  }
 
-    const modesEl = document.createElement('div');
-    modesEl.className = 'modes';
+  function renderRows(rows) {
+    const body = document.getElementById('timingBody');
+    body.innerHTML = '';
 
-    for (const mode of svc.modes) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = mode.label;
-      btn.className = 'mode-btn' + (mode.value === svc.effective_mode ? ' active' : '');
-      btn.disabled = !mode.wired || mode.value === svc.effective_mode;
-      if (!mode.wired) btn.title = 'Not yet wired - implementation pending';
-      btn.addEventListener('click', () => { void patchMode(svc.key, mode.value); });
-      modesEl.appendChild(btn);
+    if (!Array.isArray(rows) || !rows.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 4;
+      td.className = 'empty-state';
+      td.textContent = 'No timing configuration rows were returned.';
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
     }
 
-    const badgeEl = document.createElement('div');
-    badgeEl.innerHTML = sourceBadge(svc);
-
-    card.appendChild(info);
-    card.appendChild(modesEl);
-    card.appendChild(badgeEl);
-    return card;
-  }
-
-  function renderAll(services) {
-    const container = document.getElementById('services');
-    container.innerHTML = '';
-    for (const svc of services) {
-      container.appendChild(renderService(svc));
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      tr.appendChild(makeCell('Name', row.name || ''));
+      tr.appendChild(makeCell('Keyname', makeCode(row.keyname || '')));
+      tr.appendChild(makeCell('Value', makeValuePill(row.value)));
+      tr.appendChild(makeCell('Description', row.description || ''));
+      body.appendChild(tr);
     }
   }
 
   async function load() {
+    setStatus('Loading…', 'muted');
     try {
       const data = await api('/admin/config');
-      renderAll(data.services);
+      const timingDelays = data && data.timing_delays ? data.timing_delays : {};
+      document.getElementById('configPath').textContent = timingDelays.config_path || '';
+      renderRows(timingDelays.entries || []);
       setStatus('Ready.', 'ok');
-    } catch (err) {
-      setStatus(String(err), 'err');
-    }
-  }
-
-  async function patchMode(key, mode) {
-    setStatus('Saving...', 'muted');
-    try {
-      await api('/admin/config', {
-        method: 'POST',
-        body: JSON.stringify({ key, mode }),
-      });
-      await load();
     } catch (err) {
       setStatus(String(err), 'err');
     }

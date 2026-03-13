@@ -20,6 +20,15 @@ export interface BookingPolicyConfig {
   eventReminderLeadHours: number;
 }
 
+export const BOOKING_POLICY_CONFIG_RELATIVE_PATH = 'apps/api-booking/src/config/booking-policy.json';
+
+export interface BookingPolicyTimingDelayRow {
+  name: string;
+  keyname: keyof BookingPolicyConfig;
+  value: number;
+  description: string;
+}
+
 const POSITIVE_INTEGER_FIELDS: Array<keyof BookingPolicyConfig> = [
   'nonPaidConfirmationWindowMinutes',
   'payNowCheckoutWindowMinutes',
@@ -97,6 +106,98 @@ function validateBookingPolicyConfig(input: unknown): BookingPolicyConfig {
 
 const BOOKING_POLICY_DEFAULTS = validateBookingPolicyConfig(rawBookingPolicy);
 
+const BOOKING_POLICY_TIMING_DELAY_FIELDS: ReadonlyArray<{
+  keyname: keyof BookingPolicyConfig;
+  name: string;
+  description: string;
+}> = [
+  {
+    keyname: 'nonPaidConfirmationWindowMinutes',
+    name: 'Non-paid confirmation window',
+    description: 'Minutes allowed to confirm a free or pay-later booking before it expires.',
+  },
+  {
+    keyname: 'payNowCheckoutWindowMinutes',
+    name: 'Pay-now checkout window',
+    description: 'Minutes allowed to complete a pay-now checkout before payment verification expires.',
+  },
+  {
+    keyname: 'payNowReminderGraceMinutes',
+    name: 'Pay-now reminder grace period',
+    description: 'Minutes used as the short follow-up grace delay after a pay-now confirmation flow.',
+  },
+  {
+    keyname: 'paymentDueBeforeStartHours',
+    name: 'Payment due threshold',
+    description: 'Hours before the booking start when payment becomes formally due.',
+  },
+  {
+    keyname: 'processingMaxAttempts',
+    name: 'Side-effect max attempts',
+    description: 'Maximum retry attempts allowed before a side effect becomes dead.',
+  },
+  {
+    keyname: 'selfServiceLockWindowHours',
+    name: 'Self-service lock window',
+    description: 'Hours before the booking start when online cancel and reschedule actions are locked.',
+  },
+  {
+    keyname: 'publicEventCutoffAfterStartMinutes',
+    name: 'Public event cutoff after start',
+    description: 'Minutes after an event starts when normal public registration is considered closed.',
+  },
+  {
+    keyname: 'slotLeadTimeHours',
+    name: 'Slot lead time',
+    description: 'Hours of minimum lead time required before a slot can appear as bookable.',
+  },
+  {
+    keyname: 'eventLateAccessLinkExpiryHours',
+    name: 'Late-access link expiry',
+    description: 'Hours after an event ends that an organizer-created late-access booking link remains valid.',
+  },
+  {
+    keyname: 'adminManageTokenExpiryMinutes',
+    name: 'Admin manage token expiry',
+    description: 'Minutes that a generated admin manage token stays valid after creation.',
+  },
+  {
+    keyname: 'sideEffectProcessingTimeoutMinutes',
+    name: 'Stale processing timeout',
+    description: 'Minutes after which a stuck processing side effect is reset back to pending.',
+  },
+  {
+    keyname: 'paymentDueReminderLeadHours',
+    name: 'Payment reminder lead time',
+    description: 'Hours before the payment due threshold when the preferred reminder send time is scheduled.',
+  },
+  {
+    keyname: 'paymentDueReminderSleepHoursStart',
+    name: 'Reminder sleep window start',
+    description: 'Local hour when payment reminders stop being sent for the night.',
+  },
+  {
+    keyname: 'paymentDueReminderSleepHoursEnd',
+    name: 'Reminder sleep window end',
+    description: 'Local hour when payment reminders can resume in the morning.',
+  },
+  {
+    keyname: 'paymentDueReminderFallbackHourPreviousDay',
+    name: 'Reminder fallback hour previous day',
+    description: 'Local hour used on the previous day when the preferred reminder time lands in sleep hours.',
+  },
+  {
+    keyname: 'paymentDueReminderFallbackHourNextMorning',
+    name: 'Reminder fallback hour next morning',
+    description: 'Local hour used the next morning if the previous-day fallback time has already passed.',
+  },
+  {
+    keyname: 'eventReminderLeadHours',
+    name: 'Event reminder lead time',
+    description: 'Hours before the booking or event start when the reminder is scheduled.',
+  },
+];
+
 export const DEFAULT_BOOKING_POLICY: BookingPolicyConfig = {
   ...BOOKING_POLICY_DEFAULTS,
 };
@@ -111,6 +212,17 @@ export function applyBookingPolicyOverridesForTests(overrides: Partial<BookingPo
 
 export function resetBookingPolicyForTests(): void {
   Object.assign(DEFAULT_BOOKING_POLICY, BOOKING_POLICY_DEFAULTS);
+}
+
+export function listBookingPolicyTimingDelayRows(
+  policy: BookingPolicyConfig = DEFAULT_BOOKING_POLICY,
+): BookingPolicyTimingDelayRow[] {
+  return BOOKING_POLICY_TIMING_DELAY_FIELDS.map((field) => ({
+    name: field.name,
+    keyname: field.keyname,
+    value: policy[field.keyname],
+    description: field.description,
+  }));
 }
 
 function formatHoursLabel(hours: number): string {
