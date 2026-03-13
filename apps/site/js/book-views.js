@@ -531,7 +531,7 @@
       }
 
       if (!isPaid) {
-        const isConfirmedNow = state.submissionStatus === 'confirmed';
+        const isConfirmedNow = state.submissionStatus === 'CONFIRMED';
         const noun = isEvent ? 'registration' : 'booking';
         const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes(state.publicConfig);
         const widget = buildConfirmationWidget(isEvent);
