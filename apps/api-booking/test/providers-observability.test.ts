@@ -35,7 +35,7 @@ function makeEnv() {
     SESSION_MAPS_URL: 'https://maps.example',
     SUPABASE_URL: 'https://supabase.test',
     SUPABASE_SECRET_KEY: 'secret',
-    OBSERVABILITY_SCHEMA: 'observability',
+    OBSERVABILITY_SCHEMA: 'public',
     RESEND_API_KEY: 'resend-secret',
     GOOGLE_CALENDAR_ID: 'calendar@example.com',
     GOOGLE_CLIENT_CALENDAR: 'client-id',

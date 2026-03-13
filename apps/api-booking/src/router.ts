@@ -221,9 +221,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     const startedAt = Date.now();
 
     try {
-      const res = r.executionLayer === 'booking'
-        ? await executeBookingRoute(request, ctx, params, r.handler)
-        : await r.handler(request, ctx, params);
+      const res = await executeObservedRoute(request, ctx, params, r.handler, r.executionLayer);
       if (!isFrontendObservabilityPath || res.status >= 400) {
         ctx.logger.logRequest?.({
           method: request.method,
@@ -329,14 +327,17 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   return finalRes;
 }
 
-async function executeBookingRoute(
+async function executeObservedRoute(
   request: Request,
   ctx: AppContext,
   params: Record<string, string>,
   handler: Handler,
+  executionLayer: Route['executionLayer'],
 ): Promise<Response> {
   const path = new URL(request.url).pathname;
   const startedAtMs = Date.now();
+  const isBookingRoute = executionLayer === 'booking';
+  const shouldSuppressSuccessLifecycleLogs = path === '/api/observability/frontend';
   const routeCtx: AppContext = {
     ...ctx,
     operation: createOperationContext({
@@ -355,17 +356,22 @@ async function executeBookingRoute(
     requestBody: request.method === 'GET' || request.method === 'HEAD' ? null : '[stream body omitted]',
   });
 
-  routeCtx.logger.logInfo({
-    source: 'worker',
-    eventType: 'booking_route_execution_started',
-    message: 'Executing booking route through shared inbound wrapper',
-    context: {
-      method: request.method,
-      path,
-      params,
-      branch_taken: 'execute_booking_route_wrapper',
-    },
-  });
+  if (!shouldSuppressSuccessLifecycleLogs) {
+    routeCtx.logger.logInfo({
+      source: 'worker',
+      eventType: isBookingRoute ? 'booking_route_execution_started' : 'route_execution_started',
+      message: isBookingRoute
+        ? 'Executing booking route through shared inbound wrapper'
+        : 'Executing route through shared inbound wrapper',
+      context: {
+        method: request.method,
+        path,
+        params,
+        branch_taken: isBookingRoute ? 'execute_booking_route_wrapper' : 'execute_route_wrapper',
+        execution_layer: executionLayer,
+      },
+    });
+  }
 
   try {
     const response = await handler(request, routeCtx, params);
@@ -375,24 +381,31 @@ async function executeBookingRoute(
       responseBody: response.status >= 400 ? await response.clone().text() : { ok: response.ok, path: responseUrl(request) },
       startedAtMs,
     });
-    routeCtx.logger.logInfo({
-      source: 'worker',
-      eventType: 'booking_route_execution_completed',
-      message: 'Booking route completed through shared inbound wrapper',
-      context: {
-        method: request.method,
-        path,
-        status_code: response.status,
-        branch_taken: 'return_booking_route_response',
-      },
-    });
+    if (!shouldSuppressSuccessLifecycleLogs) {
+      routeCtx.logger.logInfo({
+        source: 'worker',
+        eventType: isBookingRoute ? 'booking_route_execution_completed' : 'route_execution_completed',
+        message: isBookingRoute
+          ? 'Booking route completed through shared inbound wrapper'
+          : 'Route completed through shared inbound wrapper',
+        context: {
+          method: request.method,
+          path,
+          status_code: response.status,
+          branch_taken: isBookingRoute ? 'return_booking_route_response' : 'return_route_response',
+          execution_layer: executionLayer,
+        },
+      });
+    }
     return response;
   } catch (error) {
     const statusCode = error instanceof ApiError ? error.statusCode : 500;
     if (statusCode >= 500) {
       routeCtx.logger.captureException({
-        eventType: 'booking_route_execution_failed',
-        message: 'Booking route failed in shared inbound wrapper',
+        eventType: isBookingRoute ? 'booking_route_execution_failed' : 'route_execution_failed',
+        message: isBookingRoute
+          ? 'Booking route failed in shared inbound wrapper'
+          : 'Route failed in shared inbound wrapper',
         error,
         context: {
           method: request.method,
@@ -400,12 +413,13 @@ async function executeBookingRoute(
           params,
           status_code: statusCode,
           branch_taken: 'unexpected_exception',
+          execution_layer: executionLayer,
         },
       });
     } else {
       routeCtx.logger.logWarn({
         source: 'worker',
-        eventType: 'booking_route_execution_failed',
+        eventType: isBookingRoute ? 'booking_route_execution_failed' : 'route_execution_failed',
         message: error instanceof Error ? error.message : String(error),
         context: {
           method: request.method,
@@ -415,6 +429,7 @@ async function executeBookingRoute(
           error_code: error instanceof ApiError ? error.code : 'INTERNAL_ERROR',
           branch_taken: 'handled_api_error',
           deny_reason: error instanceof ApiError ? error.code : 'unexpected_error',
+          execution_layer: executionLayer,
         },
       });
     }

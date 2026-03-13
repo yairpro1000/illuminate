@@ -22,11 +22,18 @@ Before scoping, implementing, or running any automated UI test, enforce all of t
 - Prefer a tiny P0/P1 smoke suite over broad ceremonial coverage.
 - Prefer strong assertions about business outcomes over page mechanics.
 - Prefer deterministic setup, teardown, and data control.
+- Treat frontend console errors and failed network requests observed during the tested scenarios as candidate product bugs, not background noise.
 - Use separate browser contexts or sessions for multi-user flows.
 - Use helper utilities for controlled link retrieval, deliberate job triggering, and time simulation where needed.
 - Avoid hard sleeps unless there is no controlled alternative.
 - Avoid abstraction pyramids unless repeated usage clearly justifies them.
 - Separate UI product-contract coverage from provider-specific integration checks when sensible.
+
+The tested domains should be clean by the end of the suite run:
+
+- No unexpected frontend errors left unreviewed.
+- No unexplained failed network requests in the exercised flows.
+- No tolerance for "the flow passed but the console was noisy".
 
 ## Default Technical Decisions
 
@@ -65,6 +72,7 @@ Before scoping, implementing, or running any automated UI test, enforce all of t
 - Capture screenshots at key checkpoints.
 - Keep short videos only when they add debugging value.
 - Preserve Playwright trace or report artifacts when available.
+- Capture frontend console errors and relevant network failures during the run and preserve them in reviewable artifacts or summaries.
 - Work on a copy of the supplied test plan and mark results on that copy.
 - Do not invent a large separate reporting process if the marked test plan can remain the primary review artifact.
 
@@ -87,6 +95,7 @@ Extract and summarize:
 - scenarios that should remain manual
 - required test hooks, helper utilities, or support endpoints
 - required test data and reset requirements
+- what browser-error capture is needed for the exercised domains
 - blockers, observability gaps, and likely flake risks
 
 Do not start implementing immediately unless the user explicitly skips the approval gate.
@@ -102,6 +111,7 @@ Include:
 - required assumptions
 - required hooks, support endpoints, scripts, or fixtures
 - whether test data or environment reset is needed
+- how frontend console errors and network failures will be captured and evaluated
 - framework choice, defaulting to Playwright
 - artifacts and report outputs that will be produced
 
@@ -133,8 +143,12 @@ Implementation expectations:
 - keep helpers focused on controlled link retrieval, time control, deliberate job triggering, and stable data setup
 - use separate contexts for multi-user flows
 - assert final business outcomes, not just transient UI text
+- attach listeners for page errors, console errors, and relevant failed network requests
+- classify frontend errors by expected vs unexpected; default unexpected errors to failure-worthy
 - keep selectors and page objects as light as practical
 - add only the abstractions needed to keep the suite readable and maintainable
+
+When a scenario passes functionally but emits unexpected frontend errors or failed network calls, treat that as a bug to be fixed, not a clean pass.
 
 If the app lacks the hooks needed for deterministic coverage, stop and state exactly what must be added.
 
@@ -146,10 +160,13 @@ During execution:
 
 - collect screenshots at key checkpoints
 - retain traces, reports, videos, or logs when useful
+- collect console-error, page-error, and failed-request evidence for each exercised domain
 - stop on blockers that require human action
 - classify failures quickly as product bug, test bug, environment issue, or documentation gap
 
 Do not keep retrying blindly through a flaky or blocked step. Explain the control problem first.
+
+Do not mark a tested domain clean if it still emits unexpected frontend errors by the end of the suite.
 
 ### 6. Report Concisely
 
@@ -159,7 +176,8 @@ Return a review-friendly report containing:
 2. scenario review table or checklist
 3. evidence artifact paths
 4. failure summaries
-5. coverage note for what is now protected and what remains manual
+5. frontend-error and network-failure summary for the tested domains
+6. coverage note for what is now protected and what remains manual
 
 Use the supplied test plan copy as a primary artifact when possible.
 
@@ -216,6 +234,12 @@ For each failure, state:
 - shortest likely explanation
 - exact repro summary if known
 
+Treat these as failures or bugs unless explicitly approved otherwise:
+
+- unhandled page errors
+- unexpected console errors
+- unexpected failed network requests relevant to the exercised flow
+
 ### Coverage Note
 
 State:
@@ -223,6 +247,8 @@ State:
 - what risks are now protected by automation
 - what is still manual
 - the next highest-value automation increment
+
+Also state whether the tested domains finished clean from a frontend-runtime perspective. If not, list the remaining console or network issues that prevent calling the domain clean.
 
 ## Scenario Design Examples
 

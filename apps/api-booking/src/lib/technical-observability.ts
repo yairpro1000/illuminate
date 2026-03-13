@@ -14,14 +14,21 @@ import {
 type TechnicalDb = ReturnType<Db['schema']>;
 
 let cachedDb: Db | null = null;
+const emittedWarnings = new Set<string>();
 
 function getDb(env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY'>): Db {
   if (!cachedDb) cachedDb = makeSupabase(env);
   return cachedDb;
 }
 
+function warnOnce(key: string, message: string, details: Record<string, unknown>): void {
+  if (emittedWarnings.has(key)) return;
+  emittedWarnings.add(key);
+  console.warn(message, details);
+}
+
 function getSchema(env: Pick<Env, 'OBSERVABILITY_SCHEMA'>): string {
-  return env.OBSERVABILITY_SCHEMA?.trim() || 'observability';
+  return env.OBSERVABILITY_SCHEMA?.trim() || 'public';
 }
 
 function shouldDisableDbPersistence(env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY'>): boolean {
@@ -37,9 +44,23 @@ function shouldDisableDbPersistence(env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SE
   }
 }
 
-function tableClient(env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>): TechnicalDb | null {
-  if (shouldDisableDbPersistence(env)) return null;
-  return getDb(env).schema(getSchema(env));
+function tableClients(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+): Array<{ schema: string; client: TechnicalDb }> {
+  if (shouldDisableDbPersistence(env)) {
+    warnOnce('persistence_disabled:missing_or_local_supabase_configuration', '[technical-observability] persistence disabled', {
+      reason: 'missing_or_local_supabase_configuration',
+    });
+    return [];
+  }
+
+  const configuredSchema = getSchema(env);
+  const schemas = Array.from(new Set([configuredSchema, 'public']));
+  const db = getDb(env);
+  return schemas.map((schema) => ({
+    schema,
+    client: db.schema(schema),
+  }));
 }
 
 async function safeInsert(
@@ -47,20 +68,38 @@ async function safeInsert(
   table: 'api_logs' | 'exception_logs',
   row: Record<string, unknown>,
 ): Promise<{ id: string } | null> {
-  const client = tableClient(env);
-  if (!client) return null;
+  const clients = tableClients(env);
+  if (clients.length === 0) return null;
 
-  try {
-    const { data, error } = await client.from(table).insert(row).select('id').single<{ id: string }>();
-    if (error) {
-      console.warn('[technical-observability] insert failed', { table, error: error.message });
-      return null;
+  let lastError: string | null = null;
+  for (const { schema, client } of clients) {
+    try {
+      const { data, error } = await client.from(table).insert(row).select('id').single<{ id: string }>();
+      if (error) {
+        lastError = error.message;
+        console.warn('[technical-observability] insert failed', { schema, table, error: error.message });
+        continue;
+      }
+      if (schema !== getSchema(env)) {
+        console.warn('[technical-observability] insert recovered via fallback schema', {
+          table,
+          configured_schema: getSchema(env),
+          fallback_schema: schema,
+        });
+      }
+      return data ?? null;
+    } catch (error) {
+      lastError = String(error);
+      console.warn('[technical-observability] insert failed', { schema, table, error: lastError });
     }
-    return data ?? null;
-  } catch (error) {
-    console.warn('[technical-observability] insert failed', { table, error: String(error) });
-    return null;
   }
+
+  console.warn('[technical-observability] insert exhausted schemas', {
+    table,
+    configured_schema: getSchema(env),
+    last_error: lastError,
+  });
+  return null;
 }
 
 async function safeUpdate(
@@ -69,17 +108,39 @@ async function safeUpdate(
   id: string,
   row: Record<string, unknown>,
 ): Promise<void> {
-  const client = tableClient(env);
-  if (!client) return;
+  const clients = tableClients(env);
+  if (clients.length === 0) return;
 
-  try {
-    const { error } = await client.from(table).update(row).eq('id', id);
-    if (error) {
-      console.warn('[technical-observability] update failed', { table, id, error: error.message });
+  let lastError: string | null = null;
+  for (const { schema, client } of clients) {
+    try {
+      const { error } = await client.from(table).update(row).eq('id', id);
+      if (error) {
+        lastError = error.message;
+        console.warn('[technical-observability] update failed', { schema, table, id, error: error.message });
+        continue;
+      }
+      if (schema !== getSchema(env)) {
+        console.warn('[technical-observability] update recovered via fallback schema', {
+          table,
+          id,
+          configured_schema: getSchema(env),
+          fallback_schema: schema,
+        });
+      }
+      return;
+    } catch (error) {
+      lastError = String(error);
+      console.warn('[technical-observability] update failed', { schema, table, id, error: lastError });
     }
-  } catch (error) {
-    console.warn('[technical-observability] update failed', { table, id, error: String(error) });
   }
+
+  console.warn('[technical-observability] update exhausted schemas', {
+    table,
+    id,
+    configured_schema: getSchema(env),
+    last_error: lastError,
+  });
 }
 
 export async function startApiLog(
