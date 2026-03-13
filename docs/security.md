@@ -43,9 +43,8 @@ Reject requests if verification fails.
 
 ### 3.3 Expiration
 
--   Free event confirm: 15 minutes.
--   Pay-later booking confirm: configured window (default 60 minutes
-    unless changed).
+-   Booking and reminder timing values are configured in `apps/api-booking/src/config/booking-policy.json`.
+-   Current defaults are controlled there, including confirmation windows and admin manage token expiry.
 -   Manage tokens may remain valid until booking/event date passes.
 
 ### 3.4 Validation

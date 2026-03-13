@@ -34,6 +34,7 @@ import type {
   SessionTypeUpdate,
   TimeSlot,
 } from '../../types.js';
+import { DEFAULT_BOOKING_POLICY } from '../../config/booking-policy.js';
 
 export interface OrganizerBookingFilters {
   booking_kind?: 'event' | 'session';
@@ -155,10 +156,12 @@ export interface IRepository {
   updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord>;
 }
 
-export const SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES = 10;
-
 export function deriveBookingKind(booking: Pick<Booking, 'event_id'>): 'event' | 'session' {
   return booking.event_id ? 'event' : 'session';
+}
+
+export function getSideEffectProcessingTimeoutMinutes(): number {
+  return DEFAULT_BOOKING_POLICY.sideEffectProcessingTimeoutMinutes;
 }
 
 export function sideEffectIsDispatchable(effect: Pick<BookingSideEffect, 'status' | 'expires_at'>, nowIso: string): boolean {

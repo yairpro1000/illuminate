@@ -1,6 +1,6 @@
 import { mockState } from '../mock-state.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
-import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
+import { getSideEffectProcessingTimeoutMinutes } from './interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -234,7 +234,7 @@ export class MockRepository implements IRepository {
   }
 
   async markStaleProcessingSideEffectsAsPending(nowIso: string): Promise<number> {
-    const thresholdMs = new Date(nowIso).getTime() - SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES * 60_000;
+    const thresholdMs = new Date(nowIso).getTime() - getSideEffectProcessingTimeoutMinutes() * 60_000;
     let resetCount = 0;
 
     for (const effect of mockState.sideEffects) {

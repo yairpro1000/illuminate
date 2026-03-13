@@ -104,10 +104,10 @@ fail
 
 ## Deadline Policy
 
-Configured in code and persisted per effect:
+Configured in `apps/api-booking/src/config/booking-policy.json` and persisted per effect:
 
-- non-paid confirmation: `15 minutes`
-- pay-now checkout completion: `45 minutes`
-- payment due threshold: `starts_at - 24 hours`
+- non-paid confirmation: `nonPaidConfirmationWindowMinutes`
+- pay-now checkout completion: `payNowCheckoutWindowMinutes`
+- payment due threshold: `starts_at - paymentDueBeforeStartHours`
 
 The calculated deadline is stored as `booking_side_effects.expires_at`.

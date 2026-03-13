@@ -172,5 +172,5 @@ create table if not exists booking_side_effect_attempts (
 ## Operational Notes
 
 - `bookings.current_status` is a cache. Business truth is reconstructed from `booking_events`.
-- Expiration/deadline policy is computed in code (`booking-effect-policy.ts`); resolved deadlines are stored in `booking_side_effects.expires_at`.
+- Expiration/deadline policy is sourced from `apps/api-booking/src/config/booking-policy.json` and applied in code; resolved deadlines are stored in `booking_side_effects.expires_at`.
 - `booking_side_effect_attempts.api_log_id` links each attempt to provider interaction logging/correlation.

@@ -1,6 +1,6 @@
 import type { Db } from '../../repo/supabase.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
-import { SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES } from './interface.js';
+import { getSideEffectProcessingTimeoutMinutes } from './interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -334,7 +334,9 @@ export class SupabaseRepository implements IRepository {
   }
 
   async markStaleProcessingSideEffectsAsPending(nowIsoValue: string): Promise<number> {
-    const threshold = new Date(new Date(nowIsoValue).getTime() - SIDE_EFFECT_PROCESSING_TIMEOUT_MINUTES * 60_000).toISOString();
+    const threshold = new Date(
+      new Date(nowIsoValue).getTime() - getSideEffectProcessingTimeoutMinutes() * 60_000,
+    ).toISOString();
 
     const rows = await requireData<Array<{ id: string }>>(
       this.db

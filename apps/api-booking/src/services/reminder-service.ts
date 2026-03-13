@@ -1,42 +1,58 @@
+import { DEFAULT_BOOKING_POLICY } from '../config/booking-policy.js';
+
 /**
  * Computes the time to send a payment reminder for a pay-later booking.
  *
  * Rules:
- *   preferred = payment-due-threshold - 6h
- *   if preferred falls in 22:00–08:00 local -> use 18:00 day before threshold
- *   if 18:00 day before has already passed  -> use 08:00 next reasonable morning
+ *   preferred = payment-due-threshold - configured lead hours
+ *   if preferred falls in configured sleep hours -> use configured fallback hour the day before threshold
+ *   if that fallback has already passed -> use configured fallback hour next morning
  */
 export function computePaymentDueReminderTime(
   paymentDueAt: Date,
   timezone: string,
   now = new Date(),
 ): Date {
-  const preferred = new Date(paymentDueAt.getTime() - 6 * 60 * 60 * 1000);
+  const preferred = new Date(
+    paymentDueAt.getTime() - DEFAULT_BOOKING_POLICY.paymentDueReminderLeadHours * 60 * 60 * 1000,
+  );
 
   if (!isInSleepHours(preferred, timezone)) {
     return preferred;
   }
 
-  // Try 18:00 the day before the threshold.
+  // Try the configured fallback hour on the day before the threshold.
   const dayBefore = new Date(paymentDueAt);
   dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
-  const at18 = setLocalHour(dayBefore, 18, 0, timezone);
-  if (at18 > now) {
-    return at18;
+  const previousDayFallback = setLocalHour(
+    dayBefore,
+    DEFAULT_BOOKING_POLICY.paymentDueReminderFallbackHourPreviousDay,
+    0,
+    timezone,
+  );
+  if (previousDayFallback > now) {
+    return previousDayFallback;
   }
 
-  // Fall back to 08:00 next reasonable morning after now
+  // Fall back to the configured next-morning send hour after now.
   const tomorrow = new Date(now);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  return setLocalHour(tomorrow, 8, 0, timezone);
+  return setLocalHour(
+    tomorrow,
+    DEFAULT_BOOKING_POLICY.paymentDueReminderFallbackHourNextMorning,
+    0,
+    timezone,
+  );
 }
 
 /**
- * Computes the 24h-before reminder time for a confirmed booking/event.
+ * Computes the configured pre-event reminder time for a confirmed booking/event.
  * Returns null if the window has already passed.
  */
 export function compute24hReminderTime(startsAt: Date, now = new Date()): Date | null {
-  const reminder = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
+  const reminder = new Date(
+    startsAt.getTime() - DEFAULT_BOOKING_POLICY.eventReminderLeadHours * 60 * 60 * 1000,
+  );
   return reminder > now ? reminder : null;
 }
 
@@ -56,7 +72,9 @@ function getLocalHour(date: Date, timezone: string): number {
 
 function isInSleepHours(date: Date, timezone: string): boolean {
   const h = getLocalHour(date, timezone);
-  return h >= 22 || h < 8;
+  const start = DEFAULT_BOOKING_POLICY.paymentDueReminderSleepHoursStart;
+  const end = DEFAULT_BOOKING_POLICY.paymentDueReminderSleepHoursEnd;
+  return start > end ? h >= start || h < end : h >= start && h < end;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { AppContext } from '../router.js';
 import { badRequest, errorResponse, jsonResponse } from '../lib/errors.js';
+import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
 
 // ── Slot rules ────────────────────────────────────────────────────────────────
 
@@ -10,9 +11,6 @@ const INTRO_DURATION_MS = 30 * 60 * 1000;
 // Other sessions (60–90 min) — use 90 min for conflict detection, Mon–Fri only
 const SESSION_STARTS = [9, 11, 14, 16, 18];
 const SESSION_DURATION_MS = 90 * 60 * 1000;
-// Enforce 24h minimum lead time for visible/available slots
-const SLOT_LEAD_TIME_MS = 24 * 60 * 60 * 1000;
-
 type SlotType = 'intro' | 'session';
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -102,7 +100,7 @@ function addCandidate(
   const startMs  = new Date(startIso).getTime();
   const endMs    = startMs + durationMs;
 
-  if (startMs < Date.now() + SLOT_LEAD_TIME_MS) {
+  if (startMs < Date.now() + DEFAULT_BOOKING_POLICY.slotLeadTimeHours * 60 * 60 * 1000) {
     return;
   }
 

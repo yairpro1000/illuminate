@@ -4,6 +4,7 @@ import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../pro
 import type { BookingCurrentStatus, EventUpdate } from '../types.js';
 import { created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
+import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
 import { generateToken, hashToken } from '../services/token-service.js';
 import { buildAdminManageUrl, buildManageUrl } from '../services/booking-service.js';
 import {
@@ -436,7 +437,9 @@ export async function handleAdminCreateLateAccessLink(
 
     const rawToken = generateToken();
     const tokenHash = await hashToken(rawToken);
-    const expiresAt = new Date(new Date(event.ends_at).getTime() + 2 * 60 * 60_000).toISOString();
+    const expiresAt = new Date(
+      new Date(event.ends_at).getTime() + DEFAULT_BOOKING_POLICY.eventLateAccessLinkExpiryHours * 60 * 60_000,
+    ).toISOString();
 
     await ctx.providers.repository.revokeActiveEventLateAccessLinks(event.id);
     await ctx.providers.repository.createEventLateAccessLink({

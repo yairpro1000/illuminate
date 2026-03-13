@@ -5,9 +5,8 @@ import {
   createEventBookingWithAccess,
   ensureEventPublicBookable,
 } from '../services/booking-service.js';
+import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
 import { hashToken } from '../services/token-service.js';
-
-const PUBLIC_EVENT_CUTOFF_AFTER_START_MINUTES = 30;
 
 // GET /api/events
 export async function handleGetEvents(_request: Request, ctx: AppContext): Promise<Response> {
@@ -382,7 +381,7 @@ async function buildEventState(eventId: string, nowIso: string, ctx: AppContext)
 
   const nowMs = new Date(nowIso).getTime();
   const startMs = new Date(event.starts_at).getTime();
-  const cutoffMs = startMs + PUBLIC_EVENT_CUTOFF_AFTER_START_MINUTES * 60_000;
+  const cutoffMs = startMs + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
 
   const activeBookings = await ctx.providers.repository.countEventActiveBookings(event.id, nowIso);
   const soldOut = activeBookings >= event.capacity;

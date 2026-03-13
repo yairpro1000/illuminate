@@ -8,23 +8,17 @@ import type {
   NewBookingSideEffect,
   PaymentStatus,
 } from '../types.js';
+import type { BookingPolicyConfig } from '../config/booking-policy.js';
+import { DEFAULT_BOOKING_POLICY } from '../config/booking-policy.js';
 import { inferEntityFromIntent } from '../providers/repository/interface.js';
 
-export interface BookingPolicyConfig {
-  nonPaidConfirmationWindowMinutes: number;
-  payNowCheckoutWindowMinutes: number;
-  payNowReminderGraceMinutes: number;
-  paymentDueBeforeStartHours: number;
-  processingMaxAttempts: number;
-}
-
-export const DEFAULT_BOOKING_POLICY: BookingPolicyConfig = {
-  nonPaidConfirmationWindowMinutes: 1,
-  payNowCheckoutWindowMinutes: 2,
-  payNowReminderGraceMinutes: 1,
-  paymentDueBeforeStartHours: 24,
-  processingMaxAttempts: 5,
-};
+export type { BookingPolicyConfig } from '../config/booking-policy.js';
+export {
+  DEFAULT_BOOKING_POLICY,
+  applyBookingPolicyOverridesForTests,
+  getBookingPolicyText,
+  resetBookingPolicyForTests,
+} from '../config/booking-policy.js';
 
 export interface BookingPolicyContext {
   booking: Pick<Booking, 'id' | 'event_id' | 'starts_at' | 'current_status' | 'booking_type'>;

@@ -10,7 +10,6 @@
   ],
   "vars": {
     "PA_ADMIN_USER": "yairpro@gmail.com",
-    "PA_DEV_EMAIL": "yairpro@gmail.com",
     "PA_LLM_PROVIDER": "openai",
     "OPENAI_MODEL": "gpt-4.1-nano",
     "PA_LOG_LLM_TEXT": "1",
@@ -40,5 +39,6 @@
 
   // Secrets (set via `wrangler secret put`):
   // - SUPABASE_SECRET_KEY
+  // - PA_DEV_EMAIL (optional localhost-only Access bypass for `wrangler dev`)
   // - OPENAI_API_KEY (optional)
 }

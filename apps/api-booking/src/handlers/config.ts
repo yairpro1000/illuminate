@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, errorResponse, internalError, ok } from '../lib/errors.js';
-import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
+import { DEFAULT_BOOKING_POLICY, getBookingPolicyText } from '../domain/booking-effect-policy.js';
 
 interface PublicBookingPolicy {
   [key: string]: number;
@@ -9,8 +9,6 @@ interface PublicBookingPolicy {
   pay_now_reminder_grace_minutes: number;
   pay_now_total_expiry_minutes: number;
 }
-
-const PUBLIC_BOOKING_POLICY_TEXT = 'Booking policy\nYou can reschedule or cancel your booking up to 24 hours before the session.\nWithin 24 hours of the session, bookings can no longer be changed online and are non-refundable.\nIf an emergency occurs, please contact me directly.';
 
 function buildPublicBookingPolicy(): PublicBookingPolicy {
   return {
@@ -71,7 +69,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
     const responseBody = {
       config_version: 'booking_policy_v1',
       booking_policy: bookingPolicy,
-      booking_policy_text: PUBLIC_BOOKING_POLICY_TEXT,
+      booking_policy_text: getBookingPolicyText(),
     };
 
     ctx.logger.logInfo?.({

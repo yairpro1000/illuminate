@@ -1,8 +1,17 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { handleAdminCreateBookingManageLink } from '../src/handlers/admin.js';
+import {
+  applyBookingPolicyOverridesForTests,
+  resetBookingPolicyForTests,
+} from '../src/domain/booking-effect-policy.js';
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin manage link creation', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetBookingPolicyForTests();
+  });
+
   it('returns a signed admin manage link for an existing booking', async () => {
     const bookingId = '00000000-0000-4000-8000-000000000001';
     const getBookingById = vi.fn().mockResolvedValue({
@@ -37,5 +46,39 @@ describe('Admin manage link creation', () => {
     expect(body.url).toContain('admin_token=');
     expect(typeof body.expires_at).toBe('string');
     expect(getBookingById).toHaveBeenCalledWith(bookingId);
+  });
+
+  it('uses the shared booking policy admin manage expiry minutes', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T12:00:00.000Z'));
+    applyBookingPolicyOverridesForTests({ adminManageTokenExpiryMinutes: 45 });
+
+    const bookingId = '00000000-0000-4000-8000-000000000001';
+    const getBookingById = vi.fn().mockResolvedValue({
+      id: bookingId,
+      client_id: 'client-1',
+      event_id: null,
+      session_type_id: 'session-type-1',
+      starts_at: '2026-03-22T10:00:00.000Z',
+      ends_at: '2026-03-22T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      google_event_id: null,
+      address_line: 'Somewhere 1, Zurich',
+      maps_url: 'https://maps.example',
+      current_status: 'CONFIRMED',
+      notes: null,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    });
+    const ctx = makeCtx({
+      providers: { repository: { getBookingById } } as any,
+    });
+    ctx.env.JOB_SECRET = 'test-secret';
+
+    const req = adminRequest('POST', `https://api.local/api/admin/bookings/${bookingId}/manage-link`, {});
+    const res = await handleAdminCreateBookingManageLink(req, ctx, { bookingId });
+    const body = await res.json();
+
+    expect(body.expires_at).toBe('2026-03-01T12:45:00.000Z');
   });
 });

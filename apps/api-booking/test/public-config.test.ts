@@ -2,28 +2,16 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { handleGetPublicConfig } from '../src/handlers/config.js';
 import { handleRequest } from '../src/router.js';
-import { DEFAULT_BOOKING_POLICY } from '../src/domain/booking-effect-policy.js';
+import {
+  DEFAULT_BOOKING_POLICY,
+  applyBookingPolicyOverridesForTests,
+  resetBookingPolicyForTests,
+} from '../src/domain/booking-effect-policy.js';
 import { makeCtx } from './admin-helpers.js';
-
-const ORIGINAL_POLICY = {
-  nonPaidConfirmationWindowMinutes: DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes,
-  payNowCheckoutWindowMinutes: DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes,
-  payNowReminderGraceMinutes: DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes,
-  paymentDueBeforeStartHours: DEFAULT_BOOKING_POLICY.paymentDueBeforeStartHours,
-  processingMaxAttempts: DEFAULT_BOOKING_POLICY.processingMaxAttempts,
-};
-
-function restorePolicy(): void {
-  DEFAULT_BOOKING_POLICY.nonPaidConfirmationWindowMinutes = ORIGINAL_POLICY.nonPaidConfirmationWindowMinutes;
-  DEFAULT_BOOKING_POLICY.payNowCheckoutWindowMinutes = ORIGINAL_POLICY.payNowCheckoutWindowMinutes;
-  DEFAULT_BOOKING_POLICY.payNowReminderGraceMinutes = ORIGINAL_POLICY.payNowReminderGraceMinutes;
-  DEFAULT_BOOKING_POLICY.paymentDueBeforeStartHours = ORIGINAL_POLICY.paymentDueBeforeStartHours;
-  DEFAULT_BOOKING_POLICY.processingMaxAttempts = ORIGINAL_POLICY.processingMaxAttempts;
-}
 
 describe('public config endpoint diagnostics', () => {
   afterEach(() => {
-    restorePolicy();
+    resetBookingPolicyForTests();
   });
 
   it('returns public booking policy from backend source-of-truth with decision logs', async () => {
@@ -113,5 +101,29 @@ describe('public config endpoint diagnostics', () => {
       error: 'INTERNAL_ERROR',
       message: 'Internal server error',
     });
+  });
+
+  it('can be overridden from the shared booking policy config in tests', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/api/config');
+    applyBookingPolicyOverridesForTests({
+      nonPaidConfirmationWindowMinutes: 9,
+      payNowCheckoutWindowMinutes: 14,
+      payNowReminderGraceMinutes: 4,
+      selfServiceLockWindowHours: 12,
+    });
+
+    const res = await handleGetPublicConfig(req, ctx);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      booking_policy: expect.objectContaining({
+        non_paid_confirmation_window_minutes: 9,
+        pay_now_checkout_window_minutes: 14,
+        pay_now_reminder_grace_minutes: 4,
+        pay_now_total_expiry_minutes: 18,
+      }),
+      booking_policy_text: expect.stringContaining('up to 12 hours before the session'),
+    }));
   });
 });

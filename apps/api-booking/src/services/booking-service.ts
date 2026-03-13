@@ -21,10 +21,13 @@ import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToke
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
-import { DEFAULT_BOOKING_POLICY, shouldReserveSlotForTransition } from '../domain/booking-effect-policy.js';
+import {
+  DEFAULT_BOOKING_POLICY,
+  getBookingPolicyText,
+  shouldReserveSlotForTransition,
+} from '../domain/booking-effect-policy.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 
-const PUBLIC_EVENT_CUTOFF_AFTER_START_MINUTES = 30;
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
   'SEND_PAYMENT_REMINDER',
@@ -43,12 +46,6 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'CREATE_STRIPE_CHECKOUT',
   'CREATE_STRIPE_REFUND',
 ]);
-
-const MANAGE_BOOKING_POLICY_TEXT = `Booking policy
-You can reschedule or cancel your booking up to 24 hours before the session.
-Within 24 hours of the session, bookings can no longer be changed online and are non-refundable.
-If an emergency occurs, please contact me directly.`;
-const SELF_SERVICE_LOCK_WINDOW_HOURS = 24;
 
 export interface BookingContext {
   providers: Providers;
@@ -634,7 +631,9 @@ export async function buildAdminManageUrl(
 ): Promise<{ url: string; adminToken: string; expiresAt: string }> {
   const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
   if (!secret) throw badRequest('Admin manage token secret is not configured');
-  const expiresAt = new Date(Date.now() + 30 * 60_000).toISOString();
+  const expiresAt = new Date(
+    Date.now() + DEFAULT_BOOKING_POLICY.adminManageTokenExpiryMinutes * 60_000,
+  ).toISOString();
   const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
   const manageToken = buildStableManageToken(booking.id);
   const url = `${ctx.env.SITE_URL}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
@@ -1050,9 +1049,9 @@ export function evaluateManageBookingPolicy(startsAtIso: string): {
   const startsAtMs = new Date(startsAtIso).getTime();
   const hoursBeforeStart = (startsAtMs - nowMs) / 3_600_000;
   return {
-    canSelfServeChange: hoursBeforeStart >= SELF_SERVICE_LOCK_WINDOW_HOURS,
+    canSelfServeChange: hoursBeforeStart >= DEFAULT_BOOKING_POLICY.selfServiceLockWindowHours,
     hoursBeforeStart,
-    policyText: MANAGE_BOOKING_POLICY_TEXT,
+    policyText: getBookingPolicyText(),
   };
 }
 
@@ -1072,7 +1071,8 @@ export async function getBookingPublicActionInfoByPaymentSession(
 export async function ensureEventPublicBookable(event: Event): Promise<void> {
   if (event.status !== 'published') throw badRequest('Event is not open for booking');
   const nowMs = Date.now();
-  const cutoffMs = new Date(event.starts_at).getTime() + PUBLIC_EVENT_CUTOFF_AFTER_START_MINUTES * 60_000;
+  const cutoffMs = new Date(event.starts_at).getTime()
+    + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
   if (nowMs > cutoffMs) {
     throw gone('Public event registration is closed');
   }
