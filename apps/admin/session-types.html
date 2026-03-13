@@ -5,77 +5,311 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ILLUMINATE Admin — Edit Offers</title>
     <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>if(localStorage.getItem('yb-theme')==='light')document.documentElement.classList.add('theme-light');</script>
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+      /* ── Design Tokens ── */
       :root {
-        --bg: #f7f6f2;
-        --card: #ffffff;
-        --ink: #1f2937;
-        --muted: #6b7280;
-        --line: #d1d5db;
-        --accent: #0d9488;
-        --danger: #b91c1c;
+        --color-bg:           oklch(11%  0.022 210);
+        --color-bg-alt:       oklch(14%  0.025 208);
+        --color-bg-card:      oklch(17%  0.030 207);
+        --color-lake-deep:    oklch(44%  0.155 204);
+        --color-lake:         oklch(59%  0.160 200);
+        --color-lake-lt:      oklch(73%  0.130 195);
+        --color-lake-mist:    oklch(59%  0.160 200 / 0.14);
+        --color-text:         oklch(91%  0.015 200);
+        --color-text-muted:   oklch(65%  0.020 207);
+        --color-text-subtle:  oklch(48%  0.018 210);
+        --color-border:       oklch(59%  0.160 200 / 0.18);
+        --color-border-hover: oklch(59%  0.160 200 / 0.42);
+        --color-ok:           oklch(75%  0.14 145);
+        --color-danger:       oklch(72%  0.18 25);
+        --radius-sm: 0.375rem;
+        --radius-md: 0.75rem;
+        --admin-sidebar-w: 15rem;
+        --admin-header-h:  3.5rem;
+        --admin-content-p: 1.5rem;
+        --admin-row-h:     2.75rem;
+        --font: 'Inter', system-ui, -apple-system, sans-serif;
       }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", Tahoma, sans-serif; }
-      main { width: min(1180px, 96vw); margin: 22px auto 44px; }
-      .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-      h1 { margin: 0 0 10px; font-size: 1.4rem; }
-      .muted { color: var(--muted); font-size: 0.92rem; }
-      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
-      .col { display: flex; flex-direction: column; }
-      .hidden { display: none !important; }
-      .small { font-size: 0.85rem; }
-      .status { margin-top: 8px; min-height: 1.4em; }
-      label { display: block; font-size: 0.82rem; margin-bottom: 4px; color: var(--muted); }
-      input, select, textarea, button { font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; }
-      textarea { min-height: 90px; resize: vertical; }
-      button { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
-      button.secondary { background: #fff; color: var(--ink); border-color: var(--line); }
-      button.icon-btn { background: #fff; color: var(--ink); border-color: var(--line); padding: 5px 8px; font-size: 1rem; line-height: 1; border-radius: 6px; cursor: pointer; }
-      button.icon-btn:hover { background: #f3f4f6; }
-      button:disabled { opacity: 0.6; cursor: not-allowed; }
-      a { color: var(--accent); }
-      table { width: 100%; border-collapse: collapse; background: #fff; }
-      th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px; font-size: 0.9rem; }
-      th { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; }
-      tbody tr.clickable { cursor: pointer; }
-      tbody tr.clickable:hover { background: #f8fafc; }
-      .ok { color: #047857; }
-      .err { color: var(--danger); white-space: pre-wrap; }
-      .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-      .modal { width: min(900px, 96vw); max-height: min(94vh, 900px); overflow: auto; }
-      .btnrow { display: flex; gap: 8px; justify-content: flex-end; }
-      .grid2 { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 10px; }
-      .thumb { width: 100%; max-width: 220px; height: auto; border: 1px solid var(--line); border-radius: 8px; }
-      .input-with-btn { display: flex; gap: 6px; align-items: center; }
-      .input-with-btn input { flex: 1; min-width: 0; }
-      @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
-      /* admin sidebar layout */
-      .admin-layout { display: flex; min-height: 100vh; }
+
+      html.theme-light {
+        --color-bg:           oklch(97% 0.006 210);
+        --color-bg-alt:       oklch(93% 0.008 210);
+        --color-bg-card:      oklch(100% 0 0);
+        --color-text:         oklch(15% 0.025 210);
+        --color-text-muted:   oklch(40% 0.020 207);
+        --color-text-subtle:  oklch(55% 0.018 210);
+        --color-border:       oklch(44% 0.155 204 / 0.20);
+        --color-border-hover: oklch(44% 0.155 204 / 0.45);
+        --color-ok:           oklch(35% 0.14 145);
+        --color-danger:       oklch(45% 0.18 25);
+      }
+
+      /* ── Reset ── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: var(--font);
+        background: var(--color-bg);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        line-height: 1.6;
+      }
+
+      a { color: var(--color-lake-lt); }
+
+      /* ── Admin Shell ── */
+      .admin-shell {
+        display: grid;
+        grid-template-columns: var(--admin-sidebar-w) 1fr;
+        grid-template-rows: var(--admin-header-h) 1fr;
+        min-height: 100dvh;
+      }
+
+      .admin-header {
+        grid-column: 1 / -1;
+        background: var(--color-bg-alt);
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        align-items: center;
+        padding-inline: 1rem;
+        gap: 1rem;
+      }
+
+      .admin-header__logo {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.05em;
+        color: var(--color-lake-lt);
+      }
+
+      .admin-header__spacer { flex: 1; }
+
+      .theme-toggle {
+        background: transparent;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        color: var(--color-text-muted);
+        padding: 0.25rem 0.625rem;
+        font-family: var(--font);
+        font-size: 0.8125rem;
+        font-weight: 400;
+        cursor: pointer;
+        line-height: 1.5;
+      }
+      .theme-toggle:hover {
+        border-color: var(--color-border-hover);
+        color: var(--color-text);
+      }
+
       .admin-sidebar {
-        flex: 0 0 180px; width: 180px;
-        background: var(--card); border-right: 1px solid var(--line);
-        padding: 16px 10px; position: sticky; top: 0; height: 100vh;
+        background: var(--color-bg-alt);
+        border-right: 1px solid var(--color-border);
+        padding: 1rem 0;
+        overflow-y: auto;
       }
-      .admin-logo { font-weight: 700; margin: 2px 0 10px; font-size: 0.95rem; color: var(--muted); }
-      .admin-nav { display: flex; flex-direction: column; gap: 4px; }
-      .admin-nav-link { display: block; padding: 7px 10px; border-radius: 8px; color: inherit; text-decoration: none; }
-      .admin-nav-link:hover { background: #f3f4f6; }
-      .admin-nav-link.active { background: var(--accent); color: #fff; }
-      .admin-content { flex: 1; min-width: 0; }
-      /* tabs */
-      .tab-bar { display: flex; gap: 4px; margin-bottom: 12px; }
-      .tab-btn { background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 18px; cursor: pointer; font-size: 0.92rem; }
-      .tab-btn:hover { background: #f3f4f6; }
-      .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-      /* search */
-      .search-bar { width: 100%; max-width: 340px; margin-bottom: 10px; }
+
+      .admin-content {
+        padding: var(--admin-content-p);
+        overflow-y: auto;
+      }
+
+      /* ── Sidebar Nav ── */
+      .admin-nav { display: flex; flex-direction: column; }
+
+      .admin-nav-link {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        color: var(--color-text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-left: 2px solid transparent;
+        text-decoration: none;
+      }
+      .admin-nav-link:hover {
+        color: var(--color-text);
+        background: var(--color-lake-mist);
+      }
+      .admin-nav-link.active {
+        color: var(--color-lake-lt);
+        border-left-color: var(--color-lake);
+        background: var(--color-lake-mist);
+      }
+
+      /* ── Cards ── */
+      .card {
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: 1.25rem;
+        margin-bottom: 0.75rem;
+      }
+
+      /* ── Typography ── */
+      h1 { margin: 0 0 0.625rem; font-size: 1.25rem; font-weight: 600; }
+      .muted { color: var(--color-text-muted); font-size: 0.875rem; }
+      .small { font-size: 0.875rem; }
+      .hidden { display: none !important; }
+
+      /* ── Form Elements ── */
+      label {
+        display: block;
+        font-size: 0.75rem;
+        margin-bottom: 0.25rem;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      input, select, textarea {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        background: var(--color-bg-alt);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        color: var(--color-text);
+        padding: 0.5rem 0.75rem;
+        width: 100%;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--color-lake);
+      }
+      textarea { min-height: 5.625rem; resize: vertical; }
+      option { background: var(--color-bg-alt); color: var(--color-text); }
+
+      /* ── Buttons ── */
+      button {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        padding: 0.5rem 1rem;
+        background: var(--color-lake-deep);
+        color: var(--color-text);
+      }
+      button:hover { background: var(--color-lake); }
+
+      button.secondary {
+        background: transparent;
+        border-color: var(--color-border);
+        color: var(--color-lake-lt);
+        font-weight: 500;
+      }
+      button.secondary:hover {
+        background: var(--color-lake-mist);
+        border-color: var(--color-border-hover);
+      }
+
+      button.icon-btn {
+        background: transparent;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
+        padding: 0.3125rem 0.5rem;
+        font-size: 1rem;
+        line-height: 1;
+        font-weight: 400;
+      }
+      button.icon-btn:hover {
+        background: var(--color-lake-mist);
+        border-color: var(--color-border-hover);
+        color: var(--color-text);
+      }
+
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* ── Tables ── */
+      table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+      th {
+        text-align: left;
+        padding: 0.625rem 0.75rem;
+        color: var(--color-text-subtle);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid var(--color-border);
+      }
+      td {
+        padding: 0.625rem 0.75rem;
+        color: var(--color-text);
+        border-bottom: 1px solid var(--color-border);
+        height: var(--admin-row-h);
+        vertical-align: top;
+      }
+      tbody tr.clickable { cursor: pointer; }
+      tbody tr.clickable:hover td { background: var(--color-lake-mist); }
+
+      /* ── Status ── */
+      .status { margin-top: 0.5rem; min-height: 1.4em; }
+      .ok { color: var(--color-ok); }
+      .err { color: var(--color-danger); white-space: pre-wrap; }
+
+      /* ── Layout Helpers ── */
+      .row { display: flex; gap: 0.625rem; flex-wrap: wrap; align-items: flex-end; }
+      .col { display: flex; flex-direction: column; }
+      .btnrow { display: flex; gap: 0.5rem; justify-content: flex-end; }
+      .search-bar { width: 100%; max-width: 340px; margin-bottom: 0.625rem; }
+
+      /* ── Grid / Image ── */
+      .grid2 { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0.625rem; }
+      .thumb { width: 100%; max-width: 220px; height: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+      .input-with-btn { display: flex; gap: 0.375rem; align-items: center; }
+      .input-with-btn input { flex: 1; min-width: 0; }
+
+      /* ── Tabs ── */
+      .tab-bar { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
+      .tab-btn {
+        background: transparent;
+        color: var(--color-text-muted);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        padding: 0.4375rem 1.125rem;
+        cursor: pointer;
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+      .tab-btn:hover {
+        background: var(--color-lake-mist);
+        color: var(--color-text);
+      }
+      .tab-btn.active {
+        background: var(--color-lake-deep);
+        color: var(--color-text);
+        border-color: var(--color-lake-deep);
+        font-weight: 600;
+      }
+
+      /* ── Overlay / Modal ── */
+      .overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.65); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+      .modal { width: min(900px, 96vw); max-height: min(94vh, 900px); overflow: auto; }
+
+      /* ── Mobile ── */
+      @media (max-width: 48rem) {
+        .admin-shell { grid-template-columns: 1fr; }
+        .admin-sidebar { display: none; }
+        .admin-sidebar.is-open { display: block; position: fixed; inset: var(--admin-header-h) 0 0 0; z-index: 100; }
+      }
+      @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
-    <div class="admin-layout">
+    <div class="admin-shell">
+      <header class="admin-header">
+        <span class="admin-header__logo">Admin</span>
+        <span class="admin-header__spacer"></span>
+        <button class="theme-toggle" id="themeToggle" type="button" title="Toggle light/dark mode">Light</button>
+      </header>
       <nav class="admin-sidebar">
-        <div class="admin-logo">Admin</div>
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
           <a href="session-types.html" class="admin-nav-link" data-page="session-types">Edit Offers</a>
@@ -145,7 +379,7 @@
     <!-- ── SESSION TYPE modal ─────────────────────────────────────────────── -->
     <div id="stOverlay" class="overlay hidden" aria-hidden="true">
       <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="stTitle">
-        <h1 id="stTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit session type</h1>
+        <h1 id="stTitle" style="font-size: 1.125rem; margin-bottom: 0.5rem;">Edit session type</h1>
         <div class="grid2">
           <div class="col">
             <label for="stFTitle">Title</label>
@@ -173,11 +407,7 @@
           </div>
           <div class="col">
             <label for="stFStatus">Status</label>
-            <select id="stFStatus">
-              <option value="draft">draft</option>
-              <option value="active">active</option>
-              <option value="hidden">hidden</option>
-            </select>
+            <select id="stFStatus"></select>
           </div>
           <div class="col">
             <label for="stFSort">Sort order</label>
@@ -213,7 +443,7 @@
           </div>
         </div>
         <div id="stEditMsg" class="status muted"></div>
-        <div class="btnrow" style="margin-top: 10px;">
+        <div class="btnrow" style="margin-top: 0.625rem;">
           <button id="stClose" type="button" class="secondary">Close</button>
           <button id="stSave" type="button">Save</button>
         </div>
@@ -223,7 +453,7 @@
     <!-- ── EVENT modal ────────────────────────────────────────────────────── -->
     <div id="evOverlay" class="overlay hidden" aria-hidden="true">
       <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="evTitle">
-        <h1 id="evTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit event</h1>
+        <h1 id="evTitle" style="font-size: 1.125rem; margin-bottom: 0.5rem;">Edit event</h1>
         <div class="grid2">
           <div class="col">
             <label for="evFTitle">Title</label>
@@ -235,12 +465,7 @@
           </div>
           <div class="col">
             <label for="evFStatus">Status</label>
-            <select id="evFStatus">
-              <option value="draft">draft</option>
-              <option value="published">published</option>
-              <option value="cancelled">cancelled</option>
-              <option value="sold_out">sold_out</option>
-            </select>
+            <select id="evFStatus"></select>
           </div>
           <div class="col">
             <label for="evFCapacity">Capacity</label>
@@ -319,13 +544,28 @@
           </div>
         </div>
         <div id="evEditMsg" class="status muted"></div>
-        <div class="btnrow" style="margin-top: 10px;">
+        <div class="btnrow" style="margin-top: 0.625rem;">
           <button id="evClose" type="button" class="secondary">Close</button>
           <button id="evSave" type="button">Save</button>
         </div>
       </div>
     </div>
 
+    <script>
+      (function() {
+        var btn = document.getElementById('themeToggle');
+        function update() {
+          var isLight = document.documentElement.classList.contains('theme-light');
+          if (btn) btn.textContent = isLight ? 'Dark' : 'Light';
+        }
+        update();
+        if (btn) btn.addEventListener('click', function() {
+          document.documentElement.classList.toggle('theme-light');
+          localStorage.setItem('yb-theme', document.documentElement.classList.contains('theme-light') ? 'light' : 'dark');
+          update();
+        });
+      })();
+    </script>
     <script src="js/layout.js"></script>
     <script src="js/api-base.js"></script>
     <script src="js/admin-auth.js"></script>

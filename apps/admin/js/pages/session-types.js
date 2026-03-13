@@ -3,6 +3,8 @@
 
   const R2_BASE = 'https://images.letsilluminate.co';
   const DRIVE_BASE = 'https://drive.google.com/file/d';
+  const SESSION_TYPE_STATUSES = ['draft', 'active', 'hidden'];
+  const EVENT_STATUSES = ['draft', 'published', 'cancelled', 'sold_out'];
 
   const state = {
     tab: 'session-types',
@@ -45,6 +47,20 @@
     const d = new Date(iso);
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function setStatusOptions(selectEl, options) {
+    selectEl.innerHTML = '';
+    for (const value of options) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      selectEl.appendChild(option);
+    }
+  }
+
+  function pickAllowedStatus(rawValue, allowed, fallback) {
+    return allowed.includes(rawValue) ? rawValue : fallback;
   }
 
   const stView = document.getElementById('stView');
@@ -110,6 +126,8 @@
   const stImgPreview = document.getElementById('stImgPreview');
   const stSaveBtn = document.getElementById('stSave');
 
+  setStatusOptions(stFStatus, SESSION_TYPE_STATUSES);
+
   function renderST() {
     stBody.innerHTML = '';
     let rows = state.stRows;
@@ -154,7 +172,7 @@
   function openST(row) {
     state.stEditing = row ? { ...row } : {
       title: '', slug: '', short_description: '', description: '', duration_minutes: 60, price: 0, currency: 'CHF',
-      status: 'draft', sort_order: 0, image_key: null, image_alt: null, drive_file_id: null,
+      status: SESSION_TYPE_STATUSES[0], sort_order: 0, image_key: null, image_alt: null, drive_file_id: null,
     };
     stFTitle.value = state.stEditing.title || '';
     stFSlug.value = state.stEditing.slug || '';
@@ -163,7 +181,7 @@
     stFDuration.value = state.stEditing.duration_minutes || 60;
     stFPrice.value = Number(state.stEditing.price || 0);
     stFCurrency.value = state.stEditing.currency || 'CHF';
-    stFStatus.value = state.stEditing.status || 'draft';
+    stFStatus.value = pickAllowedStatus(state.stEditing.status, SESSION_TYPE_STATUSES, SESSION_TYPE_STATUSES[0]);
     stFSort.value = state.stEditing.sort_order || 0;
     stFAlt.value = state.stEditing.image_alt || '';
     stFImageKey.value = state.stEditing.image_key || '';
@@ -305,6 +323,8 @@
   const evImgPreview = document.getElementById('evImgPreview');
   const evSaveBtn = document.getElementById('evSave');
 
+  setStatusOptions(evFStatus, EVENT_STATUSES);
+
   function renderEV() {
     evBody.innerHTML = '';
     let rows = state.evRows;
@@ -348,12 +368,12 @@
       title: '', slug: '', description: '', starts_at: '', ends_at: '',
       timezone: 'Europe/Zurich', location_name: '', address_line: '', maps_url: '',
       is_paid: false, price_per_person_cents: null, currency: 'CHF', capacity: 0,
-      status: 'draft', image_key: null, drive_file_id: null, image_alt: null, whatsapp_group_invite_url: null,
+      status: EVENT_STATUSES[0], image_key: null, drive_file_id: null, image_alt: null, whatsapp_group_invite_url: null,
     };
     const ev = state.evEditing;
     evFTitle.value = ev.title || '';
     evFSlug.value = ev.slug || '';
-    evFStatus.value = ev.status || 'draft';
+    evFStatus.value = pickAllowedStatus(ev.status, EVENT_STATUSES, EVENT_STATUSES[0]);
     evFCapacity.value = ev.capacity || '';
     evFStartsAt.value = isoToLocal(ev.starts_at);
     evFEndsAt.value = isoToLocal(ev.ends_at);

@@ -5,210 +5,277 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ILLUMINATE Admin</title>
     <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>if(localStorage.getItem('yb-theme')==='light')document.documentElement.classList.add('theme-light');</script>
     <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+      /* ── Design Tokens ── */
       :root {
-        --bg: #f7f6f2;
-        --card: #ffffff;
-        --ink: #1f2937;
-        --muted: #6b7280;
-        --line: #d1d5db;
-        --accent: #0d9488;
-        --danger: #b91c1c;
+        --color-bg:           oklch(11%  0.022 210);
+        --color-bg-alt:       oklch(14%  0.025 208);
+        --color-bg-card:      oklch(17%  0.030 207);
+        --color-lake-deep:    oklch(44%  0.155 204);
+        --color-lake:         oklch(59%  0.160 200);
+        --color-lake-lt:      oklch(73%  0.130 195);
+        --color-lake-mist:    oklch(59%  0.160 200 / 0.14);
+        --color-text:         oklch(91%  0.015 200);
+        --color-text-muted:   oklch(65%  0.020 207);
+        --color-text-subtle:  oklch(48%  0.018 210);
+        --color-border:       oklch(59%  0.160 200 / 0.18);
+        --color-border-hover: oklch(59%  0.160 200 / 0.42);
+        --color-ok:           oklch(75%  0.14 145);
+        --color-danger:       oklch(72%  0.18 25);
+        --radius-sm: 0.375rem;
+        --radius-md: 0.75rem;
+        --admin-sidebar-w: 15rem;
+        --admin-header-h:  3.5rem;
+        --admin-content-p: 1.5rem;
+        --admin-row-h:     2.75rem;
+        --font: 'Inter', system-ui, -apple-system, sans-serif;
       }
-      * { box-sizing: border-box; }
+
+      html.theme-light {
+        --color-bg:           oklch(97% 0.006 210);
+        --color-bg-alt:       oklch(93% 0.008 210);
+        --color-bg-card:      oklch(100% 0 0);
+        --color-text:         oklch(15% 0.025 210);
+        --color-text-muted:   oklch(40% 0.020 207);
+        --color-text-subtle:  oklch(55% 0.018 210);
+        --color-border:       oklch(44% 0.155 204 / 0.20);
+        --color-border-hover: oklch(44% 0.155 204 / 0.45);
+        --color-ok:           oklch(35% 0.14 145);
+        --color-danger:       oklch(45% 0.18 25);
+      }
+
+      /* ── Reset ── */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
       body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font-family: "Segoe UI", Tahoma, sans-serif;
+        font-family: var(--font);
+        background: var(--color-bg);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        line-height: 1.6;
       }
-      main {
-        width: min(1180px, 96vw);
-        margin: 22px auto 44px;
+
+      a { color: var(--color-lake-lt); }
+
+      /* ── Admin Shell ── */
+      .admin-shell {
+        display: grid;
+        grid-template-columns: var(--admin-sidebar-w) 1fr;
+        grid-template-rows: var(--admin-header-h) 1fr;
+        min-height: 100dvh;
       }
-      .card {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 12px;
-      }
-      h1 {
-        margin: 0 0 10px;
-        font-size: 1.4rem;
-      }
-      .muted {
-        color: var(--muted);
-        font-size: 0.92rem;
-      }
-      .row {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        align-items: end;
-      }
-      .col {
-        display: flex;
-        flex-direction: column;
-      }
-      .hidden { display: none !important; }
-      .small {
-        font-size: 0.85rem;
-      }
-      .status {
-        margin-top: 8px;
-        min-height: 1.4em;
-      }
-      label {
-        display: block;
-        font-size: 0.82rem;
-        margin-bottom: 4px;
-        color: var(--muted);
-      }
-      input, select, textarea, button {
-        font: inherit;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 8px 10px;
-        background: #fff;
-      }
-      textarea {
-        min-height: 90px;
-        resize: vertical;
-      }
-      button {
-        background: var(--accent);
-        color: #fff;
-        border-color: var(--accent);
-        cursor: pointer;
-      }
-      button.secondary {
-        background: #fff;
-        color: var(--ink);
-        border-color: var(--line);
-      }
-      button:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
-      a {
-        color: var(--accent);
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        background: #fff;
-      }
-      th, td {
-        text-align: left;
-        border-bottom: 1px solid var(--line);
-        padding: 8px;
-        font-size: 0.9rem;
-      }
-      th {
-        font-size: 0.8rem;
-        color: var(--muted);
-        text-transform: uppercase;
-      }
-      tbody tr.clickable {
-        cursor: pointer;
-      }
-      tbody tr.clickable:hover {
-        background: #f8fafc;
-      }
-      .ok {
-        color: #047857;
-      }
-      .err {
-        color: var(--danger);
-        white-space: pre-wrap;
-      }
-      td.notes-cell {
-        max-width: 220px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        color: var(--muted);
-        font-size: 0.85rem;
-      }
-      .overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.55);
+
+      .admin-header {
+        grid-column: 1 / -1;
+        background: var(--color-bg-alt);
+        border-bottom: 1px solid var(--color-border);
         display: flex;
         align-items: center;
-        justify-content: center;
-        z-index: 1000;
+        padding-inline: 1rem;
+        gap: 1rem;
       }
-      .modal {
-        width: min(980px, 96vw);
-        max-height: min(92vh, 880px);
-        overflow: auto;
+
+      .admin-header__logo {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.05em;
+        color: var(--color-lake-lt);
       }
-      .details-grid {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 8px 0 14px;
+
+      .admin-header__spacer { flex: 1; }
+
+      .theme-toggle {
+        background: transparent;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        color: var(--color-text-muted);
+        padding: 0.25rem 0.625rem;
+        font-family: var(--font);
+        font-size: 0.8125rem;
+        font-weight: 400;
+        cursor: pointer;
+        line-height: 1.5;
       }
-      .details-grid td {
-        padding: 6px 8px;
-        border-bottom: 1px solid var(--line);
-        font-size: 0.9rem;
-        vertical-align: top;
+      .theme-toggle:hover {
+        border-color: var(--color-border-hover);
+        color: var(--color-text);
       }
-      .details-grid td:first-child {
-        width: 180px;
-        color: var(--muted);
-        font-size: 0.82rem;
-        text-transform: uppercase;
-      }
-      .btnrow {
-        display: flex;
-        gap: 8px;
-        justify-content: flex-end;
-      }
-      /* admin sidebar layout */
-      .admin-layout { display: flex; min-height: 100vh; }
+
       .admin-sidebar {
-        flex: 0 0 180px;
-        width: 180px;
-        background: var(--card);
-        border-right: 1px solid var(--line);
-        padding: 16px 10px;
-        position: sticky;
-        top: 0;
-        height: 100vh;
+        background: var(--color-bg-alt);
+        border-right: 1px solid var(--color-border);
+        padding: 1rem 0;
+        overflow-y: auto;
       }
-      .admin-logo { font-weight: 700; margin: 2px 0 10px; font-size: 0.95rem; color: var(--muted); }
-      .admin-nav { display: flex; flex-direction: column; gap: 4px; }
+
+      .admin-content {
+        padding: var(--admin-content-p);
+        overflow-y: auto;
+      }
+
+      /* ── Sidebar Nav ── */
+      .admin-nav { display: flex; flex-direction: column; }
+
       .admin-nav-link {
-        display: block;
-        padding: 7px 10px;
-        border-radius: 8px;
-        color: inherit;
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        color: var(--color-text-muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        border-left: 2px solid transparent;
         text-decoration: none;
       }
-      .admin-nav-link:hover { background: #f3f4f6; }
-      .admin-nav-link.active { background: var(--accent); color: #fff; }
-      .admin-content { flex: 1; min-width: 0; }
-      .search-bar { width: 100%; max-width: 340px; margin-bottom: 10px; }
+      .admin-nav-link:hover {
+        color: var(--color-text);
+        background: var(--color-lake-mist);
+      }
+      .admin-nav-link.active {
+        color: var(--color-lake-lt);
+        border-left-color: var(--color-lake);
+        background: var(--color-lake-mist);
+      }
+
+      /* ── Cards ── */
+      .card {
+        background: var(--color-bg-card);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: 1.25rem;
+        margin-bottom: 0.75rem;
+      }
+
+      /* ── Typography ── */
+      h1 { margin: 0 0 0.625rem; font-size: 1.25rem; font-weight: 600; }
+      .muted { color: var(--color-text-muted); font-size: 0.875rem; }
+      .small { font-size: 0.875rem; }
+      .hidden { display: none !important; }
+
+      /* ── Form Elements ── */
+      label {
+        display: block;
+        font-size: 0.75rem;
+        margin-bottom: 0.25rem;
+        color: var(--color-text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      input, select, textarea {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        background: var(--color-bg-alt);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        color: var(--color-text);
+        padding: 0.5rem 0.75rem;
+        width: 100%;
+      }
+      input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: var(--color-lake);
+      }
+      textarea { min-height: 5.625rem; resize: vertical; }
+      option { background: var(--color-bg-alt); color: var(--color-text); }
+
+      /* ── Buttons ── */
+      button {
+        font-family: var(--font);
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: 1px solid transparent;
+        border-radius: var(--radius-sm);
+        padding: 0.5rem 1rem;
+        background: var(--color-lake-deep);
+        color: var(--color-text);
+      }
+      button:hover { background: var(--color-lake); }
+
+      button.secondary {
+        background: transparent;
+        border-color: var(--color-border);
+        color: var(--color-lake-lt);
+        font-weight: 500;
+      }
+      button.secondary:hover {
+        background: var(--color-lake-mist);
+        border-color: var(--color-border-hover);
+      }
+
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* ── Tables ── */
+      table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+      th {
+        text-align: left;
+        padding: 0.625rem 0.75rem;
+        color: var(--color-text-subtle);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid var(--color-border);
+      }
+      td {
+        padding: 0.625rem 0.75rem;
+        color: var(--color-text);
+        border-bottom: 1px solid var(--color-border);
+        height: var(--admin-row-h);
+        vertical-align: top;
+      }
+      tbody tr.clickable { cursor: pointer; }
+      tbody tr.clickable:hover td { background: var(--color-lake-mist); }
+
+      /* ── Status ── */
+      .status { margin-top: 0.5rem; min-height: 1.4em; }
+      .ok { color: var(--color-ok); }
+      .err { color: var(--color-danger); white-space: pre-wrap; }
+
+      /* ── Layout Helpers ── */
+      .row { display: flex; gap: 0.625rem; flex-wrap: wrap; align-items: flex-end; }
+      .col { display: flex; flex-direction: column; }
+      .btnrow { display: flex; gap: 0.5rem; justify-content: flex-end; }
+      .search-bar { width: 100%; max-width: 340px; margin-bottom: 0.625rem; }
+
+      /* ── Details Grid ── */
+      .details-grid { width: 100%; border-collapse: collapse; margin: 0.5rem 0 0.875rem; }
+      .details-grid td { padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--color-border); font-size: 0.875rem; vertical-align: top; }
+      .details-grid td:first-child { width: 180px; color: var(--color-text-subtle); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+      /* ── Overlay / Modal ── */
+      .overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.65); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+      .modal { width: min(980px, 96vw); max-height: min(92vh, 880px); overflow: auto; }
+
+      /* ── Notes cell ── */
+      td.notes-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-muted); }
+
+      /* ── Mobile ── */
+      @media (max-width: 48rem) {
+        .admin-shell { grid-template-columns: 1fr; }
+        .admin-sidebar { display: none; }
+        .admin-sidebar.is-open { display: block; position: fixed; inset: var(--admin-header-h) 0 0 0; z-index: 100; }
+      }
       @media (max-width: 760px) {
-        main {
-          width: min(96vw, 96vw);
-        }
-        th:nth-child(4), td:nth-child(4) {
-          display: none;
-        }
-        th:nth-child(6), td:nth-child(6) {
-          display: none;
-        }
+        th:nth-child(4), td:nth-child(4) { display: none; }
+        th:nth-child(6), td:nth-child(6) { display: none; }
       }
     </style>
   </head>
   <body>
-    <div class="admin-layout">
+    <div class="admin-shell">
+      <header class="admin-header">
+        <span class="admin-header__logo">Admin</span>
+        <span class="admin-header__spacer"></span>
+        <button class="theme-toggle" id="themeToggle" type="button" title="Toggle light/dark mode">Light</button>
+      </header>
       <nav class="admin-sidebar">
-        <div class="admin-logo">Admin</div>
         <div class="admin-nav">
           <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
           <a href="session-types.html" class="admin-nav-link" data-page="session-types">Edit Offers</a>
@@ -249,7 +316,7 @@
       </section>
 
       <section class="card" id="eventActionsCard">
-        <div class="row" style="align-items: end;">
+        <div class="row" style="align-items: flex-end;">
           <div class="col">
             <label>Late-access link</label>
             <button id="rotateLateAccess" type="button">Rotate late-access</button>
@@ -281,7 +348,7 @@
 
     <div id="editOverlay" class="overlay hidden" aria-hidden="true">
       <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
-        <h1 id="editTitle" style="font-size: 1.2rem; margin-bottom: 8px;">Edit booking</h1>
+        <h1 id="editTitle" style="font-size: 1.125rem; margin-bottom: 0.5rem;">Edit booking</h1>
         <table class="details-grid" id="editReadonlyDetails" aria-label="Booking details"></table>
         <div class="row">
           <div class="col" style="flex: 1 1 200px;">
@@ -294,7 +361,7 @@
           </div>
         </div>
 
-        <div class="row" style="margin-top: 10px;">
+        <div class="row" style="margin-top: 0.625rem;">
           <div class="col" style="flex: 1 1 260px;">
             <label for="editEmail">Email</label>
             <input id="editEmail" type="email" />
@@ -305,7 +372,7 @@
           </div>
         </div>
 
-        <div class="row" style="margin-top: 10px;">
+        <div class="row" style="margin-top: 0.625rem;">
           <div class="col" style="flex: 1 1 220px;">
             <label for="editStatus">Booking status</label>
             <select id="editStatus">
@@ -319,7 +386,7 @@
           </div>
         </div>
 
-        <div class="row" style="margin-top: 10px;">
+        <div class="row" style="margin-top: 0.625rem;">
           <div class="col" style="flex: 1 1 320px;">
             <label for="editNotes">Notes</label>
             <textarea id="editNotes"></textarea>
@@ -328,7 +395,7 @@
 
         <div id="editMsg" class="status muted"></div>
 
-        <div class="btnrow" style="margin-top: 10px;">
+        <div class="btnrow" style="margin-top: 0.625rem;">
           <button id="editOpenManage" type="button" class="secondary">Manage booking</button>
           <button id="editCopyClientManage" type="button" class="secondary">Copy client manage link</button>
           <button id="editClose" type="button" class="secondary">Close</button>
@@ -337,6 +404,21 @@
       </div>
     </div>
 
+    <script>
+      (function() {
+        var btn = document.getElementById('themeToggle');
+        function update() {
+          var isLight = document.documentElement.classList.contains('theme-light');
+          if (btn) btn.textContent = isLight ? 'Dark' : 'Light';
+        }
+        update();
+        if (btn) btn.addEventListener('click', function() {
+          document.documentElement.classList.toggle('theme-light');
+          localStorage.setItem('yb-theme', document.documentElement.classList.contains('theme-light') ? 'light' : 'dark');
+          update();
+        });
+      })();
+    </script>
     <script src="js/layout.js"></script>
     <script src="js/api-base.js"></script>
     <script src="js/admin-auth.js"></script>
