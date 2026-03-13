@@ -45,9 +45,11 @@ describe('admin config page', () => {
 
     const rows = Array.from(document.querySelectorAll('#timingBody tr'))
     expect(rows).toHaveLength(2)
-    expect(rows[0]?.textContent).toContain('Admin manage token expiry')
-    expect(rows[0]?.textContent).toContain('adminManageTokenExpiryMinutes')
-    expect(rows[0]?.textContent).toContain('30')
+    expect(rows[0]?.textContent).toContain('Stale processing timeout')
+    expect(rows[0]?.textContent).toContain('sideEffectProcessingTimeoutMinutes')
+    expect(rows[0]?.textContent).toContain('10')
+    expect(rows[1]?.textContent).toContain('Admin manage token expiry')
+    expect(rows[1]?.textContent).toContain('30')
   })
 
   it('adds the config link to the side menu across admin pages', () => {

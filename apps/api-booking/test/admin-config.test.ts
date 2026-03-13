@@ -26,6 +26,8 @@ describe('Admin config overrides', () => {
         }),
       ]),
     }));
+    const values = body.timing_delays.entries.map((entry: { value: number }) => entry.value);
+    expect(values).toEqual([...values].sort((a, b) => a - b));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_config_request_decision',
       context: expect.objectContaining({

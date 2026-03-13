@@ -217,12 +217,14 @@ export function resetBookingPolicyForTests(): void {
 export function listBookingPolicyTimingDelayRows(
   policy: BookingPolicyConfig = DEFAULT_BOOKING_POLICY,
 ): BookingPolicyTimingDelayRow[] {
-  return BOOKING_POLICY_TIMING_DELAY_FIELDS.map((field) => ({
-    name: field.name,
-    keyname: field.keyname,
-    value: policy[field.keyname],
-    description: field.description,
-  }));
+  return BOOKING_POLICY_TIMING_DELAY_FIELDS
+    .map((field) => ({
+      name: field.name,
+      keyname: field.keyname,
+      value: policy[field.keyname],
+      description: field.description,
+    }))
+    .sort((a, b) => a.value - b.value || a.name.localeCompare(b.name));
 }
 
 function formatHoursLabel(hours: number): string {

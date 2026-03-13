@@ -38,8 +38,11 @@
   function renderRows(rows) {
     const body = document.getElementById('timingBody');
     body.innerHTML = '';
+    const sortedRows = Array.isArray(rows)
+      ? rows.slice().sort((a, b) => Number(a.value) - Number(b.value) || String(a.name || '').localeCompare(String(b.name || '')))
+      : [];
 
-    if (!Array.isArray(rows) || !rows.length) {
+    if (!sortedRows.length) {
       const tr = document.createElement('tr');
       const td = document.createElement('td');
       td.colSpan = 4;
@@ -50,7 +53,7 @@
       return;
     }
 
-    for (const row of rows) {
+    for (const row of sortedRows) {
       const tr = document.createElement('tr');
       tr.appendChild(makeCell('Name', row.name || ''));
       tr.appendChild(makeCell('Keyname', makeCode(row.keyname || '')));
