@@ -30,6 +30,14 @@ import type {
   SessionTypeUpdate,
   TimeSlot,
 } from '../../types.js';
+import {
+  isEventPubliclyListed,
+  normalizeEventRow,
+  normalizeSessionTypeRow,
+  normalizeSessionTypeUpdateForDb,
+  toDbEventStatus,
+  toDbSessionTypeStatus,
+} from '../../lib/content-status.js';
 
 const now = () => new Date().toISOString();
 
@@ -279,31 +287,40 @@ export class MockRepository implements IRepository {
 
   async getPublishedEvents(): Promise<Event[]> {
     return [...mockState.events.values()]
-      .filter((event) => event.status === 'published')
+      .map((event) => normalizeEventRow(event))
+      .filter((event) => isEventPubliclyListed(event.status))
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
   }
 
   async getAllEvents(): Promise<Event[]> {
-    return [...mockState.events.values()].sort((a, b) => b.starts_at.localeCompare(a.starts_at));
+    return [...mockState.events.values()]
+      .map((event) => normalizeEventRow(event))
+      .sort((a, b) => b.starts_at.localeCompare(a.starts_at));
   }
 
   async updateEvent(id: string, updates: import('../../types.js').EventUpdate): Promise<Event> {
     const event = mockState.events.get(id);
     if (!event) throw new Error(`Event ${id} not found`);
-    const updated = { ...event, ...updates, updated_at: new Date().toISOString() };
+    const updated = normalizeEventRow({
+      ...event,
+      ...updates,
+      ...(updates.status ? { status: toDbEventStatus(updates.status) } : {}),
+      updated_at: new Date().toISOString(),
+    });
     mockState.events.set(id, updated);
     return updated;
   }
 
   async getEventBySlug(slug: string): Promise<Event | null> {
     for (const event of mockState.events.values()) {
-      if (event.slug === slug) return event;
+      if (event.slug === slug) return normalizeEventRow(event);
     }
     return null;
   }
 
   async getEventById(id: string): Promise<Event | null> {
-    return mockState.events.get(id) ?? null;
+    const event = mockState.events.get(id);
+    return event ? normalizeEventRow(event) : null;
   }
 
   async countEventActiveBookings(eventId: string, _nowIso: string): Promise<number> {
@@ -583,20 +600,23 @@ export class MockRepository implements IRepository {
   // ── Session types (offers) ───────────────────────────────────────────────
 
   async getPublicSessionTypes(): Promise<SessionTypeRecord[]> {
-    return MOCK_SESSION_TYPES.filter((sessionType) => sessionType.status === 'active');
+    return MOCK_SESSION_TYPES
+      .map((sessionType) => normalizeSessionTypeRow(sessionType))
+      .filter((sessionType) => sessionType.status === 'active');
   }
 
   async getAllSessionTypes(): Promise<SessionTypeRecord[]> {
-    return [...MOCK_SESSION_TYPES];
+    return MOCK_SESSION_TYPES.map((sessionType) => normalizeSessionTypeRow(sessionType));
   }
 
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
-    const record: SessionTypeRecord = {
+    const record = normalizeSessionTypeRow({
       ...data,
+      status: toDbSessionTypeStatus(data.status),
       id: `mock-${Date.now().toString(36)}`,
       created_at: now(),
       updated_at: now(),
-    };
+    });
     MOCK_SESSION_TYPES.push(record);
     return record;
   }
@@ -604,11 +624,11 @@ export class MockRepository implements IRepository {
   async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
     const index = MOCK_SESSION_TYPES.findIndex((sessionType) => sessionType.id === id);
     if (index === -1) throw new Error(`Session type ${id} not found`);
-    MOCK_SESSION_TYPES[index] = {
+    MOCK_SESSION_TYPES[index] = normalizeSessionTypeRow({
       ...MOCK_SESSION_TYPES[index]!,
-      ...updates,
+      ...normalizeSessionTypeUpdateForDb(updates),
       updated_at: now(),
-    };
+    });
     return MOCK_SESSION_TYPES[index]!;
   }
 

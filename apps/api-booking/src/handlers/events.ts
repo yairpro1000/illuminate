@@ -1,5 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest, notFound, errorResponse } from '../lib/errors.js';
+import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import {
   createEventBooking,
   createEventBookingWithAccess,
@@ -9,9 +10,20 @@ import { DEFAULT_BOOKING_POLICY } from '../domain/booking-effect-policy.js';
 import { hashToken } from '../services/token-service.js';
 
 // GET /api/events
-export async function handleGetEvents(_request: Request, ctx: AppContext): Promise<Response> {
+export async function handleGetEvents(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'public_events_request_started',
+    message: 'Loading public events',
+    context: {
+      path,
+      repository_mode: ctx.env.REPOSITORY_MODE,
+      branch_taken: 'load_public_events',
+    },
+  });
   try {
-    const events = await ctx.providers.repository.getPublishedEvents();
+    const events = (await ctx.providers.repository.getPublishedEvents()).map((event) => normalizeEventRow(event));
     const nowIso = new Date().toISOString();
 
     const enriched = await Promise.all(events.map(async (event) => {
@@ -19,8 +31,37 @@ export async function handleGetEvents(_request: Request, ctx: AppContext): Promi
       return { ...event, ...summary };
     }));
 
+    const statusCounts = enriched.reduce<Record<string, number>>((acc, event) => {
+      acc[event.status] = (acc[event.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'public_events_request_completed',
+      message: 'Loaded public events',
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        returned_event_count: enriched.length,
+        event_status_counts: statusCounts,
+        branch_taken: enriched.length > 0 ? 'return_public_events' : 'return_empty_public_events',
+        deny_reason: null,
+      },
+    });
+
     return ok({ events: enriched });
   } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'public_events_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        branch_taken: 'return_error_response',
+        deny_reason: err instanceof Error ? err.name : 'unknown_error',
+      },
+    });
     return errorResponse(err);
   }
 }
@@ -319,11 +360,12 @@ async function getBookableEventBySlug(
       event_slug: event.slug,
       event_status: event.status,
       skip_public_cutoff_check: Boolean(options?.skipPublicCutoffCheck),
-      branch_taken: event.status === 'published' ? 'allow_event_published' : 'deny_event_not_published',
-      deny_reason: event.status === 'published' ? null : 'event_not_published',
+      normalized_event_status: normalizeEventRow(event).status,
+      branch_taken: isEventPublished(event.status) ? 'allow_event_published' : 'deny_event_not_published',
+      deny_reason: isEventPublished(event.status) ? null : 'event_not_published',
     },
   });
-  if (event.status !== 'published') throw badRequest('Event is not open for booking');
+  if (!isEventPublished(event.status)) throw badRequest('Event is not open for booking');
 
   if (options?.skipPublicCutoffCheck) {
     ctx.logger.logInfo?.({
@@ -378,17 +420,18 @@ async function getBookableEventBySlug(
 async function buildEventState(eventId: string, nowIso: string, ctx: AppContext) {
   const event = await ctx.providers.repository.getEventById(eventId);
   if (!event) return {};
+  const normalizedEvent = normalizeEventRow(event);
 
   const nowMs = new Date(nowIso).getTime();
-  const startMs = new Date(event.starts_at).getTime();
+  const startMs = new Date(normalizedEvent.starts_at).getTime();
   const cutoffMs = startMs + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
 
-  const activeBookings = await ctx.providers.repository.countEventActiveBookings(event.id, nowIso);
-  const soldOut = activeBookings >= event.capacity;
-  const lateAccess = await ctx.providers.repository.getActiveEventLateAccessLinkForEvent(event.id, nowIso);
+  const activeBookings = await ctx.providers.repository.countEventActiveBookings(normalizedEvent.id, nowIso);
+  const soldOut = activeBookings >= normalizedEvent.capacity;
+  const lateAccess = await ctx.providers.repository.getActiveEventLateAccessLinkForEvent(normalizedEvent.id, nowIso);
 
   const publicRegistrationOpen =
-    event.status === 'published' &&
+    isEventPublished(normalizedEvent.status) &&
     nowMs <= cutoffMs &&
     !soldOut;
 
@@ -397,7 +440,7 @@ async function buildEventState(eventId: string, nowIso: string, ctx: AppContext)
   return {
     stats: {
       active_bookings: activeBookings,
-      capacity: event.capacity,
+      capacity: normalizedEvent.capacity,
     },
     render: {
       is_future: !isPast,

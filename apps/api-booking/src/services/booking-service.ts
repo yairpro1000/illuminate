@@ -19,6 +19,7 @@ import type {
 import type { CalendarEvent } from '../providers/calendar/interface.js';
 import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
+import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
 import {
@@ -1069,9 +1070,10 @@ export async function getBookingPublicActionInfoByPaymentSession(
 }
 
 export async function ensureEventPublicBookable(event: Event): Promise<void> {
-  if (event.status !== 'published') throw badRequest('Event is not open for booking');
+  const normalizedEvent = normalizeEventRow(event);
+  if (!isEventPublished(normalizedEvent.status)) throw badRequest('Event is not open for booking');
   const nowMs = Date.now();
-  const cutoffMs = new Date(event.starts_at).getTime()
+  const cutoffMs = new Date(normalizedEvent.starts_at).getTime()
     + DEFAULT_BOOKING_POLICY.publicEventCutoffAfterStartMinutes * 60_000;
   if (nowMs > cutoffMs) {
     throw gone('Public event registration is closed');

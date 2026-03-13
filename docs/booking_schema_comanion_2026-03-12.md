@@ -61,9 +61,9 @@ updated\_at
 
 ### **Status values**
 
-draft  
-active  
-hidden
+DRAFT  
+ACTIVE  
+HIDDEN
 
 ---
 
@@ -97,10 +97,10 @@ updated\_at
 
 ### **Event Status**
 
-draft  
-published  
-cancelled  
-sold\_out
+DRAFT  
+PUBLISHED  
+CANCELED  
+SOLD\_OUT
 
 ### **Constraints**
 

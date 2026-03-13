@@ -1,13 +1,53 @@
 import type { AppContext } from '../router.js';
 import { ok, created, badRequest, errorResponse } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
+import { normalizeSessionTypeRow } from '../lib/content-status.js';
 
 // GET /api/session-types (public)
-export async function handleGetSessionTypes(_request: Request, ctx: AppContext): Promise<Response> {
+export async function handleGetSessionTypes(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'public_session_types_request_started',
+    message: 'Loading public session types',
+    context: {
+      path,
+      repository_mode: ctx.env.REPOSITORY_MODE,
+      branch_taken: 'load_public_session_types',
+    },
+  });
   try {
-    const rows = await ctx.providers.repository.getPublicSessionTypes();
+    const rows = (await ctx.providers.repository.getPublicSessionTypes()).map((row) => normalizeSessionTypeRow(row));
+    const statusCounts = rows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.status] = (acc[row.status] ?? 0) + 1;
+      return acc;
+    }, {});
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'public_session_types_request_completed',
+      message: 'Loaded public session types',
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        returned_session_type_count: rows.length,
+        session_type_status_counts: statusCounts,
+        branch_taken: rows.length > 0 ? 'return_public_session_types' : 'return_empty_public_session_types',
+        deny_reason: null,
+      },
+    });
     return ok({ session_types: rows });
   } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'public_session_types_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        branch_taken: 'return_error_response',
+        deny_reason: err instanceof Error ? err.name : 'unknown_error',
+      },
+    });
     return errorResponse(err);
   }
 }

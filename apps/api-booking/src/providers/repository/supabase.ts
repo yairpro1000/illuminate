@@ -30,6 +30,14 @@ import type {
   NewSessionType,
   SessionTypeUpdate,
 } from '../../types.js';
+import {
+  isEventPubliclyListed,
+  normalizeEventRow,
+  normalizeEventUpdateForDb,
+  normalizeSessionTypeRow,
+  normalizeSessionTypeUpdateForDb,
+  toDbSessionTypeStatus,
+} from '../../lib/content-status.js';
 
 const BOOKING_SELECT = `
   *,
@@ -390,38 +398,48 @@ export class SupabaseRepository implements IRepository {
 
   async getPublishedEvents(): Promise<Event[]> {
     const rows = await requireData<Event[]>(
-      this.db.from('events').select('*').eq('status', 'published').order('starts_at', { ascending: true }),
+      this.db
+        .from('events')
+        .select('*')
+        .in('status', ['published', 'PUBLISHED', 'sold_out', 'SOLD_OUT'])
+        .order('starts_at', { ascending: true }),
       'Failed to load published events',
     );
-    return rows;
+    return rows
+      .map((row) => normalizeEventRow(row))
+      .filter((row) => isEventPubliclyListed(row.status));
   }
 
   async getAllEvents(): Promise<Event[]> {
-    return requireData<Event[]>(
+    const rows = await requireData<Event[]>(
       this.db.from('events').select('*').order('starts_at', { ascending: false }),
       'Failed to load all events',
     );
+    return rows.map((row) => normalizeEventRow(row));
   }
 
   async updateEvent(id: string, updates: import('../../types.js').EventUpdate): Promise<Event> {
-    return requireSingle<Event>(
-      this.db.from('events').update(updates).eq('id', id).select().single(),
+    const row = await requireSingle<Event>(
+      this.db.from('events').update(normalizeEventUpdateForDb(updates)).eq('id', id).select().single(),
       'Failed to update event',
     );
+    return normalizeEventRow(row);
   }
 
   async getEventBySlug(slug: string): Promise<Event | null> {
-    return maybeSingle<Event>(
+    const row = await maybeSingle<Event>(
       this.db.from('events').select('*').eq('slug', slug).limit(1).maybeSingle(),
       'Failed to load event by slug',
     );
+    return row ? normalizeEventRow(row) : null;
   }
 
   async getEventById(id: string): Promise<Event | null> {
-    return maybeSingle<Event>(
+    const row = await maybeSingle<Event>(
       this.db.from('events').select('*').eq('id', id).limit(1).maybeSingle(),
       'Failed to load event',
     );
+    return row ? normalizeEventRow(row) : null;
   }
 
   async countEventActiveBookings(eventId: string, _nowIso: string): Promise<number> {
@@ -833,12 +851,12 @@ export class SupabaseRepository implements IRepository {
       this.db
         .from('session_types')
         .select('*')
-        .eq('status', 'active')
+        .in('status', ['active', 'ACTIVE'])
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true }),
       'Failed to load public session types',
     );
-    return rows;
+    return rows.map((row) => normalizeSessionTypeRow(row));
   }
 
   async getAllSessionTypes(): Promise<SessionTypeRecord[]> {
@@ -850,28 +868,32 @@ export class SupabaseRepository implements IRepository {
         .order('created_at', { ascending: true }),
       'Failed to load session types',
     );
-    return rows;
+    return rows.map((row) => normalizeSessionTypeRow(row));
   }
 
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
-      this.db.from('session_types').insert(data).select('*').single(),
+      this.db
+        .from('session_types')
+        .insert({ ...data, status: toDbSessionTypeStatus(data.status) })
+        .select('*')
+        .single(),
       'Failed to create session type',
     );
-    return row;
+    return normalizeSessionTypeRow(row);
   }
 
   async updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
       this.db
         .from('session_types')
-        .update({ ...updates, updated_at: nowIso() })
+        .update({ ...normalizeSessionTypeUpdateForDb(updates), updated_at: nowIso() })
         .eq('id', id)
         .select('*')
         .single(),
       `Failed to update session type ${id}`,
     );
-    return row;
+    return normalizeSessionTypeRow(row);
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────

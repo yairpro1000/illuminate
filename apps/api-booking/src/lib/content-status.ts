@@ -1,4 +1,4 @@
-import type { Event, EventStatus, EventUpdate, SessionTypeRecord, SessionTypeStatus, SessionTypeUpdate } from '../types.js';
+import type { EventStatus, EventUpdate, SessionTypeStatus, SessionTypeUpdate } from '../types.js';
 
 function trimStatus(value: unknown): string {
   return String(value ?? '').trim();
@@ -46,14 +46,18 @@ export function isEventPubliclyListed(value: unknown): boolean {
   return status === 'published' || status === 'sold_out';
 }
 
-export function normalizeEventRow<T extends Pick<Event, 'status'>>(event: T): T {
+export function normalizeEventRow<T extends { status: unknown }>(
+  event: T,
+): Omit<T, 'status'> & { status: EventStatus } {
   return {
     ...event,
     status: normalizeEventStatus(event.status),
   };
 }
 
-export function normalizeSessionTypeRow<T extends Pick<SessionTypeRecord, 'status'>>(sessionType: T): T {
+export function normalizeSessionTypeRow<T extends { status: unknown }>(
+  sessionType: T,
+): Omit<T, 'status'> & { status: SessionTypeStatus } {
   return {
     ...sessionType,
     status: normalizeSessionTypeStatus(sessionType.status),
