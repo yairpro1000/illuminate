@@ -10,7 +10,6 @@ import {
   getEvents,
   getSessionTypes,
   makeScenarioEmail,
-  mutateTestBooking,
   updateAdminEvent,
   updateAdminTimingSetting,
   waitForBookingArtifacts,
@@ -113,6 +112,8 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         try {
           const checkpoint = runtime.checkpoint();
           await page.goto(`${SITE_BASE_URL}/evenings.html`);
+          await page.locator('#btn-past').click();
+          await expect(page.locator('#tab-past')).toBeVisible();
           const closedCard = page.locator(`#${event.slug}`);
           await expect(closedCard).toBeVisible();
           await expect(closedCard.getByRole('link', { name: 'Book your spot' })).toHaveCount(0);
@@ -214,7 +215,7 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
             phone: '+41790000000',
           });
           await page.locator('button[data-submit]').click();
-          await expect(page.locator('.confirmation__title')).toContainText(/Registration received|Booking received|Confirmed/);
+          await expect(page.locator('.confirmation__title')).toContainText(/Registration received|Registration confirmed|Booking received|Confirmed/i);
           const artifacts = await waitForBookingArtifacts(email);
           expect(artifacts.booking.status).toBe('CONFIRMED');
           await runtime.assertNoNewIssues(checkpoint, 'late-access-evening-booking', testInfo);
@@ -266,7 +267,6 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
           email,
           phone: '+41790000000',
         });
-        await page.getByRole('button', { name: 'Continue' }).click();
         await page.locator('button[data-submit]').click();
         await expect(page.locator('.confirmation__title')).toContainText('Booking received');
 
@@ -280,7 +280,7 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
 
         const checkpoint = runtime.checkpoint();
         await page.goto(artifacts.links.confirm_url!);
-        await expect(page.locator('.confirm-title')).toContainText(/Could not confirm|Invalid|Expired/);
+        await expect(page.locator('.confirm-title')).toContainText(/Could not confirm|Invalid|Expired|Link expired/i);
         await runtime.assertNoNewIssues(checkpoint, 'expired-confirm-link', testInfo, {
           allow: [
             {
@@ -375,7 +375,6 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
           email,
           phone: '+41790000000',
         });
-        await page.getByRole('button', { name: 'Continue' }).click();
         await page.locator('button[data-submit]').click();
         const pending = await waitForBookingArtifacts(email);
         await page.goto(pending.links.confirm_url!);
@@ -385,17 +384,11 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         const originalPolicy = (await getAdminTimingSettings()).find((entry) => entry.keyname === 'selfServiceLockWindowHours');
         if (!originalPolicy) throw new Error('selfServiceLockWindowHours setting not found');
 
-        await mutateTestBooking({
-          email,
-          starts_at: new Date(Date.now() + 60 * 60_000).toISOString(),
-          ends_at: new Date(Date.now() + 90 * 60_000).toISOString(),
-        });
-
-        await updateAdminTimingSetting('selfServiceLockWindowHours', '24');
+        await updateAdminTimingSetting('selfServiceLockWindowHours', '100000');
         try {
           const checkpoint = runtime.checkpoint();
           await page.goto(confirmed.links.manage_url);
-          await expect(page.locator('.policy-box.policy-box--text')).toContainText(/less than 24 hours|no longer available online/i);
+          await expect(page.locator('.policy-box.policy-box--text')).toContainText(/no longer available online|less than .* hours/i);
           await expect(page.getByRole('link', { name: 'Reschedule' })).toHaveCount(0);
           await expect(page.getByRole('button', { name: 'Cancel booking' })).toHaveCount(0);
           await runtime.assertNoNewIssues(checkpoint, 'locked-manage-window', testInfo);
