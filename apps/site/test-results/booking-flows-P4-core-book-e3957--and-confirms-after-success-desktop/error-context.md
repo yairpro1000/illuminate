@@ -1,45 +1,13 @@
 # Page snapshot
 
 ```yaml
-- generic [active] [ref=e1]:
-  - link "Skip to content" [ref=e2] [cursor=pointer]:
-    - /url: "#main"
-  - navigation "Main navigation" [ref=e3]:
-    - generic [ref=e4]:
-      - link "ILLUMINATE by Yair Benharroch" [ref=e5] [cursor=pointer]:
-        - /url: index.html
-      - list [ref=e6]:
-        - listitem [ref=e7]:
-          - link "How We Work" [ref=e8] [cursor=pointer]:
-            - /url: index.html#how-we-work
-        - listitem [ref=e9]:
-          - link "About" [ref=e10] [cursor=pointer]:
-            - /url: index.html#about
-        - listitem [ref=e11]:
-          - link "Evenings" [ref=e12] [cursor=pointer]:
-            - /url: evenings.html
-        - listitem [ref=e13]:
-          - link "Get in touch" [ref=e14] [cursor=pointer]:
-            - /url: contact.html
-      - link "Book a Session" [ref=e15] [cursor=pointer]:
-        - /url: sessions.html
-  - main [ref=e16]
-  - contentinfo [ref=e18]:
-    - generic [ref=e19]:
-      - generic [ref=e20]: ILLUMINATE by Yair Benharroch
-      - navigation "Footer navigation" [ref=e21]:
-        - link "How We Work" [ref=e22] [cursor=pointer]:
-          - /url: index.html#how-we-work
-        - link "About" [ref=e23] [cursor=pointer]:
-          - /url: index.html#about
-        - link "Evenings" [ref=e24] [cursor=pointer]:
-          - /url: evenings.html
-        - link "1:1 Sessions" [ref=e25] [cursor=pointer]:
-          - /url: sessions.html
-        - link "Get in touch" [ref=e26] [cursor=pointer]:
-          - /url: contact.html
-      - generic [ref=e27]: © 2026 ILLUMINATE · Yair Benharroch
-  - button "Switch to dark mode" [ref=e28] [cursor=pointer]:
-    - img [ref=e29]
-    - img [ref=e31]
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - paragraph [ref=e4]: ⚙ Dev mode — mock payment
+    - heading "Stripe Checkout (simulated)" [level=1] [ref=e5]
+    - paragraph [ref=e6]: "Amount: CHF 45.00 · Session: mock_cs_06cb7b54-7c14-4faa-953e-2f39b656b126"
+    - generic [ref=e7]:
+      - button "✓ Simulate payment success" [ref=e8] [cursor=pointer]
+      - button "✗ Simulate payment failure" [ref=e9] [cursor=pointer]
+    - paragraph [ref=e10]: This page only appears in PROVIDERS_MODE=mock
 ```

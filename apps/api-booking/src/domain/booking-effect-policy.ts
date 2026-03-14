@@ -16,7 +16,6 @@ import {
   resetBookingPolicyForTests,
 } from '../config/booking-policy.js';
 import { inferEntityFromIntent } from '../providers/repository/interface.js';
-
 export type { BookingPolicyConfig } from '../config/booking-policy.js';
 export { applyBookingPolicyOverridesForTests, getBookingPolicyConfig, getBookingPolicyText, resetBookingPolicyForTests } from '../config/booking-policy.js';
 

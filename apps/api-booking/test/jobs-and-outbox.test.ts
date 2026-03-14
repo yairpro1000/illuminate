@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runSideEffectsOutbox } from '../src/handlers/jobs.js';
+import { MockRepository } from '../src/providers/repository/mock.js';
 
 function makeCtx(overrides: any = {}) {
+  const policyRepository = new MockRepository();
   const bookingRow = {
     id: 'b1',
     client_id: 'c1',
@@ -110,6 +112,7 @@ function makeCtx(overrides: any = {}) {
         updated_at: '2026-03-01T00:00:00.000Z',
       },
     ]),
+    listSystemSettings: vi.fn().mockImplementation(() => policyRepository.listSystemSettings()),
   };
 
   return {

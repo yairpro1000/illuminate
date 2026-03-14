@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import confirmPageCode from '../js/pages/confirm.js?raw'
+import devPayPageCode from '../js/pages/dev-pay.js?raw'
 import paymentSuccessPageCode from '../js/pages/payment-success.js?raw'
 
 function evalCode(code) {
@@ -50,5 +51,36 @@ describe('post-booking pages', () => {
 
     expect(document.querySelector('.result-title')?.textContent).toContain('Payment confirmed')
     expect(document.querySelector('.result-card a')?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+  })
+
+  it('dev pay success redirects to payment-success after mock settlement', async () => {
+    document.body.innerHTML = `
+      <p id="dev-detail"></p>
+      <button id="btn-success">✓ Simulate payment success</button>
+      <button id="btn-fail">✗ Simulate payment failure</button>
+    `
+    let navigatedTo = null
+    const originalLocation = window.location
+    delete window.location
+    window.location = {
+      search: '?session_id=sess-123&amount=150&currency=chf',
+      get href() {
+        return navigatedTo
+      },
+      set href(value) {
+        navigatedTo = value
+      },
+    }
+
+    window.siteClient.requestJson = async () => ({ ok: true })
+
+    evalCode(devPayPageCode)
+    document.getElementById('btn-success')?.click()
+    await flush()
+
+    expect(document.getElementById('dev-detail')?.textContent).toContain('CHF 1.50')
+    expect(navigatedTo).toBe('payment-success?session_id=sess-123')
+
+    window.location = originalLocation
   })
 })
