@@ -564,14 +564,15 @@ ALTER TABLE "public"."clients" OWNER TO "postgres";
 
 CREATE TABLE IF NOT EXISTS "public"."contact_messages" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "client_id" "uuid",
+    "client_id" "uuid" NOT NULL,
     "topic" "text",
     "message" "text" NOT NULL,
     "status" "text" DEFAULT 'NEW'::"text" NOT NULL,
     "source" "text" DEFAULT 'WEBSITE_CONTACT_FORM'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "contact_messages_status_check" CHECK (("status" = ANY (ARRAY['NEW'::"text", 'HANDLED'::"text", 'ARCHIVED'::"text", 'SPAM'::"text"])))
+    CONSTRAINT "contact_messages_status_check" CHECK (("status" = ANY (ARRAY['NEW'::"text", 'HANDLED'::"text", 'ARCHIVED'::"text", 'SPAM'::"text"]))),
+    constraint contact_messages_client_id_fkey foreign KEY (client_id) references clients (id) on update CASCADE on delete RESTRICT
 );
 
 
