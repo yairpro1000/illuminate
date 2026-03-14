@@ -1,7 +1,7 @@
 import type { Providers } from '../providers/index.js';
 import type { Env } from '../env.js';
 import type { Logger } from '../lib/logger.js';
-import type { OperationContext } from '../lib/execution.js';
+import { extendOperationContext, type OperationContext } from '../lib/execution.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -71,6 +71,13 @@ export async function appendBookingEventWithEffects(
     source,
     payload: normalizedPayload,
   });
+  if (ctx.operation) {
+    extendOperationContext(ctx.operation, {
+      bookingId,
+      bookingEventId: event.id,
+      sideEffectAttemptId: null,
+    });
+  }
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(bookingId);
 

@@ -8,6 +8,7 @@ import type { Logger } from '../lib/logger.js';
 import type { AppContext } from '../router.js';
 import { consumeLatestProviderApiLogId, extendOperationContext, type OperationContext } from '../lib/execution.js';
 import { ok, unauthorized } from '../lib/errors.js';
+import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import {
   applyImmediateNonCronSideEffectsForTransition,
   buildContinuePaymentUrl,
@@ -541,13 +542,20 @@ async function dispatchSideEffect(
   }
 
   if (timing === 'expired') {
-    await ctx.providers.repository.createBookingSideEffectAttempt({
+    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
       api_log_id: apiLogId,
       status: 'FAILED',
       error_message: 'expired_without_execution',
     });
+    if (ctx.operation) {
+      extendOperationContext(ctx.operation, {
+        sideEffectId: effect.id,
+        sideEffectAttemptId: createdAttempt.id,
+      });
+    }
+    await syncApiLogOperationReferences(ctx.env, apiLogId, ctx.operation);
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'DEAD', updated_at: nowIso });
     return 'processed';
   }
@@ -558,13 +566,20 @@ async function dispatchSideEffect(
     await executeSideEffect(effect, ctx);
     const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation);
 
-    await ctx.providers.repository.createBookingSideEffectAttempt({
+    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
       api_log_id: providerApiLogId ?? apiLogId,
       status: 'SUCCESS',
       error_message: null,
     });
+    if (ctx.operation) {
+      extendOperationContext(ctx.operation, {
+        sideEffectId: effect.id,
+        sideEffectAttemptId: createdAttempt.id,
+      });
+    }
+    await syncApiLogOperationReferences(ctx.env, providerApiLogId ?? apiLogId, ctx.operation);
 
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'SUCCESS', updated_at: new Date().toISOString() });
     return 'processed';
@@ -589,13 +604,21 @@ async function dispatchSideEffect(
       return 'skipped';
     }
 
-    await ctx.providers.repository.createBookingSideEffectAttempt({
+    const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation) ?? apiLogId;
+    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
-      api_log_id: consumeLatestProviderApiLogId(ctx.operation) ?? apiLogId,
+      api_log_id: providerApiLogId,
       status: 'FAILED',
       error_message: errorMessage,
     });
+    if (ctx.operation) {
+      extendOperationContext(ctx.operation, {
+        sideEffectId: effect.id,
+        sideEffectAttemptId: createdAttempt.id,
+      });
+    }
+    await syncApiLogOperationReferences(ctx.env, providerApiLogId, ctx.operation);
 
     const nextStatus = sideEffectStatusAfterAttempt('FAILED', attemptNum, effect.max_attempts);
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus, updated_at: new Date().toISOString() });

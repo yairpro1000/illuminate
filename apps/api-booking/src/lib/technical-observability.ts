@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import type { Providers } from '../providers/index.js';
 import type { Logger } from './logger.js';
-import type { OperationContext } from './execution.js';
+import { operationReferenceFields, type OperationContext } from './execution.js';
 import { makeSupabase, type Db } from '../repo/supabase.js';
 import {
   errorMessage,
@@ -159,10 +159,7 @@ export async function startApiLog(
     app_area: input.operation.appArea,
     request_id: input.operation.requestId,
     correlation_id: input.operation.correlationId,
-    booking_id: input.operation.bookingId,
-    booking_event_id: input.operation.bookingEventId,
-    side_effect_id: input.operation.sideEffectId,
-    side_effect_attempt_id: input.operation.sideEffectAttemptId,
+    ...operationReferenceFields(input.operation),
     direction: input.direction,
     provider: input.provider ?? null,
     method: input.method,
@@ -177,6 +174,7 @@ export async function finalizeApiLog(
   env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
   apiLogId: string | null,
   input: {
+    operation?: OperationContext;
     responseStatus?: number | null;
     responseHeaders?: HeadersInit | null;
     responseBody?: unknown;
@@ -188,6 +186,7 @@ export async function finalizeApiLog(
   if (!apiLogId) return;
 
   await safeUpdate(env, 'api_logs', apiLogId, {
+    ...(input.operation ? operationReferenceFields(input.operation) : {}),
     completed_at: new Date().toISOString(),
     response_status: input.responseStatus ?? null,
     response_headers_redacted: sanitizeHeaders(input.responseHeaders) ?? {},
@@ -210,10 +209,7 @@ export async function recordExceptionLog(
     app_area: operation.appArea,
     request_id: operation.requestId,
     correlation_id: operation.correlationId,
-    booking_id: operation.bookingId,
-    booking_event_id: operation.bookingEventId,
-    side_effect_id: operation.sideEffectId,
-    side_effect_attempt_id: operation.sideEffectAttemptId,
+    ...operationReferenceFields(operation),
     error_type: details.errorName ?? 'UnknownError',
     error_code: errorCode ?? null,
     message: errorMessage(error),
@@ -260,6 +256,7 @@ export async function withOutboundProviderCall<T>(
   try {
     const result = await run();
     await finalizeApiLog(env, apiLogId, {
+      operation,
       responseStatus: 200,
       responseBody: result,
       startedAtMs,
@@ -268,6 +265,7 @@ export async function withOutboundProviderCall<T>(
     return result;
   } catch (error) {
     await finalizeApiLog(env, apiLogId, {
+      operation,
       responseStatus: typeof (error as { status?: unknown })?.status === 'number'
         ? (error as { status: number }).status
         : null,
@@ -281,6 +279,15 @@ export async function withOutboundProviderCall<T>(
     operation.latestProviderApiLogId = apiLogId;
     throw error;
   }
+}
+
+export async function syncApiLogOperationReferences(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  apiLogId: string | null,
+  operation: OperationContext | undefined,
+): Promise<void> {
+  if (!apiLogId || !operation) return;
+  await safeUpdate(env, 'api_logs', apiLogId, operationReferenceFields(operation));
 }
 
 export function wrapProvidersForOperation(

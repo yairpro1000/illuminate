@@ -7,6 +7,7 @@ import {
   loggerForOperation,
   type OperationContext,
 } from '../lib/execution.js';
+import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import type {
   Booking,
   BookingCurrentStatus,
@@ -1867,6 +1868,14 @@ export async function applyImmediateNonCronSideEffectsForTransition(
   let currentBooking = input.bookingAfterTransition;
 
   for (const effect of realtimeEffects) {
+    if (ctx.operation) {
+      extendOperationContext(ctx.operation, {
+        bookingId: currentBooking.id,
+        sideEffectId: effect.id,
+        sideEffectAttemptId: null,
+      });
+    }
+
     logger.logInfo?.({
       source: 'backend',
       eventType: 'realtime_side_effect_attempt_started',
@@ -2499,13 +2508,20 @@ async function markCheckoutSideEffectAttempt(
   const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(checkoutEffect.id);
   const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
 
-  await ctx.providers.repository.createBookingSideEffectAttempt({
+  const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
     booking_side_effect_id: checkoutEffect.id,
     attempt_num: attemptNum,
     api_log_id: apiLogId || null,
     status,
     error_message: errorMessage,
   });
+  if (ctx.operation) {
+    extendOperationContext(ctx.operation, {
+      sideEffectId: checkoutEffect.id,
+      sideEffectAttemptId: createdAttempt.id,
+    });
+  }
+  await syncApiLogOperationReferences(ctx.env, apiLogId, ctx.operation);
 
   if (status === 'SUCCESS') {
     await ctx.providers.repository.updateBookingSideEffect(checkoutEffect.id, { status: 'SUCCESS' });
@@ -2526,13 +2542,20 @@ async function markSideEffectAttemptForEffects(
   for (const effect of effects) {
     const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
     const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
-    await ctx.providers.repository.createBookingSideEffectAttempt({
+    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
       booking_side_effect_id: effect.id,
       attempt_num: attemptNum,
       api_log_id: apiLogId,
       status,
       error_message: errorMessage,
     });
+    if (ctx.operation) {
+      extendOperationContext(ctx.operation, {
+        sideEffectId: effect.id,
+        sideEffectAttemptId: createdAttempt.id,
+      });
+    }
+    await syncApiLogOperationReferences(ctx.env, apiLogId, ctx.operation);
     const nextStatus = sideEffectStatusAfterAttempt(status, attemptNum, effect.max_attempts);
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus });
   }

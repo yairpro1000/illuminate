@@ -91,6 +91,9 @@ describe('provider observability wrapper', () => {
     const logger = makeLogger();
     const env = makeEnv();
     const operation = createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' });
+    operation.bookingId = 'booking-1';
+    operation.bookingEventId = 'event-1';
+    operation.sideEffectId = 'side-effect-1';
     const providers = wrapProvidersForOperation(createProviders(env, logger), env, logger, operation);
 
     await providers.email.sendContactMessage(
@@ -111,6 +114,9 @@ describe('provider observability wrapper', () => {
     expect(operation.latestProviderApiLogId).toBe('api-log-1');
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       app_area: 'website',
+      booking_id: 'booking-1',
+      booking_event_id: 'event-1',
+      side_effect_id: 'side-effect-1',
       direction: 'outbound',
     }));
     expect(updateEq).toHaveBeenCalledWith('id', 'api-log-1');

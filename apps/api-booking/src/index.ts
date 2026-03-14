@@ -49,6 +49,7 @@ export default {
           executionCtx,
         });
         await finalizeApiLog(env, inboundApiLogId, {
+          operation,
           responseStatus: response.status,
           responseHeaders: response.headers,
           responseBody: response.status >= 400 ? await response.clone().text() : { ok: response.ok, path: responseUrl(request) },
@@ -59,6 +60,7 @@ export default {
         return response;
       } catch (error) {
       await finalizeApiLog(env, inboundApiLogId, {
+        operation,
         responseStatus: 500,
         responseBody: errorBody(error, requestId),
         errorCode: typeof (error as { code?: unknown })?.code === 'string'

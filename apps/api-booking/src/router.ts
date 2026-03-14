@@ -53,7 +53,7 @@ import {
 
 import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
 import { ApiError, errorBody, jsonResponse } from './lib/errors.js';
-import { createOperationContext, type OperationContext } from './lib/execution.js';
+import { type OperationContext } from './lib/execution.js';
 import {
   recordExceptionLog,
   wrapProvidersForOperation,
@@ -348,11 +348,7 @@ async function executeObservedRoute(
   const shouldSuppressSuccessLifecycleLogs = path === '/api/observability/frontend';
   const routeCtx: AppContext = {
     ...ctx,
-    operation: createOperationContext({
-      appArea: ctx.operation.appArea,
-      requestId: ctx.requestId,
-      correlationId: ctx.correlationId,
-    }),
+    operation: ctx.operation,
   };
   routeCtx.providers = wrapProvidersForOperation(routeCtx.providers, routeCtx.env, routeCtx.logger, routeCtx.operation);
 

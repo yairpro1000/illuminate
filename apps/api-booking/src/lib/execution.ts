@@ -51,6 +51,22 @@ export function extendOperationContext(
   return base;
 }
 
+export function operationReferenceFields(
+  operation: Pick<OperationContext, 'bookingId' | 'bookingEventId' | 'sideEffectId' | 'sideEffectAttemptId'>,
+): {
+  booking_id: string | null;
+  booking_event_id: string | null;
+  side_effect_id: string | null;
+  side_effect_attempt_id: string | null;
+} {
+  return {
+    booking_id: operation.bookingId,
+    booking_event_id: operation.bookingEventId,
+    side_effect_id: operation.sideEffectId,
+    side_effect_attempt_id: operation.sideEffectAttemptId,
+  };
+}
+
 export function loggerForOperation(baseLogger: Logger, operation: OperationContext): Logger {
   if (typeof (baseLogger as { child?: unknown }).child !== 'function') {
     return baseLogger;
@@ -60,10 +76,7 @@ export function loggerForOperation(baseLogger: Logger, operation: OperationConte
     correlationId: operation.correlationId,
     context: {
       app_area: operation.appArea,
-      booking_id: operation.bookingId,
-      booking_event_id: operation.bookingEventId,
-      side_effect_id: operation.sideEffectId,
-      side_effect_attempt_id: operation.sideEffectAttemptId,
+      ...operationReferenceFields(operation),
     },
   });
 }
