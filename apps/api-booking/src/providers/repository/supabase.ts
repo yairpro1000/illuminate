@@ -1030,33 +1030,50 @@ function endOfDayIso(date: string): string {
 }
 
 async function requireSingle<T>(
-  promise: PromiseLike<{ data: T | null; error: { message: string } | null }>,
+  promise: PromiseLike<{ data: T | null; error: QueryError | null }>,
   message: string,
 ): Promise<T> {
   const { data, error } = await promise;
-  if (error) throw new Error(`${message}: ${error.message}`);
+  if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
   if (data === null) throw new Error(message);
   return data;
 }
 
 async function maybeSingle<T>(
-  promise: PromiseLike<{ data: T | null; error: { code?: string; message: string } | null }>,
+  promise: PromiseLike<{ data: T | null; error: QueryError | null }>,
   message: string,
 ): Promise<T | null> {
   const { data, error } = await promise;
   if (error) {
     if (error.code === 'PGRST116') return null;
-    throw new Error(`${message}: ${error.message}`);
+    throw new Error(`${message}: ${formatQueryError(error)}`);
   }
   return data;
 }
 
 async function requireData<T>(
-  promise: PromiseLike<{ data: T | null; error: { message: string } | null }>,
+  promise: PromiseLike<{ data: T | null; error: QueryError | null }>,
   message: string,
 ): Promise<T> {
   const { data, error } = await promise;
-  if (error) throw new Error(`${message}: ${error.message}`);
+  if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
   if (data === null) throw new Error(message);
   return data;
+}
+
+interface QueryError {
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+  message: string;
+  status?: number;
+}
+
+function formatQueryError(error: QueryError): string {
+  const parts = [error.message];
+  if (error.code) parts.push(`code=${error.code}`);
+  if (error.details) parts.push(`details=${error.details}`);
+  if (error.hint) parts.push(`hint=${error.hint}`);
+  if (typeof error.status === 'number') parts.push(`status=${error.status}`);
+  return parts.join(' | ');
 }

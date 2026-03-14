@@ -215,6 +215,63 @@ describe('worker fetch observability coverage', () => {
         error_code: 'INTERNAL_ERROR',
       }),
     }));
+    expect(updateCalls).toContainEqual(expect.objectContaining({
+      schema: 'public',
+      table: 'api_logs',
+      row: expect.objectContaining({
+        response_status: 500,
+        error_code: 'INTERNAL_ERROR',
+        error_message: 'booking lookup failed',
+        response_body_preview: {
+          error: 'INTERNAL_ERROR',
+          message: 'Internal server error',
+          request_id: expect.any(String),
+        },
+      }),
+    }));
+  });
+
+  it('writes actionable api_logs and exception_logs for public events route failures', async () => {
+    mockCreateProviders.mockReturnValue(makeProviders({
+      repository: {
+        getPublishedEvents: vi.fn(async () => {
+          throw new Error('Failed to load published events: column events.capacity does not exist | code=42703 | hint=Perhaps you meant to reference a different column. | status=400');
+        }),
+      },
+    }));
+    const env = makeEnv({
+      SUPABASE_URL: 'https://supabase.test',
+      SUPABASE_SECRET_KEY: 'secret',
+      OBSERVABILITY_SCHEMA: 'public',
+    });
+    const req = new Request('https://api.local/api/events', { method: 'GET' });
+
+    const res = await worker.fetch(req, env, makeExecutionCtx());
+
+    expect(res.status).toBe(500);
+    expect(updateCalls).toContainEqual(expect.objectContaining({
+      schema: 'public',
+      table: 'api_logs',
+      row: expect.objectContaining({
+        response_status: 500,
+        error_code: 'INTERNAL_ERROR',
+        error_message: 'Failed to load published events: column events.capacity does not exist | code=42703 | hint=Perhaps you meant to reference a different column. | status=400',
+        response_body_preview: {
+          error: 'INTERNAL_ERROR',
+          message: 'Internal server error',
+          request_id: expect.any(String),
+        },
+      }),
+    }));
+    expect(insertCalls).toContainEqual(expect.objectContaining({
+      schema: 'public',
+      table: 'exception_logs',
+      row: expect.objectContaining({
+        app_area: 'website',
+        error_code: 'INTERNAL_ERROR',
+        message: 'Failed to load published events: column events.capacity does not exist | code=42703 | hint=Perhaps you meant to reference a different column. | status=400',
+      }),
+    }));
   });
 
   it('writes api_logs and exception_logs for top-level fetch failures before routing completes', async () => {

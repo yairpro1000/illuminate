@@ -11,6 +11,8 @@ export interface OperationContext {
   sideEffectId: string | null;
   sideEffectAttemptId: string | null;
   latestProviderApiLogId: string | null;
+  latestInboundErrorCode: string | null;
+  latestInboundErrorMessage: string | null;
 }
 
 export function createOperationContext(input: {
@@ -27,6 +29,8 @@ export function createOperationContext(input: {
     sideEffectId: null,
     sideEffectAttemptId: null,
     latestProviderApiLogId: null,
+    latestInboundErrorCode: null,
+    latestInboundErrorMessage: null,
   };
 }
 
@@ -42,6 +46,8 @@ export function extendOperationContext(
   base.sideEffectId = overrides.sideEffectId ?? base.sideEffectId;
   base.sideEffectAttemptId = overrides.sideEffectAttemptId ?? base.sideEffectAttemptId;
   base.latestProviderApiLogId = overrides.latestProviderApiLogId ?? base.latestProviderApiLogId;
+  base.latestInboundErrorCode = overrides.latestInboundErrorCode ?? base.latestInboundErrorCode;
+  base.latestInboundErrorMessage = overrides.latestInboundErrorMessage ?? base.latestInboundErrorMessage;
   return base;
 }
 

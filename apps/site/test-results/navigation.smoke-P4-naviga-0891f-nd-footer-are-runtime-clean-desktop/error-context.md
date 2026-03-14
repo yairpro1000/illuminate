@@ -1,0 +1,143 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - navigation "Main navigation" [ref=e3]:
+    - generic [ref=e4]:
+      - link "ILLUMINATE by Yair Benharroch" [ref=e5] [cursor=pointer]:
+        - /url: index.html
+      - list [ref=e6]:
+        - listitem [ref=e7]:
+          - link "How We Work" [ref=e8] [cursor=pointer]:
+            - /url: index.html#how-we-work
+        - listitem [ref=e9]:
+          - link "About" [ref=e10] [cursor=pointer]:
+            - /url: index.html#about
+        - listitem [ref=e11]:
+          - link "Evenings" [ref=e12] [cursor=pointer]:
+            - /url: evenings.html
+        - listitem [ref=e13]:
+          - link "Get in touch" [ref=e14] [cursor=pointer]:
+            - /url: contact.html
+      - link "Book a Session" [ref=e15] [cursor=pointer]:
+        - /url: sessions.html
+      - button "Switch to dark mode" [ref=e16] [cursor=pointer]:
+        - img [ref=e17]
+        - img [ref=e19]
+  - main [ref=e25]:
+    - region "1:1 Sessions" [ref=e26]:
+      - generic [ref=e27]:
+        - heading "1:1 Sessions" [level=1] [ref=e28]
+        - paragraph [ref=e29]: Individual Clarity Work — Online or in Lugano
+        - generic [ref=e30]:
+          - paragraph [ref=e31]:
+            - text: "Each session is a held space designed for one thing:"
+            - text: helping you reconnect with what you already know inside.
+          - paragraph [ref=e32]:
+            - text: Whether you are standing at a crossroads, working through a cycle,
+            - text: or curious what a first conversation might open — there is a session for where you are.
+          - paragraph [ref=e33]: Honest. Focused. Yours.
+    - region "Choose Your Entry Point" [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - text: Session Types
+          - heading "Choose Your Entry Point" [level=2] [ref=e37]
+        - generic [ref=e38]:
+          - article [ref=e39]:
+            - generic [ref=e40]:
+              - generic [ref=e41]:
+                - generic [ref=e42]: Free
+                - generic [ref=e43]: 45 min
+              - heading "Introductory Clarity Conversation" [level=3] [ref=e44]
+              - paragraph [ref=e45]: A space to assess alignment — no commitment required.
+              - paragraph [ref=e46]: We meet to assess alignment. No commitment required. A space to explore whether this is the right fit for you.
+              - generic [ref=e47]:
+                - generic [ref=e48]:
+                  - term [ref=e49]: Duration
+                  - definition [ref=e50]: 45 min
+                - generic [ref=e51]:
+                  - term [ref=e52]: Investment
+                  - definition [ref=e53]: Free
+                - generic [ref=e54]:
+                  - term [ref=e55]: Format
+                  - definition [ref=e56]: Online or in person · Lugano
+              - link "Book this session" [ref=e58] [cursor=pointer]:
+                - /url: book.html?type=intro
+          - article [ref=e59]:
+            - generic [ref=e60]:
+              - generic [ref=e61]:
+                - generic [ref=e62]: CHF 150
+                - generic [ref=e63]: 90 min
+              - heading "First Clarity Session" [level=3] [ref=e64]
+              - paragraph [ref=e65]: Where your story, values, and patterns come fully into view.
+              - paragraph [ref=e66]: An extended session to map where you are, what is blocking you, and what you truly want. This becomes the foundation everything else is built on.
+              - generic [ref=e67]:
+                - generic [ref=e68]:
+                  - term [ref=e69]: Duration
+                  - definition [ref=e70]: 90 min
+                - generic [ref=e71]:
+                  - term [ref=e72]: Investment
+                  - definition [ref=e73]: CHF 150
+                - generic [ref=e74]:
+                  - term [ref=e75]: Format
+                  - definition [ref=e76]: Online or in person · Lugano
+              - link "Book this session" [ref=e78] [cursor=pointer]:
+                - /url: book.html?type=session&offer=first-clarity-session
+          - article [ref=e79]:
+            - generic [ref=e80]:
+              - generic [ref=e81]:
+                - generic [ref=e82]: CHF 120
+                - generic [ref=e83]: 60 min
+              - heading "Cycle Session" [level=3] [ref=e84]
+              - paragraph [ref=e85]: Focused, structured work within an ongoing Clarity Cycle.
+              - paragraph [ref=e86]: Seven sessions per cycle, each building on the last — unpacking what is stuck and practicing the new you. On the final session we reassess whether to pause or begin a new cycle.
+              - generic [ref=e87]:
+                - generic [ref=e88]:
+                  - term [ref=e89]: Duration
+                  - definition [ref=e90]: 60 min
+                - generic [ref=e91]:
+                  - term [ref=e92]: Investment
+                  - definition [ref=e93]: CHF 120
+                - generic [ref=e94]:
+                  - term [ref=e95]: Format
+                  - definition [ref=e96]: Online or in person · Lugano
+              - link "Book this session" [ref=e98] [cursor=pointer]:
+                - /url: book.html?type=session&offer=cycle-session
+          - article [ref=e99]:
+            - generic [ref=e100]:
+              - generic [ref=e101]:
+                - generic [ref=e102]: CHF 150
+                - generic [ref=e103]: 90 min
+              - heading "Clarity from your Guardian Angels" [level=3] [ref=e104]
+              - paragraph [ref=e105]: A fresh perspective from the eyes of unconditional love.
+              - paragraph [ref=e106]: In this session we will connect with your guardian angels and translate their messages to illuminate your current situation with new clarity and remind you they are always here for you.
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - term [ref=e109]: Duration
+                  - definition [ref=e110]: 90 min
+                - generic [ref=e111]:
+                  - term [ref=e112]: Investment
+                  - definition [ref=e113]: CHF 150
+                - generic [ref=e114]:
+                  - term [ref=e115]: Format
+                  - definition [ref=e116]: Online or in person · Lugano
+              - link "Book this session" [ref=e118] [cursor=pointer]:
+                - /url: book.html?type=session&offer=clarity-from-guardian-angels
+  - contentinfo [ref=e119]:
+    - generic [ref=e120]:
+      - generic [ref=e121]: ILLUMINATE by Yair Benharroch
+      - navigation "Footer navigation" [ref=e122]:
+        - link "How We Work" [ref=e123] [cursor=pointer]:
+          - /url: index.html#how-we-work
+        - link "About" [ref=e124] [cursor=pointer]:
+          - /url: index.html#about
+        - link "Evenings" [ref=e125] [cursor=pointer]:
+          - /url: evenings.html
+        - link "1:1 Sessions" [ref=e126] [cursor=pointer]:
+          - /url: sessions.html
+        - link "Get in touch" [ref=e127] [cursor=pointer]:
+          - /url: contact.html
+      - generic [ref=e128]: © 2026 ILLUMINATE · Yair Benharroch
+```

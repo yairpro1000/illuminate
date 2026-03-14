@@ -52,6 +52,8 @@ export default {
           responseStatus: response.status,
           responseHeaders: response.headers,
           responseBody: response.status >= 400 ? await response.clone().text() : { ok: response.ok, path: responseUrl(request) },
+          errorCode: response.status >= 400 ? operation.latestInboundErrorCode : null,
+          errorMessage: response.status >= 500 ? operation.latestInboundErrorMessage : null,
           startedAtMs,
         });
         return response;

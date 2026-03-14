@@ -43,6 +43,7 @@ import {
   handleDevEmails,
   handleDevFailures,
   handleDevBookings,
+  handleTestBookingArtifacts,
 } from './handlers/dev.js';
 
 import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
@@ -137,6 +138,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/__dev/emails', handleDevEmails),
   route('GET', '/api/__dev/failures', handleDevFailures),
   route('GET', '/api/__dev/bookings', handleDevBookings),
+  route('GET', '/api/__test/booking-artifacts', handleTestBookingArtifacts),
 ];
 
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {
@@ -382,6 +384,8 @@ async function executeObservedRoute(
     return response;
   } catch (error) {
     const statusCode = error instanceof ApiError ? error.statusCode : 500;
+    ctx.operation.latestInboundErrorCode = error instanceof ApiError ? error.code : 'INTERNAL_ERROR';
+    ctx.operation.latestInboundErrorMessage = error instanceof Error ? error.message : String(error);
     if (statusCode >= 500) {
       routeCtx.logger.captureException({
         eventType: isBookingRoute ? 'booking_route_execution_failed' : 'route_execution_failed',

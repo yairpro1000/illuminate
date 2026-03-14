@@ -58,11 +58,11 @@ export async function handleGetEvents(request: Request, ctx: AppContext): Promis
       context: {
         path,
         repository_mode: ctx.env.REPOSITORY_MODE,
-        branch_taken: 'return_error_response',
+        branch_taken: 'propagate_error_to_shared_wrapper',
         deny_reason: err instanceof Error ? err.name : 'unknown_error',
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -72,18 +72,14 @@ export async function handleGetEvent(
   ctx: AppContext,
   params: Record<string, string>,
 ): Promise<Response> {
-  try {
-    const slug = params['slug'];
-    if (!slug) throw notFound();
+  const slug = params['slug'];
+  if (!slug) throw notFound();
 
-    const event = await ctx.providers.repository.getEventBySlug(slug);
-    if (!event) throw notFound('Event not found');
+  const event = await ctx.providers.repository.getEventBySlug(slug);
+  if (!event) throw notFound('Event not found');
 
-    const state = await buildEventState(event.id, new Date().toISOString(), ctx);
-    return ok({ event: { ...event, ...state } });
-  } catch (err) {
-    return errorResponse(err);
-  }
+  const state = await buildEventState(event.id, new Date().toISOString(), ctx);
+  return ok({ event: { ...event, ...state } });
 }
 
 // POST /api/events/:slug/book
@@ -428,8 +424,7 @@ async function buildEventState(eventId: string, nowIso: string, ctx: AppContext)
   const cutoffMs = startMs + policy.publicEventCutoffAfterStartMinutes * 60_000;
 
   const activeBookings = await ctx.providers.repository.countEventActiveBookings(normalizedEvent.id, nowIso);
-  const soldOut = activeBookings >= normalizedEvent.capacity;
-  const lateAccess = await ctx.providers.repository.getActiveEventLateAccessLinkForEvent(normalizedEvent.id, nowIso);
+  const soldOut = normalizedEvent.status === 'sold_out' || activeBookings >= normalizedEvent.capacity;
 
   const publicRegistrationOpen =
     isEventPublished(normalizedEvent.status) &&
@@ -449,7 +444,7 @@ async function buildEventState(eventId: string, nowIso: string, ctx: AppContext)
       sold_out: soldOut,
       public_registration_open: publicRegistrationOpen,
       show_reminder_signup_cta: soldOut || isPast,
-      late_access_active: Boolean(lateAccess),
+      late_access_active: false,
     },
   };
 }

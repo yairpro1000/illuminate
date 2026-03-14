@@ -72,6 +72,8 @@ function withBookingOperationContext(ctx: BookingContext, bookingId: string): Bo
       sideEffectId: null,
       sideEffectAttemptId: null,
       latestProviderApiLogId: null,
+      latestInboundErrorCode: null,
+      latestInboundErrorMessage: null,
     },
     { bookingId },
   );

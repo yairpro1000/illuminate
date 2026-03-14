@@ -20,6 +20,7 @@ Before scoping, implementing, or running any automated UI test, enforce all of t
 ## Operating Rules
 
 - Prefer a tiny P0/P1 smoke suite over broad ceremonial coverage.
+- Start with a navigation smoke pass before deeper scenario automation.
 - Prefer strong assertions about business outcomes over page mechanics.
 - Prefer deterministic setup, teardown, and data control.
 - Treat frontend console errors and failed network requests observed during the tested scenarios as candidate product bugs, not background noise.
@@ -34,6 +35,7 @@ The tested domains should be clean by the end of the suite run:
 - No unexpected frontend errors left unreviewed.
 - No unexplained failed network requests in the exercised flows.
 - No tolerance for "the flow passed but the console was noisy".
+- No broken primary navigation path left undiscovered at the start of the run.
 
 ## Default Technical Decisions
 
@@ -93,6 +95,7 @@ Extract and summarize:
 
 - P0/P1 scenarios that are strong candidates for automation
 - scenarios that should remain manual
+- every navigation surface that should be smoke-covered first: top nav, footer nav, hamburger/mobile nav, and any other menu form present in the product
 - required test hooks, helper utilities, or support endpoints
 - required test data and reset requirements
 - what browser-error capture is needed for the exercised domains
@@ -106,6 +109,7 @@ Present a short approval block before implementation. Keep it concrete and revie
 
 Include:
 
+- the required smoke navigation coverage across the site's navigation surfaces
 - proposed automated scenarios
 - what remains manual
 - required assumptions
@@ -122,10 +126,18 @@ Separate clearly:
 
 If the proposed scope is too broad, shrink it to the smallest set that protects the main business invariants.
 
+The default first slice should be:
+
+1. Smoke navigation across all discovered navigation surfaces.
+2. Frontend-runtime cleanliness checks during that navigation.
+3. Only then the deeper business-flow scenarios.
+
 ### 3. Plan the Implementation
 
 After approval:
 
+- enumerate all links in the nav bar, footer bar, hamburger menu in mobile layout, and any other navigation menu form that exists
+- define desktop and mobile viewport coverage where navigation differs
 - map each approved scenario to deterministic setup, execution, and assertion steps
 - identify where controlled backend support is required
 - prefer adding thin helper utilities over brittle UI-only workarounds
@@ -134,12 +146,20 @@ After approval:
 
 Prefer direct, business-level scenario names and IDs that match the user's test plan where possible.
 
+The initial smoke plan should verify, at minimum:
+
+- each primary navigation link can be opened from its real navigation surface
+- the destination renders without unexpected console or network errors
+- mobile-only and desktop-only navigation variants both work when they exist
+- obvious broken routes, missing pages, and runtime failures are surfaced before deeper testing begins
+
 ### 4. Implement the Automation
 
 Default to Playwright unless the user requests another framework.
 
 Implementation expectations:
 
+- begin with a smoke spec or smoke phase that walks all discovered navigation links first
 - keep helpers focused on controlled link retrieval, time control, deliberate job triggering, and stable data setup
 - use separate contexts for multi-user flows
 - assert final business outcomes, not just transient UI text
@@ -150,6 +170,14 @@ Implementation expectations:
 
 When a scenario passes functionally but emits unexpected frontend errors or failed network calls, treat that as a bug to be fixed, not a clean pass.
 
+For the navigation smoke pass:
+
+- cover nav bar links
+- cover footer links
+- cover hamburger-menu links in mobile layout
+- cover any alternate menu structure discovered in the app
+- fail the smoke pass if any primary navigation destination is broken or runtime-noisy
+
 If the app lacks the hooks needed for deterministic coverage, stop and state exactly what must be added.
 
 ### 5. Execute the Run
@@ -158,6 +186,7 @@ Run the approved scope against the agreed environment.
 
 During execution:
 
+- run the navigation smoke phase first so obvious broken routes or runtime issues are caught before deeper business scenarios
 - collect screenshots at key checkpoints
 - retain traces, reports, videos, or logs when useful
 - collect console-error, page-error, and failed-request evidence for each exercised domain
@@ -198,6 +227,7 @@ Avoid vague or repeated questions.
 
 Before implementation, provide a compact approval block with:
 
+- smoke navigation scope
 - automated scenarios
 - manual-only areas
 - assumptions
@@ -209,6 +239,7 @@ Before implementation, provide a compact approval block with:
 
 At the end, provide:
 
+- whether the navigation smoke pass is clean
 - what was automated
 - what passed
 - what failed
@@ -249,6 +280,8 @@ State:
 - the next highest-value automation increment
 
 Also state whether the tested domains finished clean from a frontend-runtime perspective. If not, list the remaining console or network issues that prevent calling the domain clean.
+
+State separately whether the navigation surfaces are clean across desktop and mobile variants when those variants were in scope.
 
 ## Scenario Design Examples
 

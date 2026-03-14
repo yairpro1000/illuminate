@@ -5,9 +5,9 @@
  */
 
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ok, badRequest, errorResponse, notFound } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
-import { confirmBookingPayment } from '../services/booking-service.js';
+import { buildConfirmUrl, buildManageUrl, confirmBookingPayment } from '../services/booking-service.js';
 
 function guardMockRepository(ctx: AppContext): void {
   if (ctx.env.REPOSITORY_MODE === 'supabase') {
@@ -25,6 +25,11 @@ function guardMockEmail(ctx: AppContext): void {
   if (ctx.env.EMAIL_MODE !== 'mock') {
     throw badRequest('This dev endpoint is only available when email is mocked');
   }
+}
+
+function normalizeExampleTestEmail(raw: string | null): string | null {
+  const value = raw?.trim().toLowerCase() ?? '';
+  return value || null;
 }
 
 // POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
@@ -152,4 +157,159 @@ export async function handleDevBookings(_request: Request, ctx: AppContext): Pro
   } catch (err) {
     return errorResponse(err);
   }
+}
+
+// GET /api/__test/booking-artifacts?email=<fake@example.test>
+export async function handleTestBookingArtifacts(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const email = normalizeExampleTestEmail(url.searchParams.get('email'));
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_artifacts_request_started',
+    message: 'Started test booking-artifacts lookup',
+    context: {
+      path,
+      has_email: Boolean(email),
+      branch_taken: 'validate_test_booking_artifacts_request',
+    },
+  });
+
+  if (!email) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_artifacts_request_rejected',
+      message: 'Rejected test booking-artifacts request because email was missing',
+      context: {
+        path,
+        branch_taken: 'deny_missing_email',
+        deny_reason: 'email_missing',
+      },
+    });
+    throw badRequest('email is required');
+  }
+
+  if (!email.endsWith('@example.test')) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_artifacts_request_rejected',
+      message: 'Rejected test booking-artifacts request because email was not a fake test domain',
+      context: {
+        path,
+        email_domain: email.split('@')[1] ?? null,
+        branch_taken: 'deny_non_test_email_domain',
+        deny_reason: 'email_must_use_example_test_domain',
+      },
+    });
+    throw badRequest('email must use @example.test');
+  }
+
+  const client = await ctx.providers.repository.getClientByEmail(email);
+  if (!client) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_artifacts_request_rejected',
+      message: 'Rejected test booking-artifacts request because client was not found',
+      context: {
+        path,
+        email,
+        branch_taken: 'deny_client_not_found',
+        deny_reason: 'test_client_not_found',
+      },
+    });
+    throw notFound('Test client not found');
+  }
+
+  const rows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
+  const latest = rows
+    .slice()
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+
+  if (!latest) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_artifacts_request_rejected',
+      message: 'Rejected test booking-artifacts request because no bookings were found for the client',
+      context: {
+        path,
+        email,
+        client_id: client.id,
+        branch_taken: 'deny_booking_not_found',
+        deny_reason: 'test_booking_not_found',
+      },
+    });
+    throw notFound('Test booking not found');
+  }
+
+  const booking = await ctx.providers.repository.getBookingById(latest.booking_id);
+  if (!booking) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_artifacts_request_rejected',
+      message: 'Rejected test booking-artifacts request because booking details could not be loaded',
+      context: {
+        path,
+        email,
+        client_id: client.id,
+        booking_id: latest.booking_id,
+        branch_taken: 'deny_booking_lookup_failed',
+        deny_reason: 'test_booking_lookup_failed',
+      },
+    });
+    throw notFound('Test booking not found');
+  }
+
+  const events = await ctx.providers.repository.listBookingEvents(booking.id);
+  const latestSubmitted = events
+    .filter((event) => event.event_type === 'BOOKING_FORM_SUBMITTED')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+  const confirmToken = typeof latestSubmitted?.payload?.['confirm_token'] === 'string'
+    ? latestSubmitted.payload['confirm_token'] as string
+    : null;
+  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_artifacts_request_completed',
+    message: 'Resolved test booking artifacts',
+    context: {
+      path,
+      email,
+      client_id: client.id,
+      booking_id: booking.id,
+      booking_source: booking.event_id ? 'event' : 'session',
+      has_confirm_token: Boolean(confirmToken),
+      has_payment: Boolean(payment),
+      branch_taken: 'return_test_booking_artifacts',
+    },
+  });
+
+  return ok({
+    client: {
+      id: client.id,
+      email: client.email,
+    },
+    booking: {
+      id: booking.id,
+      source: booking.event_id ? 'event' : 'session',
+      status: booking.current_status,
+      event_id: booking.event_id,
+      session_type_id: booking.session_type_id,
+      starts_at: booking.starts_at,
+      ends_at: booking.ends_at,
+      timezone: booking.timezone,
+    },
+    links: {
+      confirm_url: confirmToken ? buildConfirmUrl(ctx.env.SITE_URL, confirmToken) : null,
+      manage_url: manageUrl,
+    },
+    payment: payment ? {
+      id: payment.id,
+      status: payment.status,
+      session_id: payment.provider_payment_id,
+      checkout_url: payment.checkout_url,
+    } : null,
+  });
 }

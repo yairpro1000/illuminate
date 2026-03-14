@@ -41,8 +41,7 @@ describe('public content status normalization', () => {
     const repository = {
       getPublishedEvents: vi.fn().mockResolvedValue([publishedEvent, soldOutEvent]),
       getEventById: vi.fn().mockImplementation(async (eventId: string) => eventsById.get(eventId) ?? null),
-      countEventActiveBookings: vi.fn().mockImplementation(async (eventId: string) => eventId === soldOutEvent.id ? 10 : 2),
-      getActiveEventLateAccessLinkForEvent: vi.fn().mockResolvedValue(null),
+      countEventActiveBookings: vi.fn().mockImplementation(async (eventId: string) => eventId === soldOutEvent.id ? 3 : 2),
     };
     const ctx = makeCtx({ providers: { repository } });
 
@@ -65,10 +64,13 @@ describe('public content status normalization', () => {
           render: expect.objectContaining({
             public_registration_open: false,
             sold_out: true,
+            late_access_active: false,
           }),
         }),
       ],
     });
+    expect(repository.countEventActiveBookings).toHaveBeenCalledTimes(2);
+    expect('getActiveEventLateAccessLinkForEvent' in repository).toBe(false);
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'public_events_request_completed',
       context: expect.objectContaining({

@@ -125,6 +125,17 @@ const MAX_JSON_DEPTH = 6;
 const MAX_JSON_KEYS = 50;
 const MAX_ARRAY_ITEMS = 50;
 
+function looksLikeApiErrorEnvelope(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.error === "string" &&
+    typeof value.message === "string" &&
+    (
+      value.request_id === undefined ||
+      typeof value.request_id === "string"
+    )
+  );
+}
+
 function truncateText(value: string, max = MAX_TEXT_PREVIEW): string {
   if (value.length <= max) return value;
   return `${value.slice(0, max)}…[truncated ${value.length - max} chars]`;
@@ -242,9 +253,14 @@ function sanitizeUnknown(value: unknown, depth = 0): JsonValue {
 
   if (typeof value === "object") {
     const out: Record<string, JsonValue> = {};
+    const isApiErrorEnvelope = looksLikeApiErrorEnvelope(value as Record<string, unknown>);
     const entries = Object.entries(value as Record<string, unknown>).slice(0, MAX_JSON_KEYS);
     for (const [rawKey, rawValue] of entries) {
       const key = String(rawKey);
+      if (isApiErrorEnvelope && key === "message") {
+        out[key] = truncateText(String(rawValue ?? ""));
+        continue;
+      }
       if (isSensitiveKey(key)) {
         out[key] = maskSecret(rawValue);
         continue;
