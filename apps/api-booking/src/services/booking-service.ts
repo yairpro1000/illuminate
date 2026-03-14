@@ -1230,7 +1230,7 @@ export async function getBookingPublicActionInfo(
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const checkoutUrl =
-    payment && payment.status === 'PENDING' && !isTerminalStatus(booking.current_status)
+    payment && !isTerminalStatus(booking.current_status)
       ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
       : null;
 
@@ -1294,13 +1294,12 @@ export async function getContinuePaymentActionInfo(
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
 
   const isBookingPending = booking.current_status === 'PENDING';
-  const isPaymentPending = payment?.status === 'PENDING';
   const hasCheckoutUrl = Boolean(payment?.checkout_url);
   const dueWindowOpen = Date.now() < new Date(paymentDueAt).getTime();
 
   const canContinueToCheckout =
     isBookingPending
-    && isPaymentPending
+    && Boolean(payment)
     && hasCheckoutUrl
     && dueWindowOpen;
 
@@ -1312,9 +1311,6 @@ export async function getContinuePaymentActionInfo(
   } else if (!payment) {
     branchTaken = 'deny_continue_payment_payment_missing';
     denyReason = 'payment_missing';
-  } else if (!isPaymentPending) {
-    branchTaken = 'deny_continue_payment_payment_not_pending';
-    denyReason = 'payment_not_pending';
   } else if (!hasCheckoutUrl) {
     branchTaken = 'deny_continue_payment_checkout_missing';
     denyReason = 'checkout_url_missing';

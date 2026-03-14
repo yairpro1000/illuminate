@@ -44,7 +44,7 @@ describe('Continue payment public guard', () => {
     }));
   });
 
-  it('returns manage action and explicit diagnostic reason when payment is no longer pending', async () => {
+  it('still returns checkout action when payment previously failed but booking remains pending', async () => {
     const ctx = makeBookingCtx();
 
     const created = await createPayLaterBooking({
@@ -62,7 +62,7 @@ describe('Continue payment public guard', () => {
     }, ctx);
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    await ctx.providers.repository.updatePayment(payment!.id, { status: 'SUCCEEDED' });
+    await ctx.providers.repository.updatePayment(payment!.id, { status: 'FAILED' });
 
     const res = await handleRequest(
       new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
@@ -72,17 +72,16 @@ describe('Continue payment public guard', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
-      payment_status: 'SUCCEEDED',
-      action: 'manage',
-      action_url: `https://example.com/manage.html?token=m1.${created.bookingId}`,
-      checkout_url: null,
+      payment_status: 'FAILED',
+      action: 'checkout',
+      action_url: expect.stringContaining('/dev-pay?session_id='),
     }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'deny_continue_payment_payment_not_pending',
-        deny_reason: 'payment_not_pending',
+        branch_taken: 'allow_continue_payment_redirect',
+        deny_reason: null,
       }),
     }));
   });
