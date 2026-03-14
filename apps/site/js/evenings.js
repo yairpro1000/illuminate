@@ -78,7 +78,7 @@
     const showReminder = Boolean(render.show_reminder_signup_cta);
 
     const badge = soldOut
-      ? '<span class="event-tag">Sold out</span>'
+      ? '<span class="event-tag event-tag--sold-out">Sold out</span>'
       : isPast
         ? '<span class="event-tag">Past event</span>'
         : '<span class="event-tag">Upcoming</span>';
@@ -87,7 +87,7 @@
     if (publicOpen) {
       actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary">Book your spot</a>`;
     } else if (showReminder) {
-      actionHtml = `<button class="btn btn-primary" data-open-reminder="${event.id}">Join reminders list</button>`;
+      actionHtml = `<button class="btn btn-secondary" data-open-reminder="${event.id}">Join reminders list</button>`;
     } else {
       actionHtml = '<span class="btn btn-ghost" aria-disabled="true">Registration closed</span>';
     }
