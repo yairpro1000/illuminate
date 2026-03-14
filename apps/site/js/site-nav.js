@@ -101,4 +101,47 @@ function renderNav(nav) {
   `;
 }
 
+function getFooterItems(variant, homeLinksMode) {
+  const homePrefix = homeLinksMode === 'self' ? '' : 'index.html';
+
+  if (variant === 'worldview') {
+    return [
+      { key: 'how', label: 'How We Work', href: `${homePrefix}#how-we-work` },
+      { key: 'investment', label: 'Investment', href: `${homePrefix}#investment` },
+      { key: 'about', label: 'About', href: `${homePrefix}#about` },
+      { key: 'worldview', label: 'My Worldview', href: 'worldview.html' },
+      { key: 'contact-mail', label: 'Contact', href: 'mailto:hello@yairbendavid.com' },
+    ];
+  }
+
+  return [
+    { key: 'how', label: 'How We Work', href: `${homePrefix}#how-we-work` },
+    { key: 'about', label: 'About', href: `${homePrefix}#about` },
+    { key: 'evenings', label: 'Evenings', href: 'evenings.html' },
+    { key: 'sessions', label: '1:1 Sessions', href: 'sessions.html' },
+    { key: 'contact', label: 'Get in touch', href: 'contact.html' },
+  ];
+}
+
+function renderFooter(footer) {
+  const variant = footer.dataset.footerVariant || 'default';
+  const homeLinksMode = footer.dataset.homeLinks || 'index';
+  const currentPage = footer.dataset.currentPage || '';
+  const items = getFooterItems(variant, homeLinksMode);
+  const links = items
+    .map((item) => navLink(item.label, item.href, currentPage, item.key))
+    .join('');
+
+  footer.innerHTML = `
+    <div class="footer__inner">
+      <span class="footer__logo">ILLUMINATE <span>by Yair Benharroch</span></span>
+      <nav class="footer__links" aria-label="Footer navigation">
+        ${links}
+      </nav>
+      <span class="footer__copy">© 2026 ILLUMINATE · Yair Benharroch</span>
+    </div>
+  `;
+}
+
 document.querySelectorAll('.nav[data-nav-variant]').forEach(renderNav);
+document.querySelectorAll('.footer[data-footer-variant]').forEach(renderFooter);
