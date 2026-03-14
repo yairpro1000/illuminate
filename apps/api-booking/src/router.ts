@@ -44,6 +44,8 @@ import {
   handleDevFailures,
   handleDevBookings,
   handleTestBookingArtifacts,
+  handleTestBookingsList,
+  handleTestBookingsCleanup,
 } from './handlers/dev.js';
 
 import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
@@ -139,6 +141,8 @@ const ROUTES: Route[] = [
   route('GET', '/api/__dev/failures', handleDevFailures),
   route('GET', '/api/__dev/bookings', handleDevBookings),
   route('GET', '/api/__test/booking-artifacts', handleTestBookingArtifacts),
+  route('GET', '/api/__test/bookings', handleTestBookingsList),
+  route('POST', '/api/__test/bookings/cleanup', handleTestBookingsCleanup),
 ];
 
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {

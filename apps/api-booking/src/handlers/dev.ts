@@ -7,7 +7,8 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest, errorResponse, notFound } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
-import { buildConfirmUrl, buildManageUrl, confirmBookingPayment } from '../services/booking-service.js';
+import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment } from '../services/booking-service.js';
+import type { OrganizerBookingRow } from '../types.js';
 
 function guardMockRepository(ctx: AppContext): void {
   if (ctx.env.REPOSITORY_MODE === 'supabase') {
@@ -30,6 +31,49 @@ function guardMockEmail(ctx: AppContext): void {
 function normalizeExampleTestEmail(raw: string | null): string | null {
   const value = raw?.trim().toLowerCase() ?? '';
   return value || null;
+}
+
+function normalizeTestEmailPrefix(raw: string | null): string | null {
+  const value = raw?.trim().toLowerCase() ?? '';
+  return value || null;
+}
+
+function isExampleTestEmail(email: string | null | undefined): boolean {
+  return typeof email === 'string' && email.toLowerCase().endsWith('@example.test');
+}
+
+function isTerminalBookingStatus(status: OrganizerBookingRow['current_status']): boolean {
+  return status === 'CANCELED' || status === 'EXPIRED' || status === 'COMPLETED' || status === 'NO_SHOW';
+}
+
+function toTestBookingSummary(row: OrganizerBookingRow) {
+  return {
+    booking_id: row.booking_id,
+    source: row.event_id ? 'event' : 'session',
+    status: row.current_status,
+    starts_at: row.starts_at,
+    ends_at: row.ends_at,
+    client_id: row.client_id,
+    client_first_name: row.client_first_name,
+    client_last_name: row.client_last_name,
+    client_email: row.client_email,
+    event_id: row.event_id,
+    event_title: row.event_title,
+    session_type_id: row.session_type_id,
+    session_type_title: row.session_type_title,
+    payment_status: row.payment_status,
+    latest_event_type: row.latest_event_type,
+  };
+}
+
+async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): Promise<OrganizerBookingRow[]> {
+  const rows = await ctx.providers.repository.getOrganizerBookings({});
+  return rows
+    .filter((row) => {
+      const email = row.client_email.toLowerCase();
+      return isExampleTestEmail(email) && email.startsWith(emailPrefix);
+    })
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 }
 
 // POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
@@ -311,5 +355,215 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
       session_id: payment.provider_payment_id,
       checkout_url: payment.checkout_url,
     } : null,
+  });
+}
+
+// GET /api/__test/bookings?email_prefix=<prefix>
+export async function handleTestBookingsList(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const emailPrefix = normalizeTestEmailPrefix(url.searchParams.get('email_prefix'));
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_list_request_started',
+    message: 'Started test bookings list lookup',
+    context: {
+      path,
+      has_email_prefix: Boolean(emailPrefix),
+      branch_taken: 'validate_test_bookings_list_request',
+    },
+  });
+
+  if (!emailPrefix) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_bookings_list_request_rejected',
+      message: 'Rejected test bookings list request because email_prefix was missing',
+      context: {
+        path,
+        branch_taken: 'deny_missing_email_prefix',
+        deny_reason: 'email_prefix_missing',
+      },
+    });
+    throw badRequest('email_prefix is required');
+  }
+
+  const matches = await findMatchingTestBookings(emailPrefix, ctx);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_list_request_completed',
+    message: 'Resolved test bookings list',
+    context: {
+      path,
+      email_prefix: emailPrefix,
+      matched_count: matches.length,
+      branch_taken: 'return_test_bookings_list',
+    },
+  });
+
+  return ok({
+    email_prefix: emailPrefix,
+    count: matches.length,
+    bookings: matches.map(toTestBookingSummary),
+  });
+}
+
+// POST /api/__test/bookings/cleanup
+export async function handleTestBookingsCleanup(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const body = await request.json() as Record<string, unknown>;
+  const emailPrefix = normalizeTestEmailPrefix(typeof body.email_prefix === 'string' ? body.email_prefix : null);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_cleanup_started',
+    message: 'Started test bookings cleanup request',
+    context: {
+      path,
+      has_email_prefix: Boolean(emailPrefix),
+      branch_taken: 'validate_test_bookings_cleanup_request',
+    },
+  });
+
+  if (!emailPrefix) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_bookings_cleanup_rejected',
+      message: 'Rejected test bookings cleanup request because email_prefix was missing',
+      context: {
+        path,
+        branch_taken: 'deny_missing_email_prefix',
+        deny_reason: 'email_prefix_missing',
+      },
+    });
+    throw badRequest('email_prefix is required');
+  }
+
+  const matches = await findMatchingTestBookings(emailPrefix, ctx);
+  const canceled: Array<{ booking_id: string; status: string }> = [];
+  const skipped: Array<{ booking_id: string; status: string; reason: string }> = [];
+  const failed: Array<{ booking_id: string; status: string; reason: string }> = [];
+
+  for (const row of matches) {
+    if (isTerminalBookingStatus(row.current_status)) {
+      skipped.push({
+        booking_id: row.booking_id,
+        status: row.current_status,
+        reason: 'already_terminal',
+      });
+      continue;
+    }
+
+    try {
+      const booking = await ctx.providers.repository.getBookingById(row.booking_id);
+      if (!booking) {
+        failed.push({
+          booking_id: row.booking_id,
+          status: row.current_status,
+          reason: 'booking_lookup_failed',
+        });
+        ctx.logger.logWarn?.({
+          source: 'backend',
+          eventType: 'test_bookings_cleanup_booking_failed',
+          message: 'Failed test booking cleanup because booking lookup did not return a row',
+          context: {
+            path,
+            email_prefix: emailPrefix,
+            booking_id: row.booking_id,
+            booking_status: row.current_status,
+            branch_taken: 'cleanup_booking_lookup_failed',
+            deny_reason: 'booking_lookup_failed',
+          },
+        });
+        continue;
+      }
+
+      const result = await cancelBooking(booking, {
+        providers: ctx.providers,
+        env: ctx.env,
+        logger: ctx.logger,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
+      }, {
+        source: 'ADMIN_UI',
+        bypassPolicyWindow: true,
+      });
+
+      if (!result.ok) {
+        failed.push({
+          booking_id: row.booking_id,
+          status: row.current_status,
+          reason: result.code,
+        });
+        ctx.logger.logWarn?.({
+          source: 'backend',
+          eventType: 'test_bookings_cleanup_booking_failed',
+          message: 'Failed test booking cleanup because cancellation service denied the booking',
+          context: {
+            path,
+            email_prefix: emailPrefix,
+            booking_id: row.booking_id,
+            booking_status: row.current_status,
+            branch_taken: 'cleanup_cancellation_denied',
+            deny_reason: result.code,
+          },
+        });
+        continue;
+      }
+
+      canceled.push({
+        booking_id: row.booking_id,
+        status: result.booking.current_status,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
+      failed.push({
+        booking_id: row.booking_id,
+        status: row.current_status,
+        reason,
+      });
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'test_bookings_cleanup_booking_failed',
+        message: 'Unexpected test booking cleanup failure',
+        error,
+        context: {
+          path,
+          email_prefix: emailPrefix,
+          booking_id: row.booking_id,
+          booking_status: row.current_status,
+          branch_taken: 'cleanup_unexpected_exception',
+        },
+      });
+    }
+  }
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_cleanup_completed',
+    message: 'Completed test bookings cleanup request',
+    context: {
+      path,
+      email_prefix: emailPrefix,
+      matched_count: matches.length,
+      canceled_count: canceled.length,
+      skipped_count: skipped.length,
+      failed_count: failed.length,
+      branch_taken: failed.length > 0 ? 'cleanup_completed_with_failures' : 'cleanup_completed_successfully',
+      deny_reason: failed.length > 0 ? 'one_or_more_bookings_failed_cleanup' : null,
+    },
+  });
+
+  return ok({
+    email_prefix: emailPrefix,
+    matched_count: matches.length,
+    canceled_count: canceled.length,
+    skipped_count: skipped.length,
+    failed_count: failed.length,
+    canceled,
+    skipped,
+    failed,
   });
 }
