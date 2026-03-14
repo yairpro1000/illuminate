@@ -6,6 +6,7 @@ import {
   makeScenarioEmail,
   waitForBookingArtifacts,
 } from './support/api';
+import { attachRuntimeMonitor } from './support/runtime';
 
 async function openIntroFlow(page: Page): Promise<void> {
   await page.goto(`${SITE_BASE_URL}/sessions.html`);
@@ -76,9 +77,11 @@ async function newPage(browser: Browser): Promise<Page> {
 }
 
 test.describe('P4 multi-user slot contention', () => {
-  test('a second user loses cleanly when submitting a stale intro slot after the first user confirms it', async ({ browser }) => {
+  test('a second user loses cleanly when submitting a stale intro slot after the first user confirms it', async ({ browser }, testInfo) => {
     const pageA = await newPage(browser);
     const pageB = await newPage(browser);
+    const runtimeA = attachRuntimeMonitor(pageA);
+    const runtimeB = attachRuntimeMonitor(pageB);
     const winnerEmail = makeScenarioEmail('p4-stale-winner');
     const loserEmail = makeScenarioEmail('p4-stale-loser');
 
@@ -94,8 +97,18 @@ test.describe('P4 multi-user slot contention', () => {
       await pageA.goto(winnerArtifacts.links.confirm_url!);
       await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
 
+      const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
       expect(await waitForIntroOutcome(pageB)).toBe('slot-lost');
+      await runtimeB.assertNoNewIssues(loserCheckpoint, 'contention-stale-loser', testInfo, {
+        allow: [
+          {
+            kind: 'http',
+            messageIncludes: '-> 409',
+            urlIncludes: '/api/bookings/pay-later',
+          },
+        ],
+      });
 
       await cleanupConfirmedIntro(winnerEmail);
     } finally {
@@ -104,9 +117,11 @@ test.describe('P4 multi-user slot contention', () => {
     }
   });
 
-  test('two users racing for the same intro slot produce one winner and one clean slot-taken failure', async ({ browser }) => {
+  test('two users racing for the same intro slot produce one winner and one clean slot-taken failure', async ({ browser }, testInfo) => {
     const pageA = await newPage(browser);
     const pageB = await newPage(browser);
+    const runtimeA = attachRuntimeMonitor(pageA);
+    const runtimeB = attachRuntimeMonitor(pageB);
     const emailA = makeScenarioEmail('p4-race-a');
     const emailB = makeScenarioEmail('p4-race-b');
 
@@ -114,6 +129,8 @@ test.describe('P4 multi-user slot contention', () => {
       const chosen = await createPreparedIntroDraft(pageA, emailA);
       await createPreparedIntroDraftForSlot(pageB, emailB, chosen);
 
+      const checkpointA = runtimeA.checkpoint();
+      const checkpointB = runtimeB.checkpoint();
       await Promise.all([
         pageA.locator('button[data-submit]').click(),
         pageB.locator('button[data-submit]').click(),
@@ -128,9 +145,23 @@ test.describe('P4 multi-user slot contention', () => {
 
       const winnerEmail = outcomeA === 'success' ? emailA : emailB;
       const loserEmail = outcomeA === 'slot-lost' ? emailA : emailB;
+      const winnerRuntime = outcomeA === 'success' ? runtimeA : runtimeB;
+      const loserRuntime = outcomeA === 'slot-lost' ? runtimeA : runtimeB;
+      const winnerCheckpoint = outcomeA === 'success' ? checkpointA : checkpointB;
+      const loserCheckpoint = outcomeA === 'slot-lost' ? checkpointA : checkpointB;
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
+      await winnerRuntime.assertNoNewIssues(winnerCheckpoint, 'contention-race-winner', testInfo);
+      await loserRuntime.assertNoNewIssues(loserCheckpoint, 'contention-race-loser', testInfo, {
+        allow: [
+          {
+            kind: 'http',
+            messageIncludes: '-> 409',
+            urlIncludes: '/api/bookings/pay-later',
+          },
+        ],
+      });
       await cleanupConfirmedIntro(winnerEmail);
 
       await expect(async () => {

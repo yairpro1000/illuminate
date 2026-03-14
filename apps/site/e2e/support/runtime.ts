@@ -10,6 +10,12 @@ interface RuntimeCheckpoint {
   index: number;
 }
 
+interface RuntimeIssueExpectation {
+  kind?: RuntimeIssue['kind'];
+  messageIncludes?: string;
+  urlIncludes?: string;
+}
+
 function shouldIgnoreUrl(url: string): boolean {
   return (
     url.startsWith('data:') ||
@@ -31,6 +37,13 @@ function shouldIgnoreRequestFailure(url: string, errorText: string | null | unde
 
 export function attachRuntimeMonitor(page: Page) {
   const issues: RuntimeIssue[] = [];
+
+  function matchesExpectation(issue: RuntimeIssue, expected: RuntimeIssueExpectation): boolean {
+    if (expected.kind && issue.kind !== expected.kind) return false;
+    if (expected.messageIncludes && !issue.message.includes(expected.messageIncludes)) return false;
+    if (expected.urlIncludes && !(issue.url || '').includes(expected.urlIncludes)) return false;
+    return true;
+  }
 
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
@@ -78,13 +91,19 @@ export function attachRuntimeMonitor(page: Page) {
       checkpoint: RuntimeCheckpoint,
       label: string,
       testInfo: TestInfo,
+      options?: { allow?: RuntimeIssueExpectation[] },
     ): Promise<void> {
-      const newIssues = issues.slice(checkpoint.index);
+      const rawIssues = issues.slice(checkpoint.index);
+      const allowed = options?.allow ?? [];
+      const newIssues = rawIssues.filter((issue) => !allowed.some((expected) => matchesExpectation(issue, expected)));
       if (newIssues.length === 0) return;
 
       await testInfo.attach(`${label}-runtime-issues`, {
         contentType: 'application/json',
-        body: Buffer.from(JSON.stringify(newIssues, null, 2), 'utf8'),
+        body: Buffer.from(JSON.stringify({
+          unexpected: newIssues,
+          allowed: rawIssues.filter((issue) => !newIssues.includes(issue)),
+        }, null, 2), 'utf8'),
       });
 
       expect(newIssues, `Unexpected runtime issues during ${label}`).toEqual([]);
