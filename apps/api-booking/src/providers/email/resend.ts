@@ -134,9 +134,8 @@ function htmlLayout(bodyContent: string): string {
   body,table,td,p,a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
   body { margin:0; padding:0; background:#0d1820; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
   .wrap { max-width:560px; margin:0 auto; background:#0d1820; border-radius:12px; overflow:hidden; }
-  .header { background:#0a1219; padding:18px 24px; text-align:center; border-left:1px solid #1d3848; border-right:1px solid #1d3848; }
-  .header__brand { margin:0; font-size:13px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:#4fc3d8; }
-  .header__sub { display:block; margin-top:6px; font-size:13px; font-weight:400; letter-spacing:0.02em; text-transform:none; color:#88abb5; }
+  .header { background:#0a1219; padding:0; text-align:center; font-size:0; }
+  .header__logo { display:block; width:100%; max-width:100%; height:auto; }
   .body { background:#111f2a; padding:36px 40px 32px; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
   .body p { margin:0 0 18px; font-size:15px; line-height:1.7; color:#ddeef2; }
   .body p:last-child { margin-bottom:0; }
@@ -165,8 +164,7 @@ function htmlLayout(bodyContent: string): string {
 <body>
 <div class="wrap">
   <div class="header">
-    <p class="header__brand">ILLUMINATE</p>
-    <span class="header__sub">by Yair Benharroch</span>
+    <img class="header__logo" src="https://letsilluminate.co/img/ILLUMINATE_hero.png" alt="ILLUMINATE by Yair Benharroch" />
   </div>
   <div class="body">${bodyContent}</div>
   <div class="footer"><p class="footer__brand">ILLUMINATE <span class="footer__sub">by Yair Benharroch</span></p></div>
@@ -334,11 +332,37 @@ export class ResendEmailProvider implements IEmailProvider {
         text,
         ...(html ? { html } : {}),
       };
+      console.info('[email:resend] send_attempt', JSON.stringify({
+        provider: 'resend',
+        kind,
+        to,
+        subject,
+        has_html: Boolean(html),
+        text_length: text.length,
+        html_length: html ? html.length : 0,
+        branch_taken: 'send_payload_to_resend',
+        deny_reason: null,
+      }));
 
       const { data, error } = await (this.resend.emails.send as (p: unknown) => Promise<{
         data?: { id?: string } | null;
         error?: { message: string; name?: string } | null;
       }>)(payload);
+
+      console.info('[email:resend] send_result', JSON.stringify({
+        provider: 'resend',
+        kind,
+        to,
+        subject,
+        has_html: Boolean(html),
+        text_length: text.length,
+        html_length: html ? html.length : 0,
+        message_id: data?.id ?? null,
+        error_name: error?.name ?? null,
+        error_message: error?.message ?? null,
+        branch_taken: error || !data?.id ? 'resend_send_failed' : 'resend_send_succeeded',
+        deny_reason: error?.message ?? (!data?.id ? 'missing_message_id' : null),
+      }));
 
       if (error || !data?.id) {
         throw new EmailProviderError(`Resend error: ${error?.message ?? 'missing message id'}`, {
@@ -350,6 +374,18 @@ export class ResendEmailProvider implements IEmailProvider {
 
       return { messageId: data.id, debug: { provider: 'resend', kind } };
     } catch (err) {
+      console.info('[email:resend] send_exception', JSON.stringify({
+        provider: 'resend',
+        kind,
+        to,
+        subject,
+        has_html: Boolean(html),
+        text_length: text.length,
+        html_length: html ? html.length : 0,
+        exception: err instanceof Error ? err.message : String(err),
+        branch_taken: 'resend_exception_raised',
+        deny_reason: err instanceof Error ? err.message : String(err),
+      }));
       if (err instanceof EmailProviderError) throw err;
       throw new EmailProviderError('Resend exception while sending email', {
         provider: 'resend',

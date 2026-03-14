@@ -299,6 +299,20 @@ describe('booking domain model', () => {
     );
     expect(reminderEffect?.expires_at).toBeTruthy();
     expect(verifyEffect?.expires_at).toBeTruthy();
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pay_later_payment_due_email_dispatch_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'send_pay_later_payment_due_email',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pay_later_payment_due_email_dispatch_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'pay_later_payment_due_email_sent',
+      }),
+    }));
   });
 
   it('confirms pay-now bookings after payment settlement', async () => {

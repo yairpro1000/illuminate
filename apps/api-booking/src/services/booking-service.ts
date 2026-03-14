@@ -604,12 +604,45 @@ export async function confirmBookingEmail(
     }
     if (paymentUrl) {
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+      const continuePaymentUrl = buildContinuePaymentUrl(ctx.env.SITE_URL, booking);
+      const paymentDueAt = getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours);
+      bookingCtx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'pay_later_payment_due_email_dispatch_decision',
+        message: 'Evaluated pay-later payment-due email dispatch',
+        context: {
+          booking_id: booking.id,
+          booking_status: booking.current_status,
+          payment_exists_before_dispatch: Boolean(existingPayment),
+          has_checkout_url: Boolean(paymentUrl),
+          has_manage_url: Boolean(manageUrl),
+          has_continue_payment_url: Boolean(continuePaymentUrl),
+          payment_due_at: paymentDueAt,
+          branch_taken: 'send_pay_later_payment_due_email',
+          deny_reason: null,
+        },
+      });
       await bookingCtx.providers.email.sendBookingPaymentDue(
         booking,
-        buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
+        continuePaymentUrl,
         manageUrl,
-        getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours),
+        paymentDueAt,
       );
+      bookingCtx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'pay_later_payment_due_email_dispatch_completed',
+        message: 'Sent pay-later payment-due email',
+        context: {
+          booking_id: booking.id,
+          booking_status: booking.current_status,
+          has_checkout_url: Boolean(paymentUrl),
+          has_manage_url: Boolean(manageUrl),
+          has_continue_payment_url: Boolean(continuePaymentUrl),
+          payment_due_at: paymentDueAt,
+          branch_taken: 'pay_later_payment_due_email_sent',
+          deny_reason: null,
+        },
+      });
     }
   }
 

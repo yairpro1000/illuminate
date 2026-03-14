@@ -11,12 +11,15 @@ vi.mock('resend', () => ({
 }));
 
 describe('Resend payment-due email payload', () => {
+  const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
   beforeEach(() => {
     sendMock.mockReset();
     sendMock.mockResolvedValue({ data: { id: 'msg-1' }, error: null });
+    consoleInfoSpy.mockClear();
   });
 
-  it('sends visible HTML content without the oversized hero image header', async () => {
+  it('sends visible pay-later HTML content with the original image header preserved', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
 
@@ -37,6 +40,15 @@ describe('Resend payment-due email payload', () => {
     expect(payload.text).toContain('Please complete payment by');
     expect(payload.html).toContain('Complete payment');
     expect(payload.html).toContain('ILLUMINATE');
-    expect(payload.html).not.toContain('ILLUMINATE_hero.png');
+    expect(payload.html).toContain('ILLUMINATE_hero.png');
+    expect(payload.html).toContain('Payment due');
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[email:resend] send_attempt',
+      expect.stringContaining('"kind":"booking_payment_due"'),
+    );
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[email:resend] send_result',
+      expect.stringContaining('"branch_taken":"resend_send_succeeded"'),
+    );
   });
 });
