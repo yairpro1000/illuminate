@@ -84,12 +84,15 @@ function toTestBookingSummary(row: OrganizerBookingRow) {
 
 async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): Promise<OrganizerBookingRow[]> {
   const clients = await ctx.providers.repository.listClientsByEmailPrefix(emailPrefix);
-  const matchingClientIds = clients
-    .filter((client) => isExampleTestEmail(client.email))
-    .map((client) => client.id);
-  if (matchingClientIds.length === 0) return [];
+  const matchingClients = clients.filter((client) => isExampleTestEmail(client.email));
+  if (matchingClients.length === 0) return [];
 
-  const rows = await ctx.providers.repository.getOrganizerBookings({ client_ids: matchingClientIds });
+  const rows: OrganizerBookingRow[] = [];
+  for (const client of matchingClients) {
+    const clientRows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
+    rows.push(...clientRows);
+  }
+
   return rows
     .filter((row) => {
       const email = row.client_email.toLowerCase();
