@@ -440,7 +440,9 @@
             : `<div class="step-footer">
                 <button class="btn btn-ghost" data-back>← Back</button>
                 <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
-                  ${state.submitting ? 'Processing…' : 'Confirm Booking'}
+                  ${state.submitting
+                    ? 'Processing…'
+                    : (state.paymentMethod === 'pay-now' ? 'Proceed to Payment' : 'Confirm Booking')}
                 </button>
               </div>`}
         </div>

@@ -303,6 +303,9 @@ export interface OrganizerBookingRow {
   google_event_id: string | null;
   address_line: string;
   maps_url: string;
+  booking_price: number | null;
+  booking_currency: string | null;
+  booking_coupon_code: string | null;
   payment_amount_cents: number | null;
   payment_currency: string | null;
   payment_status: PaymentStatus | null;

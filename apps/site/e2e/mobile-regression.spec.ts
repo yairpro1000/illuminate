@@ -445,10 +445,14 @@ test.describe('@mobile P4 mobile regression', () => {
     await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
 
     const checkpoint = runtime.checkpoint();
-    await clickFirstAvailableSlot(page);
+    const chosenSlot = await clickFirstAvailableSlot(page);
     await fillContactDetails(page, { firstName: 'P4', lastName: 'PayNow', email, phone: '+41790000000' });
     await page.locator('[data-payment="pay-now"]').click();
     await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('.step-eyebrow')).toContainText('Review your booking');
+    await expect(page.locator('.review-table')).toContainText(chosenSlot.timeLabel);
+    await expect(page.locator('.review-table')).toContainText('Price');
+    await expect(page.locator('button[data-submit]')).toContainText('Proceed to Payment');
     await page.locator('button[data-submit]').click();
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();

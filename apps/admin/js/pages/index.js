@@ -58,6 +58,18 @@
     return td;
   }
 
+  function formatMoneyValue(value) {
+    if (value == null || value === '') return '—';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return String(value);
+    return number.toFixed(2).replace(/\.00$/, '').replace(/(\.\d*[1-9])0$/, '$1');
+  }
+
+  function formatMoneyDisplay(value, currency) {
+    if (value == null || !currency) return '—';
+    return `${formatMoneyValue(value)} ${currency}`;
+  }
+
   function clientOptionParts(row) {
     return {
       firstName: String(row.client_first_name || '').trim(),
@@ -157,6 +169,7 @@
         const haystack = [
           r.client_first_name, r.client_last_name, r.client_email,
           r.client_phone, r.notes, r.current_status, r.event_title, r.session_type_title,
+          r.booking_coupon_code, r.booking_currency, r.booking_price,
         ].join(' ').toLowerCase();
         return haystack.includes(q);
       });
@@ -210,14 +223,17 @@
     const kindLabel = row.event_id ? 'Event booking' : '1:1 booking';
     const title = row.event_id ? (row.event_title || 'Event') : (row.session_type_title || 'Session');
     const maps = row.maps_url ? `<a href="${row.maps_url}" target="_blank" rel="noreferrer">Open map</a>` : '—';
+    const bookingAmount = formatMoneyDisplay(row.booking_price, row.booking_currency);
     const paymentAmount = (row.payment_amount_cents != null && row.payment_currency)
-      ? `${(row.payment_amount_cents / 100).toFixed(2)} ${row.payment_currency}`
+      ? formatMoneyDisplay(row.payment_amount_cents / 100, row.payment_currency)
       : '—';
     return [
       detailSection('Booking'),
       detailRow('Booking ID', row.booking_id),
       detailRow('Booking type', kindLabel),
       detailRow('Title', title),
+      detailRow('Booked price', bookingAmount),
+      detailRow('Coupon code', row.booking_coupon_code || '—'),
       detailRow('Latest booking event', row.latest_event_type || '—'),
       detailRow('Latest booking event at', fmtDateTime(row.latest_event_at)),
       detailRow('Status', row.current_status || '—'),
