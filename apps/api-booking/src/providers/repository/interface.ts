@@ -43,6 +43,7 @@ export interface OrganizerBookingFilters {
   event_id?: string;
   date?: string; // YYYY-MM-DD
   client_id?: string;
+  client_ids?: string[];
   current_status?: BookingCurrentStatus;
 }
 
@@ -62,6 +63,7 @@ export interface IRepository {
   createClient(data: NewClient): Promise<Client>;
   getClientById(id: string): Promise<Client | null>;
   getClientByEmail(email: string): Promise<Client | null>;
+  listClientsByEmailPrefix(prefix: string): Promise<Client[]>;
   updateClient(id: string, updates: ClientUpdate): Promise<Client>;
 
   // ── Bookings ──────────────────────────────────────────────────────────────

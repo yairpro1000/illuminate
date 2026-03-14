@@ -166,6 +166,36 @@ export async function getAdminContactMessages(): Promise<Array<Record<string, an
   return Array.isArray(data.rows) ? data.rows : [];
 }
 
+export async function createAdminSessionType(input: {
+  title: string;
+  slug: string;
+  short_description?: string | null;
+  description: string;
+  duration_minutes: number;
+  price: number;
+  currency?: string;
+  status?: string;
+  sort_order?: number;
+}): Promise<Record<string, any>> {
+  return adminJson('/api/admin/session-types', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: input.title,
+      slug: input.slug,
+      short_description: input.short_description ?? null,
+      description: input.description,
+      duration_minutes: input.duration_minutes,
+      price: input.price,
+      currency: input.currency ?? 'CHF',
+      status: input.status ?? 'active',
+      sort_order: input.sort_order ?? 0,
+      image_key: null,
+      image_alt: null,
+      drive_file_id: null,
+    }),
+  });
+}
+
 export async function ensureAdminServiceMode(key: ServiceKey, mode: string): Promise<void> {
   const config = await adminJson<{ services: AdminConfigService[] }>('/api/admin/config');
   const service = Array.isArray(config.services) ? config.services.find((entry) => entry.key === key) : null;

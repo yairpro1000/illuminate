@@ -141,6 +141,18 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async listClientsByEmailPrefix(prefix: string): Promise<Client[]> {
+    const normalizedPrefix = normalizeEmail(prefix).replace(/[%_]/g, (match) => `\\${match}`);
+    return requireData<Client[]>(
+      this.db
+        .from('clients')
+        .select('*')
+        .ilike('email', `${normalizedPrefix}%`)
+        .order('email', { ascending: true }),
+      'Failed to load clients by email prefix',
+    );
+  }
+
   async updateClient(id: string, updates: ClientUpdate): Promise<Client> {
     const payload = {
       ...updates,
@@ -667,6 +679,7 @@ export class SupabaseRepository implements IRepository {
 
     if (filters.event_id) query = query.eq('event_id', filters.event_id);
     if (filters.client_id) query = query.eq('client_id', filters.client_id);
+    if (filters.client_ids && filters.client_ids.length > 0) query = query.in('client_id', filters.client_ids);
     if (filters.current_status) query = query.eq('current_status', filters.current_status);
     if (filters.booking_kind === 'event') query = query.not('event_id', 'is', null);
     if (filters.booking_kind === 'session') query = query.is('event_id', null);

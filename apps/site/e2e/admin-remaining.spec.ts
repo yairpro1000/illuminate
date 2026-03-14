@@ -4,6 +4,7 @@ import {
   API_BASE_URL,
   SITE_BASE_URL,
   clickFirstAvailableSlot,
+  createAdminSessionType,
   ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
@@ -188,12 +189,14 @@ test.describe('P4 remaining admin and content coverage', () => {
 
   test('T34 create session type', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
-    const slug = `p4-session-${Date.now()}`;
+    const stamp = Date.now();
+    const title = `P4 Session Type ${stamp}`;
+    const slug = `p4-session-${stamp}`;
 
     const checkpoint = runtime.checkpoint();
     await page.goto(`${ADMIN_BASE_URL}/session-types.html`);
     await page.click('#newBtn');
-    await page.fill('#stFTitle', 'P4 Session Type');
+    await page.fill('#stFTitle', title);
     await page.fill('#stFSlug', slug);
     await page.fill('#stFShort', 'P4 short');
     await page.fill('#stFDesc', 'P4 description');
@@ -201,17 +204,29 @@ test.describe('P4 remaining admin and content coverage', () => {
     await page.fill('#stFPrice', '111');
     await page.selectOption('#stFStatus', 'active');
     await page.click('#stSave');
-    await expect(page.locator('#stBody tr', { hasText: 'P4 Session Type' })).toBeVisible();
+    await expect(page.locator('#stBody tr', { hasText: title })).toBeVisible();
     await runtime.assertNoNewIssues(checkpoint, 'admin-create-session-type', testInfo);
   });
 
   test('T35 edit session type including image-backed content', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
-    const updatedTitle = `P4 Session Type Updated ${Date.now()}`;
+    const stamp = Date.now();
+    const originalTitle = `P4 Session Type Edit ${stamp}`;
+    const updatedTitle = `P4 Session Type Updated ${stamp}`;
+    const slug = `p4-session-edit-${stamp}`;
+
+    await createAdminSessionType({
+      title: originalTitle,
+      slug,
+      short_description: 'P4 edit short',
+      description: 'P4 edit description',
+      duration_minutes: 75,
+      price: 111,
+    });
 
     const checkpoint = runtime.checkpoint();
     await page.goto(`${ADMIN_BASE_URL}/session-types.html`);
-    const row = page.locator('#stBody tr', { hasText: 'P4 Session Type' }).first();
+    const row = page.locator('#stBody tr', { hasText: originalTitle });
     await expect(row).toBeVisible();
     await row.click();
     await page.fill('#stFTitle', updatedTitle);

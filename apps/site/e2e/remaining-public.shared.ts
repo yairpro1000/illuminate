@@ -52,7 +52,10 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         await page.goto(`${SITE_BASE_URL}/sessions.html`);
         await expect(page.locator('#sessionGrid .event-card')).toHaveCount(sessionTypes.length);
         for (const session of sessionTypes) {
-          await expect(page.locator('#sessionGrid .event-card', { hasText: session.title })).toHaveCount(1);
+          const expectedHref = session.slug === 'intro-clarity-conversation'
+            ? 'book.html?type=intro'
+            : `offer=${session.slug}`;
+          await expect(page.locator(`#sessionGrid a.btn[href*="${expectedHref}"]`)).toHaveCount(1);
         }
         await runtime.assertNoNewIssues(checkpoint, 'sessions-page-public-offers', testInfo);
       },

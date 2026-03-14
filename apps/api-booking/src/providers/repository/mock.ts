@@ -75,6 +75,14 @@ export class MockRepository implements IRepository {
     return null;
   }
 
+  async listClientsByEmailPrefix(prefix: string): Promise<Client[]> {
+    const normalized = normalizeEmail(prefix);
+    const clients = [...mockState.clients.values()]
+      .filter((client) => normalizeEmail(client.email).startsWith(normalized))
+      .sort((a, b) => a.email.localeCompare(b.email));
+    return clients;
+  }
+
   async updateClient(id: string, updates: ClientUpdate): Promise<Client> {
     const existing = mockState.clients.get(id);
     if (!existing) throw new Error(`Client ${id} not found`);
@@ -535,6 +543,7 @@ export class MockRepository implements IRepository {
       if (filters.booking_kind && bookingKind !== filters.booking_kind) continue;
       if (filters.event_id && hydrated.event_id !== filters.event_id) continue;
       if (filters.client_id && hydrated.client_id !== filters.client_id) continue;
+      if (filters.client_ids && filters.client_ids.length > 0 && !filters.client_ids.includes(hydrated.client_id)) continue;
       if (filters.current_status && hydrated.current_status !== filters.current_status) continue;
       if (filters.date && hydrated.starts_at.slice(0, 10) !== filters.date) continue;
 
