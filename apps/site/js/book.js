@@ -167,6 +167,7 @@ function render() {
   if (!app) return;
   app.innerHTML = VIEWS.buildShell();
   attachListeners();
+  mountTurnstileWidget();
 }
 
 async function refreshSlots() {
@@ -434,13 +435,15 @@ function scrollToApp() {
    ══════════════════════════════════════════════════════════ */
 
 async function handleSubmit() {
-  S.submitting = true;
+  clearTurnstileSubmitError();
   S.submissionError = null;
   S.submissionManageUrl = null;
   S.submissionContinuePaymentUrl = null;
-  render();
 
   try {
+    const submitTurnstileToken = await resolveBookingTurnstileToken();
+    S.submitting = true;
+    render();
     const flowId = BOOK_OBS && BOOK_OBS.startFlow ? BOOK_OBS.startFlow(
       CTX.source === 'evening' ? 'registration_flow_started' : (CTX.mode === 'reschedule' ? 'reschedule_flow_started' : 'booking_flow_started')
     ) : null;
@@ -460,11 +463,11 @@ async function handleSubmit() {
       const result = await submitReschedule({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS });
       S.rescheduleUpdated = { starts_at: result.starts_at, ends_at: result.ends_at };
     } else if (CTX.source === 'evening') {
-      const result = await submitEventRegistration({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS });
+      const result = await submitEventRegistration({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, turnstileToken: submitTurnstileToken });
       checkoutUrl = result.checkout_url || null;
       status = result.status || null;
     } else {
-      const result = await submitBooking({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, isIntroFlow });
+      const result = await submitBooking({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, isIntroFlow, turnstileToken: submitTurnstileToken });
       checkoutUrl = result.checkout_url || null;
       status = result.status || null;
       manageUrl = result.manage_url || null;
@@ -488,6 +491,9 @@ async function handleSubmit() {
     }
   } catch (err) {
     console.error('[Book] Submission error:', err);
+    if (window.SiteTurnstile && typeof window.SiteTurnstile.resetVisibleWidget === 'function') {
+      window.SiteTurnstile.resetVisibleWidget(CTX.source === 'evening' ? 'event_registration_submit' : 'booking_submit');
+    }
     if (BOOK_OBS) {
       BOOK_OBS.logError({
         eventType: 'handled_exception',
@@ -515,6 +521,55 @@ async function handleSubmit() {
     S.submitting = false;
     render();
   }
+}
+
+function clearTurnstileSubmitError() {
+  delete S.errors.turnstile;
+}
+
+async function resolveBookingTurnstileToken() {
+  if (CTX.mode === 'reschedule' || !window.SiteTurnstile || typeof window.SiteTurnstile.resolveToken !== 'function') {
+    return null;
+  }
+
+  return await window.SiteTurnstile.resolveToken({
+    key: CTX.source === 'evening' ? 'event_registration_submit' : 'booking_submit',
+    config: SITE_CONFIG,
+    observability: BOOK_OBS,
+    formName: CTX.source === 'evening' ? 'event_registration' : 'booking',
+    action: CTX.source === 'evening' ? 'event_registration_submit' : 'booking_submit',
+  });
+}
+
+function mountTurnstileWidget() {
+  const app = document.getElementById('booking-app');
+  const host = app && app.querySelector('[data-turnstile-host]');
+  if (!host || !window.SiteTurnstile || typeof window.SiteTurnstile.renderVisibleWidget !== 'function') return;
+
+  const widgetKey = host.getAttribute('data-turnstile-host');
+  const action = widgetKey === 'event_registration_submit' ? 'event_registration_submit' : 'booking_submit';
+
+  window.SiteTurnstile.renderVisibleWidget({
+    key: widgetKey,
+    container: host,
+    config: SITE_CONFIG,
+    observability: BOOK_OBS,
+    formName: widgetKey === 'event_registration_submit' ? 'event_registration' : 'booking',
+    action: action,
+    onToken: function () {
+      if (S.errors.turnstile) {
+        delete S.errors.turnstile;
+        render();
+      }
+    },
+    onError: function (error) {
+      S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
+      render();
+    },
+  }).catch(function (error) {
+    S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
+    render();
+  });
 }
 
 /* ══════════════════════════════════════════════════════════

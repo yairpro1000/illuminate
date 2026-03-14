@@ -81,6 +81,15 @@
   text-align: center;
 }
 
+.contact-turnstile {
+  margin-top: 1rem;
+}
+
+.contact-turnstile__widget {
+  min-height: 72px;
+  margin-top: 0.75rem;
+}
+
 /* ── Submit-level error ──────────────────────────────────── */
 
 .contact-submit-error {

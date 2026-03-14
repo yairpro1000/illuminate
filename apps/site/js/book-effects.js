@@ -4,8 +4,12 @@
   const SITE_TURNSTILE = window.SiteTurnstile || null;
 
   async function resolveSubmitTurnstileToken(args, action) {
+    if (typeof args.turnstileToken === 'string' && args.turnstileToken) {
+      return args.turnstileToken;
+    }
     if (SITE_TURNSTILE && typeof SITE_TURNSTILE.resolveToken === 'function') {
       return await SITE_TURNSTILE.resolveToken({
+        key: args.context && args.context.source === 'evening' ? 'event_registration_submit' : 'booking_submit',
         config: args.config,
         observability: args.observability,
         formName: args.context && args.context.source === 'evening' ? 'event_registration' : 'booking',

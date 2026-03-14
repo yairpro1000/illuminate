@@ -2,14 +2,22 @@
   'use strict';
 
   const TURNSTILE_SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-  const TURNSTILE_CONTAINER_ID = 'site-turnstile-root';
   const DEFAULT_PLACEHOLDER_TOKEN = 'placeholder';
-
+  const widgetStates = new Map();
   let scriptLoadPromise = null;
-  let activeWidgetId = null;
 
   function getPlaceholderToken(config) {
     return (config && config.turnstilePlaceholderToken) || DEFAULT_PLACEHOLDER_TOKEN;
+  }
+
+  function isEnabled(config) {
+    return !!(config && config.turnstileEnabled === true);
+  }
+
+  function getSiteKey(config) {
+    return typeof config?.turnstileSiteKey === 'string' && config.turnstileSiteKey.trim()
+      ? config.turnstileSiteKey.trim()
+      : null;
   }
 
   function setTurnstileConfigFromPublicConfig(config, publicConfig) {
@@ -19,10 +27,7 @@
 
     target.antibotMode = antibot && typeof antibot.mode === 'string' ? antibot.mode : (target.antibotMode || 'mock');
     target.turnstileEnabled = !!(turnstile && turnstile.enabled === true);
-    target.turnstileSiteKey =
-      turnstile && typeof turnstile.site_key === 'string' && turnstile.site_key.trim()
-        ? turnstile.site_key.trim()
-        : null;
+    target.turnstileSiteKey = getSiteKey(turnstile);
     target.turnstileLoadError = null;
 
     return target;
@@ -34,32 +39,22 @@
     return target;
   }
 
-  function getContainer() {
-    let container = document.getElementById(TURNSTILE_CONTAINER_ID);
-    if (container) return container;
-
-    container = document.createElement('div');
-    container.id = TURNSTILE_CONTAINER_ID;
-    container.setAttribute('aria-hidden', 'true');
-    container.style.position = 'fixed';
-    container.style.left = '-9999px';
-    container.style.bottom = '0';
-    container.style.width = '1px';
-    container.style.height = '1px';
-    container.style.overflow = 'hidden';
-    document.body.appendChild(container);
-    return container;
+  function makeTurnstileError(message, code) {
+    const error = new Error(message);
+    if (code) error.code = code;
+    return error;
   }
 
-  function cleanupWidget() {
-    const container = document.getElementById(TURNSTILE_CONTAINER_ID);
-    if (activeWidgetId !== null && window.turnstile && typeof window.turnstile.remove === 'function') {
+  function cleanupWidget(key) {
+    const current = widgetStates.get(key);
+    if (!current) return;
+    if (current.widgetId != null && window.turnstile && typeof window.turnstile.remove === 'function') {
       try {
-        window.turnstile.remove(activeWidgetId);
+        window.turnstile.remove(current.widgetId);
       } catch (_) {}
     }
-    activeWidgetId = null;
-    if (container) container.innerHTML = '';
+    if (current.container) current.container.innerHTML = '';
+    widgetStates.delete(key);
   }
 
   function loadTurnstileScript() {
@@ -90,35 +85,98 @@
     return scriptLoadPromise;
   }
 
-  function makeTurnstileError(message, code) {
-    const error = new Error(message);
-    if (code) error.code = code;
-    return error;
+  async function renderVisibleWidget(options) {
+    const opts = options || {};
+    const key = typeof opts.key === 'string' && opts.key ? opts.key : null;
+    const config = opts.config || {};
+    const container = opts.container || null;
+    const onToken = typeof opts.onToken === 'function' ? opts.onToken : function () {};
+    const onError = typeof opts.onError === 'function' ? opts.onError : function () {};
+
+    if (!key || !container) return;
+
+    if (!isEnabled(config)) {
+      cleanupWidget(key);
+      return;
+    }
+
+    if (config.turnstileLoadError) {
+      onError(makeTurnstileError('Anti-bot verification is unavailable right now. Please try again.', 'TURNSTILE_CONFIG_UNAVAILABLE'));
+      return;
+    }
+
+    const siteKey = getSiteKey(config);
+    if (!siteKey) {
+      onError(makeTurnstileError('Anti-bot verification is not configured for this page.', 'TURNSTILE_SITE_KEY_MISSING'));
+      return;
+    }
+
+    const existing = widgetStates.get(key);
+    if (existing && existing.container === container && existing.widgetId != null) {
+      return;
+    }
+
+    await loadTurnstileScript();
+    cleanupWidget(key);
+    container.innerHTML = '';
+
+    const state = {
+      container,
+      widgetId: null,
+      token: null,
+      action: typeof opts.action === 'string' && opts.action ? opts.action : 'submit',
+      siteKey,
+    };
+    widgetStates.set(key, state);
+
+    try {
+      state.widgetId = window.turnstile.render(container, {
+        sitekey: siteKey,
+        action: state.action,
+        theme: document.body.classList.contains('theme-light') ? 'light' : 'dark',
+        callback: function (token) {
+          state.token = token;
+          onToken(token);
+        },
+        'error-callback': function (code) {
+          state.token = null;
+          onError(makeTurnstileError('Turnstile widget error: ' + code, code || 'TURNSTILE_WIDGET_ERROR'));
+        },
+        'expired-callback': function () {
+          state.token = null;
+          onError(makeTurnstileError('Turnstile token expired. Please complete the anti-bot check again.', 'TURNSTILE_TOKEN_EXPIRED'));
+        },
+        'timeout-callback': function () {
+          state.token = null;
+          onError(makeTurnstileError('Turnstile verification timed out. Please complete the anti-bot check again.', 'TURNSTILE_TIMEOUT'));
+        },
+      });
+    } catch (error) {
+      state.token = null;
+      onError(error instanceof Error ? error : makeTurnstileError('Turnstile widget failed to render.', 'TURNSTILE_RENDER_FAILED'));
+    }
   }
 
   async function resolveTurnstileToken(options) {
     const opts = options || {};
+    const key = typeof opts.key === 'string' && opts.key ? opts.key : null;
     const config = opts.config || {};
     const observability = opts.observability || null;
     const action = typeof opts.action === 'string' && opts.action ? opts.action : 'submit';
     const formName = typeof opts.formName === 'string' && opts.formName ? opts.formName : 'form';
-    const turnstileEnabled = config.turnstileEnabled === true;
-    const siteKey = typeof config.turnstileSiteKey === 'string' && config.turnstileSiteKey.trim()
-      ? config.turnstileSiteKey.trim()
-      : null;
 
     if (observability && observability.logMilestone) {
       observability.logMilestone('turnstile_gate_evaluated', {
         form: formName,
         action: action,
         antibot_mode: config.antibotMode || null,
-        turnstile_enabled: turnstileEnabled,
-        site_key_present: !!siteKey,
-        branch_taken: turnstileEnabled ? 'execute_turnstile_submit_gate' : 'bypass_turnstile_submit_gate',
+        turnstile_enabled: isEnabled(config),
+        site_key_present: !!getSiteKey(config),
+        branch_taken: isEnabled(config) ? 'require_visible_turnstile_token' : 'bypass_turnstile_submit_gate',
       });
     }
 
-    if (!turnstileEnabled) {
+    if (!isEnabled(config)) {
       return getPlaceholderToken(config);
     }
 
@@ -126,66 +184,37 @@
       throw makeTurnstileError('Anti-bot verification is unavailable right now. Please try again.', 'TURNSTILE_CONFIG_UNAVAILABLE');
     }
 
-    if (!siteKey) {
-      throw makeTurnstileError('Anti-bot verification is not configured for this page.', 'TURNSTILE_SITE_KEY_MISSING');
+    if (!key) {
+      throw makeTurnstileError('Turnstile widget key is missing.', 'TURNSTILE_WIDGET_KEY_MISSING');
     }
 
-    await loadTurnstileScript();
-    cleanupWidget();
+    const state = widgetStates.get(key);
+    if (state && state.token) {
+      return state.token;
+    }
 
-    return await new Promise(function (resolve, reject) {
-      let settled = false;
-      const container = getContainer();
+    throw makeTurnstileError('Please complete the anti-bot check before submitting.', 'TURNSTILE_REQUIRED');
+  }
 
-      function finishWithError(error) {
-        if (settled) return;
-        settled = true;
-        cleanupWidget();
-        reject(error);
-      }
-
-      function finishWithToken(token) {
-        if (settled) return;
-        settled = true;
-        cleanupWidget();
-        resolve(token);
-      }
-
+  function resetVisibleWidget(key) {
+    const state = widgetStates.get(key);
+    if (!state) return;
+    state.token = null;
+    if (state.widgetId != null && window.turnstile && typeof window.turnstile.reset === 'function') {
       try {
-        activeWidgetId = window.turnstile.render(container, {
-          sitekey: siteKey,
-          action: action,
-          appearance: 'execute',
-          execution: 'execute',
-          callback: function (token) {
-            finishWithToken(token);
-          },
-          'error-callback': function (code) {
-            finishWithError(makeTurnstileError('Turnstile widget error: ' + code, code || 'TURNSTILE_WIDGET_ERROR'));
-          },
-          'expired-callback': function () {
-            finishWithError(makeTurnstileError('Turnstile token expired. Please try again.', 'TURNSTILE_TOKEN_EXPIRED'));
-          },
-          'timeout-callback': function () {
-            finishWithError(makeTurnstileError('Turnstile verification timed out. Please try again.', 'TURNSTILE_TIMEOUT'));
-          },
-        });
-
-        if (typeof window.turnstile.execute === 'function') {
-          window.turnstile.execute(activeWidgetId);
-        } else {
-          finishWithError(makeTurnstileError('Turnstile execution API is unavailable.', 'TURNSTILE_EXECUTION_UNAVAILABLE'));
-        }
-      } catch (error) {
-        finishWithError(error instanceof Error ? error : makeTurnstileError('Turnstile execution failed.', 'TURNSTILE_EXECUTION_FAILED'));
-      }
-    });
+        window.turnstile.reset(state.widgetId);
+        return;
+      } catch (_) {}
+    }
+    cleanupWidget(key);
   }
 
   window.SiteTurnstile = {
     applyPublicConfig: setTurnstileConfigFromPublicConfig,
     markConfigLoadFailed: markTurnstileConfigLoadFailed,
+    renderVisibleWidget: renderVisibleWidget,
     resolveToken: resolveTurnstileToken,
+    resetVisibleWidget: resetVisibleWidget,
     _cleanupForTests: cleanupWidget,
   };
 })();

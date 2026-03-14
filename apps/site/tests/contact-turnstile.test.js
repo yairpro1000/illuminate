@@ -24,6 +24,10 @@ describe('contact form turnstile submission', () => {
           <textarea id="contact-message" name="message"></textarea>
           <span id="contact-message-error" hidden></span>
           <div id="contact-submit-error" hidden></div>
+          <div id="contact-turnstile-wrap" hidden>
+            <div id="contact-turnstile-host"></div>
+            <p id="contact-turnstile-error" hidden></p>
+          </div>
           <button id="contact-submit-btn" type="submit">Send</button>
         </form>
       </div>
@@ -62,7 +66,9 @@ describe('contact form turnstile submission', () => {
         config.turnstileLoadError = null
       }),
       markConfigLoadFailed: vi.fn(),
+      renderVisibleWidget: vi.fn().mockResolvedValue(undefined),
       resolveToken: vi.fn().mockResolvedValue('contact-turnstile-token'),
+      resetVisibleWidget: vi.fn(),
     }
     window._post = vi.fn().mockResolvedValue({ ok: true })
   })
@@ -82,7 +88,11 @@ describe('contact form turnstile submission', () => {
     await flush()
 
     expect(window.SiteTurnstile.applyPublicConfig).toHaveBeenCalled()
+    expect(window.SiteTurnstile.renderVisibleWidget).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'contact_form_submit',
+    }))
     expect(window.SiteTurnstile.resolveToken).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'contact_form_submit',
       formName: 'contact_form',
       action: 'contact_form_submit',
     }))

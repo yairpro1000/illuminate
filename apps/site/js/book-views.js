@@ -435,6 +435,7 @@
           ${buildCouponEditor()}
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
+          ${buildTurnstileBlock('booking_submit')}
           ${hasSlotConflict
             ? ''
             : `<div class="step-footer">
@@ -548,12 +549,25 @@
           ${isPaid ? buildCouponEditor() : ''}
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
+          ${buildTurnstileBlock('event_registration_submit')}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
             <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
               ${state.submitting ? 'Processing…' : isPaid ? 'Proceed to Payment' : 'Complete Registration'}
             </button>
           </div>
+        </div>
+      `;
+    }
+
+    function buildTurnstileBlock(key) {
+      if (!siteConfig.turnstileEnabled) return '';
+      return `
+        <div class="turnstile-inline">
+          <label class="form-label">Anti-bot check</label>
+          <div class="turnstile-inline__widget" data-turnstile-host="${escHtml(key)}"></div>
+          <p class="form-hint">Please complete this check before submitting.</p>
+          ${state.errors.turnstile ? `<p class="form-error" role="alert">${escHtml(state.errors.turnstile)}</p>` : ''}
         </div>
       `;
     }

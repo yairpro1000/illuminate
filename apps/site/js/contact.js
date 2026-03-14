@@ -16,6 +16,9 @@
   const successEl  = document.getElementById('contact-success');
   const submitBtn  = document.getElementById('contact-submit-btn');
   const submitErr  = document.getElementById('contact-submit-error');
+  const turnstileWrap = document.getElementById('contact-turnstile-wrap');
+  const turnstileHost = document.getElementById('contact-turnstile-host');
+  const turnstileErr = document.getElementById('contact-turnstile-error');
 
   if (!form) return;
 
@@ -26,6 +29,7 @@
       if (SITE_TURNSTILE && typeof SITE_TURNSTILE.applyPublicConfig === 'function') {
         SITE_TURNSTILE.applyPublicConfig(SITE_CONFIG, data);
       }
+      mountContactTurnstileWidget();
       if (OBS) {
         OBS.logMilestone('contact_turnstile_config_loaded', {
           flow: 'site_contact_form',
@@ -73,6 +77,44 @@
     field.classList.remove('form-input--error');
     err.hidden = true;
     err.textContent = '';
+  }
+
+  function setTurnstileError(message) {
+    if (!turnstileErr) return;
+    if (!message) {
+      turnstileErr.hidden = true;
+      turnstileErr.textContent = '';
+      return;
+    }
+    turnstileErr.hidden = false;
+    turnstileErr.textContent = message;
+  }
+
+  function mountContactTurnstileWidget() {
+    if (!turnstileWrap || !turnstileHost || !SITE_TURNSTILE || typeof SITE_TURNSTILE.renderVisibleWidget !== 'function') return;
+
+    if (!SITE_CONFIG.turnstileEnabled) {
+      turnstileWrap.hidden = true;
+      return;
+    }
+
+    turnstileWrap.hidden = false;
+    SITE_TURNSTILE.renderVisibleWidget({
+      key: 'contact_form_submit',
+      container: turnstileHost,
+      config: SITE_CONFIG,
+      observability: OBS,
+      formName: 'contact_form',
+      action: 'contact_form_submit',
+      onToken: function () {
+        setTurnstileError('');
+      },
+      onError: function (error) {
+        setTurnstileError(error && error.message ? error.message : 'Anti-bot verification failed.');
+      },
+    }).catch(function (error) {
+      setTurnstileError(error && error.message ? error.message : 'Anti-bot verification failed.');
+    });
   }
 
   function validate() {
@@ -141,8 +183,10 @@
 
     try {
       await contactTurnstileConfigPromise;
+      setTurnstileError('');
       const turnstileToken = SITE_TURNSTILE && typeof SITE_TURNSTILE.resolveToken === 'function'
         ? await SITE_TURNSTILE.resolveToken({
+            key: 'contact_form_submit',
             config: SITE_CONFIG,
             observability: OBS,
             formName: 'contact_form',
@@ -165,6 +209,10 @@
       successEl.focus();
 
     } catch (err) {
+      if (SITE_TURNSTILE && typeof SITE_TURNSTILE.resetVisibleWidget === 'function') {
+        SITE_TURNSTILE.resetVisibleWidget('contact_form_submit');
+      }
+      setTurnstileError(err && err.message ? err.message : 'Anti-bot verification failed.');
       if (OBS) {
         OBS.logError({
           eventType: 'handled_exception',

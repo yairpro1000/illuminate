@@ -845,6 +845,15 @@
   font-weight: 700;
 }
 
+.turnstile-inline {
+  margin-top: 1.5rem;
+}
+
+.turnstile-inline__widget {
+  min-height: 72px;
+  margin-top: 0.75rem;
+}
+
 /* ── Payment simulation spinner ─────────────────────────── */
 
 @keyframes spin {

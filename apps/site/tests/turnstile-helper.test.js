@@ -30,18 +30,34 @@ describe('site turnstile helper', () => {
     expect(token).toBe('placeholder-token')
   })
 
-  it('executes the invisible widget when turnstile is enabled', async () => {
+  it('returns the stored token from the visible widget when turnstile is enabled', async () => {
     evalCode(turnstileCode)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
     window.turnstile = {
       render: vi.fn((container, options) => {
         setTimeout(() => options.callback('resolved-turnstile-token'), 0)
         return 'widget-1'
       }),
-      execute: vi.fn(),
       remove: vi.fn(),
+      reset: vi.fn(),
     }
 
+    await window.SiteTurnstile.renderVisibleWidget({
+      key: 'booking_submit',
+      container: host,
+      config: {
+        turnstileEnabled: true,
+        turnstileSiteKey: 'site-key-live',
+        turnstilePlaceholderToken: 'placeholder-token',
+      },
+      formName: 'booking',
+      action: 'booking_submit',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
     const token = await window.SiteTurnstile.resolveToken({
+      key: 'booking_submit',
       config: {
         turnstileEnabled: true,
         turnstileSiteKey: 'site-key-live',
@@ -53,6 +69,5 @@ describe('site turnstile helper', () => {
 
     expect(token).toBe('resolved-turnstile-token')
     expect(window.turnstile.render).toHaveBeenCalled()
-    expect(window.turnstile.execute).toHaveBeenCalledWith('widget-1')
   })
 })
