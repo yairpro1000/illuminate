@@ -59,7 +59,7 @@ export const SERVICE_MODES: ServiceDefinition[] = [
     label: 'Anti-bot',
     modes: [
       { value: 'mock', label: 'Mock (bypass)', wired: true },
-      { value: 'turnstile', label: 'Turnstile', wired: false }, // flip to true when wired in providers/index.ts
+      { value: 'turnstile', label: 'Turnstile', wired: true },
     ],
   },
 ];

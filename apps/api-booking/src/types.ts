@@ -46,7 +46,7 @@ export type BookingEffectIntent =
 // ── Other domain enums ──────────────────────────────────────────────────────
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
-export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+export type PaymentStatus = 'PENDING' | 'CASH_OK' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 export type PaymentProvider = 'stripe' | 'mock';
 export type SystemSettingValueType = 'integer' | 'float' | 'boolean' | 'text' | 'json';
 
@@ -280,7 +280,7 @@ export interface Payment {
   booking_id: string;
   provider: PaymentProvider;
   provider_payment_id: string | null;
-  amount_cents: number;
+  amount: number;
   currency: string;
   status: PaymentStatus;
   checkout_url: string | null;
@@ -309,9 +309,13 @@ export interface OrganizerBookingRow {
   booking_price: number | null;
   booking_currency: string | null;
   booking_coupon_code: string | null;
-  payment_amount_cents: number | null;
+  payment_amount: number | null;
   payment_currency: string | null;
   payment_status: PaymentStatus | null;
+  payment_provider: PaymentProvider | null;
+  payment_provider_payment_id: string | null;
+  payment_invoice_url: string | null;
+  payment_paid_at: string | null;
   latest_event_type: BookingEventType | null;
   latest_event_at: string | null;
   latest_side_effect_attempt_status: BookingSideEffectAttemptStatus | null;
@@ -396,7 +400,7 @@ export type BookingUpdate = Partial<
 export type ClientUpdate = Partial<Pick<Client, 'first_name' | 'last_name' | 'email' | 'phone'>>;
 
 export type PaymentUpdate = Partial<
-  Pick<Payment, 'status' | 'provider_payment_id' | 'invoice_url' | 'paid_at' | 'raw_payload'>
+  Pick<Payment, 'status' | 'provider_payment_id' | 'amount' | 'currency' | 'checkout_url' | 'invoice_url' | 'paid_at' | 'raw_payload'>
 >;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────

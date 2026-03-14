@@ -1,7 +1,7 @@
 export interface CheckoutLineItem {
   name: string;
   description?: string;
-  amountCents: number;
+  amount: number;
   currency: string;
   quantity: number;
 }
@@ -17,7 +17,23 @@ export interface CreateCheckoutParams {
 export interface CheckoutSession {
   sessionId: string;
   checkoutUrl: string;
-  amountCents: number;
+  amount: number;
+  currency: string;
+}
+
+export interface CreateInvoiceParams {
+  title: string;
+  description?: string;
+  amount: number;
+  currency: string;
+  bookingId: string;
+  customerEmail: string;
+}
+
+export interface InvoiceRecord {
+  invoiceId: string;
+  invoiceUrl: string;
+  amount: number;
   currency: string;
 }
 
@@ -27,13 +43,14 @@ export interface StripeCheckoutEvent {
   paymentIntentId: string | null;
   invoiceId: string | null;
   invoiceUrl: string | null;
-  amountTotal: number;
+  amount: number;
   currency: string;
   bookingId: string;
 }
 
 export interface IPaymentsProvider {
   createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession>;
+  createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord>;
 
   /**
    * Verifies and parses an incoming Stripe webhook payload.

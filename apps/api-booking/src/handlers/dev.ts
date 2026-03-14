@@ -225,7 +225,7 @@ export async function handleDevBookings(_request: Request, ctx: AppContext): Pro
       booking_id: payment.booking_id,
       provider: payment.provider,
       provider_payment_id: payment.provider_payment_id,
-      amount_cents: payment.amount_cents,
+      amount: payment.amount,
       currency: payment.currency,
       status: payment.status,
       invoice_url: payment.invoice_url,

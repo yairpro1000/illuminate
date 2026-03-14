@@ -32,9 +32,13 @@
   const editEmailEl = document.getElementById('editEmail');
   const editPhoneEl = document.getElementById('editPhone');
   const editStatusEl = document.getElementById('editStatus');
+  const editPriceEl = document.getElementById('editPrice');
   const editNotesEl = document.getElementById('editNotes');
+  const editSettlementNoteEl = document.getElementById('editSettlementNote');
   const editMsgEl = document.getElementById('editMsg');
   const editSaveEl = document.getElementById('editSave');
+  const editSetCashOkEl = document.getElementById('editSetCashOk');
+  const editSettlePaymentEl = document.getElementById('editSettlePayment');
   const editReadonlyDetailsEl = document.getElementById('editReadonlyDetails');
 
   function api(path, init) {
@@ -211,6 +215,11 @@
     return `<tr><td>${label}</td><td>${safe}</td></tr>`;
   }
 
+  function detailLink(url, label) {
+    if (!url) return '—';
+    return `<a href="${url}" target="_blank" rel="noreferrer">${label || 'Open'}</a>`;
+  }
+
   function detailSection(title) {
     return `<tr><td colspan="2" style="font-weight:700;padding-top:12px;color:var(--ink)">${title}</td></tr>`;
   }
@@ -224,8 +233,8 @@
     const title = row.event_id ? (row.event_title || 'Event') : (row.session_type_title || 'Session');
     const maps = row.maps_url ? `<a href="${row.maps_url}" target="_blank" rel="noreferrer">Open map</a>` : '—';
     const bookingAmount = formatMoneyDisplay(row.booking_price, row.booking_currency);
-    const paymentAmount = (row.payment_amount_cents != null && row.payment_currency)
-      ? formatMoneyDisplay(row.payment_amount_cents / 100, row.payment_currency)
+    const paymentAmount = (row.payment_amount != null && row.payment_currency)
+      ? formatMoneyDisplay(row.payment_amount, row.payment_currency)
       : '—';
     return [
       detailSection('Booking'),
@@ -252,6 +261,10 @@
       detailSection('Payment'),
       detailRow('Amount', paymentAmount),
       detailRow('Payment status', row.payment_status || '—'),
+      detailRow('Provider', row.payment_provider || '—'),
+      detailRow('Provider payment ID', row.payment_provider_payment_id || '—'),
+      detailRow('Invoice URL', detailLink(row.payment_invoice_url, 'Open invoice')),
+      detailRow('Paid at', fmtDateTime(row.payment_paid_at)),
       detailRow('Payment booking event', row.payment_latest_event_type || '—'),
       detailRow('Payment event datetime', fmtDateTime(row.payment_latest_event_at)),
       detailRow('Payment side-effect attempt', row.payment_latest_side_effect_attempt_status || '—'),
@@ -361,7 +374,11 @@
     editEmailEl.value = row.client_email || '';
     editPhoneEl.value = row.client_phone || '';
     editStatusEl.value = row.current_status || 'PENDING';
+    editPriceEl.value = row.booking_price != null ? String(row.booking_price) : '';
     editNotesEl.value = row.notes || '';
+    editSettlementNoteEl.value = '';
+    editSetCashOkEl.disabled = !(row.payment_status && row.payment_status !== 'SUCCEEDED' && row.payment_status !== 'REFUNDED');
+    editSettlePaymentEl.disabled = !(row.payment_status && row.payment_status !== 'SUCCEEDED' && row.payment_status !== 'REFUNDED');
     setEditMessage('', false);
     editOverlayEl.classList.remove('hidden');
     editOverlayEl.setAttribute('aria-hidden', 'false');
@@ -392,6 +409,7 @@
           },
           booking: {
             current_status: editStatusEl.value,
+            price: editPriceEl.value === '' ? null : Number(editPriceEl.value),
             notes: editNotesEl.value || null,
           },
         }),
@@ -444,6 +462,51 @@
     }
   }
 
+  async function setCashOk() {
+    if (!state.editing || state.saving) return;
+    state.saving = true;
+    setEditMessage('Approving manual arrangement...', false);
+    try {
+      await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          payment: {
+            status: 'CASH_OK',
+          },
+        }),
+      });
+      setEditMessage('Manual arrangement approved.', false);
+      closeEditModal();
+      await loadRows();
+    } catch (err) {
+      setEditMessage(String(err), true);
+    } finally {
+      state.saving = false;
+    }
+  }
+
+  async function settlePayment() {
+    if (!state.editing || state.saving) return;
+    state.saving = true;
+    setEditMessage('Settling payment...', false);
+    try {
+      await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}/payment-settled`, {
+        method: 'POST',
+        body: JSON.stringify({
+          note: editSettlementNoteEl.value.trim() || null,
+          invoice_url: state.editing.payment_invoice_url || null,
+        }),
+      });
+      setEditMessage('Payment settled.', false);
+      closeEditModal();
+      await loadRows();
+    } catch (err) {
+      setEditMessage(String(err), true);
+    } finally {
+      state.saving = false;
+    }
+  }
+
   sourceEl.addEventListener('change', () => {
     syncSourceMode();
     void loadRows();
@@ -477,6 +540,8 @@
 
   document.getElementById('editClose').addEventListener('click', closeEditModal);
   document.getElementById('editSave').addEventListener('click', () => { void saveEdit(); });
+  document.getElementById('editSetCashOk').addEventListener('click', () => { void setCashOk(); });
+  document.getElementById('editSettlePayment').addEventListener('click', () => { void settlePayment(); });
   document.getElementById('editOpenManage').addEventListener('click', () => { void openManageBooking(); });
   document.getElementById('editCopyClientManage').addEventListener('click', () => { void copyClientManageLink(); });
 

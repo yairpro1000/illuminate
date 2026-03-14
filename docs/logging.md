@@ -223,7 +223,7 @@ These are generally safe and useful:
 * `http_status`
 * `attempts`
 * timestamps: `starts_at`, `ends_at`, `expires_at`, `created_at`
-* `currency`, `amount_cents`
+* `currency`, `amount`
 * `timezone`
 
 ---

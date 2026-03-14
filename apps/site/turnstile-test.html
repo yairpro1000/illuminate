@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Standalone Turnstile verification harness for always-pass and always-fail test widgets." />
+  <title>Turnstile Test Harness — ILLUMINATE</title>
+
+  <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/turnstile-test.css" />
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+</head>
+
+<body>
+  <script>
+    (function () {
+      var t = localStorage.getItem('yb-theme') || 'dark';
+      if (t === 'light') document.body.classList.add('theme-light');
+    })();
+  </script>
+
+  <main class="turnstile-test">
+    <section class="turnstile-test__section">
+      <div class="turnstile-test__bg turnstile-test__bg--one" aria-hidden="true"></div>
+      <div class="turnstile-test__bg turnstile-test__bg--two" aria-hidden="true"></div>
+
+      <div class="turnstile-test__shell fade-up is-visible">
+        <p class="turnstile-test__eyebrow">Anti-bot Diagnostic</p>
+        <h1 class="turnstile-test__title">Turnstile pass/fail harness</h1>
+        <p class="turnstile-test__lede">
+          This page renders the Cloudflare Turnstile test widgets using the worker’s live config and sends the token to a backend verification endpoint.
+        </p>
+
+        <div class="turnstile-test__actions" role="group" aria-label="Turnstile test scenarios">
+          <button type="button" class="btn btn-primary turnstile-test__button" data-turnstile-scenario="pass">
+            Test pass
+          </button>
+          <button type="button" class="btn btn-secondary turnstile-test__button" data-turnstile-scenario="fail">
+            Test fail
+          </button>
+        </div>
+
+        <div class="turnstile-test__card glass-card">
+          <div class="turnstile-test__meta">
+            <span class="turnstile-test__meta-label">Current scenario</span>
+            <strong id="turnstile-scenario-label">Idle</strong>
+          </div>
+          <div id="turnstile-widget" class="turnstile-test__widget"></div>
+          <div id="turnstile-status" class="turnstile-test__status" aria-live="polite">
+            Loading config…
+          </div>
+          <pre id="turnstile-result" class="turnstile-test__result" hidden></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/api-base.js"></script>
+  <script src="js/client.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/pages/turnstile-test.js"></script>
+</body>
+
+</html>

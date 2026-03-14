@@ -54,7 +54,7 @@ export async function handleContinuePayment(request: Request, ctx: AppContext): 
         booking_status: action.booking.current_status,
         payment_status: action.paymentStatus,
         payment_due_at: action.paymentDueAt,
-        has_checkout_url: Boolean(action.checkoutUrl),
+        has_payment_url: Boolean(action.checkoutUrl),
         has_manage_url: Boolean(action.manageUrl),
         can_continue_to_checkout: action.canContinueToCheckout,
         branch_taken: action.branchTaken,

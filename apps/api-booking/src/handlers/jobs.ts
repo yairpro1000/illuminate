@@ -23,6 +23,11 @@ import { appendBookingEventWithEffects } from '../services/booking-transition.js
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
+import {
+  isPaymentContinuableOnline,
+  isPaymentManualArrangementStatus,
+  isPaymentSettledStatus,
+} from '../domain/payment-status.js';
 
 export interface JobContext {
   providers: Providers;
@@ -586,7 +591,10 @@ async function dispatchSideEffect(
   } catch (error) {
     const errorMessage = String(error);
 
-    if (errorMessage === 'Error: irrelevant_payment_link_already_settled') {
+    if (
+      errorMessage === 'Error: irrelevant_payment_link_already_settled'
+      || errorMessage === 'Error: irrelevant_payment_link_manual_arrangement'
+    ) {
       await ctx.providers.repository.deleteBookingSideEffect(effect.id);
       ctx.logger.logInfo({
         source: jobLogSource(ctx),
@@ -598,7 +606,9 @@ async function dispatchSideEffect(
           side_effect_id: effect.id,
           side_effect_intent: effect.effect_intent,
           branch_taken: 'discard_irrelevant_side_effect_runtime_guard',
-          deny_reason: 'payment_already_settled',
+          deny_reason: errorMessage === 'Error: irrelevant_payment_link_already_settled'
+            ? 'payment_already_settled'
+            : 'manual_payment_arrangement_active',
         },
       });
       return 'skipped';
@@ -639,14 +649,39 @@ async function evaluateSideEffectRelevance(
     case 'SEND_PAYMENT_LINK': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
       const paymentStatus = payment?.status ?? null;
-      const alreadySettled = paymentStatus === 'SUCCEEDED';
+      const alreadySettled = isPaymentSettledStatus(paymentStatus);
+      const manualArrangement = isPaymentManualArrangementStatus(paymentStatus);
       return {
-        shouldProcess: !alreadySettled,
-        branchTaken: alreadySettled ? 'deny_irrelevant_payment_link_already_settled' : 'allow_payment_link_effect',
-        denyReason: alreadySettled ? 'payment_already_settled' : null,
+        shouldProcess: !alreadySettled && !manualArrangement,
+        branchTaken: alreadySettled
+          ? 'deny_irrelevant_payment_link_already_settled'
+          : manualArrangement
+            ? 'deny_irrelevant_payment_link_manual_arrangement'
+            : 'allow_payment_link_effect',
+        denyReason: alreadySettled
+          ? 'payment_already_settled'
+          : manualArrangement
+            ? 'manual_payment_arrangement_active'
+            : null,
         context: {
           payment_status: paymentStatus,
-          has_checkout_url: Boolean(payment?.checkout_url),
+          has_payment_url: Boolean(payment?.invoice_url ?? payment?.checkout_url),
+        },
+      };
+    }
+    case 'SEND_PAYMENT_REMINDER':
+    case 'VERIFY_STRIPE_PAYMENT': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
+      const paymentStatus = payment?.status ?? null;
+      const manualArrangement = isPaymentManualArrangementStatus(paymentStatus);
+      return {
+        shouldProcess: !manualArrangement,
+        branchTaken: manualArrangement
+          ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_manual_arrangement`
+          : 'allow_payment_followup_effect',
+        denyReason: manualArrangement ? 'manual_payment_arrangement_active' : null,
+        context: {
+          payment_status: paymentStatus,
         },
       };
     }
@@ -776,7 +811,7 @@ async function executeSideEffect(
 
     case 'SEND_PAYMENT_REMINDER': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.checkout_url
+      const payUrl = (payment?.invoice_url ?? payment?.checkout_url)
         ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
         : null;
       if (!payUrl) throw new Error('checkout_url_missing');
@@ -846,12 +881,13 @@ async function executeSideEffect(
 
     case 'VERIFY_STRIPE_PAYMENT': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      if (payment?.status === 'SUCCEEDED') {
+      if (isPaymentSettledStatus(payment?.status)) {
+        const settledPayment = payment!;
         await appendBookingEventWithEffects(
           booking.id,
           'PAYMENT_SETTLED',
           'SYSTEM',
-          { side_effect_id: effect.id, provider_payment_id: payment.provider_payment_id },
+          { side_effect_id: effect.id, provider_payment_id: settledPayment.provider_payment_id },
           bookingCtx,
         );
         return;
@@ -864,9 +900,10 @@ async function executeSideEffect(
 
     case 'SEND_PAYMENT_LINK': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.checkout_url;
+      const payUrl = payment?.invoice_url ?? payment?.checkout_url;
       if (!payUrl) throw new Error('checkout_url_missing');
-      const alreadySettled = payment?.status === 'SUCCEEDED';
+      const alreadySettled = isPaymentSettledStatus(payment?.status);
+      const manualArrangement = isPaymentManualArrangementStatus(payment?.status);
       ctx.logger.logInfo({
         source: jobLogSource(ctx),
         eventType: 'checkout_followup_payment_link_decision',
@@ -876,14 +913,25 @@ async function executeSideEffect(
           side_effect_id: effect.id,
           payment_status: payment?.status ?? null,
           has_checkout_url: Boolean(payUrl),
-          should_send_payment_link: !alreadySettled,
-          branch_taken: alreadySettled ? 'skip_payment_link_already_settled' : 'send_payment_link_email',
-          deny_reason: alreadySettled ? 'payment_already_settled' : null,
+          should_send_payment_link: !alreadySettled && !manualArrangement,
+          branch_taken: alreadySettled
+            ? 'skip_payment_link_already_settled'
+            : manualArrangement
+              ? 'skip_payment_link_manual_arrangement'
+              : 'send_payment_link_email',
+          deny_reason: alreadySettled
+            ? 'payment_already_settled'
+            : manualArrangement
+              ? 'manual_payment_arrangement_active'
+              : null,
         },
       });
 
       if (alreadySettled) {
         throw new Error('irrelevant_payment_link_already_settled');
+      }
+      if (manualArrangement) {
+        throw new Error('irrelevant_payment_link_manual_arrangement');
       }
 
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);

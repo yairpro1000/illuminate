@@ -162,7 +162,7 @@ describe('booking domain model', () => {
     expect(payNowBooking?.price).toBe(112.5);
     expect(payNowBooking?.currency).toBe('CHF');
     expect(payNowBooking?.coupon_code).toBe('ISRAEL');
-    expect(payNowPayment?.amount_cents).toBe(11250);
+    expect(payNowPayment?.amount).toBe(112.5);
 
     const payLater = await createPayLaterBooking({
       slotStart: '2026-03-18T12:00:00.000Z',
@@ -184,7 +184,7 @@ describe('booking domain model', () => {
     const payLaterPayment = await ctx.providers.repository.getPaymentByBookingId(payLater.bookingId);
     expect(payLaterBooking?.price).toBe(90);
     expect(payLaterBooking?.coupon_code).toBe('ISRAEL');
-    expect(payLaterPayment?.amount_cents).toBe(9000);
+    expect(payLaterPayment?.amount).toBe(90);
   });
 
   it('rejects invalid coupon codes during booking creation', async () => {
@@ -269,7 +269,7 @@ describe('booking domain model', () => {
     expect(pending?.google_event_id).toBeNull();
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    expect(payment?.checkout_url).toBeTruthy();
+    expect(payment?.invoice_url).toBeTruthy();
 
     const confirmRequestEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_confirm_request' && email.to === 'maya@example.com',

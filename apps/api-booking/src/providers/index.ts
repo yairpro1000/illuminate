@@ -15,6 +15,7 @@ import { MockCalendarProvider } from './calendar/mock.js';
 import { GoogleCalendarProvider } from './calendar/google.js';
 import { MockPaymentsProvider } from './payments/mock.js';
 import { MockAntiBotProvider } from './antibot/mock.js';
+import { TurnstileAntiBotProvider } from './antibot/turnstile.js';
 import { makeSupabase } from '../repo/supabase.js';
 
 export interface Providers {
@@ -89,9 +90,10 @@ export function createProviders(env: Env, logger?: Logger): Providers {
   // antibot
   let antibot: IAntiBotProvider;
   if (antibotMode === 'turnstile') {
-    // const { TurnstileAntiBotProvider } = await import('./antibot/turnstile.js');
-    // antibot = new TurnstileAntiBotProvider(env.TURNSTILE_SECRET_KEY);
-    throw new Error('Turnstile verification is intentionally mocked in this dev-stage worker.');
+    antibot = new TurnstileAntiBotProvider(
+      env.TURNSTILE_SECRET_KEY || env.TURNSTILE_TEST_SECRET_KEY_PASS || '',
+      logger,
+    );
   } else {
     antibot = new MockAntiBotProvider();
   }

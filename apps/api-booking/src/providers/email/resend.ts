@@ -69,7 +69,7 @@ function sessionLabel(booking: Booking): string {
 }
 
 function bookingConfirmationSubject(booking: Booking): string {
-  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`;
+  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
 }
 
 function bookingConfirmationBody(
@@ -82,7 +82,7 @@ function bookingConfirmationBody(
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
-    'Your session is confirmed.',
+    'Your session is confirmed and payment has been settled.',
     '',
     `Session: ${sessionLabel(booking)}`,
     `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
@@ -234,7 +234,7 @@ function bookingConfirmationHtml(
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
-    <p>Your session is confirmed.</p>
+    <p>Your session is confirmed and payment has been settled.</p>
     ${detailBlock(rows)}
     <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
@@ -295,7 +295,7 @@ function eventConfirmationHtml(
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
-    <p>You're confirmed.</p>
+    <p>You're confirmed and payment has been settled.</p>
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
@@ -569,9 +569,9 @@ export class ResendEmailProvider implements IEmailProvider {
     invoiceUrl: string | null,
     policyText = '',
   ): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
+    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
     const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, policyText);
-    return this.sendEmail(clientEmail(booking), 'event_confirmation', `You're confirmed – ${event.title}`, text, undefined, html);
+    return this.sendEmail(clientEmail(booking), 'event_confirmation', `You're confirmed and paid – ${event.title}`, text, undefined, html);
   }
 
   async sendEventReminder24h(booking: Booking, event: Event, manageUrl: string): Promise<SendResult> {

@@ -38,7 +38,7 @@ describe('admin booking pricing details', () => {
                 booking_price: 112.5,
                 booking_currency: 'CHF',
                 booking_coupon_code: 'ISRAEL',
-                payment_amount_cents: 11250,
+                payment_amount: 112.5,
                 payment_currency: 'CHF',
                 payment_status: 'PENDING',
               },

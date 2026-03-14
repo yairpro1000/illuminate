@@ -1,6 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
+import { isPaymentSettledStatus } from '../domain/payment-status.js';
 import { evaluateManageBookingPolicy, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // GET /api/bookings/manage?token=<raw>
@@ -51,7 +52,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       new Date(booking.starts_at).getTime() - bookingPolicy.paymentDueBeforeStartHours * 60 * 60 * 1000,
     ).toISOString();
     const policy = evaluateManageBookingPolicy(booking.starts_at, bookingPolicy.selfServiceLockWindowHours);
-    const paid = payment?.status === 'SUCCEEDED' || payment?.status === 'REFUNDED';
+    const paid = isPaymentSettledStatus(payment?.status);
 
     const source = booking.event_id ? 'event' : 'session';
     const blockedStatuses = ['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW'];

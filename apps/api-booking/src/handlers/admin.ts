@@ -1,13 +1,30 @@
 import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
-import type { BookingCurrentStatus, EventUpdate, NewSystemSetting, SystemSetting, SystemSettingUpdate, SystemSettingValueType } from '../types.js';
+import type {
+  BookingCurrentStatus,
+  EventUpdate,
+  NewSystemSetting,
+  PaymentStatus,
+  SystemSetting,
+  SystemSettingUpdate,
+  SystemSettingValueType,
+} from '../types.js';
 import { ApiError, conflict, created, badRequest, notFound, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
+import {
+  isPaymentContinuableOnline,
+  isPaymentManualArrangementStatus,
+  isPaymentSettledStatus,
+} from '../domain/payment-status.js';
 import { BOOKING_POLICY_CONFIG_SOURCE } from '../config/booking-policy.js';
 import { generateToken, hashToken } from '../services/token-service.js';
-import { buildAdminManageUrl, buildManageUrl } from '../services/booking-service.js';
+import {
+  buildAdminManageUrl,
+  buildManageUrl,
+  settleBookingPaymentManually,
+} from '../services/booking-service.js';
 import {
   SERVICE_MODES,
   getAllOverrides,
@@ -121,6 +138,19 @@ function coerceOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function coerceOptionalPrice(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw badRequest('booking.price must be a non-negative number');
+  return Math.round(parsed * 100) / 100;
+}
+
+function parseAdminPaymentStatus(value: unknown): PaymentStatus | null {
+  if (typeof value !== 'string') return null;
+  if (value === 'CASH_OK') return value;
+  throw badRequest('payment.status only supports CASH_OK through the booking edit endpoint');
 }
 
 function isDuplicateClientEmailError(error: unknown): boolean {
@@ -415,10 +445,15 @@ export async function handleAdminUpdateBooking(
     const bookingPatch = typeof body.booking === 'object' && body.booking !== null
       ? body.booking as Record<string, unknown>
       : null;
+    const paymentPatch = typeof body.payment === 'object' && body.payment !== null
+      ? body.payment as Record<string, unknown>
+      : null;
 
-    if (!clientPatch && !bookingPatch) {
+    if (!clientPatch && !bookingPatch && !paymentPatch) {
       throw badRequest('No changes provided');
     }
+
+    const existingPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
 
     ctx.logger.logInfo?.({
       source: 'backend',
@@ -429,6 +464,7 @@ export async function handleAdminUpdateBooking(
         booking_id: booking.id,
         has_client_patch: Boolean(clientPatch),
         has_booking_patch: Boolean(bookingPatch),
+        has_payment_patch: Boolean(paymentPatch),
         has_client_email_patch: Boolean(clientPatch && typeof clientPatch.email === 'string' && clientPatch.email.trim()),
         branch_taken: 'apply_requested_booking_and_client_updates',
       },
@@ -469,12 +505,20 @@ export async function handleAdminUpdateBooking(
     }
 
     if (bookingPatch) {
-      const updates: { notes?: string | null; current_status?: BookingCurrentStatus } = {};
+      const updates: { notes?: string | null; current_status?: BookingCurrentStatus; price?: number } = {};
       if (bookingPatch.notes === null || typeof bookingPatch.notes === 'string') {
         updates.notes = bookingPatch.notes === null ? null : bookingPatch.notes.slice(0, 4000);
       }
       if (typeof bookingPatch.current_status === 'string') {
         updates.current_status = bookingPatch.current_status as BookingCurrentStatus;
+      }
+      if (Object.prototype.hasOwnProperty.call(bookingPatch, 'price')) {
+        const parsedPrice = coerceOptionalPrice(bookingPatch.price);
+        if (parsedPrice === null) throw badRequest('booking.price is required when provided');
+        if (existingPayment && isPaymentSettledStatus(existingPayment.status)) {
+          throw conflict('Cannot edit booking price after payment settlement');
+        }
+        updates.price = parsedPrice;
       }
       if (Object.keys(updates).length > 0) {
         ctx.logger.logInfo?.({
@@ -486,12 +530,91 @@ export async function handleAdminUpdateBooking(
             booking_id: booking.id,
             has_notes_update: Object.prototype.hasOwnProperty.call(updates, 'notes'),
             has_status_update: typeof updates.current_status === 'string',
+            has_price_update: typeof updates.price === 'number',
             branch_taken: 'update_booking_record',
           },
         });
         await ctx.providers.repository.updateBooking(booking.id, updates);
       }
 
+      if (typeof updates.price === 'number' && existingPayment && !isPaymentSettledStatus(existingPayment.status)) {
+        let invoiceUpdate: {
+          provider_payment_id?: string;
+          invoice_url?: string | null;
+          raw_payload?: Record<string, unknown>;
+        } = {};
+
+        if (booking.booking_type === 'PAY_LATER' && booking.client_email) {
+          const invoice = await ctx.providers.payments.createInvoice({
+            title: booking.session_type_title ?? booking.event_title ?? 'ILLUMINATE Booking',
+            amount: updates.price,
+            currency: booking.currency,
+            bookingId: booking.id,
+            customerEmail: booking.client_email,
+          });
+          invoiceUpdate = {
+            provider_payment_id: invoice.invoiceId,
+            invoice_url: invoice.invoiceUrl,
+            raw_payload: {
+              ...(existingPayment.raw_payload ?? {}),
+              invoice_id: invoice.invoiceId,
+              invoice_url: invoice.invoiceUrl,
+              regenerated_by: 'admin_booking_price_edit',
+            },
+          };
+        }
+
+        ctx.logger.logInfo?.({
+          source: 'backend',
+          eventType: 'admin_booking_update_payment_amount_sync_started',
+          message: 'Synchronizing payment amount with edited booking price',
+          context: {
+            path,
+            booking_id: booking.id,
+            payment_id: existingPayment.id,
+            payment_status: existingPayment.status,
+            booking_price: updates.price,
+            payment_amount_before: existingPayment.amount,
+            payment_amount_after: updates.price,
+            invoice_regenerated: Boolean(invoiceUpdate.invoice_url),
+            branch_taken: 'sync_payment_amount_to_booking_price',
+          },
+        });
+        await ctx.providers.repository.updatePayment(existingPayment.id, {
+          amount: updates.price,
+          currency: booking.currency,
+          ...invoiceUpdate,
+        });
+      }
+    }
+
+    if (paymentPatch) {
+      const requestedStatus = parseAdminPaymentStatus(paymentPatch.status);
+      if (requestedStatus === 'CASH_OK') {
+        if (!existingPayment) throw conflict('Cannot approve manual payment arrangement without a payment record');
+        if (isPaymentSettledStatus(existingPayment.status)) {
+          throw conflict('Cannot approve manual payment arrangement after payment settlement');
+        }
+        ctx.logger.logInfo?.({
+          source: 'backend',
+          eventType: 'admin_booking_update_payment_status_started',
+          message: 'Started admin payment status update',
+          context: {
+            path,
+            booking_id: booking.id,
+            payment_id: existingPayment.id,
+            prior_payment_status: existingPayment.status,
+            requested_payment_status: requestedStatus,
+            branch_taken: isPaymentManualArrangementStatus(existingPayment.status)
+              ? 'keep_existing_manual_arrangement'
+              : 'set_manual_payment_arrangement',
+            deny_reason: null,
+          },
+        });
+        if (!isPaymentManualArrangementStatus(existingPayment.status)) {
+          await ctx.providers.repository.updatePayment(existingPayment.id, { status: 'CASH_OK' });
+        }
+      }
     }
 
     const refreshedRows = await ctx.providers.repository.getOrganizerBookings({ client_id: booking.client_id });
@@ -549,6 +672,107 @@ export async function handleAdminUpdateBooking(
     }
 
     throw normalizedError;
+  }
+}
+
+// POST /api/admin/bookings/:bookingId/payment-settled
+export async function handleAdminSettleBookingPayment(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_payment_settlement_started',
+      message: 'Started admin manual payment settlement request',
+      context: {
+        path,
+        booking_id: params.bookingId?.trim() || null,
+        branch_taken: 'authorize_and_validate_booking_payment_state',
+      },
+    });
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    const bookingId = params.bookingId?.trim();
+    if (!bookingId) throw badRequest('bookingId is required');
+
+    const booking = await ctx.providers.repository.getBookingById(bookingId);
+    if (!booking) throw notFound('Booking not found');
+    const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+    if (!payment) throw conflict('Payment record not found');
+
+    const body = await parseJsonBody(request);
+    const note = coerceOptionalString(body.note);
+    const invoiceUrl = coerceOptionalString(body.invoice_url) ?? payment.invoice_url;
+    const invoiceId = coerceOptionalString(body.invoice_id)
+      ?? (typeof payment.raw_payload?.['invoice_id'] === 'string' ? payment.raw_payload['invoice_id'] as string : null);
+    const settledAt = coerceOptionalString(body.paid_at);
+
+    const denyReason = isPaymentSettledStatus(payment.status)
+      ? 'payment_already_settled'
+      : payment.status === 'REFUNDED'
+        ? 'payment_refunded'
+        : isPaymentContinuableOnline(payment.status) || isPaymentManualArrangementStatus(payment.status)
+          ? null
+          : 'payment_status_not_settleable';
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_payment_settlement_decision',
+      message: 'Evaluated admin manual payment settlement eligibility',
+      context: {
+        path,
+        booking_id: booking.id,
+        payment_id: payment.id,
+        booking_status: booking.current_status,
+        booking_type: booking.booking_type,
+        payment_status: payment.status,
+        has_invoice_url: Boolean(invoiceUrl),
+        branch_taken: denyReason ? 'deny_manual_payment_settlement' : 'allow_manual_payment_settlement',
+        deny_reason: denyReason,
+      },
+    });
+
+    if (booking.booking_type === 'FREE') throw conflict('Free bookings do not support payment settlement');
+    if (booking.current_status !== 'PENDING') throw conflict('Only pending bookings can be settled manually');
+    if (denyReason) throw conflict('Payment cannot be settled from its current state');
+
+    await settleBookingPaymentManually(
+      payment,
+      {
+        invoiceUrl,
+        invoiceId,
+        note,
+        settledAt,
+      },
+      {
+        providers: ctx.providers,
+        env: ctx.env,
+        logger: ctx.logger,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
+      },
+    );
+
+    const refreshedRows = await ctx.providers.repository.getOrganizerBookings({ client_id: booking.client_id });
+    const refreshed = refreshedRows.find((row) => row.booking_id === booking.id) ?? null;
+    return ok({ ok: true, booking: refreshed });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_booking_payment_settlement_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        booking_id: params.bookingId?.trim() || null,
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+        branch_taken: err instanceof ApiError ? 'handled_api_error' : 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof ApiError ? err.code : (err instanceof Error ? err.message : String(err)),
+      },
+    });
+    throw err;
   }
 }
 

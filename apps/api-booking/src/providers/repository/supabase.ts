@@ -746,7 +746,15 @@ export class SupabaseRepository implements IRepository {
     const bookingIds = bookings.map((booking) => booking.id);
     const eventByBooking = new Map<string, { event_type: OrganizerBookingRow['latest_event_type']; created_at: string }>();
     const paymentEventByBooking = new Map<string, { event_type: OrganizerBookingRow['payment_latest_event_type']; created_at: string }>();
-    const paymentByBooking = new Map<string, { amount_cents: number; currency: string; status: OrganizerBookingRow['payment_status'] }>();
+    const paymentByBooking = new Map<string, {
+      amount: number;
+      currency: string;
+      status: OrganizerBookingRow['payment_status'];
+      provider: OrganizerBookingRow['payment_provider'];
+      provider_payment_id: OrganizerBookingRow['payment_provider_payment_id'];
+      invoice_url: OrganizerBookingRow['payment_invoice_url'];
+      paid_at: OrganizerBookingRow['payment_paid_at'];
+    }>();
     const latestAttemptByBooking = new Map<string, { status: OrganizerBookingRow['latest_side_effect_attempt_status']; created_at: string }>();
     const paymentAttemptByBooking = new Map<string, { status: OrganizerBookingRow['payment_latest_side_effect_attempt_status']; created_at: string }>();
 
@@ -787,14 +795,18 @@ export class SupabaseRepository implements IRepository {
 
       const payments = await requireData<Array<{
         booking_id: string;
-        amount_cents: number;
+        amount: number;
         currency: string;
         status: OrganizerBookingRow['payment_status'];
+        provider: OrganizerBookingRow['payment_provider'];
+        provider_payment_id: OrganizerBookingRow['payment_provider_payment_id'];
+        invoice_url: OrganizerBookingRow['payment_invoice_url'];
+        paid_at: OrganizerBookingRow['payment_paid_at'];
         created_at: string;
       }>>(
         this.db
           .from('payments')
-          .select('booking_id, amount_cents, currency, status, created_at')
+          .select('booking_id, amount, currency, status, provider, provider_payment_id, invoice_url, paid_at, created_at')
           .in('booking_id', bookingIds)
           .order('created_at', { ascending: false }),
         'Failed to load organizer booking payments',
@@ -802,9 +814,13 @@ export class SupabaseRepository implements IRepository {
       for (const payment of payments) {
         if (!paymentByBooking.has(payment.booking_id)) {
           paymentByBooking.set(payment.booking_id, {
-            amount_cents: payment.amount_cents,
+            amount: payment.amount,
             currency: payment.currency,
             status: payment.status,
+            provider: payment.provider,
+            provider_payment_id: payment.provider_payment_id,
+            invoice_url: payment.invoice_url,
+            paid_at: payment.paid_at,
           });
         }
       }
@@ -901,9 +917,13 @@ export class SupabaseRepository implements IRepository {
         booking_price: booking.price ?? null,
         booking_currency: booking.currency ?? null,
         booking_coupon_code: booking.coupon_code ?? null,
-        payment_amount_cents: payment?.amount_cents ?? null,
+        payment_amount: payment?.amount ?? null,
         payment_currency: payment?.currency ?? null,
         payment_status: payment?.status ?? null,
+        payment_provider: payment?.provider ?? null,
+        payment_provider_payment_id: payment?.provider_payment_id ?? null,
+        payment_invoice_url: payment?.invoice_url ?? null,
+        payment_paid_at: payment?.paid_at ?? null,
         latest_event_type: latestEvent?.event_type ?? null,
         latest_event_at: latestEvent?.created_at ?? null,
         latest_side_effect_attempt_status: latestAttempt?.status ?? null,

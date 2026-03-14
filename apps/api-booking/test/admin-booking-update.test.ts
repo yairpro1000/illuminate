@@ -98,4 +98,65 @@ describe('Admin update booking', () => {
       }),
     }));
   });
+
+  it('syncs edited booking price into the pending payment and allows setting CASH_OK', async () => {
+    const booking = {
+      ...baseBooking(),
+      booking_type: 'PAY_LATER',
+      currency: 'CHF',
+      client_email: 'user@example.com',
+      session_type_title: 'Clarity Session',
+      event_title: null,
+    } as any;
+    const existingPayment = {
+      id: 'p1',
+      booking_id: 'b1',
+      status: 'PENDING',
+      amount: 150,
+      currency: 'CHF',
+      invoice_url: 'https://example.com/mock-invoice/original',
+      raw_payload: {},
+    } as any;
+    const refreshed = { booking_id: 'b1', client_id: 'c1', booking_price: 120, payment_amount: 120, payment_status: 'CASH_OK' } as any;
+    const repo = {
+      getBookingById: vi.fn().mockResolvedValue(booking),
+      getPaymentByBookingId: vi.fn().mockResolvedValue(existingPayment),
+      updateBooking: vi.fn().mockResolvedValue(undefined),
+      updatePayment: vi.fn().mockResolvedValue(undefined),
+      getOrganizerBookings: vi.fn().mockResolvedValue([refreshed]),
+    };
+    const payments = {
+      createInvoice: vi.fn().mockResolvedValue({
+        invoiceId: 'mock_in_2',
+        invoiceUrl: 'https://example.com/mock-invoice/mock_in_2',
+        amount: 120,
+        currency: 'CHF',
+      }),
+    };
+    const ctx = makeCtx({ providers: { repository: repo, payments } as any });
+
+    const req = adminRequest('PATCH', 'https://api.local/api/admin/bookings/b1', {
+      booking: { price: 120 },
+      payment: { status: 'CASH_OK' },
+    });
+
+    const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
+    expect(res.status).toBe(200);
+    expect(repo.updateBooking).toHaveBeenCalledWith('b1', expect.objectContaining({ price: 120 }));
+    expect(payments.createInvoice).toHaveBeenCalledWith(expect.objectContaining({ bookingId: 'b1', amount: 120 }));
+    expect(repo.updatePayment).toHaveBeenNthCalledWith(1, 'p1', expect.objectContaining({
+      amount: 120,
+      invoice_url: 'https://example.com/mock-invoice/mock_in_2',
+    }));
+    expect(repo.updatePayment).toHaveBeenNthCalledWith(2, 'p1', expect.objectContaining({ status: 'CASH_OK' }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_booking_update_payment_amount_sync_started',
+      context: expect.objectContaining({
+        booking_id: 'b1',
+        payment_id: 'p1',
+        payment_amount_after: 120,
+        invoice_regenerated: true,
+      }),
+    }));
+  });
 });

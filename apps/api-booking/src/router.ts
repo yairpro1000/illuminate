@@ -22,6 +22,7 @@ import {
   handleCreateEventReminderSubscription,
 } from './handlers/events.js';
 import { handleContact } from './handlers/contact.js';
+import { handleTurnstileVerify } from './handlers/turnstile.js';
 import { handleAdminUploadImage } from './handlers/upload.js';
 import { handleFrontendObservability } from './handlers/observability.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
@@ -33,6 +34,7 @@ import {
   handleAdminGetBookings,
   handleAdminGetContactMessages,
   handleAdminUpdateBooking,
+  handleAdminSettleBookingPayment,
   handleAdminCreateBookingManageLink,
   handleAdminCreateClientManageLink,
   handleAdminCreateLateAccessLink,
@@ -120,6 +122,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/session-types', handleGetSessionTypes),
 
   route('POST', '/api/contact', handleContact),
+  route('POST', '/api/antibot/turnstile/verify', handleTurnstileVerify),
   route('GET', '/api/admin/events', handleAdminGetEvents),
   route('GET', '/api/admin/events/all', handleAdminGetAllEvents),
   route('PATCH', '/api/admin/events/:eventId', handleAdminUpdateEvent),
@@ -127,6 +130,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/admin/contact-messages', handleAdminGetContactMessages),
   route('PATCH', '/api/admin/bookings/:bookingId', handleAdminUpdateBooking),
   route('POST', '/api/admin/bookings/:bookingId', handleAdminUpdateBooking),
+  route('POST', '/api/admin/bookings/:bookingId/payment-settled', handleAdminSettleBookingPayment),
   route('POST', '/api/admin/bookings/:bookingId/manage-link', handleAdminCreateBookingManageLink),
   route('POST', '/api/admin/bookings/:bookingId/client-manage-link', handleAdminCreateClientManageLink),
   route('POST', '/api/admin/events/:eventId/late-access-links', handleAdminCreateLateAccessLink),

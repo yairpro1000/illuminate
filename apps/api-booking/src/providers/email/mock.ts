@@ -65,7 +65,7 @@ function sessionLabel(booking: Booking): string {
 }
 
 function bookingConfirmationSubject(booking: Booking): string {
-  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`;
+  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
 }
 
 function bookingConfirmationBody(
@@ -78,7 +78,7 @@ function bookingConfirmationBody(
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
-    'Your session is confirmed.',
+    'Your session is confirmed and payment has been settled.',
     '',
     `Session: ${sessionLabel(booking)}`,
     `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
@@ -236,8 +236,8 @@ export class MockEmailProvider implements IEmailProvider {
     return this.send(
       clientEmail(booking),
       'event_confirmation',
-      `You're confirmed – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
+      `You're confirmed and paid – ${event.title}`,
+      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
     );
   }
 

@@ -33,6 +33,17 @@ describe('public config endpoint diagnostics', () => {
           policy.payNowCheckoutWindowMinutes + policy.payNowReminderGraceMinutes,
       },
       booking_policy_text: expect.any(String),
+      antibot: {
+        mode: 'mock',
+        turnstile: {
+          enabled: false,
+          site_key: 'site-key-live',
+          test_site_keys: {
+            pass: 'site-key-pass',
+            fail: 'site-key-fail',
+          },
+        },
+      },
     });
 
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -45,6 +56,8 @@ describe('public config endpoint diagnostics', () => {
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'public_config_response_ready',
       context: expect.objectContaining({
+        antibot_mode: 'mock',
+        turnstile_enabled: false,
         branch_taken: 'public_config_response_prepared',
       }),
     }));
@@ -122,6 +135,9 @@ describe('public config endpoint diagnostics', () => {
         pay_now_checkout_window_minutes: 14,
         pay_now_reminder_grace_minutes: 4,
         pay_now_total_expiry_minutes: 18,
+      }),
+      antibot: expect.objectContaining({
+        mode: 'mock',
       }),
       booking_policy_text: expect.stringContaining('up to 12 hours before the session'),
     }));

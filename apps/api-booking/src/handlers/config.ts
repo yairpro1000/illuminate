@@ -92,6 +92,17 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       config_version: 'booking_policy_v1',
       booking_policy: bookingPolicy,
       booking_policy_text: getBookingPolicyText(policy.selfServiceLockWindowHours),
+      antibot: {
+        mode: ctx.env.ANTIBOT_MODE,
+        turnstile: {
+          enabled: ctx.env.ANTIBOT_MODE === 'turnstile',
+          site_key: ctx.env.TURNSTILE_SITE_KEY ?? null,
+          test_site_keys: {
+            pass: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
+            fail: ctx.env.TURNSTILE_TEST_SITE_KEY_FAIL ?? null,
+          },
+        },
+      },
     };
 
     ctx.logger.logInfo?.({
@@ -102,6 +113,8 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         path,
         request_id: ctx.requestId,
         config_version: responseBody.config_version,
+        antibot_mode: responseBody.antibot.mode,
+        turnstile_enabled: responseBody.antibot.turnstile.enabled,
         branch_taken: 'public_config_response_prepared',
       },
     });
