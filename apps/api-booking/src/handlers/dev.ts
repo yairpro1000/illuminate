@@ -5,7 +5,7 @@
  */
 
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse, notFound } from '../lib/errors.js';
+import { ok, badRequest, notFound } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
 import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment } from '../services/booking-service.js';
 import type { OrganizerBookingRow } from '../types.js';
@@ -119,7 +119,7 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
 
     return ok({ status: 'succeeded' });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -135,7 +135,7 @@ export async function handleDevEmails(_request: Request, ctx: AppContext): Promi
     }));
     return ok({ emails });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -161,7 +161,7 @@ export async function handleDevFailures(_request: Request, ctx: AppContext): Pro
       });
     return ok({ failed_side_effect_attempts: failedAttempts });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -199,7 +199,7 @@ export async function handleDevBookings(_request: Request, ctx: AppContext): Pro
     }));
     return ok({ bookings, clients, payments });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 

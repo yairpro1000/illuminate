@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ok, badRequest, errorResponse } from '../lib/errors.js';
+import { ok, badRequest } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 // import { resolveServiceAccountFromEnv, uploadToGoogleDrive, getOrCreateDriveFolderPath } from '../lib/google-drive.js'; // Drive backup disabled — service accounts have no storage quota
 
@@ -78,6 +78,6 @@ export async function handleAdminUploadImage(request: Request, ctx: AppContext):
     return ok({ image_key: key, drive_file_id: driveFileId, url });
   } catch (e) {
     err('unhandled error', e);
-    return errorResponse(e);
+    throw e;
   }
 }

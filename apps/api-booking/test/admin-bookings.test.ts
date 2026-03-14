@@ -24,7 +24,10 @@ describe('Admin bookings listing', () => {
   it('rejects unauthorized access', async () => {
     const ctx = makeCtx({ providers: { repository: { getOrganizerBookings: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/bookings', { method: 'GET' });
-    const res = await handleAdminGetBookings(req, ctx);
-    expect(res.status).toBe(401);
+    await expect(handleAdminGetBookings(req, ctx)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+      message: 'Admin authentication required',
+    });
   });
 });

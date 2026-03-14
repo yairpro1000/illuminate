@@ -50,11 +50,9 @@ describe('Admin config overrides', () => {
     const ctx = makeCtx({ env: { REPOSITORY_MODE: 'mock', EMAIL_MODE: 'mock', CALENDAR_MODE: 'mock', PAYMENTS_MODE: 'mock', ANTIBOT_MODE: 'mock' } as any });
     const req = new Request('https://api.local/api/admin/config');
 
-    const res = await handleAdminGetConfig(req, ctx);
-
-    expect(res.status).toBe(401);
-    await expect(res.json()).resolves.toEqual({
-      error: 'UNAUTHORIZED',
+    await expect(handleAdminGetConfig(req, ctx)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
       message: 'Admin authentication required',
     });
     expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({

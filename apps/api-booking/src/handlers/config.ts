@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, errorResponse, internalError, ok } from '../lib/errors.js';
+import { ApiError, internalError, ok } from '../lib/errors.js';
 import { getBookingPolicyConfig, getBookingPolicyText } from '../domain/booking-effect-policy.js';
 import { describeBookingPolicyValidationError } from '../config/booking-policy.js';
 
@@ -138,6 +138,6 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }

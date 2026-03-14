@@ -19,8 +19,11 @@ describe('Admin late-access link', () => {
   it('fails for missing event', async () => {
     const ctx = makeCtx({ providers: { repository: { getEventById: vi.fn().mockResolvedValue(null) } } });
     const req = adminRequest('POST', 'https://api.local/api/admin/events/evt1/late-access-links');
-    const res = await handleAdminCreateLateAccessLink(req, ctx, { eventId: 'evt1' });
-    expect(res.status).toBe(404);
+    await expect(handleAdminCreateLateAccessLink(req, ctx, { eventId: 'evt1' })).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'NOT_FOUND',
+      message: 'Event not found',
+    });
   });
 
   it('revokes old links, creates new and returns URL with token', async () => {

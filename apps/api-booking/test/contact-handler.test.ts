@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleContact } from '../src/handlers/contact.js';
+import { handleRequest } from '../src/router.js';
 import { EmailProviderError } from '../src/providers/email/interface.js';
 import { makeCtx } from './admin-helpers.js';
 
@@ -28,6 +29,7 @@ describe('handleContact', () => {
       logMilestone: vi.fn(),
       logWarn: vi.fn(),
       logError: vi.fn(),
+      captureException: vi.fn(),
     };
     const ctx = makeCtx({ providers: { repository, email, antibot }, logger, requestId: 'req-contact-ok' });
 
@@ -58,6 +60,7 @@ describe('handleContact', () => {
     });
     expect(logger.logWarn).not.toHaveBeenCalled();
     expect(logger.logError).not.toHaveBeenCalled();
+    expect(logger.captureException).not.toHaveBeenCalled();
   });
 
   it('returns success with failed email_delivery when email provider fails after persistence', async () => {
@@ -79,6 +82,7 @@ describe('handleContact', () => {
       logMilestone: vi.fn(),
       logWarn: vi.fn(),
       logError: vi.fn(),
+      captureException: vi.fn(),
     };
     const ctx = makeCtx({ providers: { repository, email, antibot }, logger, requestId: 'req-contact-email-fail' });
 
@@ -109,9 +113,10 @@ describe('handleContact', () => {
       eventType: 'contact_email_send_failed_after_persist',
     }));
     expect(logger.logError).not.toHaveBeenCalled();
+    expect(logger.captureException).not.toHaveBeenCalled();
   });
 
-  it('returns 400 envelope and logs error branch for invalid payload', async () => {
+  it('throws BAD_REQUEST and records wrapper diagnostics for invalid payload', async () => {
     const repository = {
       getClientByEmail: vi.fn(),
       createClient: vi.fn(),
@@ -127,25 +132,74 @@ describe('handleContact', () => {
       logMilestone: vi.fn(),
       logWarn: vi.fn(),
       logError: vi.fn(),
+      captureException: vi.fn(),
     };
     const ctx = makeCtx({ providers: { repository, email, antibot }, logger, requestId: 'req-contact-bad' });
 
-    const response = await handleContact(makeRequest({
+    await expect(handleContact(makeRequest({
       first_name: 'NoEmail',
       message: 'missing email field',
       turnstile_token: 'ok',
+    }), ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'email is required',
+    });
+
+    expect(ctx.operation.latestInboundErrorCode).toBe('BAD_REQUEST');
+    expect(ctx.operation.latestInboundErrorMessage).toBe('email is required');
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'contact_send_failed',
+      context: expect.objectContaining({
+        error_code: 'BAD_REQUEST',
+        deny_reason: 'BAD_REQUEST',
+        branch: 'input_or_policy_rejected',
+      }),
+    }));
+    expect(logger.captureException).not.toHaveBeenCalled();
+  });
+
+  it('uses the shared wrapper envelope for invalid contact payloads', async () => {
+    const ctx = makeCtx({
+      env: {
+        SITE_URL: 'https://letsilluminate.co',
+        API_ALLOWED_ORIGINS: 'https://letsilluminate.co',
+      } as any,
+      providers: {
+        repository: {
+          getClientByEmail: vi.fn(),
+          createClient: vi.fn(),
+          createContactMessage: vi.fn(),
+        },
+        email: {
+          sendContactMessage: vi.fn(),
+        },
+        antibot: {
+          verify: vi.fn(),
+        },
+      } as any,
+      requestId: 'req-contact-wrapper',
+    });
+
+    const response = await handleRequest(new Request('https://api.local/api/contact', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://letsilluminate.co',
+      },
+      body: JSON.stringify({
+        first_name: 'NoEmail',
+        message: 'missing email field',
+        turnstile_token: 'ok',
+      }),
     }), ctx);
 
     expect(response.status).toBe(400);
-    const data = await response.json() as Record<string, unknown>;
-    expect(data).toEqual({
-      ok: false,
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
       error: 'BAD_REQUEST',
       message: 'email is required',
-      request_id: 'req-contact-bad',
-    });
-    expect(logger.logError).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'contact_send_failed',
+      request_id: expect.any(String),
     }));
   });
 });

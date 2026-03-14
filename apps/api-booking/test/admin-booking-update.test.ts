@@ -35,8 +35,11 @@ describe('Admin update booking', () => {
     const repo = { getBookingById: vi.fn().mockResolvedValue(booking) } as any;
     const ctx = makeCtx({ providers: { repository: repo } });
     const req = adminRequest('PATCH', 'https://api.local/api/admin/bookings/b1', {});
-    const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
-    expect(res.status).toBe(400);
+    await expect(handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' })).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'No changes provided',
+    });
   });
 
   it('accepts text/plain JSON bodies for cross-origin admin requests', async () => {
@@ -63,5 +66,36 @@ describe('Admin update booking', () => {
     const res = await handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' });
     expect(res.status).toBe(200);
     expect(repo.updateBooking).toHaveBeenCalledWith('b1', expect.objectContaining({ notes: 'Plain text' }));
+  });
+
+  it('returns 409 with diagnostics when the client email already exists', async () => {
+    const booking = baseBooking();
+    const repo = {
+      getBookingById: vi.fn().mockResolvedValue(booking),
+      updateClient: vi.fn().mockRejectedValue(new Error('Failed to update client c1: duplicate key value violates unique constraint "clients_email_key" | code=23505 | details=Key (email)=(yairpro@gmail.com) already exists.')),
+    };
+    const ctx = makeCtx({ providers: { repository: repo } });
+    const body = {
+      client: { email: 'yairpro@gmail.com' },
+    };
+    const req = adminRequest('PATCH', 'https://api.local/api/admin/bookings/b1', body);
+
+    await expect(handleAdminUpdateBooking(req, ctx, { bookingId: 'b1' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT',
+      message: 'A client with this email already exists',
+    });
+    expect(ctx.operation.latestInboundErrorCode).toBe('CONFLICT');
+    expect(ctx.operation.latestInboundErrorMessage).toBe('A client with this email already exists');
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_booking_update_failed',
+      context: expect.objectContaining({
+        booking_id: 'b1',
+        status_code: 409,
+        error_code: 'CONFLICT',
+        branch_taken: 'handled_api_error',
+        deny_reason: 'CONFLICT',
+      }),
+    }));
   });
 });

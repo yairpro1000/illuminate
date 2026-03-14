@@ -40,6 +40,7 @@ import {
   toDbEventStatus,
   toDbSessionTypeStatus,
 } from '../../lib/content-status.js';
+import { conflict } from '../../lib/errors.js';
 
 const now = () => new Date().toISOString();
 
@@ -77,10 +78,18 @@ export class MockRepository implements IRepository {
   async updateClient(id: string, updates: ClientUpdate): Promise<Client> {
     const existing = mockState.clients.get(id);
     if (!existing) throw new Error(`Client ${id} not found`);
+    const normalizedEmail = updates.email ? normalizeEmail(updates.email) : null;
+    if (normalizedEmail) {
+      for (const client of mockState.clients.values()) {
+        if (client.id !== id && normalizeEmail(client.email) === normalizedEmail) {
+          throw conflict('A client with this email already exists');
+        }
+      }
+    }
     const updated: Client = {
       ...existing,
       ...updates,
-      ...(updates.email ? { email: normalizeEmail(updates.email) } : {}),
+      ...(normalizedEmail ? { email: normalizedEmail } : {}),
       updated_at: now(),
     };
     mockState.clients.set(id, updated);

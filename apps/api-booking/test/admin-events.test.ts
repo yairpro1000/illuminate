@@ -20,16 +20,21 @@ describe('Admin events', () => {
   it('rejects unauthorized access', async () => {
     const ctx = makeCtx({ providers: { repository: { getAllEvents: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/events', { method: 'GET' });
-    const res = await handleAdminGetEvents(req, ctx);
-    expect(res.status).toBe(401);
+    await expect(handleAdminGetEvents(req, ctx)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+      message: 'Admin authentication required',
+    });
   });
 
   it('logs auth start and auth failure details for admin events', async () => {
     const ctx = makeCtx({ providers: { repository: { getAllEvents: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/events', { method: 'GET' });
-    const res = await handleAdminGetEvents(req, ctx);
-
-    expect(res.status).toBe(401);
+    await expect(handleAdminGetEvents(req, ctx)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+      message: 'Admin authentication required',
+    });
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_events_request',
       context: expect.objectContaining({

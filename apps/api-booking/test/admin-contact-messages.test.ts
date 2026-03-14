@@ -22,9 +22,11 @@ describe('Admin contact messages listing', () => {
   it('logs diagnostic path on unauthorized access', async () => {
     const ctx = makeCtx({ providers: { repository: { getAdminContactMessages: vi.fn() } } });
     const req = new Request('https://api.local/api/admin/contact-messages?q=test', { method: 'GET' });
-    const res = await handleAdminGetContactMessages(req, ctx);
-
-    expect(res.status).toBe(401);
+    await expect(handleAdminGetContactMessages(req, ctx)).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+      message: 'Admin authentication required',
+    });
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_contact_messages_request_started',
       context: expect.objectContaining({

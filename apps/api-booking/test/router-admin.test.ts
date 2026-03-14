@@ -61,7 +61,7 @@ describe('Router integration (admin)', () => {
     expect(res.status).toBe(401);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.letsilluminate.co');
     const body = await res.json();
-    expect(body).toEqual({ error: 'UNAUTHORIZED', message: expect.any(String) });
+    expect(body).toEqual(expect.objectContaining({ error: 'UNAUTHORIZED', message: expect.any(String) }));
   });
 
   it('adds CORS headers to non-api 404 responses', async () => {

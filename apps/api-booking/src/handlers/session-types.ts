@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ok, created, badRequest, errorResponse } from '../lib/errors.js';
+import { ok, created, badRequest } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { normalizeSessionTypeRow } from '../lib/content-status.js';
 
@@ -44,11 +44,11 @@ export async function handleGetSessionTypes(request: Request, ctx: AppContext): 
       context: {
         path,
         repository_mode: ctx.env.REPOSITORY_MODE,
-        branch_taken: 'return_error_response',
+        branch_taken: 'propagate_error_to_shared_wrapper',
         deny_reason: err instanceof Error ? err.name : 'unknown_error',
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -59,7 +59,7 @@ export async function handleAdminGetSessionTypes(request: Request, ctx: AppConte
     const rows = await ctx.providers.repository.getAllSessionTypes();
     return ok({ session_types: rows });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -87,7 +87,7 @@ export async function handleAdminCreateSessionType(request: Request, ctx: AppCon
     const row = await ctx.providers.repository.createSessionType(payload as any);
     return created({ session_type: row });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -111,6 +111,6 @@ export async function handleAdminUpdateSessionType(
     const row = await ctx.providers.repository.updateSessionType(id, updates as any);
     return ok({ session_type: row });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }

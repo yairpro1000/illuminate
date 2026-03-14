@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { badRequest, errorResponse, jsonResponse } from '../lib/errors.js';
+import { badRequest, internalError, jsonResponse } from '../lib/errors.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 
 // ── Slot rules ────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
       busyTimes = await ctx.providers.calendar.getBusyTimes(from, to);
     } catch (err) {
       console.error('slots: calendar unavailable', err instanceof Error ? err.message : String(err));
-      return jsonResponse({ ok: false, message: 'Calendar temporarily unavailable' }, 500);
+      throw internalError('Calendar temporarily unavailable');
     }
 
     let heldSlots: Array<{ start: string; end: string }>;
@@ -49,7 +49,7 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
       heldSlots = await ctx.providers.repository.getHeldSlots(from, to);
     } catch (err) {
       console.error('slots: repository unavailable', err instanceof Error ? err.message : String(err));
-      return jsonResponse({ ok: false, message: 'Calendar temporarily unavailable' }, 500);
+      throw internalError('Calendar temporarily unavailable');
     }
 
     const allBusy = [...busyTimes, ...heldSlots];
@@ -82,7 +82,7 @@ export async function handleGetSlots(request: Request, ctx: AppContext): Promise
 
     return jsonResponse({ ok: true, timezone: tz, slots });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 

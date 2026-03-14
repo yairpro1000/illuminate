@@ -2,7 +2,7 @@ import type { AppContext } from '../router.js';
 import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
 import type { BookingCurrentStatus, EventUpdate, NewSystemSetting, SystemSetting, SystemSettingUpdate, SystemSettingValueType } from '../types.js';
-import { ApiError, created, badRequest, notFound, errorResponse, ok } from '../lib/errors.js';
+import { ApiError, conflict, created, badRequest, notFound, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import { BOOKING_POLICY_CONFIG_SOURCE } from '../config/booking-policy.js';
@@ -121,6 +121,13 @@ function coerceOptionalString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function isDuplicateClientEmailError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes('code=23505')
+    && message.includes('email');
 }
 
 function normalizeSystemSettingValue(value: string, valueType: SystemSettingValueType): string {
@@ -254,7 +261,7 @@ export async function handleAdminGetEvents(request: Request, ctx: AppContext): P
         auth_failure_reason: err instanceof Error ? err.message : String(err),
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -265,7 +272,7 @@ export async function handleAdminGetAllEvents(request: Request, ctx: AppContext)
     const events = await ctx.providers.repository.getAllEvents();
     return ok({ events });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -298,7 +305,7 @@ export async function handleAdminUpdateEvent(
     const updated = await ctx.providers.repository.updateEvent(eventId, updates);
     return ok({ event: updated });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -310,7 +317,7 @@ export async function handleAdminGetBookings(request: Request, ctx: AppContext):
     const rows = await ctx.providers.repository.getOrganizerBookings(filters);
     return ok({ rows });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -366,12 +373,12 @@ export async function handleAdminGetContactMessages(request: Request, ctx: AppCo
       message: err instanceof Error ? err.message : String(err),
       context: {
         path,
-        branch_taken: 'error_response',
+        branch_taken: 'propagate_error_to_shared_wrapper',
         deny_reason: err instanceof Error ? err.message : String(err),
         status_code: (err as { statusCode?: number })?.statusCode ?? 500,
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -381,10 +388,22 @@ export async function handleAdminUpdateBooking(
   ctx: AppContext,
   params: Record<string, string>,
 ): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
     await requireAdminAccess(request, ctx.env);
     const bookingId = params.bookingId?.trim();
     if (!bookingId) throw badRequest('bookingId is required');
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_update_started',
+      message: 'Started admin booking update request',
+      context: {
+        path,
+        booking_id: bookingId,
+        branch_taken: 'load_booking_and_parse_patch',
+      },
+    });
 
     const booking = await ctx.providers.repository.getBookingById(bookingId);
     if (!booking) throw notFound('Booking not found');
@@ -401,6 +420,20 @@ export async function handleAdminUpdateBooking(
       throw badRequest('No changes provided');
     }
 
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_update_patch_decision',
+      message: 'Evaluated admin booking update patch content',
+      context: {
+        path,
+        booking_id: booking.id,
+        has_client_patch: Boolean(clientPatch),
+        has_booking_patch: Boolean(bookingPatch),
+        has_client_email_patch: Boolean(clientPatch && typeof clientPatch.email === 'string' && clientPatch.email.trim()),
+        branch_taken: 'apply_requested_booking_and_client_updates',
+      },
+    });
+
     if (clientPatch) {
       const updates: Record<string, string | null> = {};
       if (typeof clientPatch.first_name === 'string' && clientPatch.first_name.trim()) {
@@ -416,6 +449,21 @@ export async function handleAdminUpdateBooking(
         updates.phone = coerceNullableString(clientPatch.phone);
       }
       if (Object.keys(updates).length > 0) {
+        ctx.logger.logInfo?.({
+          source: 'backend',
+          eventType: 'admin_booking_update_client_patch_started',
+          message: 'Started admin client update for booking edit',
+          context: {
+            path,
+            booking_id: booking.id,
+            client_id: booking.client_id,
+            has_email_update: typeof updates.email === 'string',
+            has_phone_update: Object.prototype.hasOwnProperty.call(updates, 'phone'),
+            has_first_name_update: typeof updates.first_name === 'string',
+            has_last_name_update: Object.prototype.hasOwnProperty.call(updates, 'last_name'),
+            branch_taken: 'update_client_record',
+          },
+        });
         await ctx.providers.repository.updateClient(booking.client_id, updates);
       }
     }
@@ -429,6 +477,18 @@ export async function handleAdminUpdateBooking(
         updates.current_status = bookingPatch.current_status as BookingCurrentStatus;
       }
       if (Object.keys(updates).length > 0) {
+        ctx.logger.logInfo?.({
+          source: 'backend',
+          eventType: 'admin_booking_update_booking_patch_started',
+          message: 'Started admin booking field update',
+          context: {
+            path,
+            booking_id: booking.id,
+            has_notes_update: Object.prototype.hasOwnProperty.call(updates, 'notes'),
+            has_status_update: typeof updates.current_status === 'string',
+            branch_taken: 'update_booking_record',
+          },
+        });
         await ctx.providers.repository.updateBooking(booking.id, updates);
       }
 
@@ -436,9 +496,59 @@ export async function handleAdminUpdateBooking(
 
     const refreshedRows = await ctx.providers.repository.getOrganizerBookings({ client_id: booking.client_id });
     const refreshed = refreshedRows.find((row) => row.booking_id === booking.id) ?? null;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_update_completed',
+      message: 'Completed admin booking update request',
+      context: {
+        path,
+        booking_id: booking.id,
+        client_id: booking.client_id,
+        branch_taken: 'return_updated_booking',
+      },
+    });
     return ok({ ok: true, booking: refreshed });
   } catch (err) {
-    return errorResponse(err);
+    const normalizedError = isDuplicateClientEmailError(err)
+      ? conflict('A client with this email already exists')
+      : err;
+    const statusCode = normalizedError instanceof ApiError ? normalizedError.statusCode : 500;
+    const errorCode = normalizedError instanceof ApiError ? normalizedError.code : 'INTERNAL_ERROR';
+    const errorMessage = normalizedError instanceof Error ? normalizedError.message : String(normalizedError);
+
+    ctx.operation.latestInboundErrorCode = errorCode;
+    ctx.operation.latestInboundErrorMessage = errorMessage;
+
+    if (statusCode >= 500) {
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'admin_booking_update_failed',
+        message: 'Admin booking update failed unexpectedly',
+        error: normalizedError,
+        context: {
+          path,
+          booking_id: params.bookingId?.trim() || null,
+          status_code: statusCode,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    } else {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'admin_booking_update_failed',
+        message: errorMessage,
+        context: {
+          path,
+          booking_id: params.bookingId?.trim() || null,
+          status_code: statusCode,
+          error_code: errorCode,
+          branch_taken: 'handled_api_error',
+          deny_reason: errorCode,
+        },
+      });
+    }
+
+    throw normalizedError;
   }
 }
 
@@ -491,7 +601,7 @@ export async function handleAdminCreateBookingManageLink(
         deny_reason: err instanceof Error ? err.message : String(err),
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -536,7 +646,7 @@ export async function handleAdminCreateClientManageLink(
         deny_reason: err instanceof Error ? err.message : String(err),
       },
     });
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -575,7 +685,7 @@ export async function handleAdminCreateLateAccessLink(
       url: buildLateAccessUrl(event, ctx.env.SITE_URL, rawToken),
     });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -673,7 +783,7 @@ export async function handleAdminGetConfig(request: Request, ctx: AppContext): P
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -804,7 +914,7 @@ export async function handleAdminPatchConfig(request: Request, ctx: AppContext):
         },
       });
     }
-    return errorResponse(err);
+    throw err;
   }
 }
 
@@ -845,6 +955,6 @@ export async function handleAdminCreateReminderSubscription(
       event_family: subscription.event_family,
     });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }

@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, ok, badRequest, notFound, errorResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import {
   createEventBooking,
@@ -309,7 +309,7 @@ export async function handleCreateEventReminderSubscription(request: Request, ct
 
     return ok({ id: created.id, email: created.email, event_family: created.event_family });
   } catch (err) {
-    return errorResponse(err);
+    throw err;
   }
 }
 

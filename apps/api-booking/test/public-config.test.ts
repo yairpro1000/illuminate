@@ -55,11 +55,9 @@ describe('public config endpoint diagnostics', () => {
     const req = new Request('https://api.local/api/config');
     applyBookingPolicyOverridesForTests({ payNowReminderGraceMinutes: 0 });
 
-    const res = await handleGetPublicConfig(req, ctx);
-
-    expect(res.status).toBe(500);
-    await expect(res.json()).resolves.toEqual({
-      error: 'INTERNAL_ERROR',
+    await expect(handleGetPublicConfig(req, ctx)).rejects.toMatchObject({
+      statusCode: 500,
+      code: 'INTERNAL_ERROR',
       message: 'Internal server error',
     });
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -99,10 +97,10 @@ describe('public config endpoint diagnostics', () => {
 
     expect(res.status).toBe(500);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
-    await expect(res.json()).resolves.toEqual({
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
       error: 'INTERNAL_ERROR',
       message: 'Internal server error',
-    });
+    }));
   });
 
   it('can be overridden from the shared booking policy config in tests', async () => {

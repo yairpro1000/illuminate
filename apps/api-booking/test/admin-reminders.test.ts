@@ -5,8 +5,11 @@ import { adminRequest, makeCtx } from './admin-helpers.js';
 describe('Admin reminder subscriptions', () => {
   it('requires email', async () => {
     const ctx = makeCtx({ providers: { repository: {} } });
-    const res = await handleAdminCreateReminderSubscription(adminRequest('POST', 'https://api.local/api/admin/reminder-subscriptions', {}), ctx);
-    expect(res.status).toBe(400);
+    await expect(handleAdminCreateReminderSubscription(adminRequest('POST', 'https://api.local/api/admin/reminder-subscriptions', {}), ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'email is required',
+    });
   });
 
   it('creates or updates subscription with defaults', async () => {

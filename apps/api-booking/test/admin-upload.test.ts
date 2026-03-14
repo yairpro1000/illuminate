@@ -11,10 +11,11 @@ describe('Admin upload image', () => {
   it('rejects non-multipart content-type', async () => {
     const ctx = makeCtx();
     const req = adminRequest('POST', 'https://api.local/api/admin/upload-image', { hello: 'world' });
-    const res = await handleAdminUploadImage(req, ctx);
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toBe('BAD_REQUEST');
+    await expect(handleAdminUploadImage(req, ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'content-type must be multipart/form-data',
+    });
   });
 
   it('uploads file to R2 and returns URL', async () => {
@@ -46,7 +47,10 @@ describe('Admin upload image', () => {
       headers: { 'Cf-Access-Authenticated-User-Email': 'admin@example.com' },
       body: fd,
     });
-    const res = await handleAdminUploadImage(req, ctx);
-    expect(res.status).toBe(400);
+    await expect(handleAdminUploadImage(req, ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'entity_type must be event | session',
+    });
   });
 });

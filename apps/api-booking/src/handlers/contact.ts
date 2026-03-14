@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { EmailProviderError } from '../providers/email/interface.js';
-import { ApiError, ok, badRequest, jsonResponse } from '../lib/errors.js';
+import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { sanitizeContext } from '../../../shared/observability/backend.js';
 
 // POST /api/contact
@@ -117,30 +117,50 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
     }
   } catch (err) {
     const providerDebug = err instanceof EmailProviderError ? err.debug : undefined;
-    ctx.logger.logError({
+    const normalizedError = err instanceof ApiError
+      ? err
+      : new Error('Could not send your message right now.');
+    const statusCode = err instanceof ApiError ? err.statusCode : 500;
+    const errorCode = err instanceof ApiError ? err.code : 'CONTACT_SEND_FAILED';
+    const errorMessage = err instanceof ApiError ? err.message : 'Could not send your message right now.';
+
+    ctx.operation.latestInboundErrorCode = errorCode;
+    ctx.operation.latestInboundErrorMessage = errorMessage;
+
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'worker',
+        eventType: 'contact_send_failed',
+        message: err.message,
+        context: sanitizeContext({
+          flow: 'contact_form',
+          request_id: ctx.requestId,
+          provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
+          kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
+          branch: 'input_or_policy_rejected',
+          status_code: statusCode,
+          error_code: errorCode,
+          deny_reason: errorCode,
+        }),
+      });
+      throw err;
+    }
+
+    ctx.logger.captureException?.({
       source: 'worker',
       eventType: 'contact_send_failed',
       message: 'Contact form email send failed',
+      error: normalizedError,
       context: sanitizeContext({
         flow: 'contact_form',
         request_id: ctx.requestId,
         provider: typeof providerDebug?.['provider'] === 'string' ? providerDebug['provider'] : null,
         kind: typeof providerDebug?.['kind'] === 'string' ? providerDebug['kind'] : null,
-        branch: err instanceof ApiError ? 'input_or_policy_rejected' : 'contact_handler_failed',
-        error: String(err),
+        branch: 'contact_handler_failed',
+        status_code: statusCode,
       }),
     });
-
-    if (err instanceof ApiError) {
-      return jsonResponse({ ok: false, error: err.code, message: err.message, request_id: ctx.requestId }, err.statusCode);
-    }
-
-    return jsonResponse({
-      ok: false,
-      error: 'CONTACT_SEND_FAILED',
-      message: 'Could not send your message right now.',
-      request_id: ctx.requestId,
-    }, 500);
+    throw normalizedError;
   }
 }
 

@@ -14,8 +14,11 @@ describe('Admin session types', () => {
 
   it('validates required fields on create', async () => {
     const ctx = makeCtx({ providers: { repository: {} } });
-    const res = await handleAdminCreateSessionType(adminRequest('POST', 'https://api.local/api/admin/session-types', { title: 'T' }), ctx);
-    expect(res.status).toBe(400);
+    await expect(handleAdminCreateSessionType(adminRequest('POST', 'https://api.local/api/admin/session-types', { title: 'T' }), ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'slug is required',
+    });
   });
 
   it('creates a new session type', async () => {
