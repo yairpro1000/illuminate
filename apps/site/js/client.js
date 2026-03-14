@@ -223,41 +223,47 @@
     headers.set('x-request-id', requestId);
     headers.set('x-correlation-id', correlationId);
 
-    const res = await fetch(url, {
-      credentials: 'same-origin',
-      ...(init || {}),
-      method,
-      headers,
-    });
-    const data = await parseJsonishResponse(res);
-    if (!res.ok) {
-      const message = typeof data?.message === 'string' ? data.message : ('HTTP ' + res.status);
-      if (window.siteObservability) {
-        window.siteObservability.logError({
-          eventType: 'request_failure',
-          message: method + ' ' + path,
-          requestId: requestId,
-          correlationId: correlationId,
-          api: {
-            direction: 'outbound',
-            provider: 'site_api',
-            method: method,
-            url: url,
-            path: path,
-            statusCode: res.status,
-            success: false,
-          },
-          apiFailure: {
-            responseBody: truncatePreview(typeof data?.message === 'string' ? data.message : JSON.stringify(data || {}), 300),
-          },
-        });
+    const _sp = window.siteSpinner;
+    if (_sp) _sp.show();
+    try {
+      const res = await fetch(url, {
+        credentials: 'same-origin',
+        ...(init || {}),
+        method,
+        headers,
+      });
+      const data = await parseJsonishResponse(res);
+      if (!res.ok) {
+        const message = typeof data?.message === 'string' ? data.message : ('HTTP ' + res.status);
+        if (window.siteObservability) {
+          window.siteObservability.logError({
+            eventType: 'request_failure',
+            message: method + ' ' + path,
+            requestId: requestId,
+            correlationId: correlationId,
+            api: {
+              direction: 'outbound',
+              provider: 'site_api',
+              method: method,
+              url: url,
+              path: path,
+              statusCode: res.status,
+              success: false,
+            },
+            apiFailure: {
+              responseBody: truncatePreview(typeof data?.message === 'string' ? data.message : JSON.stringify(data || {}), 300),
+            },
+          });
+        }
+        const error = new Error(message);
+        error.status = res.status;
+        error.data = data;
+        throw error;
       }
-      const error = new Error(message);
-      error.status = res.status;
-      error.data = data;
-      throw error;
+      return data;
+    } finally {
+      if (_sp) _sp.hide();
     }
-    return data;
   }
 
   window.siteClient = {
@@ -267,4 +273,33 @@
     requestJson: requestJson,
     config: DEFAULT_CONFIG,
   };
+
+  // ── Global loading spinner (used by requestJson here and in api.js) ──────
+  if (!window.siteSpinner) {
+    (function () {
+      var n = 0;
+      var el = null;
+      function getOverlayEl() {
+        if (el) return el;
+        var style = document.createElement('style');
+        style.textContent =
+          '@keyframes site-spin{to{transform:rotate(360deg)}}' +
+          '.site-spinner-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;' +
+          'justify-content:center;background:rgba(0,0,0,0.35);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}' +
+          '.site-spinner-ring{width:52px;height:52px;border-radius:50%;' +
+          'border:4px solid var(--color-lake-mist,rgba(255,255,255,0.12));' +
+          'border-top-color:var(--color-lake,#7aa2ff);animation:site-spin 0.7s linear infinite}';
+        document.head.appendChild(style);
+        el = document.createElement('div');
+        el.className = 'site-spinner-overlay';
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = '<div class="site-spinner-ring"></div>';
+        return el;
+      }
+      window.siteSpinner = {
+        show: function () { if (++n === 1) document.body.appendChild(getOverlayEl()); },
+        hide: function () { if (--n <= 0) { n = 0; if (el && el.parentNode) el.parentNode.removeChild(el); } },
+      };
+    }());
+  }
 })();

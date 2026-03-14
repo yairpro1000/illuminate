@@ -130,6 +130,9 @@ async function _post(path, body) {
 }
 
 async function requestJson(method, path, body) {
+  const _sp = window.siteSpinner;
+  if (_sp) _sp.show();
+  try {
   const url = API_BASE + path;
   const requestId = (crypto.randomUUID && crypto.randomUUID()) || ('rid_' + Date.now().toString(36));
   const correlationId = OBS && OBS.getCorrelationId ? OBS.getCorrelationId() : requestId;
@@ -206,6 +209,9 @@ async function requestJson(method, path, body) {
 
   if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
   return data;
+  } finally {
+    if (_sp) _sp.hide();
+  }
 }
 
 async function parseApiResponseBody(res) {
