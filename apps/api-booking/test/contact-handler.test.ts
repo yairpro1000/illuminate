@@ -49,6 +49,13 @@ describe('handleContact', () => {
       email_delivery: 'sent',
       request_id: 'req-contact-ok',
     });
+    expect(repository.createContactMessage).toHaveBeenCalledWith({
+      client_id: 'client-1',
+      topic: 'sessions',
+      message: 'Hello there',
+      status: 'NEW',
+      source: 'WEBSITE_CONTACT_FORM',
+    });
     expect(logger.logWarn).not.toHaveBeenCalled();
     expect(logger.logError).not.toHaveBeenCalled();
   });
@@ -90,6 +97,13 @@ describe('handleContact', () => {
       contact_id: 'contact-2',
       email_delivery: 'failed',
       request_id: 'req-contact-email-fail',
+    });
+    expect(repository.createContactMessage).toHaveBeenCalledWith({
+      client_id: 'client-2',
+      topic: null,
+      message: 'Need more info',
+      status: 'NEW',
+      source: 'WEBSITE_CONTACT_FORM',
     });
     expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'contact_email_send_failed_after_persist',

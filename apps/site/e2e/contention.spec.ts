@@ -8,6 +8,34 @@ import {
 } from './support/api';
 import { attachRuntimeMonitor } from './support/runtime';
 
+const EXPECTED_SLOT_CONFLICT_ISSUES = [
+  {
+    kind: 'http' as const,
+    messageIncludes: '-> 409',
+    urlIncludes: '/api/bookings/pay-later',
+  },
+  {
+    kind: 'console' as const,
+    messageIncludes: 'Failed to load resource: the server responded with a status of 409',
+    urlIncludes: '/api/bookings/pay-later',
+  },
+  {
+    kind: 'console' as const,
+    messageIncludes: '"eventType":"request_failure"',
+    urlIncludes: '/js/client.js',
+  },
+  {
+    kind: 'console' as const,
+    messageIncludes: '[Book] Submission error: Error: This slot is no longer available',
+    urlIncludes: '/js/book.js',
+  },
+  {
+    kind: 'console' as const,
+    messageIncludes: '"eventType":"handled_exception"',
+    urlIncludes: '/js/client.js',
+  },
+];
+
 async function openIntroFlow(page: Page): Promise<void> {
   await page.goto(`${SITE_BASE_URL}/sessions.html`);
   await page.locator('a.btn[href*="book.html?type=intro"]').first().click();
@@ -145,6 +173,19 @@ async function cleanupConfirmedIntro(email: string): Promise<void> {
   await expectManageStatus(email, 'CANCELED');
 }
 
+async function submitContactForm(page: Page, email: string): Promise<void> {
+  await expect(page).toHaveURL(/\/contact(?:\.html)?$/);
+  await expect(page.locator('#contact-form')).toBeVisible();
+  await page.locator('#contact-first-name').fill('P4');
+  await page.locator('#contact-last-name').fill('Race');
+  await page.locator('#contact-email').fill(email);
+  await page.locator('#contact-topic').selectOption({ label: 'Question about 1:1 sessions' });
+  await page.locator('#contact-message').fill('A slot conflict occurred. Please help me choose another time.');
+  await page.locator('#contact-submit-btn').click();
+  await expect(page.locator('#contact-success')).toBeVisible();
+  await expect(page.locator('.contact-success__title')).toContainText('Message sent');
+}
+
 async function createPreparedIntroDraft(page: Page, email: string): Promise<{ dateYmd: string; timeLabel: string }> {
   await openIntroFlow(page);
   const chosen = await chooseFirstIntroSlot(page);
@@ -186,39 +227,48 @@ test.describe('P4 multi-user slot contention', () => {
       const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
       expect(await waitForIntroOutcome(pageB)).toBe('slot-lost');
-      await runtimeB.assertNoNewIssues(loserCheckpoint, 'contention-stale-loser', testInfo, {
-        allow: [
-          {
-            kind: 'http',
-            messageIncludes: '-> 409',
-            urlIncludes: '/api/bookings/pay-later',
-          },
-          {
-            kind: 'console',
-            messageIncludes: 'Failed to load resource: the server responded with a status of 409',
-            urlIncludes: '/api/bookings/pay-later',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '"eventType":"request_failure"',
-            urlIncludes: '/js/client.js',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '[Book] Submission error: Error: This slot is no longer available',
-            urlIncludes: '/js/book.js',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '"eventType":"handled_exception"',
-            urlIncludes: '/js/client.js',
-          },
-        ],
-      });
+      await runtimeB.assertNoNewIssues(loserCheckpoint, 'contention-stale-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
       await recoverLoserToSuccessfulIntroBooking(pageB, runtimeB, chosen, loserEmail, testInfo);
 
       await cleanupConfirmedIntro(winnerEmail);
       await cleanupConfirmedIntro(loserEmail);
+    } finally {
+      await pageA.close();
+      await pageB.close();
+    }
+  });
+
+  test('a stale-slot loser can switch to contact and successfully send the public contact form', async ({ browser }, testInfo) => {
+    const pageA = await newPage(browser);
+    const pageB = await newPage(browser);
+    const runtimeB = attachRuntimeMonitor(pageB);
+    const winnerEmail = makeScenarioEmail('p4-contact-winner');
+    const contactEmail = makeScenarioEmail('p4-contact-loser');
+
+    try {
+      const chosen = await createPreparedIntroDraft(pageA, winnerEmail);
+      await createPreparedIntroDraftForSlot(pageB, contactEmail, chosen);
+
+      await pageA.locator('button[data-submit]').click();
+      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+
+      const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
+      expect(winnerArtifacts.links.confirm_url).toBeTruthy();
+      await pageA.goto(winnerArtifacts.links.confirm_url!);
+      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+
+      const loserCheckpoint = runtimeB.checkpoint();
+      await pageB.locator('button[data-submit]').click();
+      expect(await waitForIntroOutcome(pageB)).toBe('slot-lost');
+      await runtimeB.assertNoNewIssues(loserCheckpoint, 'contention-contact-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
+
+      await expect(pageB.locator('.booking-recovery__title')).toContainText('That time was just taken');
+      const contactCheckpoint = runtimeB.checkpoint();
+      await pageB.getByRole('link', { name: 'Contact Yair directly' }).click();
+      await submitContactForm(pageB, contactEmail);
+      await runtimeB.assertNoNewIssues(contactCheckpoint, 'contention-contact-submit', testInfo);
+
+      await cleanupConfirmedIntro(winnerEmail);
     } finally {
       await pageA.close();
       await pageB.close();
@@ -261,35 +311,7 @@ test.describe('P4 multi-user slot contention', () => {
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
       await winnerRuntime.assertNoNewIssues(winnerCheckpoint, 'contention-race-winner', testInfo);
-      await loserRuntime.assertNoNewIssues(loserCheckpoint, 'contention-race-loser', testInfo, {
-        allow: [
-          {
-            kind: 'http',
-            messageIncludes: '-> 409',
-            urlIncludes: '/api/bookings/pay-later',
-          },
-          {
-            kind: 'console',
-            messageIncludes: 'Failed to load resource: the server responded with a status of 409',
-            urlIncludes: '/api/bookings/pay-later',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '"eventType":"request_failure"',
-            urlIncludes: '/js/client.js',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '[Book] Submission error: Error: This slot is no longer available',
-            urlIncludes: '/js/book.js',
-          },
-          {
-            kind: 'console',
-            messageIncludes: '"eventType":"handled_exception"',
-            urlIncludes: '/js/client.js',
-          },
-        ],
-      });
+      await loserRuntime.assertNoNewIssues(loserCheckpoint, 'contention-race-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
       const loserPage = outcomeA === 'slot-lost' ? pageA : pageB;
       await recoverLoserToSuccessfulIntroBooking(loserPage, loserRuntime, chosen, loserEmail, testInfo);
       await cleanupConfirmedIntro(winnerEmail);
