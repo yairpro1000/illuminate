@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <filter id="admin-a-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#00131f" flood-opacity="0.6" />
+    </filter>
+  </defs>
+  <image href="../site/img/icon.png" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid slice" />
+  <rect x="9" y="8" width="46" height="48" rx="23" fill="#00131f" opacity="0.18" />
+  <text
+    x="32"
+    y="45"
+    text-anchor="middle"
+    font-family="Inter, Arial, sans-serif"
+    font-size="34"
+    font-weight="700"
+    fill="#ffffff"
+    filter="url(#admin-a-shadow)"
+  >A</text>
+</svg>

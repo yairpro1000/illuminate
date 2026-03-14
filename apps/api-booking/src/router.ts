@@ -49,10 +49,7 @@ import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
 import { ApiError, errorBody, jsonResponse } from './lib/errors.js';
 import { createOperationContext, type OperationContext } from './lib/execution.js';
 import {
-  finalizeApiLog,
   recordExceptionLog,
-  responseUrl,
-  startApiLog,
   wrapProvidersForOperation,
 } from './lib/technical-observability.js';
 import {
@@ -335,7 +332,6 @@ async function executeObservedRoute(
   executionLayer: Route['executionLayer'],
 ): Promise<Response> {
   const path = new URL(request.url).pathname;
-  const startedAtMs = Date.now();
   const isBookingRoute = executionLayer === 'booking';
   const shouldSuppressSuccessLifecycleLogs = path === '/api/observability/frontend';
   const routeCtx: AppContext = {
@@ -347,14 +343,6 @@ async function executeObservedRoute(
     }),
   };
   routeCtx.providers = wrapProvidersForOperation(routeCtx.providers, routeCtx.env, routeCtx.logger, routeCtx.operation);
-  const inboundApiLogId = await startApiLog(routeCtx.env, {
-    operation: routeCtx.operation,
-    direction: 'inbound',
-    method: request.method,
-    url: request.url,
-    requestHeaders: request.headers,
-    requestBody: request.method === 'GET' || request.method === 'HEAD' ? null : '[stream body omitted]',
-  });
 
   if (!shouldSuppressSuccessLifecycleLogs) {
     routeCtx.logger.logInfo({
@@ -375,12 +363,6 @@ async function executeObservedRoute(
 
   try {
     const response = await handler(request, routeCtx, params);
-    await finalizeApiLog(routeCtx.env, inboundApiLogId, {
-      responseStatus: response.status,
-      responseHeaders: response.headers,
-      responseBody: response.status >= 400 ? await response.clone().text() : { ok: response.ok, path: responseUrl(request) },
-      startedAtMs,
-    });
     if (!shouldSuppressSuccessLifecycleLogs) {
       routeCtx.logger.logInfo({
         source: 'worker',
@@ -434,13 +416,6 @@ async function executeObservedRoute(
       });
     }
 
-    await finalizeApiLog(routeCtx.env, inboundApiLogId, {
-      responseStatus: statusCode,
-      responseBody: errorBody(error, routeCtx.requestId),
-      errorCode: error instanceof ApiError ? error.code : 'INTERNAL_ERROR',
-      errorMessage: error instanceof ApiError ? error.message : 'Internal server error',
-      startedAtMs,
-    });
     if (statusCode >= 500) {
       await recordExceptionLog(routeCtx.env, routeCtx.operation, error, {
         method: request.method,
