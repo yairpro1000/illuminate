@@ -32,6 +32,7 @@ import type {
   NewSystemSetting,
   SystemSettingUpdate,
 } from '../../types.js';
+import { conflict } from '../../lib/errors.js';
 import {
   isEventPubliclyListed,
   normalizeEventRow,
@@ -156,10 +157,18 @@ export class SupabaseRepository implements IRepository {
   // ── Bookings ──────────────────────────────────────────────────────────────
 
   async createBooking(data: NewBooking): Promise<Booking> {
-    const created = await requireSingle<{ id: string }>(
-      this.db.from('bookings').insert(data).select('id').single(),
-      'Failed to create booking',
-    );
+    let created: { id: string };
+    try {
+      created = await requireSingle<{ id: string }>(
+        this.db.from('bookings').insert(data).select('id').single(),
+        'Failed to create booking',
+      );
+    } catch (error) {
+      if (isActiveSlotOverlapError(error)) {
+        throw conflict('This slot is no longer available');
+      }
+      throw error;
+    }
     return this.requireBookingById(created.id);
   }
 
@@ -1076,4 +1085,11 @@ function formatQueryError(error: QueryError): string {
   if (error.hint) parts.push(`hint=${error.hint}`);
   if (typeof error.status === 'number') parts.push(`status=${error.status}`);
   return parts.join(' | ');
+}
+
+function isActiveSlotOverlapError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.message.includes('no_overlapping_active_bookings')
+    || error.message.includes('code=23P01')
+    || error.message.includes('conflicting key value violates exclusion constraint');
 }

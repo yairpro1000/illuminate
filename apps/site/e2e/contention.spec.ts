@@ -3,6 +3,7 @@ import {
   SITE_BASE_URL,
   cancelBookingByManageUrl,
   expectManageStatus,
+  getSlots,
   makeScenarioEmail,
   waitForBookingArtifacts,
 } from './support/api';
@@ -59,6 +60,41 @@ async function chooseFirstIntroSlot(page: Page): Promise<{ dateYmd: string; time
   return { dateYmd: dateYmd || '', timeLabel };
 }
 
+async function findIntroSlotWithBackup(): Promise<{ dateYmd: string; timeLabel: string }> {
+  const from = new Date();
+  const to = new Date();
+  to.setMonth(to.getMonth() + 4);
+  const slots = await getSlots(
+    from.toISOString().slice(0, 10),
+    to.toISOString().slice(0, 10),
+    'intro',
+    'Europe/Zurich',
+  );
+
+  const byDay = new Map<string, Array<{ start: string; end: string }>>();
+  for (const slot of slots) {
+    const day = slot.start.slice(0, 10);
+    const daySlots = byDay.get(day) || [];
+    daySlots.push(slot);
+    byDay.set(day, daySlots);
+  }
+
+  for (const [dateYmd, daySlots] of byDay.entries()) {
+    if (daySlots.length < 2) continue;
+    const chosen = daySlots[0];
+    const date = new Date(chosen.start);
+    const timeLabel = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/Zurich',
+    }).format(date);
+    return { dateYmd, timeLabel };
+  }
+
+  throw new Error('No intro slot day with a backup slot is currently available');
+}
+
 async function fillIntroDetailsAndReachReview(page: Page, email: string): Promise<void> {
   await page.locator('#f-first-name').fill('P4');
   await page.locator('#f-last-name').fill('Race');
@@ -82,6 +118,12 @@ async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'>
 }
 
 async function chooseAlternativeIntroSlot(page: Page, staleSlot: { dateYmd: string; timeLabel: string }): Promise<{ dateYmd: string; timeLabel: string }> {
+  await page.waitForLoadState('networkidle');
+  await Promise.race([
+    page.locator('.time-slot').first().waitFor({ state: 'visible', timeout: 5_000 }),
+    page.locator(`[data-date="${staleSlot.dateYmd}"]`).first().waitFor({ state: 'visible', timeout: 5_000 }),
+  ]).catch(() => {});
+
   const visibleSlots = page.locator('.time-slot');
   const visibleSlotCount = await visibleSlots.count();
   if (visibleSlotCount > 0) {
@@ -188,9 +230,10 @@ async function submitContactForm(page: Page, email: string): Promise<void> {
 
 async function createPreparedIntroDraft(page: Page, email: string): Promise<{ dateYmd: string; timeLabel: string }> {
   await openIntroFlow(page);
-  const chosen = await chooseFirstIntroSlot(page);
+  const preferred = await findIntroSlotWithBackup();
+  await chooseSpecificIntroSlot(page, preferred.dateYmd, preferred.timeLabel);
   await fillIntroDetailsAndReachReview(page, email);
-  return chosen;
+  return preferred;
 }
 
 async function createPreparedIntroDraftForSlot(page: Page, email: string, slot: { dateYmd: string; timeLabel: string }): Promise<void> {
