@@ -83,6 +83,17 @@ export class MockRepository implements IRepository {
     return clients;
   }
 
+  async listBookingsByClientTagPrefix(prefix: string): Promise<Booking[]> {
+    const normalized = normalizeEmail(prefix);
+    return [...mockState.bookings.values()]
+      .map((booking) => this.hydrateBooking(booking))
+      .filter((booking) =>
+        normalizeEmail(booking.client_email ?? '').startsWith(normalized)
+        || (booking.client_first_name ?? '').trim().toLowerCase().startsWith(normalized),
+      )
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }
+
   async updateClient(id: string, updates: ClientUpdate): Promise<Client> {
     const existing = mockState.clients.get(id);
     if (!existing) throw new Error(`Client ${id} not found`);

@@ -64,6 +64,7 @@ export interface IRepository {
   getClientById(id: string): Promise<Client | null>;
   getClientByEmail(email: string): Promise<Client | null>;
   listClientsByEmailPrefix(prefix: string): Promise<Client[]>;
+  listBookingsByClientTagPrefix(prefix: string): Promise<Booking[]>;
   updateClient(id: string, updates: ClientUpdate): Promise<Client>;
 
   // ── Bookings ──────────────────────────────────────────────────────────────

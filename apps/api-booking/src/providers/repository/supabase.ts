@@ -153,6 +153,38 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async listBookingsByClientTagPrefix(prefix: string): Promise<Booking[]> {
+    const normalizedPrefix = normalizeEmail(prefix).replace(/[%_]/g, (match) => `\\${match}`);
+    const emailClients = await requireData<Client[]>(
+      this.db
+        .from('clients')
+        .select('*')
+        .ilike('email', `${normalizedPrefix}%`)
+        .order('email', { ascending: true }),
+      'Failed to load clients by email prefix',
+    );
+    const firstNameClients = await requireData<Client[]>(
+      this.db
+        .from('clients')
+        .select('*')
+        .ilike('first_name', `${normalizedPrefix}%`)
+        .order('first_name', { ascending: true }),
+      'Failed to load clients by first-name prefix',
+    );
+    const clientIds = [...new Set([...emailClients, ...firstNameClients].map((client) => client.id))];
+    if (clientIds.length === 0) return [];
+
+    const rows = await requireData<BookingRow[]>(
+      this.db
+        .from('bookings')
+        .select(BOOKING_SELECT)
+        .in('client_id', clientIds)
+        .order('starts_at', { ascending: true }),
+      'Failed to load bookings by client tag prefix',
+    );
+    return rows.map((row) => toBooking(row));
+  }
+
   async updateClient(id: string, updates: ClientUpdate): Promise<Client> {
     const payload = {
       ...updates,

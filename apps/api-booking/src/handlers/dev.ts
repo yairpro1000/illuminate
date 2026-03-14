@@ -8,7 +8,7 @@ import type { AppContext } from '../router.js';
 import { ok, badRequest, notFound } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
 import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment } from '../services/booking-service.js';
-import type { OrganizerBookingRow } from '../types.js';
+import type { Booking } from '../types.js';
 
 function guardMockRepository(ctx: AppContext): void {
   if (ctx.env.REPOSITORY_MODE === 'supabase') {
@@ -58,13 +58,13 @@ function isExampleTestEmail(email: string | null | undefined): boolean {
   return typeof email === 'string' && email.toLowerCase().endsWith('@example.test');
 }
 
-function isTerminalBookingStatus(status: OrganizerBookingRow['current_status']): boolean {
+function isTerminalBookingStatus(status: Booking['current_status']): boolean {
   return status === 'CANCELED' || status === 'EXPIRED' || status === 'COMPLETED' || status === 'NO_SHOW';
 }
 
-function toTestBookingSummary(row: OrganizerBookingRow) {
+function toTestBookingSummary(row: Booking) {
   return {
-    booking_id: row.booking_id,
+    booking_id: row.id,
     source: row.event_id ? 'event' : 'session',
     status: row.current_status,
     starts_at: row.starts_at,
@@ -77,68 +77,37 @@ function toTestBookingSummary(row: OrganizerBookingRow) {
     event_title: row.event_title,
     session_type_id: row.session_type_id,
     session_type_title: row.session_type_title,
-    payment_status: row.payment_status,
-    latest_event_type: row.latest_event_type,
+    payment_status: null,
+    latest_event_type: null,
   };
 }
 
-async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): Promise<OrganizerBookingRow[]> {
+async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): Promise<Booking[]> {
   ctx.logger.logInfo?.({
     source: 'backend',
-    eventType: 'test_bookings_lookup_clients_started',
-    message: 'Started loading test-booking clients by email prefix',
+    eventType: 'test_bookings_lookup_started',
+    message: 'Started loading test bookings by client tag prefix',
     context: {
       email_prefix: emailPrefix,
-      branch_taken: 'load_test_clients_by_email_prefix',
+      branch_taken: 'load_test_bookings_by_client_tag_prefix',
     },
   });
-  const clients = await ctx.providers.repository.listClientsByEmailPrefix(emailPrefix);
-  const matchingClients = clients.filter((client) => isExampleTestEmail(client.email));
+  const bookings = await ctx.providers.repository.listBookingsByClientTagPrefix(emailPrefix);
   ctx.logger.logInfo?.({
     source: 'backend',
-    eventType: 'test_bookings_lookup_clients_completed',
-    message: 'Resolved test-booking clients by email prefix',
+    eventType: 'test_bookings_lookup_completed',
+    message: 'Resolved test bookings by client tag prefix',
     context: {
       email_prefix: emailPrefix,
-      matched_client_count: matchingClients.length,
-      branch_taken: 'return_matching_test_clients',
+      matched_booking_count: bookings.length,
+      branch_taken: 'return_matching_test_bookings',
     },
   });
-  if (matchingClients.length === 0) return [];
-
-  const rows: OrganizerBookingRow[] = [];
-  for (const client of matchingClients) {
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'test_bookings_lookup_client_bookings_started',
-      message: 'Started loading organizer bookings for matched test client',
-      context: {
-        email_prefix: emailPrefix,
-        client_id: client.id,
-        client_email: client.email,
-        branch_taken: 'load_organizer_bookings_for_test_client',
-      },
-    });
-    const clientRows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'test_bookings_lookup_client_bookings_completed',
-      message: 'Resolved organizer bookings for matched test client',
-      context: {
-        email_prefix: emailPrefix,
-        client_id: client.id,
-        client_email: client.email,
-        booking_count: clientRows.length,
-        branch_taken: 'return_organizer_bookings_for_test_client',
-      },
-    });
-    rows.push(...clientRows);
-  }
-
-  return rows
+  return bookings
     .filter((row) => {
-      const email = row.client_email.toLowerCase();
-      return isExampleTestEmail(email) && email.startsWith(emailPrefix);
+      const email = (row.client_email ?? '').toLowerCase();
+      const firstName = (row.client_first_name ?? '').trim().toLowerCase();
+      return (isExampleTestEmail(email) && email.startsWith(emailPrefix)) || firstName.startsWith(emailPrefix);
     })
     .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
 }
@@ -519,7 +488,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
 
   for (const row of terminalMatches) {
     skipped.push({
-      booking_id: row.booking_id,
+      booking_id: row.id,
       status: row.current_status,
       reason: 'already_terminal',
     });
@@ -549,18 +518,18 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       context: {
         path,
         email_prefix: emailPrefix,
-        booking_id: row.booking_id,
+        booking_id: row.id,
         booking_status: row.current_status,
         client_id: row.client_id,
-        client_email: row.client_email,
+        client_email: row.client_email ?? null,
         branch_taken: 'cleanup_single_booking_started',
       },
     });
     try {
-      const booking = await ctx.providers.repository.getBookingById(row.booking_id);
+      const booking = await ctx.providers.repository.getBookingById(row.id);
       if (!booking) {
         failed.push({
-          booking_id: row.booking_id,
+          booking_id: row.id,
           status: row.current_status,
           reason: 'booking_lookup_failed',
         });
@@ -571,7 +540,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
           context: {
             path,
             email_prefix: emailPrefix,
-            booking_id: row.booking_id,
+            booking_id: row.id,
             booking_status: row.current_status,
             branch_taken: 'cleanup_booking_lookup_failed',
             deny_reason: 'booking_lookup_failed',
@@ -594,7 +563,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
 
       if (!result.ok) {
         failed.push({
-          booking_id: row.booking_id,
+          booking_id: row.id,
           status: row.current_status,
           reason: result.code,
         });
@@ -605,7 +574,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
           context: {
             path,
             email_prefix: emailPrefix,
-            booking_id: row.booking_id,
+            booking_id: row.id,
             booking_status: row.current_status,
             branch_taken: 'cleanup_cancellation_denied',
             deny_reason: result.code,
@@ -614,10 +583,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         continue;
       }
 
-      canceled.push({
-        booking_id: row.booking_id,
-        status: result.booking.current_status,
-      });
+        canceled.push({
+          booking_id: row.id,
+          status: result.booking.current_status,
+        });
       ctx.logger.logInfo?.({
         source: 'backend',
         eventType: 'test_bookings_cleanup_booking_completed',
@@ -625,18 +594,18 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         context: {
           path,
           email_prefix: emailPrefix,
-          booking_id: row.booking_id,
-          booking_status: result.booking.current_status,
-          branch_taken: 'cleanup_single_booking_canceled',
-        },
-      });
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
-      failed.push({
-        booking_id: row.booking_id,
-        status: row.current_status,
-        reason,
-      });
+            booking_id: row.id,
+            booking_status: result.booking.current_status,
+            branch_taken: 'cleanup_single_booking_canceled',
+          },
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
+        failed.push({
+          booking_id: row.id,
+          status: row.current_status,
+          reason,
+        });
       ctx.logger.captureException?.({
         source: 'backend',
         eventType: 'test_bookings_cleanup_booking_failed',
@@ -645,10 +614,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         context: {
           path,
           email_prefix: emailPrefix,
-          booking_id: row.booking_id,
-          booking_status: row.current_status,
-          branch_taken: 'cleanup_unexpected_exception',
-        },
+            booking_id: row.id,
+            booking_status: row.current_status,
+            branch_taken: 'cleanup_unexpected_exception',
+          },
       });
     }
   }
