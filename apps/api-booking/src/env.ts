@@ -47,9 +47,9 @@ export interface Env {
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_TEST_SITE_KEY_PASS?: string;
-  TURNSTILE_TEST_SITE_KEY_FAIL?: string;
+  TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL?: string;
   TURNSTILE_TEST_SECRET_KEY_PASS?: string;
-  TURNSTILE_TEST_SECRET_KEY_FAIL?: string;
+  TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL?: string;
 
   JOB_SECRET: string; // Bearer token required on POST /api/jobs/:name
   ADMIN_MANAGE_TOKEN_SECRET?: string;

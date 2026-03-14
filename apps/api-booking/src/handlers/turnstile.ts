@@ -19,7 +19,7 @@ function requireToken(body: Record<string, unknown>): string {
 function resolveScenarioSecret(ctx: AppContext, scenario: TurnstileTestScenario): string {
   return scenario === 'pass'
     ? (ctx.env.TURNSTILE_TEST_SECRET_KEY_PASS || '')
-    : (ctx.env.TURNSTILE_TEST_SECRET_KEY_FAIL || '');
+    : (ctx.env.TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL || '');
 }
 
 // POST /api/antibot/turnstile/verify

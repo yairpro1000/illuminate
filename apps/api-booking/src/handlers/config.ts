@@ -99,7 +99,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
           site_key: ctx.env.TURNSTILE_SITE_KEY ?? null,
           test_site_keys: {
             pass: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
-            fail: ctx.env.TURNSTILE_TEST_SITE_KEY_FAIL ?? null,
+            fail: ctx.env.TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL ?? null,
           },
         },
       },
