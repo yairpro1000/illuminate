@@ -37,6 +37,29 @@
     return [row.client_first_name || '', row.client_last_name || ''].join(' ').trim() || row.client_id;
   }
 
+  function clientOptionParts(row) {
+    return {
+      firstName: String(row.client_first_name || '').trim(),
+      lastName: String(row.client_last_name || '').trim(),
+      email: String(row.client_email || '').trim(),
+    };
+  }
+
+  function clientOptionLabel(row) {
+    const { firstName, lastName, email } = clientOptionParts(row);
+    const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (fullName && email) return `${fullName} (${email})`;
+    if (fullName) return fullName;
+    if (email) return email;
+    return String(row.client_id || '').trim();
+  }
+
+  function clientOptionKey(row) {
+    const { firstName, lastName, email } = clientOptionParts(row);
+    const fallback = String(row.client_id || '').trim().toLowerCase();
+    return [firstName.toLowerCase(), lastName.toLowerCase(), email.toLowerCase()].join('|') || fallback;
+  }
+
   function sortRows(rows) {
     const sorted = [...rows];
     sorted.sort((a, b) => {
@@ -106,8 +129,9 @@
     const selected = clientIdEl.value;
     const clients = new Map();
     for (const row of state.allRows) {
-      const id = row.client_id || '';
-      if (id && !clients.has(id)) clients.set(id, rowClientName(row));
+      const key = clientOptionKey(row);
+      const label = clientOptionLabel(row);
+      if (key && label && !clients.has(key)) clients.set(key, label);
     }
     const sorted = [...clients.entries()].sort((a, b) => a[1].localeCompare(b[1]));
     clientIdEl.innerHTML = '';
