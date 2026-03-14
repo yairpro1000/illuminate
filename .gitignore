@@ -7,3 +7,6 @@ dist/
 **/.wrangler/
 **/dist/
 **/node_modules/
+**/playwright-report/
+**/test-results/
+**/blob-report/
