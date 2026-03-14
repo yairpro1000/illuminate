@@ -38,6 +38,22 @@ function normalizeTestEmailPrefix(raw: string | null): string | null {
   return value || null;
 }
 
+function normalizeCleanupLimit(value: unknown): number {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return Math.min(value, 10);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      const parsed = Number.parseInt(trimmed, 10);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        return Math.min(parsed, 10);
+      }
+    }
+  }
+  return 10;
+}
+
 function isExampleTestEmail(email: string | null | undefined): boolean {
   return typeof email === 'string' && email.toLowerCase().endsWith('@example.test');
 }
@@ -414,6 +430,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
   const path = new URL(request.url).pathname;
   const body = await request.json() as Record<string, unknown>;
   const emailPrefix = normalizeTestEmailPrefix(typeof body.email_prefix === 'string' ? body.email_prefix : null);
+  const limit = normalizeCleanupLimit(body.limit);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -422,6 +439,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
     context: {
       path,
       has_email_prefix: Boolean(emailPrefix),
+      batch_limit: limit,
       branch_taken: 'validate_test_bookings_cleanup_request',
     },
   });
@@ -441,20 +459,22 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
   }
 
   const matches = await findMatchingTestBookings(emailPrefix, ctx);
+  const activeMatches = matches.filter((row) => !isTerminalBookingStatus(row.current_status));
+  const terminalMatches = matches.filter((row) => isTerminalBookingStatus(row.current_status));
+  const batch = activeMatches.slice(0, limit);
   const canceled: Array<{ booking_id: string; status: string }> = [];
   const skipped: Array<{ booking_id: string; status: string; reason: string }> = [];
   const failed: Array<{ booking_id: string; status: string; reason: string }> = [];
 
-  for (const row of matches) {
-    if (isTerminalBookingStatus(row.current_status)) {
-      skipped.push({
-        booking_id: row.booking_id,
-        status: row.current_status,
-        reason: 'already_terminal',
-      });
-      continue;
-    }
+  for (const row of terminalMatches) {
+    skipped.push({
+      booking_id: row.booking_id,
+      status: row.current_status,
+      reason: 'already_terminal',
+    });
+  }
 
+  for (const row of batch) {
     try {
       const booking = await ctx.providers.repository.getBookingById(row.booking_id);
       if (!booking) {
@@ -548,6 +568,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       path,
       email_prefix: emailPrefix,
       matched_count: matches.length,
+      active_matched_count: activeMatches.length,
+      processed_count: batch.length,
+      remaining_active_count: Math.max(activeMatches.length - batch.length, 0),
+      batch_limit: limit,
       canceled_count: canceled.length,
       skipped_count: skipped.length,
       failed_count: failed.length,
@@ -559,6 +583,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
   return ok({
     email_prefix: emailPrefix,
     matched_count: matches.length,
+    active_matched_count: activeMatches.length,
+    processed_count: batch.length,
+    remaining_active_count: Math.max(activeMatches.length - batch.length, 0),
+    batch_limit: limit,
     canceled_count: canceled.length,
     skipped_count: skipped.length,
     failed_count: failed.length,

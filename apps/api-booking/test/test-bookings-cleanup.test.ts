@@ -154,6 +154,10 @@ describe('test bookings helpers', () => {
 
     expect(res.status).toBe(200);
     expect(body.matched_count).toBe(2);
+    expect(body.active_matched_count).toBe(1);
+    expect(body.processed_count).toBe(1);
+    expect(body.remaining_active_count).toBe(0);
+    expect(body.batch_limit).toBe(10);
     expect(body.canceled_count).toBe(1);
     expect(body.skipped_count).toBe(1);
     expect(body.failed_count).toBe(0);
@@ -174,11 +178,47 @@ describe('test bookings helpers', () => {
       context: expect.objectContaining({
         email_prefix: 'p4-wipe',
         matched_count: 2,
+        active_matched_count: 1,
+        processed_count: 1,
+        remaining_active_count: 0,
+        batch_limit: 10,
         canceled_count: 1,
         skipped_count: 1,
         failed_count: 0,
         branch_taken: 'cleanup_completed_successfully',
       }),
     }));
+  });
+
+  it('processes cleanup in bounded batches and leaves remaining active bookings for later calls', async () => {
+    const ctx = makeCtx();
+    const first = await createIntroBooking('p4-batch-a@example.test', '2026-03-30T10:00:00.000Z', '2026-03-30T10:30:00.000Z', ctx);
+    const second = await createIntroBooking('p4-batch-b@example.test', '2026-03-30T11:00:00.000Z', '2026-03-30T11:30:00.000Z', ctx);
+    const third = await createIntroBooking('p4-batch-c@example.test', '2026-03-30T12:00:00.000Z', '2026-03-30T12:30:00.000Z', ctx);
+
+    const req = new Request('https://api.local/api/__test/bookings/cleanup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_prefix: 'p4-batch', limit: 2 }),
+    });
+
+    const res = await handleRequest(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.matched_count).toBe(3);
+    expect(body.active_matched_count).toBe(3);
+    expect(body.processed_count).toBe(2);
+    expect(body.remaining_active_count).toBe(1);
+    expect(body.batch_limit).toBe(2);
+    expect(body.canceled_count).toBe(2);
+    expect(body.failed_count).toBe(0);
+
+    const firstBooking = await ctx.providers.repository.getBookingById(first.bookingId);
+    const secondBooking = await ctx.providers.repository.getBookingById(second.bookingId);
+    const thirdBooking = await ctx.providers.repository.getBookingById(third.bookingId);
+    expect(firstBooking?.current_status).toBe('CANCELED');
+    expect(secondBooking?.current_status).toBe('CANCELED');
+    expect(thirdBooking?.current_status).toBe('PENDING');
   });
 });
