@@ -394,6 +394,94 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
   });
 }
 
+// POST /api/__test/bookings/mutate
+export async function handleTestBookingMutate(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const body = await request.json() as Record<string, unknown>;
+  const email = normalizeExampleTestEmail(typeof body.email === 'string' ? body.email : null);
+  const startsAt = typeof body.starts_at === 'string' ? body.starts_at.trim() : null;
+  const endsAt = typeof body.ends_at === 'string' ? body.ends_at.trim() : null;
+  const latestSubmissionCreatedAt = typeof body.latest_submission_created_at === 'string'
+    ? body.latest_submission_created_at.trim()
+    : null;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_mutate_started',
+    message: 'Started test booking mutation request',
+    context: {
+      path,
+      has_email: Boolean(email),
+      has_starts_at: Boolean(startsAt),
+      has_ends_at: Boolean(endsAt),
+      has_latest_submission_created_at: Boolean(latestSubmissionCreatedAt),
+      branch_taken: 'validate_test_booking_mutation_request',
+    },
+  });
+
+  if (!email) throw badRequest('email is required');
+  if (!email.endsWith('@example.test')) throw badRequest('email must use @example.test');
+  if (!startsAt && !endsAt && !latestSubmissionCreatedAt) {
+    throw badRequest('at least one mutation field is required');
+  }
+
+  const client = await ctx.providers.repository.getClientByEmail(email);
+  if (!client) throw notFound('Test client not found');
+
+  const rows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
+  const latest = rows
+    .slice()
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+  if (!latest) throw notFound('Test booking not found');
+
+  const booking = await ctx.providers.repository.getBookingById(latest.booking_id);
+  if (!booking) throw notFound('Test booking not found');
+
+  let mutatedBooking = booking;
+  if (startsAt || endsAt) {
+    mutatedBooking = await ctx.providers.repository.updateBooking(booking.id, {
+      starts_at: startsAt ?? booking.starts_at,
+      ends_at: endsAt ?? booking.ends_at,
+    });
+  }
+
+  let updatedSubmissionEventId: string | null = null;
+  if (latestSubmissionCreatedAt) {
+    const events = await ctx.providers.repository.listBookingEvents(booking.id);
+    const latestSubmitted = events
+      .filter((event) => event.event_type === 'BOOKING_FORM_SUBMITTED')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (!latestSubmitted) throw notFound('Booking submission event not found');
+    const updatedEvent = await ctx.providers.repository.updateBookingEventCreatedAt(
+      latestSubmitted.id,
+      latestSubmissionCreatedAt,
+    );
+    updatedSubmissionEventId = updatedEvent.id;
+  }
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_mutate_completed',
+    message: 'Completed test booking mutation request',
+    context: {
+      path,
+      email,
+      client_id: client.id,
+      booking_id: mutatedBooking.id,
+      updated_submission_event_id: updatedSubmissionEventId,
+      branch_taken: 'return_test_booking_mutation_result',
+    },
+  });
+
+  return ok({
+    email,
+    booking_id: mutatedBooking.id,
+    starts_at: mutatedBooking.starts_at,
+    ends_at: mutatedBooking.ends_at,
+    updated_submission_event_id: updatedSubmissionEventId,
+  });
+}
+
 // GET /api/__test/bookings?email_prefix=<prefix>
 export async function handleTestBookingsList(request: Request, ctx: AppContext): Promise<Response> {
   const path = new URL(request.url).pathname;

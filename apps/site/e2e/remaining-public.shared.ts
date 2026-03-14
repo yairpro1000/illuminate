@@ -2,11 +2,17 @@ import { expect, type Page, type TestInfo } from '@playwright/test';
 import {
   SITE_BASE_URL,
   clickFirstAvailableSlot,
+  createLateAccessLink,
+  getAdminEventsAll,
+  getAdminTimingSettings,
   expectManageStatus,
   fillContactDetails,
   getEvents,
   getSessionTypes,
   makeScenarioEmail,
+  mutateTestBooking,
+  updateAdminEvent,
+  updateAdminTimingSetting,
   waitForBookingArtifacts,
 } from './support/api';
 import { attachRuntimeMonitor } from './support/runtime';
@@ -93,7 +99,29 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
     },
     {
       title: title(prefix, 'T06 closed evening is not normally bookable'),
-      fixmeReason: 'The current deployed public dataset has no published-but-closed evening state to exercise.',
+      async fn({ page, testInfo }) {
+        const runtime = attachRuntimeMonitor(page);
+        const event = (await getAdminEventsAll()).find((row) => row.status === 'published' && row.is_paid === false);
+        if (!event) return;
+
+        const original = { starts_at: event.starts_at, ends_at: event.ends_at };
+        const now = Date.now();
+        const closedStart = new Date(now - 40 * 60_000).toISOString();
+        const closedEnd = new Date(now + 20 * 60_000).toISOString();
+
+        await updateAdminEvent(event.id, { starts_at: closedStart, ends_at: closedEnd });
+        try {
+          const checkpoint = runtime.checkpoint();
+          await page.goto(`${SITE_BASE_URL}/evenings.html`);
+          const closedCard = page.locator(`#${event.slug}`);
+          await expect(closedCard).toBeVisible();
+          await expect(closedCard.getByRole('link', { name: 'Book your spot' })).toHaveCount(0);
+          await expect(closedCard.getByRole('button', { name: 'Join reminders list' })).toHaveCount(1);
+          await runtime.assertNoNewIssues(checkpoint, 'closed-evening-state', testInfo);
+        } finally {
+          await updateAdminEvent(event.id, original);
+        }
+      },
     },
     {
       title: title(prefix, 'T07 reminder signup on unavailable evening succeeds without creating booking'),
@@ -163,7 +191,37 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
     },
     {
       title: title(prefix, 'T15 late-access evening booking works'),
-      fixmeReason: 'Needs a deterministic published-but-publicly-closed evening fixture or helper in the deployed environment.',
+      async fn({ page, testInfo }) {
+        const runtime = attachRuntimeMonitor(page);
+        const event = (await getAdminEventsAll()).find((row) => row.status === 'published' && row.is_paid === false);
+        if (!event) return;
+
+        const original = { starts_at: event.starts_at, ends_at: event.ends_at };
+        const now = Date.now();
+        const closedStart = new Date(now - 40 * 60_000).toISOString();
+        const closedEnd = new Date(now + 20 * 60_000).toISOString();
+        const email = makeScenarioEmail('p4-late-access-public');
+
+        await updateAdminEvent(event.id, { starts_at: closedStart, ends_at: closedEnd });
+        try {
+          const lateAccess = await createLateAccessLink(event.id);
+          const checkpoint = runtime.checkpoint();
+          await page.goto(lateAccess.url);
+          await fillContactDetails(page, {
+            firstName: 'P4',
+            lastName: 'LateAccess',
+            email,
+            phone: '+41790000000',
+          });
+          await page.locator('button[data-submit]').click();
+          await expect(page.locator('.confirmation__title')).toContainText(/Registration received|Booking received|Confirmed/);
+          const artifacts = await waitForBookingArtifacts(email);
+          expect(artifacts.booking.status).toBe('CONFIRMED');
+          await runtime.assertNoNewIssues(checkpoint, 'late-access-evening-booking', testInfo);
+        } finally {
+          await updateAdminEvent(event.id, original);
+        }
+      },
     },
     {
       title: title(prefix, 'T19 abandoning Stripe checkout does not falsely confirm the booking'),
@@ -195,7 +253,54 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
     },
     {
       title: title(prefix, 'T20 expired confirmation link shows explicit expired state'),
-      fixmeReason: 'Needs a deterministic expired confirmation-token helper in the deployed environment.',
+      async fn({ page, testInfo }) {
+        const runtime = attachRuntimeMonitor(page);
+        const email = makeScenarioEmail('p4-expired-confirm');
+
+        await openSessionsBookLink(page, 'book.html?type=intro');
+        await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
+        await clickFirstAvailableSlot(page);
+        await fillContactDetails(page, {
+          firstName: 'P4',
+          lastName: 'Expired',
+          email,
+          phone: '+41790000000',
+        });
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.locator('button[data-submit]').click();
+        await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+
+        const artifacts = await waitForBookingArtifacts(email);
+        expect(artifacts.links.confirm_url).toBeTruthy();
+        const expiredAt = new Date(Date.now() - 10 * 60_000).toISOString();
+        await mutateTestBooking({
+          email,
+          latest_submission_created_at: expiredAt,
+        });
+
+        const checkpoint = runtime.checkpoint();
+        await page.goto(artifacts.links.confirm_url!);
+        await expect(page.locator('.confirm-title')).toContainText(/Could not confirm|Invalid|Expired/);
+        await runtime.assertNoNewIssues(checkpoint, 'expired-confirm-link', testInfo, {
+          allow: [
+            {
+              kind: 'http',
+              urlIncludes: '/api/bookings/confirm?token=',
+              messageIncludes: '-> 410',
+            },
+            {
+              kind: 'console',
+              urlIncludes: '/api/bookings/confirm?token=',
+              messageIncludes: 'status of 410',
+            },
+            {
+              kind: 'console',
+              urlIncludes: '/js/client.js',
+              messageIncludes: 'GET /api/bookings/confirm?token=',
+            },
+          ],
+        });
+      },
     },
     {
       title: title(prefix, 'T22 invalid manage link shows explicit load-fail state'),
@@ -257,7 +362,47 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
     },
     {
       title: title(prefix, 'T26 locked booking blocks restricted self-service actions'),
-      fixmeReason: 'Needs a deterministic inside-lock-window booking fixture in the deployed environment.',
+      async fn({ page, testInfo }) {
+        const runtime = attachRuntimeMonitor(page);
+        const email = makeScenarioEmail('p4-lock-window');
+
+        await openSessionsBookLink(page, 'book.html?type=intro');
+        await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
+        await clickFirstAvailableSlot(page);
+        await fillContactDetails(page, {
+          firstName: 'P4',
+          lastName: 'Locked',
+          email,
+          phone: '+41790000000',
+        });
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.locator('button[data-submit]').click();
+        const pending = await waitForBookingArtifacts(email);
+        await page.goto(pending.links.confirm_url!);
+        await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+
+        const confirmed = await expectManageStatus(email, 'CONFIRMED');
+        const originalPolicy = (await getAdminTimingSettings()).find((entry) => entry.keyname === 'selfServiceLockWindowHours');
+        if (!originalPolicy) throw new Error('selfServiceLockWindowHours setting not found');
+
+        await mutateTestBooking({
+          email,
+          starts_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+          ends_at: new Date(Date.now() + 90 * 60_000).toISOString(),
+        });
+
+        await updateAdminTimingSetting('selfServiceLockWindowHours', '24');
+        try {
+          const checkpoint = runtime.checkpoint();
+          await page.goto(confirmed.links.manage_url);
+          await expect(page.locator('.policy-box.policy-box--text')).toContainText(/less than 24 hours|no longer available online/i);
+          await expect(page.getByRole('link', { name: 'Reschedule' })).toHaveCount(0);
+          await expect(page.getByRole('button', { name: 'Cancel booking' })).toHaveCount(0);
+          await runtime.assertNoNewIssues(checkpoint, 'locked-manage-window', testInfo);
+        } finally {
+          await updateAdminTimingSetting('selfServiceLockWindowHours', originalPolicy.value);
+        }
+      },
     },
   ];
 }

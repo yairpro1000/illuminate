@@ -44,6 +44,7 @@ import {
   handleDevFailures,
   handleDevBookings,
   handleTestBookingArtifacts,
+  handleTestBookingMutate,
   handleTestBookingsList,
   handleTestBookingsCleanup,
 } from './handlers/dev.js';
@@ -141,6 +142,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/__dev/failures', handleDevFailures),
   route('GET', '/api/__dev/bookings', handleDevBookings),
   route('GET', '/api/__test/booking-artifacts', handleTestBookingArtifacts),
+  route('POST', '/api/__test/bookings/mutate', handleTestBookingMutate),
   route('GET', '/api/__test/bookings', handleTestBookingsList),
   route('POST', '/api/__test/bookings/cleanup', handleTestBookingsCleanup),
 ];

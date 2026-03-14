@@ -324,6 +324,18 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async updateBookingEventCreatedAt(eventId: string, createdAt: string): Promise<BookingEventRecord> {
+    return requireSingle<BookingEventRecord>(
+      this.db
+        .from('booking_events')
+        .update({ created_at: createdAt })
+        .eq('id', eventId)
+        .select('*')
+        .single(),
+      `Failed to update booking event ${eventId}`,
+    );
+  }
+
   // ── Booking side effects ─────────────────────────────────────────────────
 
   async createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]> {

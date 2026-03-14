@@ -89,6 +89,7 @@ export interface IRepository {
   listBookingEvents(bookingId: string): Promise<BookingEventRecord[]>;
   getBookingEventById(eventId: string): Promise<BookingEventRecord | null>;
   getLatestBookingEvent(bookingId: string): Promise<BookingEventRecord | null>;
+  updateBookingEventCreatedAt(eventId: string, createdAt: string): Promise<BookingEventRecord>;
 
   // ── Booking side effects ────────────────────────────────────────────────
 

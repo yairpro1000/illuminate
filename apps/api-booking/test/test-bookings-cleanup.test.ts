@@ -221,4 +221,43 @@ describe('test bookings helpers', () => {
     expect(secondBooking?.current_status).toBe('CANCELED');
     expect(thirdBooking?.current_status).toBe('PENDING');
   });
+
+  it('mutates latest test booking times and submission age for deterministic edge-case setup', async () => {
+    const ctx = makeCtx();
+    const created = await createIntroBooking('p4-mutate@example.test', '2026-03-31T10:00:00.000Z', '2026-03-31T10:30:00.000Z', ctx);
+    const beforeArtifactsReq = new Request('https://api.local/api/__test/booking-artifacts?email=p4-mutate@example.test', { method: 'GET' });
+    const beforeRes = await handleRequest(beforeArtifactsReq, ctx);
+    const beforeBody = await beforeRes.json();
+    const beforeBookingId = beforeBody.booking.id as string;
+    const beforeEvents = await ctx.providers.repository.listBookingEvents(beforeBookingId);
+    const submitted = beforeEvents.find((event: any) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    expect(submitted).toBeTruthy();
+
+    const mutateReq = new Request('https://api.local/api/__test/bookings/mutate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'p4-mutate@example.test',
+        starts_at: '2026-03-31T08:00:00.000Z',
+        ends_at: '2026-03-31T08:30:00.000Z',
+        latest_submission_created_at: '2026-03-30T08:00:00.000Z',
+      }),
+    });
+
+    const mutateRes = await handleRequest(mutateReq, ctx);
+    const mutateBody = await mutateRes.json();
+
+    expect(mutateRes.status).toBe(200);
+    expect(mutateBody.booking_id).toBe(created.bookingId);
+    expect(mutateBody.starts_at).toBe('2026-03-31T08:00:00.000Z');
+    expect(mutateBody.ends_at).toBe('2026-03-31T08:30:00.000Z');
+    expect(mutateBody.updated_submission_event_id).toBe(submitted.id);
+
+    const updatedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const updatedEvents = await ctx.providers.repository.listBookingEvents(created.bookingId);
+    const updatedSubmitted = updatedEvents.find((event: any) => event.id === submitted.id);
+    expect(updatedBooking?.starts_at).toBe('2026-03-31T08:00:00.000Z');
+    expect(updatedBooking?.ends_at).toBe('2026-03-31T08:30:00.000Z');
+    expect(updatedSubmitted?.created_at).toBe('2026-03-30T08:00:00.000Z');
+  });
 });

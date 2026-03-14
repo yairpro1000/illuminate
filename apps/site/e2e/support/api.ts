@@ -13,6 +13,17 @@ interface AdminConfigService {
   override_mode: string | null;
 }
 
+interface AdminTimingSetting {
+  domain: string;
+  keyname: string;
+  readable_name: string;
+  value_type: string;
+  unit: string | null;
+  value: string;
+  description: string;
+  description_he: string | null;
+}
+
 export interface BookingArtifacts {
   client: {
     id: string;
@@ -155,9 +166,42 @@ export async function getAdminEventsAll(): Promise<Array<Record<string, any>>> {
   return Array.isArray(data.events) ? data.events : [];
 }
 
+export async function updateAdminEvent(eventId: string, patch: Record<string, unknown>): Promise<Record<string, any>> {
+  const data = await adminJson<{ event: Record<string, any> }>(`/api/admin/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  return data.event;
+}
+
 export async function createLateAccessLink(eventId: string): Promise<{ url: string; expires_at: string }> {
   return adminJson(`/api/admin/events/${encodeURIComponent(eventId)}/late-access-links`, {
     method: 'POST',
+  });
+}
+
+export async function getAdminTimingSettings(): Promise<AdminTimingSetting[]> {
+  const data = await adminJson<{ timing_delays: { entries: AdminTimingSetting[] } }>('/api/admin/config');
+  return Array.isArray(data.timing_delays?.entries) ? data.timing_delays.entries : [];
+}
+
+export async function updateAdminTimingSetting(keyname: string, value: string): Promise<void> {
+  const settings = await getAdminTimingSettings();
+  const existing = settings.find((entry) => entry.keyname === keyname);
+  if (!existing) throw new Error(`Timing setting '${keyname}' not found`);
+  await adminJson('/api/admin/config', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      original_keyname: existing.keyname,
+      domain: existing.domain,
+      keyname: existing.keyname,
+      readable_name: existing.readable_name,
+      value_type: existing.value_type,
+      unit: existing.unit,
+      value,
+      description: existing.description,
+      description_he: existing.description_he,
+    }),
   });
 }
 
@@ -226,6 +270,18 @@ export async function waitForBookingArtifacts(email: string): Promise<BookingArt
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Could not resolve booking artifacts');
+}
+
+export async function mutateTestBooking(input: {
+  email: string;
+  starts_at?: string;
+  ends_at?: string;
+  latest_submission_created_at?: string;
+}): Promise<void> {
+  await apiJson('/api/__test/bookings/mutate', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function expectManageStatus(email: string, expectedStatus: string): Promise<BookingArtifacts> {

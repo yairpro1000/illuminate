@@ -207,6 +207,17 @@ export class MockRepository implements IRepository {
     return events.length > 0 ? events[events.length - 1]! : null;
   }
 
+  async updateBookingEventCreatedAt(eventId: string, createdAt: string): Promise<BookingEventRecord> {
+    const index = mockState.bookingEvents.findIndex((event) => event.id === eventId);
+    if (index < 0) throw new Error(`Booking event ${eventId} not found`);
+    const updated: BookingEventRecord = {
+      ...mockState.bookingEvents[index]!,
+      created_at: createdAt,
+    };
+    mockState.bookingEvents[index] = updated;
+    return updated;
+  }
+
   // ── Booking side effects ─────────────────────────────────────────────────
 
   async createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]> {
