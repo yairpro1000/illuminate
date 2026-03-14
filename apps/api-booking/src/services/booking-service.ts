@@ -339,8 +339,8 @@ export async function createPayLaterBooking(
     paymentMode: input.sessionType === 'intro' ? 'free' : 'pay_later',
     subjectId: sessionType.id,
   }, ctx);
-  const confirmToken = generateToken();
-  const confirmTokenHash = await hashToken(confirmToken);
+  const confirmToken = input.sessionType === 'intro' ? generateToken() : null;
+  const confirmTokenHash = confirmToken ? await hashToken(confirmToken) : null;
 
   const booking = await providers.repository.createBooking({
     client_id: client.id,
@@ -371,19 +371,66 @@ export async function createPayLaterBooking(
       payment_mode: input.sessionType === 'intro' ? 'free' : 'pay_later',
       session_type_id: sessionType.id,
       session_type_slug: sessionType.slug,
-      confirm_token: confirmToken,
-      confirm_token_hash: confirmTokenHash,
+      ...(confirmToken ? { confirm_token: confirmToken, confirm_token_hash: confirmTokenHash } : {}),
     },
     bookingCtx,
   );
 
-  const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
-    transitionEventType: input.sessionType === 'intro' ? 'BOOKING_FORM_SUBMITTED' : 'BOOKING_FORM_SUBMITTED',
-    sourceOperation: 'create_pay_later_booking',
-    bookingBeforeTransition: booking,
-    bookingAfterTransition: transitioned.booking,
-    transitionSideEffects: transitioned.sideEffects,
-  }, bookingCtx);
+  let finalizedBooking = transitioned.booking;
+  if (input.sessionType === 'intro') {
+    finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: 'BOOKING_FORM_SUBMITTED',
+      sourceOperation: 'create_pay_later_booking',
+      bookingBeforeTransition: booking,
+      bookingAfterTransition: transitioned.booking,
+      transitionSideEffects: transitioned.sideEffects,
+    }, bookingCtx);
+  } else {
+    const paymentUrl = await ensurePayLaterCheckoutUrlForBooking(finalizedBooking, bookingCtx);
+    const bookingPolicy = await loadBookingPolicy(bookingCtx);
+    await schedulePayLaterPaymentFollowups(finalizedBooking, transitioned.event.id, bookingCtx);
+    const manageUrl = await buildManageUrl(ctx.env.SITE_URL, finalizedBooking);
+    const continuePaymentUrl = buildContinuePaymentUrl(ctx.env.SITE_URL, finalizedBooking);
+    const paymentDueAt = getPaymentDueAtIso(finalizedBooking.starts_at, bookingPolicy.paymentDueBeforeStartHours);
+    bookingCtx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'pay_later_submission_email_dispatch_decision',
+      message: 'Evaluated pay-later submission email dispatch',
+      context: {
+        booking_id: finalizedBooking.id,
+        booking_status: finalizedBooking.current_status,
+        has_checkout_url: Boolean(paymentUrl),
+        has_manage_url: Boolean(manageUrl),
+        has_continue_payment_url: Boolean(continuePaymentUrl),
+        payment_due_at: paymentDueAt,
+        branch_taken: paymentUrl ? 'send_pay_later_submission_email' : 'deny_missing_checkout_url_for_pay_later_submission_email',
+        deny_reason: paymentUrl ? null : 'checkout_url_missing',
+      },
+    });
+    if (paymentUrl) {
+      await bookingCtx.providers.email.sendBookingPaymentDue(
+        finalizedBooking,
+        continuePaymentUrl,
+        manageUrl,
+        paymentDueAt,
+      );
+      bookingCtx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'pay_later_submission_email_dispatch_completed',
+        message: 'Sent pay-later submission email',
+        context: {
+          booking_id: finalizedBooking.id,
+          booking_status: finalizedBooking.current_status,
+          has_checkout_url: Boolean(paymentUrl),
+          has_manage_url: Boolean(manageUrl),
+          has_continue_payment_url: Boolean(continuePaymentUrl),
+          payment_due_at: paymentDueAt,
+          branch_taken: 'pay_later_submission_email_sent',
+          deny_reason: null,
+        },
+      });
+    }
+  }
 
   return {
     bookingId: finalizedBooking.id,

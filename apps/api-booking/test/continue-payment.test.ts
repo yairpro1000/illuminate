@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleRequest } from '../src/router.js';
-import { confirmBookingEmail, createPayLaterBooking } from '../src/services/booking-service.js';
+import { createPayLaterBooking } from '../src/services/booking-service.js';
 import { makeCtx } from './admin-helpers.js';
 
 describe('Continue payment public guard', () => {
@@ -20,10 +20,6 @@ describe('Continue payment public guard', () => {
       turnstileToken: 'ok',
       remoteIp: null,
     }, ctx);
-
-    const submission = (await ctx.providers.repository.listBookingEvents(created.bookingId))
-      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
-    await confirmBookingEmail(String(submission?.payload?.['confirm_token'] ?? ''), ctx);
 
     const res = await handleRequest(
       new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
@@ -64,10 +60,6 @@ describe('Continue payment public guard', () => {
       turnstileToken: 'ok',
       remoteIp: null,
     }, ctx);
-
-    const submission = (await ctx.providers.repository.listBookingEvents(created.bookingId))
-      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
-    await confirmBookingEmail(String(submission?.payload?.['confirm_token'] ?? ''), ctx);
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     await ctx.providers.repository.updatePayment(payment!.id, { status: 'SUCCEEDED' });

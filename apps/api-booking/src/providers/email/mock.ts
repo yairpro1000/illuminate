@@ -151,7 +151,7 @@ export class MockEmailProvider implements IEmailProvider {
       clientEmail(booking),
       'booking_payment_due',
       'Action needed: complete payment before your session',
-      `Hi ${clientName(booking)},\n\nYour session booking is confirmed, and payment is still pending.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: ${paymentDueLabel}\nPlease complete payment by then, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
+      `Hi ${clientName(booking)},\n\nYour session booking has been received, and payment is still pending.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: ${paymentDueLabel}\nPlease complete payment by then, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
     );
   }
 

@@ -433,7 +433,7 @@ export class ResendEmailProvider implements IEmailProvider {
     paymentDueAt: string,
   ): Promise<SendResult> {
     const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
-    const text = `Hi ${clientName(booking)},\n\nYour session booking is confirmed, and payment is still pending for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nPlease complete payment by ${paymentDueLabel}, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
+    const text = `Hi ${clientName(booking)},\n\nYour session booking has been received, and payment is still pending for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nPlease complete payment by ${paymentDueLabel}, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
     const rows: Array<[string, string]> = [
       ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
@@ -442,7 +442,7 @@ export class ResendEmailProvider implements IEmailProvider {
     ];
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
-      <p>Your session booking is confirmed, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
+      <p>Your session booking has been received, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
       ${detailBlock(rows)}
       <p style="font-size:14px;color:#88abb5;">Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>, which is 24 hours before your session.</p>
       <p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>

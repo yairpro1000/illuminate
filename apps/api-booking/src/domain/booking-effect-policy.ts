@@ -91,10 +91,7 @@ export function getEffectsForEvent(
             make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
           ];
         case 'PAY_LATER':
-          return [
-            make('SEND_BOOKING_CONFIRMATION_REQUEST', null),
-            make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
-          ];
+          return [];
         case 'PAY_NOW':
           return [
             make('CREATE_STRIPE_CHECKOUT', null),

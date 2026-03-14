@@ -36,7 +36,7 @@ describe('booking effect policy', () => {
     );
   });
 
-  it('maps non-paid submission to confirmation request plus verification checkpoint', async () => {
+  it('maps pay-later submission to no immediate policy side effects', async () => {
     const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
@@ -50,11 +50,7 @@ describe('booking effect policy', () => {
       eventAtIso: '2026-03-10T10:00:00.000Z',
     }, policy);
 
-    expect(effects.map((effect) => effect.effect_intent)).toEqual([
-      'SEND_BOOKING_CONFIRMATION_REQUEST',
-      'VERIFY_EMAIL_CONFIRMATION',
-    ]);
-    expect(effects.map((effect) => effect.entity)).toEqual(['EMAIL', 'SYSTEM']);
+    expect(effects).toEqual([]);
   });
 
   it('maps payment settled to confirmed booking state and downstream work', async () => {
