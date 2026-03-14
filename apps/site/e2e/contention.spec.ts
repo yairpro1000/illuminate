@@ -53,6 +53,76 @@ async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'>
   throw new Error('Timed out waiting for booking contention outcome');
 }
 
+async function chooseAlternativeIntroSlot(page: Page, staleSlot: { dateYmd: string; timeLabel: string }): Promise<{ dateYmd: string; timeLabel: string }> {
+  const staleDateButton = page.locator(`[data-date="${staleSlot.dateYmd}"]`);
+  if (await staleDateButton.count()) {
+    await staleDateButton.click();
+    const alternativeOnSameDay = page.locator('.time-slot').filter({ hasNotText: staleSlot.timeLabel }).first();
+    if (await alternativeOnSameDay.count()) {
+      const timeLabel = (await alternativeOnSameDay.innerText()).trim();
+      await alternativeOnSameDay.click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      return { dateYmd: staleSlot.dateYmd, timeLabel };
+    }
+  }
+
+  const availableDays = page.locator('.cal-day--available:not([disabled])');
+  const dayCount = await availableDays.count();
+  for (let i = 0; i < dayCount; i += 1) {
+    const day = availableDays.nth(i);
+    const dateYmd = await day.getAttribute('data-date');
+    if (!dateYmd) continue;
+    await day.click();
+    const slots = page.locator('.time-slot');
+    const slotCount = await slots.count();
+    if (slotCount === 0) {
+      const back = page.getByRole('button', { name: /Back to calendar/i });
+      if (await back.count()) await back.click();
+      continue;
+    }
+    const slot = slots.first();
+    const timeLabel = (await slot.innerText()).trim();
+    await slot.click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    return { dateYmd, timeLabel };
+  }
+
+  throw new Error('No alternative intro slot available after conflict');
+}
+
+async function recoverLoserToSuccessfulIntroBooking(
+  page: Page,
+  runtime: ReturnType<typeof attachRuntimeMonitor>,
+  staleSlot: { dateYmd: string; timeLabel: string },
+  email: string,
+  testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2],
+): Promise<void> {
+  await expect(page.locator('.booking-recovery__title')).toContainText('That time was just taken');
+  await expect(page.locator('.booking-recovery__message')).toContainText('Your details are saved');
+  await expect(page.locator('.booking-recovery__stale-slot')).toContainText(staleSlot.timeLabel);
+  await expect(page.getByRole('button', { name: 'Choose another time' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Confirm Booking' })).toHaveCount(0);
+
+  const checkpoint = runtime.checkpoint();
+  await page.getByRole('button', { name: 'Choose another time' }).click();
+  await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
+  const repicked = await chooseAlternativeIntroSlot(page, staleSlot);
+  await expect(page.locator('#f-first-name')).toHaveValue('P4');
+  await expect(page.locator('#f-last-name')).toHaveValue('Race');
+  await expect(page.locator('#f-email')).toHaveValue(email);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.locator('button[data-submit]')).toBeVisible();
+  await page.locator('button[data-submit]').click();
+  await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+  await runtime.assertNoNewIssues(checkpoint, 'contention-loser-rebook-success', testInfo);
+
+  const loserArtifacts = await waitForBookingArtifacts(email);
+  expect(loserArtifacts.booking.starts_at.slice(0, 10)).toBe(repicked.dateYmd);
+  expect(loserArtifacts.links.confirm_url).toBeTruthy();
+  await page.goto(loserArtifacts.links.confirm_url!);
+  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+}
+
 async function cleanupConfirmedIntro(email: string): Promise<void> {
   const artifacts = await expectManageStatus(email, 'CONFIRMED');
   await cancelBookingByManageUrl(artifacts.links.manage_url);
@@ -109,8 +179,10 @@ test.describe('P4 multi-user slot contention', () => {
           },
         ],
       });
+      await recoverLoserToSuccessfulIntroBooking(pageB, runtimeB, chosen, loserEmail, testInfo);
 
       await cleanupConfirmedIntro(winnerEmail);
+      await cleanupConfirmedIntro(loserEmail);
     } finally {
       await pageA.close();
       await pageB.close();
@@ -162,11 +234,10 @@ test.describe('P4 multi-user slot contention', () => {
           },
         ],
       });
+      const loserPage = outcomeA === 'slot-lost' ? pageA : pageB;
+      await recoverLoserToSuccessfulIntroBooking(loserPage, loserRuntime, chosen, loserEmail, testInfo);
       await cleanupConfirmedIntro(winnerEmail);
-
-      await expect(async () => {
-        await waitForBookingArtifacts(loserEmail);
-      }).rejects.toThrow();
+      await cleanupConfirmedIntro(loserEmail);
     } finally {
       await pageA.close();
       await pageB.close();
