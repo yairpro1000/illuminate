@@ -514,7 +514,7 @@ CREATE TABLE IF NOT EXISTS "public"."booking_side_effects" (
     CONSTRAINT "booking_side_effects_effect_intent_check" CHECK (("effect_intent" = ANY (ARRAY['SEND_BOOKING_CONFIRMATION_REQUEST'::"text", 'SEND_BOOKING_CONFIRMATION'::"text", 'SEND_PAYMENT_LINK'::"text", 'SEND_PAYMENT_REMINDER'::"text", 'SEND_BOOKING_CANCELLATION_CONFIRMATION'::"text", 'SEND_BOOKING_EXPIRATION_NOTIFICATION'::"text", 'SEND_EVENT_REMINDER'::"text", 'CREATE_STRIPE_CHECKOUT'::"text", 'VERIFY_EMAIL_CONFIRMATION'::"text", 'VERIFY_STRIPE_PAYMENT'::"text", 'CREATE_STRIPE_REFUND'::"text", 'RESERVE_CALENDAR_SLOT'::"text", 'UPDATE_CALENDAR_SLOT'::"text", 'CANCEL_CALENDAR_SLOT'::"text"]))),
     CONSTRAINT "booking_side_effects_max_attempts_check" CHECK (("max_attempts" >= 1)),
     CONSTRAINT "booking_side_effects_source_check" CHECK (("entity" = ANY (ARRAY['EMAIL'::"text", 'CALENDAR'::"text", 'PAYMENT'::"text", 'WHATSAPP'::"text", 'SYSTEM'::"text"]))),
-    CONSTRAINT "booking_side_effects_status_check" CHECK (("status" = ANY (ARRAY['PENDING'::"text", 'SUCCESS'::"text", 'FAILED'::"text", 'DEAD'::"text"])))
+    CONSTRAINT "booking_side_effects_status_check" CHECK (("status" = ANY (ARRAY['PENDING'::"text", 'PROCESSING'::"text",, 'SUCCESS'::"text", 'FAILED'::"text", 'DEAD'::"text"])))
 );
 
 

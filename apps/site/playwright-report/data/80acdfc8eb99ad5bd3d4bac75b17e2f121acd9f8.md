@@ -1,0 +1,76 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#main"
+  - navigation "Main navigation" [ref=e3]:
+    - generic [ref=e4]:
+      - link "ILLUMINATE by Yair Benharroch" [ref=e5] [cursor=pointer]:
+        - /url: index.html
+      - list [ref=e6]:
+        - listitem [ref=e7]:
+          - link "How We Work" [ref=e8] [cursor=pointer]:
+            - /url: index.html#how-we-work
+        - listitem [ref=e9]:
+          - link "About" [ref=e10] [cursor=pointer]:
+            - /url: index.html#about
+        - listitem [ref=e11]:
+          - link "Evenings" [ref=e12] [cursor=pointer]:
+            - /url: evenings.html
+        - listitem [ref=e13]:
+          - link "Get in touch" [ref=e14] [cursor=pointer]:
+            - /url: contact.html
+      - link "Book a Session" [ref=e15] [cursor=pointer]:
+        - /url: sessions.html
+  - main [ref=e16]:
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - heading "Book a Session" [level=1] [ref=e21]
+        - navigation "Booking steps" [ref=e22]:
+          - generic "Step 1, current" [ref=e23]:
+            - generic [ref=e24]: "1"
+          - generic "Step 2" [ref=e26]:
+            - generic [ref=e27]: "2"
+          - generic "Step 3" [ref=e29]:
+            - generic [ref=e30]: "3"
+          - generic "Step 4" [ref=e32]:
+            - generic [ref=e33]: "4"
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - paragraph [ref=e38]: NEW SLOT SELECTED
+            - paragraph [ref=e39]: Tuesday, 17 March 2026 · 15:00
+          - separator [ref=e40]
+          - paragraph [ref=e41]: CURRENT BOOKING
+          - paragraph [ref=e42]: Tuesday, 17 March 2026 · 15:00
+          - paragraph [ref=e43]: "Status: CONFIRMED"
+        - button "Back to calendar" [ref=e44] [cursor=pointer]:
+          - img [ref=e45]
+          - text: Back to calendar
+        - paragraph [ref=e47]: Tuesday 17 March
+        - group "Available times" [ref=e48]:
+          - button "16:00" [ref=e49] [cursor=pointer]
+          - button "17:00" [ref=e50] [cursor=pointer]
+          - button "18:00" [ref=e51] [cursor=pointer]
+          - button "19:00" [ref=e52] [cursor=pointer]
+        - button "Continue →" [ref=e54] [cursor=pointer]
+  - contentinfo [ref=e55]:
+    - generic [ref=e56]:
+      - generic [ref=e57]: ILLUMINATE by Yair Benharroch
+      - navigation "Footer navigation" [ref=e58]:
+        - link "How We Work" [ref=e59] [cursor=pointer]:
+          - /url: index.html#how-we-work
+        - link "About" [ref=e60] [cursor=pointer]:
+          - /url: index.html#about
+        - link "Evenings" [ref=e61] [cursor=pointer]:
+          - /url: evenings.html
+        - link "1:1 Sessions" [ref=e62] [cursor=pointer]:
+          - /url: sessions.html
+        - link "Get in touch" [ref=e63] [cursor=pointer]:
+          - /url: contact.html
+      - generic [ref=e64]: © 2026 ILLUMINATE · Yair Benharroch
+  - button "Switch to dark mode" [ref=e65] [cursor=pointer]:
+    - img [ref=e66]
+    - img [ref=e68]
+```

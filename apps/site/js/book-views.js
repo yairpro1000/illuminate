@@ -208,6 +208,10 @@
         `;
       }).join('');
 
+      const slotsContent = daySlots.length === 0
+        ? `<p class="time-slots-empty">No other times are available on this day. Please choose another day.</p>`
+        : `<div class="time-slots" role="group" aria-label="Available times">${slotBtns}</div>`;
+
       return `
         <div class="cal-step">
           ${buildCurrentBookingPanel()}
@@ -219,9 +223,7 @@
             Back to calendar
           </button>
           <p class="step-eyebrow">${dateLabel}</p>
-          <div class="time-slots" role="group" aria-label="Available times">
-            ${slotBtns}
-          </div>
+          ${slotsContent}
           ${state.selectedSlot ? `
             <div class="step-footer">
               <div></div>
