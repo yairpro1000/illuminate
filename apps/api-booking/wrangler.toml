@@ -13,7 +13,7 @@ routes = [
 # Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
 # unless intentionally overridden for a focused integration test.
 REPOSITORY_MODE = "supabase"
-EMAIL_MODE      = "resend"
+EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
 ANTIBOT_MODE    = "mock"

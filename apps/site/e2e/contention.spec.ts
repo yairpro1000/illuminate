@@ -353,6 +353,9 @@ test.describe('P4 multi-user slot contention', () => {
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
+      const winnerPage = outcomeA === 'success' ? pageA : pageB;
+      await winnerPage.goto(winnerArtifacts.links.confirm_url!);
+      await expect(winnerPage.locator('.confirm-title')).toContainText('Confirmed');
       await winnerRuntime.assertNoNewIssues(winnerCheckpoint, 'contention-race-winner', testInfo);
       await loserRuntime.assertNoNewIssues(loserCheckpoint, 'contention-race-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
       const loserPage = outcomeA === 'slot-lost' ? pageA : pageB;
