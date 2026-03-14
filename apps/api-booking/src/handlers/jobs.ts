@@ -10,6 +10,7 @@ import { consumeLatestProviderApiLogId, extendOperationContext, type OperationCo
 import { ok, unauthorized } from '../lib/errors.js';
 import {
   applyImmediateNonCronSideEffectsForTransition,
+  buildContinuePaymentUrl,
   buildConfirmUrl,
   buildManageUrl,
   expireBooking,
@@ -752,7 +753,9 @@ async function executeSideEffect(
 
     case 'SEND_PAYMENT_REMINDER': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.checkout_url;
+      const payUrl = payment?.checkout_url
+        ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
+        : null;
       if (!payUrl) throw new Error('checkout_url_missing');
 
       if (!booking.event_id) {
@@ -772,7 +775,7 @@ async function executeSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
       return;
     }
 
@@ -864,9 +867,11 @@ async function executeSideEffect(
       const policy = await getBookingPolicyConfig(ctx.providers.repository);
       await ctx.providers.email.sendBookingPaymentDue(
         booking,
-        payUrl,
+        buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
         manageUrl,
-        policy.payNowReminderGraceMinutes,
+        new Date(
+          new Date(booking.starts_at).getTime() - policy.paymentDueBeforeStartHours * 60 * 60 * 1000,
+        ).toISOString(),
       );
       ctx.logger.logInfo({
         source: jobLogSource(ctx),
@@ -894,6 +899,7 @@ async function executeSideEffect(
   }
 }
 
-function buildStartNewBookingUrl(siteUrl: string): string {
-  return `${siteUrl.replace(/\/+$/g, '')}/book.html`;
+function buildStartNewBookingUrl(siteUrl: string, booking: { event_id: string | null }): string {
+  const base = siteUrl.replace(/\/+$/g, '');
+  return booking.event_id ? `${base}/evenings.html` : `${base}/sessions.html`;
 }

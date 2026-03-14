@@ -35,7 +35,9 @@ describe('post-booking pages', () => {
     await flush()
 
     expect(document.getElementById('confirm-card').textContent).toContain('awaiting payment')
-    expect(document.querySelector('#confirm-card a')?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+    const links = Array.from(document.querySelectorAll('#confirm-card a'))
+    expect(links[0]?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+    expect(links[1]?.getAttribute('href')).toBe('index.html')
   })
 
   it('payment success page treats uppercase CONFIRMED as confirmed', async () => {

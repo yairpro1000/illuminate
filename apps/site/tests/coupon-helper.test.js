@@ -27,4 +27,20 @@ describe('site coupon helper', () => {
     expect(text).toContain('600 ₪')
     expect(text).toContain('450 ₪')
   })
+
+  it('formats thousands with comma separators for coupon-aware pricing', () => {
+    document.body.innerHTML = `
+      <div data-coupon-price data-price-chf="990" data-price-currency="CHF"></div>
+    `
+    evalCode(couponCode)
+
+    expect(window.SiteCoupon.setAppliedCouponCode('ISRAEL', 'test')).toBe(true)
+    window.SiteCoupon.applyStaticPrices(document)
+
+    const text = document.querySelector('[data-coupon-price]').textContent.replace(/\s+/g, ' ')
+    expect(text).toContain('CHF 990')
+    expect(text).toContain('CHF 742.50')
+    expect(text).toContain('3,960 ₪')
+    expect(text).toContain('2,970 ₪')
+  })
 })

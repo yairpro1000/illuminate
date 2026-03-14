@@ -27,7 +27,7 @@ export interface IEmailProvider {
     booking: Booking,
     payUrl: string,
     manageUrl: string,
-    expiryGraceMinutes: number,
+    paymentDueAt: string,
   ): Promise<SendResult>;
 
   /** Session confirmation after payment/cash. */

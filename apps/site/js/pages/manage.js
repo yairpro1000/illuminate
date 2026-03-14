@@ -6,6 +6,7 @@
   const token  = params.get('token');
   const adminToken = params.get('admin_token');
   const card   = document.getElementById('manage-card');
+  const contactHref = siteConfig.contactHref || 'contact.html';
 
   function renderLoadError(title, message) {
     card.innerHTML = `
@@ -153,6 +154,7 @@
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],
+    data.payment_status ? ['Payment', statusBadge(data.payment_status)] : null,
     ['Date',     formatDt(data.starts_at)],
     ['Address',  data.address_line || '—'],
     data.payment_due_at ? ['Payment due', formatDt(data.payment_due_at)] : null,
@@ -175,6 +177,7 @@
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
+      <a href="${contactHref}" class="btn btn-ghost">Contact Yair</a>
       <a href="index.html" class="btn btn-ghost">← Homepage</a>
     </div>
   `;

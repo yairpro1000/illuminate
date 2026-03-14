@@ -57,7 +57,9 @@ function getBasePriceChf() {
 
 function refreshCouponPreview() {
   const basePrice = getBasePriceChf();
-  if (SITE_COUPON && typeof SITE_COUPON.getPricePreview === 'function') {
+  if (SITE_COUPON && typeof SITE_COUPON.getDisplayedPrice === 'function') {
+    S.pricePreview = SITE_COUPON.getDisplayedPrice(basePrice, S.appliedCouponCode || null);
+  } else if (SITE_COUPON && typeof SITE_COUPON.getPricePreview === 'function') {
     S.pricePreview = SITE_COUPON.getPricePreview(basePrice, S.appliedCouponCode || null);
   } else {
     S.pricePreview = null;

@@ -51,6 +51,19 @@ function fmtBodyTimeRange(startIso: string, endIso: string, timezone: string): s
   return `${start}–${end} (${timezone})`;
 }
 
+function fmtBodyDateTime(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: timezone,
+  }).format(new Date(iso));
+}
+
 function sessionLabel(booking: Booking): string {
   return booking.session_type_title?.trim() || '1:1 Session';
 }
@@ -376,24 +389,25 @@ export class ResendEmailProvider implements IEmailProvider {
     booking: Booking,
     payUrl: string,
     manageUrl: string,
-    expiryGraceMinutes: number,
+    paymentDueAt: string,
   ): Promise<SendResult> {
-    const expiryGraceLabel = expiryGraceMinutes === 1 ? '1 minute' : `${expiryGraceMinutes} minutes`;
-    const text = `Hi ${clientName(booking)},\n\nWe noticed you haven't yet completed your payment for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${expiryGraceLabel} before expiring.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
+    const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
+    const text = `Hi ${clientName(booking)},\n\nYour session booking is confirmed, and payment is still pending for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nPlease complete payment by ${paymentDueLabel}, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
     const rows: Array<[string, string]> = [
       ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
+      ['Payment due', esc(paymentDueLabel)],
     ];
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
-      <p>We noticed you haven't yet completed your payment for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
+      <p>Your session booking is confirmed, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
       ${detailBlock(rows)}
-      <p style="font-size:14px;color:#88abb5;">The slot is kindly held for you for the next <strong style="color:#4fc3d8;">${esc(expiryGraceLabel)}</strong> before expiring.</p>
+      <p style="font-size:14px;color:#88abb5;">Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>, which is 24 hours before your session.</p>
       <p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>
       <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
     `;
-    return this.sendEmail(clientEmail(booking), 'booking_payment_due', `Action needed: complete payment in ${expiryGraceLabel}`, text, undefined, htmlLayout(body));
+    return this.sendEmail(clientEmail(booking), 'booking_payment_due', 'Action needed: complete payment before your session', text, undefined, htmlLayout(body));
   }
 
   async sendBookingConfirmation(
@@ -486,6 +500,7 @@ export class ResendEmailProvider implements IEmailProvider {
       [
         'Your booking request expired because it was not confirmed or paid in time.',
         'The slot has been released.',
+        ...(startNewBookingUrl ? ['It\'s ok, you can:'] : []),
       ],
       startNewBookingUrl ? 'Book again' : 'Back to homepage',
       startNewBookingUrl ?? 'https://yairb.ch',

@@ -5,12 +5,13 @@
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
 
-  function show(icon, title, msg, linkHref, linkText) {
+  function show(icon, title, msg, linkHref, linkText, secondaryHref, secondaryText) {
     card.innerHTML = `
       <div class="confirm-icon" aria-hidden="true">${icon}</div>
       <h1 class="confirm-title">${title}</h1>
       <p class="confirm-msg">${msg}</p>
       ${linkHref ? `<a href="${linkHref}" class="btn btn-primary">${linkText}</a>` : ''}
+      ${secondaryHref ? `<a href="${secondaryHref}" class="btn btn-ghost" style="margin-top:1rem">${secondaryText}</a>` : ''}
     `;
   }
 
@@ -45,6 +46,8 @@
           : 'Your booking is confirmed.'),
       data.next_action_url || 'index.html',
       data.next_action_label || '← Back to homepage',
+      'index.html',
+      '← Back to homepage',
     );
   } catch (err) {
     const expired = err && err.status === 410;
@@ -60,6 +63,6 @@
       );
       return;
     }
-    show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', '', '');
+    show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', 'index.html', '← Homepage');
   }
 })();

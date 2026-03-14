@@ -47,6 +47,19 @@ function fmtBodyTimeRange(startIso: string, endIso: string, timezone: string): s
   return `${start}–${end} (${timezone})`;
 }
 
+function fmtBodyDateTime(iso: string, timezone: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: timezone,
+  }).format(new Date(iso));
+}
+
 function sessionLabel(booking: Booking): string {
   return booking.session_type_title?.trim() || '1:1 Session';
 }
@@ -131,16 +144,14 @@ export class MockEmailProvider implements IEmailProvider {
     booking: Booking,
     payUrl: string,
     manageUrl: string,
-    expiryGraceMinutes: number,
+    paymentDueAt: string,
   ): Promise<SendResult> {
-    const expiryGraceLabel = expiryGraceMinutes === 1
-      ? '1 minute'
-      : `${expiryGraceMinutes} minutes`;
+    const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
     return this.send(
       clientEmail(booking),
       'booking_payment_due',
-      `Action needed: complete payment in ${expiryGraceLabel}`,
-      `Hi ${clientName(booking)},\n\nYou have not completed payment for your held slot.\n\nDate & time: ${fmt(booking.starts_at)}\nYour hold will expire in ${expiryGraceLabel} unless payment is completed.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
+      'Action needed: complete payment before your session',
+      `Hi ${clientName(booking)},\n\nYour session booking is confirmed, and payment is still pending.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: ${paymentDueLabel}\nPlease complete payment by then, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
     );
   }
 
@@ -197,7 +208,7 @@ export class MockEmailProvider implements IEmailProvider {
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
+    const restartLine = startNewBookingUrl ? `\nIt's ok, you can:\nBook again: ${startNewBookingUrl}` : '';
     return this.send(
       clientEmail(booking),
       'booking_expired',

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import couponCode from '../js/coupon.js?raw'
 import eveningsPageCode from '../js/evenings.js?raw'
 
 function evalCode(code) {
@@ -99,5 +100,40 @@ describe('evenings page', () => {
     expect(priceRows).toContain('CHF 100')
     expect(priceRows).toContain('CHF 100.99')
     expect(priceRows).not.toContain('CHF 100.00')
+  })
+
+  it('rerenders evenings pricing with discount markup and comma separators when a coupon is active', async () => {
+    window.siteClient.requestJson.mockResolvedValue({
+      events: [
+        {
+          id: 'event-1',
+          slug: 'event-1',
+          title: 'Large event',
+          description: 'Description',
+          starts_at: '2026-06-19T17:00:00Z',
+          ends_at: '2026-06-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: true,
+          price_per_person: 1000,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+      ],
+    })
+
+    evalCode(couponCode)
+    evalCode(eveningsPageCode)
+    await flush()
+
+    window.SiteCoupon.setAppliedCouponCode('ISRAEL', 'test')
+    await flush()
+
+    const text = document.getElementById('events-grid').textContent.replace(/\s+/g, ' ')
+    expect(text).toContain('CHF 1,000')
+    expect(text).toContain('CHF 750')
+    expect(text).toContain('4,000 ₪')
+    expect(text).toContain('3,000 ₪')
   })
 })

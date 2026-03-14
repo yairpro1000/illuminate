@@ -5,9 +5,11 @@
 (function initEventCards() {
   const grid = document.getElementById('events-grid');
   const SITE_CLIENT = window.siteClient || null;
+  const SITE_COUPON = window.SiteCoupon || null;
   if (!grid) return;
   const eventsLoadController = typeof AbortController === 'function' ? new AbortController() : null;
   let pageDisposing = false;
+  let latestEvents = null;
 
   function markPageDisposing() {
     pageDisposing = true;
@@ -36,6 +38,9 @@
 
   function formatPrice(event) {
     if (!event.is_paid) return 'Free';
+    if (SITE_COUPON && typeof SITE_COUPON.buildPriceHtml === 'function') {
+      return SITE_COUPON.buildPriceHtml(event.price_per_person, event.currency || 'CHF');
+    }
     const amount = Math.round(Number(event.price_per_person || 0) * 100) / 100;
     const currency = event.currency || 'CHF';
     return `${currency} ${Number.isInteger(amount) ? String(amount) : amount.toFixed(2)}`;
@@ -169,6 +174,7 @@
   }
 
   function renderSections(events) {
+    latestEvents = Array.isArray(events) ? events : null;
     const future = events.filter((e) => !(e.render && e.render.is_past));
     const past = events.filter((e) => Boolean(e.render && e.render.is_past));
 
@@ -227,6 +233,11 @@
 
     attachReminderHandlers(grid);
   }
+
+  window.addEventListener('sitecouponchange', () => {
+    if (!Array.isArray(latestEvents)) return;
+    renderSections(latestEvents);
+  });
 
   SITE_CLIENT.requestJson('/api/events', {
     signal: eventsLoadController?.signal,

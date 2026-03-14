@@ -7,6 +7,7 @@
     code: 'ISRAEL',
     discountPercent: 25,
   });
+  const HOME_SUGGESTION_SECTION_ID = 'how-we-work';
   let homeSuggestionTriggered = false;
 
   function roundAmount(amount) {
@@ -76,7 +77,10 @@
 
   function formatNumber(amount) {
     const rounded = roundAmount(amount);
-    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(rounded);
   }
 
   function formatChf(amount, currency) {
@@ -87,7 +91,7 @@
     return `${formatNumber(roundAmount(amount) * CHF_TO_ILS_DISPLAY_RATE)} ₪`;
   }
 
-  function getPricePreview(basePrice, couponCode) {
+  function getDisplayedPrice(basePrice, couponCode) {
     const roundedBasePrice = roundAmount(basePrice);
     const coupon = getSupportedCoupon(couponCode || getAppliedCouponCode());
     if (!Number.isFinite(roundedBasePrice) || roundedBasePrice <= 0 || !coupon) {
@@ -114,8 +118,12 @@
     };
   }
 
+  function getPricePreview(basePrice, couponCode) {
+    return getDisplayedPrice(basePrice, couponCode);
+  }
+
   function buildPriceHtml(basePrice, currency, options) {
-    const preview = getPricePreview(basePrice, options && options.couponCode);
+    const preview = getDisplayedPrice(basePrice, options && options.couponCode);
     const suffix = options && options.suffix ? ` <span class="coupon-price__suffix">${options.suffix}</span>` : '';
     if (!Number.isFinite(basePrice) || Number(basePrice) <= 0) {
       return '<span class="coupon-price coupon-price--free">Free</span>';
@@ -203,7 +211,7 @@
 
     const page = document.body.getAttribute('data-page');
     if (page === 'home' && homeSuggestionTriggered) {
-      const section = document.getElementById('investment');
+      const section = document.getElementById(HOME_SUGGESTION_SECTION_ID);
       mountSuggestionInto(section && (section.querySelector('.container') || section));
       return;
     }
@@ -213,7 +221,7 @@
   }
 
   function initHomeSuggestion() {
-    const section = document.getElementById('investment');
+    const section = document.getElementById(HOME_SUGGESTION_SECTION_ID);
     if (!section || !('IntersectionObserver' in window)) return;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
@@ -275,6 +283,7 @@
     normalizeCouponCode,
     getAppliedCouponCode,
     getSupportedCoupon,
+    getDisplayedPrice,
     getPricePreview,
     buildPriceHtml,
     buildSuggestionBannerHtml,

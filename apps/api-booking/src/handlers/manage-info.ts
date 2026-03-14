@@ -47,6 +47,9 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
     const bookingPolicy = await getBookingPolicyConfig(ctx.providers.repository);
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
     const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+    const paymentDueAt = new Date(
+      new Date(booking.starts_at).getTime() - bookingPolicy.paymentDueBeforeStartHours * 60 * 60 * 1000,
+    ).toISOString();
     const policy = evaluateManageBookingPolicy(booking.starts_at, bookingPolicy.selfServiceLockWindowHours);
     const paid = payment?.status === 'SUCCEEDED' || payment?.status === 'REFUNDED';
 
@@ -99,6 +102,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         can_cancel: canCancel,
       },
       is_paid: paid,
+      payment_status: payment?.status ?? null,
+      payment_due_at: payment ? paymentDueAt : null,
       policy: {
         text: policy.policyText,
         can_self_serve_change: access.bypassPolicyWindow ? true : policy.canSelfServeChange,

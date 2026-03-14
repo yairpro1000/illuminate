@@ -27,8 +27,12 @@ import {
   getBookingPolicyText,
   shouldReserveSlotForTransition,
 } from '../domain/booking-effect-policy.js';
-import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
+import {
+  inferEntityFromIntent,
+  sideEffectStatusAfterAttempt,
+} from '../providers/repository/interface.js';
 import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
+import { computePaymentDueReminderTime } from './reminder-service.js';
 
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
@@ -178,6 +182,17 @@ export interface BookingPublicActionInfo {
   manageUrl: string | null;
   nextActionUrl: string | null;
   nextActionLabel: 'Complete Payment' | 'Manage Booking' | null;
+}
+
+export interface ContinuePaymentActionInfo {
+  booking: Booking;
+  paymentStatus: string | null;
+  paymentDueAt: string | null;
+  manageUrl: string | null;
+  checkoutUrl: string | null;
+  canContinueToCheckout: boolean;
+  branchTaken: string;
+  denyReason: string | null;
 }
 
 async function resolveCommercialTerms(
@@ -582,14 +597,18 @@ export async function confirmBookingEmail(
     }
     await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
   } else {
+    const existingPayment = await bookingCtx.providers.repository.getPaymentByBookingId(booking.id);
     const paymentUrl = await ensurePayLaterCheckoutUrlForBooking(booking, bookingCtx);
+    if (!existingPayment && submissionWithToken && paymentUrl) {
+      await schedulePayLaterPaymentFollowups(booking, submissionWithToken.id, bookingCtx);
+    }
     if (paymentUrl) {
       const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
       await bookingCtx.providers.email.sendBookingPaymentDue(
         booking,
-        paymentUrl,
+        buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
         manageUrl,
-        policy.payNowReminderGraceMinutes,
+        getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours),
       );
     }
   }
@@ -1131,7 +1150,7 @@ export async function getBookingPublicActionInfo(
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const checkoutUrl =
     payment && payment.status === 'PENDING' && !isTerminalStatus(booking.current_status)
-      ? payment.checkout_url
+      ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
       : null;
 
   if (checkoutUrl) {
@@ -1179,6 +1198,60 @@ export async function getBookingPublicActionInfoByPaymentSession(
   if (!booking) throw notFound('Booking not found');
 
   return getBookingPublicActionInfo(booking, ctx);
+}
+
+export async function getContinuePaymentActionInfo(
+  rawToken: string,
+  rawAdminToken: string | null,
+  ctx: BookingContext,
+): Promise<ContinuePaymentActionInfo> {
+  const access = await resolveBookingManageAccess(rawToken, rawAdminToken, ctx);
+  const booking = access.booking;
+  const policy = await loadBookingPolicy(ctx);
+  const paymentDueAt = getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours);
+  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+
+  const isBookingPending = booking.current_status === 'PENDING';
+  const isPaymentPending = payment?.status === 'PENDING';
+  const hasCheckoutUrl = Boolean(payment?.checkout_url);
+  const dueWindowOpen = Date.now() < new Date(paymentDueAt).getTime();
+
+  const canContinueToCheckout =
+    isBookingPending
+    && isPaymentPending
+    && hasCheckoutUrl
+    && dueWindowOpen;
+
+  let branchTaken = 'allow_continue_payment_redirect';
+  let denyReason: string | null = null;
+  if (!isBookingPending) {
+    branchTaken = 'deny_continue_payment_booking_not_pending';
+    denyReason = 'booking_not_pending';
+  } else if (!payment) {
+    branchTaken = 'deny_continue_payment_payment_missing';
+    denyReason = 'payment_missing';
+  } else if (!isPaymentPending) {
+    branchTaken = 'deny_continue_payment_payment_not_pending';
+    denyReason = 'payment_not_pending';
+  } else if (!hasCheckoutUrl) {
+    branchTaken = 'deny_continue_payment_checkout_missing';
+    denyReason = 'checkout_url_missing';
+  } else if (!dueWindowOpen) {
+    branchTaken = 'deny_continue_payment_due_window_closed';
+    denyReason = 'payment_due_window_closed';
+  }
+
+  return {
+    booking,
+    paymentStatus: payment?.status ?? null,
+    paymentDueAt,
+    manageUrl,
+    checkoutUrl: canContinueToCheckout ? payment?.checkout_url ?? null : null,
+    canContinueToCheckout,
+    branchTaken,
+    denyReason,
+  };
 }
 
 export async function ensureEventPublicBookable(
@@ -1278,12 +1351,18 @@ export async function buildManageUrl(siteUrl: string, booking: Booking): Promise
   return `${siteUrl}/manage.html?token=${encodeURIComponent(token)}`;
 }
 
+export function buildContinuePaymentUrl(siteUrl: string, booking: Booking): string {
+  const token = buildStableManageToken(booking.id);
+  return `${siteUrl}/continue-payment.html?token=${encodeURIComponent(token)}`;
+}
+
 function buildStableManageToken(bookingId: string): string {
   return `m1.${bookingId}`;
 }
 
-function buildStartNewBookingUrl(siteUrl: string): string {
-  return `${siteUrl.replace(/\/+$/g, '')}/book.html`;
+function buildStartNewBookingUrl(siteUrl: string, booking: Booking): string {
+  const base = siteUrl.replace(/\/+$/g, '');
+  return booking.event_id ? `${base}/evenings.html` : `${base}/sessions.html`;
 }
 
 function parseStableManageToken(rawToken: string): { bookingId: string } | null {
@@ -1312,6 +1391,90 @@ async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: 
   const event = await ctx.providers.repository.getEventById(booking.event_id);
   if (!event) return;
   await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
+}
+
+function getPaymentDueAtIso(startsAtIso: string, paymentDueBeforeStartHours: number): string {
+  return new Date(
+    new Date(startsAtIso).getTime() - paymentDueBeforeStartHours * 60 * 60 * 1000,
+  ).toISOString();
+}
+
+async function schedulePayLaterPaymentFollowups(
+  booking: Booking,
+  bookingEventId: string,
+  ctx: BookingContext,
+): Promise<void> {
+  const policy = await loadBookingPolicy(ctx);
+  const paymentDueAt = getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours);
+  const reminderAt = computePaymentDueReminderTime(
+    new Date(paymentDueAt),
+    booking.timezone,
+    policy,
+    new Date(),
+  );
+  const shouldScheduleReminder = reminderAt.getTime() < new Date(paymentDueAt).getTime();
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'pay_later_followup_side_effects_decision',
+    message: 'Evaluated pay-later reminder and expiry follow-up scheduling',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      payment_due_at: paymentDueAt,
+      computed_payment_reminder_at: reminderAt.toISOString(),
+      should_schedule_payment_reminder: shouldScheduleReminder,
+      payment_due_before_start_hours: policy.paymentDueBeforeStartHours,
+      payment_reminder_lead_hours: policy.paymentDueReminderLeadHours,
+      branch_taken: shouldScheduleReminder
+        ? 'schedule_payment_reminder_and_due_verification'
+        : 'schedule_due_verification_only',
+      deny_reason: shouldScheduleReminder ? null : 'payment_reminder_would_run_at_or_after_due_time',
+    },
+  });
+
+  const effects = [
+    shouldScheduleReminder
+      ? {
+          booking_event_id: bookingEventId,
+          entity: inferEntityFromIntent('SEND_PAYMENT_REMINDER'),
+          effect_intent: 'SEND_PAYMENT_REMINDER' as const,
+          status: 'PENDING' as const,
+          expires_at: reminderAt.toISOString(),
+          max_attempts: policy.processingMaxAttempts,
+        }
+      : null,
+    {
+      booking_event_id: bookingEventId,
+      entity: inferEntityFromIntent('VERIFY_STRIPE_PAYMENT'),
+      effect_intent: 'VERIFY_STRIPE_PAYMENT' as const,
+      status: 'PENDING' as const,
+          expires_at: paymentDueAt,
+          max_attempts: policy.processingMaxAttempts,
+        },
+  ].filter((effect): effect is {
+    booking_event_id: string;
+    entity: ReturnType<typeof inferEntityFromIntent>;
+    effect_intent: 'SEND_PAYMENT_REMINDER' | 'VERIFY_STRIPE_PAYMENT';
+    status: 'PENDING';
+    expires_at: string;
+    max_attempts: number;
+  } => effect !== null);
+
+  const created = await ctx.providers.repository.createBookingSideEffects(effects);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'pay_later_followup_side_effects_scheduled',
+    message: 'Scheduled pay-later reminder and due verification side effects',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      payment_due_at: paymentDueAt,
+      created_side_effect_ids: created.map((effect) => effect.id),
+      created_side_effect_intents: created.map((effect) => effect.effect_intent),
+      branch_taken: 'pay_later_followups_scheduled',
+    },
+  });
 }
 
 function shouldSessionBookingHaveCalendarEvent(booking: Booking): boolean {
@@ -1821,7 +1984,7 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
       return booking;
     }
 

@@ -285,6 +285,20 @@ describe('booking domain model', () => {
       (email) => email.kind === 'booking_payment_due' && email.to === 'maya@example.com',
     );
     expect(followupEmail).toBeTruthy();
+    expect(followupEmail?.subject).toBe('Action needed: complete payment before your session');
+    expect(followupEmail?.body).toContain('Please complete payment by');
+    expect(followupEmail?.body).toContain('24 hours before your session');
+    expect(followupEmail?.body).toContain('/continue-payment.html?token=');
+    expect(followupEmail?.body).not.toContain('expire in 1 minute');
+
+    const reminderEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_PAYMENT_REMINDER',
+    );
+    const verifyEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'VERIFY_STRIPE_PAYMENT',
+    );
+    expect(reminderEffect?.expires_at).toBeTruthy();
+    expect(verifyEffect?.expires_at).toBeTruthy();
   });
 
   it('confirms pay-now bookings after payment settlement', async () => {
@@ -417,6 +431,8 @@ describe('booking domain model', () => {
     expect(expiryEmail?.subject).toBe('Your booking expired');
     expect(expiryEmail?.body).toContain('expired because it was not completed in time');
     expect(expiryEmail?.body).toContain('The slot has been released.');
+    expect(expiryEmail?.body).toContain("It's ok, you can:");
+    expect(expiryEmail?.body).toContain('Book again: https://example.com/sessions.html');
     expect(expiryEmail?.body).not.toMatch(/cancelled/i);
 
     const rescheduleAttempt = await rescheduleBooking(expired!, {
