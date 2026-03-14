@@ -7,7 +7,7 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest, notFound } from '../lib/errors.js';
 import { mockState } from '../providers/mock-state.js';
-import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment } from '../services/booking-service.js';
+import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment, expireBooking } from '../services/booking-service.js';
 import type { Booking } from '../types.js';
 
 function guardMockRepository(ctx: AppContext): void {
@@ -110,6 +110,31 @@ async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): P
       return (isExampleTestEmail(email) && email.startsWith(emailPrefix)) || firstName.startsWith(emailPrefix);
     })
     .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+}
+
+async function getLatestTestBookingByEmail(email: string, ctx: AppContext): Promise<{
+  client: { id: string; email: string };
+  booking: Booking;
+}> {
+  const client = await ctx.providers.repository.getClientByEmail(email);
+  if (!client) throw notFound('Test client not found');
+
+  const rows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
+  const latest = rows
+    .slice()
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+  if (!latest) throw notFound('Test booking not found');
+
+  const booking = await ctx.providers.repository.getBookingById(latest.booking_id);
+  if (!booking) throw notFound('Test booking not found');
+
+  return {
+    client: {
+      id: client.id,
+      email: client.email,
+    },
+    booking,
+  };
 }
 
 // POST /api/__dev/simulate-payment?session_id=<id>&result=success|failure
@@ -285,7 +310,38 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
     throw badRequest('email must use @example.test');
   }
 
-  const client = await ctx.providers.repository.getClientByEmail(email);
+  const resolved = await getLatestTestBookingByEmail(email, ctx).catch((error) => {
+    if (error instanceof Error && error.message === 'Test client not found') {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'test_booking_artifacts_request_rejected',
+        message: 'Rejected test booking-artifacts request because client was not found',
+        context: {
+          path,
+          email,
+          branch_taken: 'deny_client_not_found',
+          deny_reason: 'test_client_not_found',
+        },
+      });
+    }
+    if (error instanceof Error && error.message === 'Test booking not found') {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'test_booking_artifacts_request_rejected',
+        message: 'Rejected test booking-artifacts request because no bookings were found for the client',
+        context: {
+          path,
+          email,
+          branch_taken: 'deny_booking_not_found',
+          deny_reason: 'test_booking_not_found',
+        },
+      });
+    }
+    throw error;
+  });
+
+  const client = resolved.client;
+  const booking = resolved.booking;
   if (!client) {
     ctx.logger.logWarn?.({
       source: 'backend',
@@ -299,45 +355,6 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
       },
     });
     throw notFound('Test client not found');
-  }
-
-  const rows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
-  const latest = rows
-    .slice()
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
-
-  if (!latest) {
-    ctx.logger.logWarn?.({
-      source: 'backend',
-      eventType: 'test_booking_artifacts_request_rejected',
-      message: 'Rejected test booking-artifacts request because no bookings were found for the client',
-      context: {
-        path,
-        email,
-        client_id: client.id,
-        branch_taken: 'deny_booking_not_found',
-        deny_reason: 'test_booking_not_found',
-      },
-    });
-    throw notFound('Test booking not found');
-  }
-
-  const booking = await ctx.providers.repository.getBookingById(latest.booking_id);
-  if (!booking) {
-    ctx.logger.logWarn?.({
-      source: 'backend',
-      eventType: 'test_booking_artifacts_request_rejected',
-      message: 'Rejected test booking-artifacts request because booking details could not be loaded',
-      context: {
-        path,
-        email,
-        client_id: client.id,
-        booking_id: latest.booking_id,
-        branch_taken: 'deny_booking_lookup_failed',
-        deny_reason: 'test_booking_lookup_failed',
-      },
-    });
-    throw notFound('Test booking not found');
   }
 
   const events = await ctx.providers.repository.listBookingEvents(booking.id);
@@ -479,6 +496,135 @@ export async function handleTestBookingMutate(request: Request, ctx: AppContext)
     starts_at: mutatedBooking.starts_at,
     ends_at: mutatedBooking.ends_at,
     updated_submission_event_id: updatedSubmissionEventId,
+  });
+}
+
+// POST /api/__test/bookings/expire
+export async function handleTestBookingExpire(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const body = await request.json() as Record<string, unknown>;
+  const email = normalizeExampleTestEmail(typeof body.email === 'string' ? body.email : null);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_expire_started',
+    message: 'Started test booking expiry request',
+    context: {
+      path,
+      has_email: Boolean(email),
+      branch_taken: 'validate_test_booking_expiry_request',
+    },
+  });
+
+  if (!email) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_expire_rejected',
+      message: 'Rejected test booking expiry request because email was missing',
+      context: {
+        path,
+        branch_taken: 'deny_missing_email',
+        deny_reason: 'email_missing',
+      },
+    });
+    throw badRequest('email is required');
+  }
+
+  if (!email.endsWith('@example.test')) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'test_booking_expire_rejected',
+      message: 'Rejected test booking expiry request because email was not a fake test domain',
+      context: {
+        path,
+        email_domain: email.split('@')[1] ?? null,
+        branch_taken: 'deny_non_test_email_domain',
+        deny_reason: 'email_must_use_example_test_domain',
+      },
+    });
+    throw badRequest('email must use @example.test');
+  }
+
+  const { client, booking } = await getLatestTestBookingByEmail(email, ctx).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'Test client not found') {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'test_booking_expire_rejected',
+        message: 'Rejected test booking expiry request because client was not found',
+        context: {
+          path,
+          email,
+          branch_taken: 'deny_client_not_found',
+          deny_reason: 'test_client_not_found',
+        },
+      });
+    } else if (message === 'Test booking not found') {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'test_booking_expire_rejected',
+        message: 'Rejected test booking expiry request because no booking was found for the client',
+        context: {
+          path,
+          email,
+          branch_taken: 'deny_booking_not_found',
+          deny_reason: 'test_booking_not_found',
+        },
+      });
+    }
+    throw error;
+  });
+  const terminalStatuses: Booking['current_status'][] = ['EXPIRED', 'CANCELED', 'COMPLETED', 'NO_SHOW'];
+  const denyReason = terminalStatuses.includes(booking.current_status)
+    ? 'booking_already_terminal'
+    : null;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_expire_decision',
+    message: 'Evaluated test booking expiry eligibility',
+    context: {
+      path,
+      email,
+      client_id: client.id,
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      branch_taken: denyReason ? 'deny_test_booking_expiry' : 'allow_test_booking_expiry',
+      deny_reason: denyReason,
+    },
+  });
+
+  if (denyReason) {
+    throw badRequest('Test booking is already terminal');
+  }
+
+  const expired = await expireBooking(booking, {
+    providers: ctx.providers,
+    env: ctx.env,
+    logger: ctx.logger,
+    requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
+    operation: ctx.operation,
+  });
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_booking_expire_completed',
+    message: 'Completed test booking expiry request',
+    context: {
+      path,
+      email,
+      client_id: client.id,
+      booking_id: expired.id,
+      booking_status: expired.current_status,
+      branch_taken: 'return_test_booking_expiry_result',
+    },
+  });
+
+  return ok({
+    email,
+    booking_id: expired.id,
+    status: expired.current_status,
   });
 }
 

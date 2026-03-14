@@ -284,6 +284,13 @@ export async function mutateTestBooking(input: {
   });
 }
 
+export async function expireTestBooking(email: string): Promise<{ email: string; booking_id: string; status: string }> {
+  return apiJson('/api/__test/bookings/expire', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
 export async function expectManageStatus(email: string, expectedStatus: string): Promise<BookingArtifacts> {
   const artifacts = await waitForBookingArtifacts(email);
   expect(artifacts.booking.status).toBe(expectedStatus);

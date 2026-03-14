@@ -6,6 +6,7 @@ import {
   clickFirstAvailableSlot,
   createPayLaterBookingForSlot,
   ensureEmailMock,
+  expireTestBooking,
   expectManageStatus,
   fillContactDetails,
   getSlots,
@@ -151,12 +152,80 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
       ],
     });
 
+    checkpoint = adminRuntime.checkpoint();
+    await openAdminBookingRowByEmail(adminPage, settleEmail, settleArtifacts.booking.starts_at.slice(0, 10));
+    await adminPage.click('#editSettlePayment');
+    await expect(adminPage.locator('#editMsg')).toContainText(/Payment cannot be settled from its current state/i);
+    await adminRuntime.assertNoNewIssues(checkpoint, 'admin-deny-settle-already-settled-booking', testInfo, {
+      allow: [
+        {
+          kind: 'http',
+          urlIncludes: '/payment-settled',
+          messageIncludes: '-> 409',
+        },
+        {
+          kind: 'console',
+          urlIncludes: '/js/client.js',
+          messageIncludes: 'request_failure',
+        },
+      ],
+    });
+
     await adminPage.close();
   });
 
   test.fixme('invoice continuation gracefully handles a missing invoice URL', async () => {
   });
 
-  test.fixme('pending unpaid booking becomes EXPIRED and blocks continuation after the expiry path runs', async () => {
+  test('pending unpaid booking becomes EXPIRED and blocks continuation after the expiry path runs', async ({ browser, page }, testInfo) => {
+    const email = makeScenarioEmail('p0-expired');
+    await page.goto(`${SITE_BASE_URL}/sessions.html`);
+    await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
+    await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
+
+    const runtime = attachRuntimeMonitor(page);
+    let checkpoint = runtime.checkpoint();
+    await clickFirstAvailableSlot(page);
+    await fillContactDetails(page, {
+      firstName: 'P0',
+      lastName: 'Expired',
+      email,
+      phone: '+41790000000',
+    });
+    await page.locator('[data-payment="pay-later"]').click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.locator('button[data-submit]').click();
+    await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+    await runtime.assertNoNewIssues(checkpoint, 'pay-later-submit-before-expiry', testInfo);
+
+    const artifacts = await waitForBookingArtifacts(email);
+    const expireResult = await expireTestBooking(email);
+    expect(expireResult.status).toBe('EXPIRED');
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(artifacts.links.manage_url);
+    await expect(page.locator('.detail-table')).toContainText('EXPIRED');
+    await expect(page.locator('.manage-actions')).not.toContainText('Reschedule');
+    await runtime.assertNoNewIssues(checkpoint, 'manage-page-after-expiry', testInfo);
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(continuePaymentUrlFromManageUrl(artifacts.links.manage_url));
+    await expect(page.locator('.manage-title')).toContainText('Your Booking');
+    await expect(page.locator('.detail-table')).toContainText('EXPIRED');
+    expect(page.url()).not.toContain('/dev-pay');
+    expect(page.url()).not.toContain('/mock-invoice');
+    await runtime.assertNoNewIssues(checkpoint, 'continue-payment-blocked-after-expiry', testInfo);
+
+    const refreshedArtifacts = await waitForBookingArtifacts(email);
+    expect(refreshedArtifacts.booking.status).toBe('EXPIRED');
+    expect(refreshedArtifacts.payment?.status).toBe('PENDING');
+
+    const adminPage = await browser.newPage();
+    const adminRuntime = attachRuntimeMonitor(adminPage);
+    checkpoint = adminRuntime.checkpoint();
+    await openAdminBookingRowByEmail(adminPage, email, artifacts.booking.starts_at.slice(0, 10));
+    await expect(adminPage.locator('#editReadonlyDetails')).toContainText('EXPIRED');
+    await adminRuntime.assertNoNewIssues(checkpoint, 'admin-view-expired-booking', testInfo);
+    await adminPage.close();
   });
 });

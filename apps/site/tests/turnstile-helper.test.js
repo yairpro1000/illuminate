@@ -70,4 +70,28 @@ describe('site turnstile helper', () => {
     expect(token).toBe('resolved-turnstile-token')
     expect(window.turnstile.render).toHaveBeenCalled()
   })
+
+  it('maps the real /api/config site_key field into frontend config', () => {
+    evalCode(turnstileCode)
+
+    const config = {
+      turnstileEnabled: false,
+      turnstileSiteKey: null,
+      antibotMode: 'mock',
+    }
+
+    window.SiteTurnstile.applyPublicConfig(config, {
+      antibot: {
+        mode: 'turnstile',
+        turnstile: {
+          enabled: true,
+          site_key: '0x4AAAA-real-key',
+        },
+      },
+    })
+
+    expect(config.antibotMode).toBe('turnstile')
+    expect(config.turnstileEnabled).toBe(true)
+    expect(config.turnstileSiteKey).toBe('0x4AAAA-real-key')
+  })
 })

@@ -260,4 +260,47 @@ describe('test bookings helpers', () => {
     expect(updatedBooking?.ends_at).toBe('2026-03-31T08:30:00.000Z');
     expect(updatedSubmitted?.created_at).toBe('2026-03-30T08:00:00.000Z');
   });
+
+  it('expires the latest test booking through the real booking transition with explicit diagnostics', async () => {
+    const ctx = makeCtx();
+    const created = await createIntroBooking('p4-expire@example.test', '2026-04-01T10:00:00.000Z', '2026-04-01T10:30:00.000Z', ctx);
+
+    const expireReq = new Request('https://api.local/api/__test/bookings/expire', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'p4-expire@example.test' }),
+    });
+
+    const expireRes = await handleRequest(expireReq, ctx);
+    const expireBody = await expireRes.json();
+
+    expect(expireRes.status).toBe(200);
+    expect(expireBody).toEqual({
+      email: 'p4-expire@example.test',
+      booking_id: created.bookingId,
+      status: 'EXPIRED',
+    });
+
+    const updatedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
+    expect(updatedBooking?.current_status).toBe('EXPIRED');
+
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'test_booking_expire_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        booking_status: 'PENDING',
+        branch_taken: 'allow_test_booking_expiry',
+        deny_reason: null,
+      }),
+    }));
+
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'test_booking_expire_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        booking_status: 'EXPIRED',
+        branch_taken: 'return_test_booking_expiry_result',
+      }),
+    }));
+  });
 });

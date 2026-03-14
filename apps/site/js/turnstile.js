@@ -15,8 +15,12 @@
   }
 
   function getSiteKey(config) {
-    return typeof config?.turnstileSiteKey === 'string' && config.turnstileSiteKey.trim()
+    const directKey = typeof config?.turnstileSiteKey === 'string' && config.turnstileSiteKey.trim()
       ? config.turnstileSiteKey.trim()
+      : null;
+    if (directKey) return directKey;
+    return typeof config?.site_key === 'string' && config.site_key.trim()
+      ? config.site_key.trim()
       : null;
   }
 
