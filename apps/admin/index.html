@@ -231,6 +231,19 @@
         height: var(--admin-row-h);
         vertical-align: top;
       }
+      .sort-btn {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font-family: var(--font);
+        font-size: inherit;
+        font-weight: inherit;
+        padding: 0;
+        cursor: pointer;
+        text-transform: inherit;
+        letter-spacing: inherit;
+      }
+      .sort-btn:hover { color: var(--color-lake-lt); }
       tbody tr.clickable { cursor: pointer; }
       tbody tr.clickable:hover td { background: var(--color-lake-mist); }
 
@@ -334,12 +347,12 @@
         <table>
           <thead>
             <tr>
-              <th>Type</th>
-              <th>When</th>
-              <th>Client</th>
-              <th>Email</th>
-              <th>Status</th>
-              <th>Notes</th>
+              <th><button class="sort-btn" type="button" data-sort="title">Type</button></th>
+              <th><button class="sort-btn" type="button" data-sort="starts_at">When</button></th>
+              <th><button class="sort-btn" type="button" data-sort="client_name">Client</button></th>
+              <th><button class="sort-btn" type="button" data-sort="client_email">Email</button></th>
+              <th><button class="sort-btn" type="button" data-sort="current_status">Status</button></th>
+              <th><button class="sort-btn" type="button" data-sort="notes">Notes</button></th>
             </tr>
           </thead>
           <tbody id="rowsBody"></tbody>

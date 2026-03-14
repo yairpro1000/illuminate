@@ -4,6 +4,8 @@
   const state = {
     allRows: [],
     rows: [],
+    sortKey: 'starts_at',
+    sortDir: 'asc',
     editing: null,
     saving: false,
     loadingRows: false,
@@ -79,6 +81,46 @@
     return [firstName.toLowerCase(), lastName.toLowerCase(), email.toLowerCase()].join('|') || fallback;
   }
 
+  function rowTitle(row) {
+    return row.event_id ? (row.event_title || 'Event') : (row.session_type_title || 'Session');
+  }
+
+  function rowClientName(row) {
+    return [row.client_first_name || '', row.client_last_name || ''].join(' ').trim();
+  }
+
+  function sortRows(rows) {
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      let av;
+      let bv;
+      switch (state.sortKey) {
+        case 'starts_at':
+          av = new Date(a.starts_at || 0).getTime();
+          bv = new Date(b.starts_at || 0).getTime();
+          break;
+        case 'title':
+          av = rowTitle(a);
+          bv = rowTitle(b);
+          break;
+        case 'client_name':
+          av = rowClientName(a);
+          bv = rowClientName(b);
+          break;
+        default:
+          av = a[state.sortKey];
+          bv = b[state.sortKey];
+          break;
+      }
+      av = typeof av === 'number' ? av : String(av || '').toLowerCase();
+      bv = typeof bv === 'number' ? bv : String(bv || '').toLowerCase();
+      if (av < bv) return state.sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return state.sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }
+
   function populateClientDropdown() {
     const selected = clientNameEl.value;
     const clients = new Map();
@@ -119,7 +161,7 @@
         return haystack.includes(q);
       });
     }
-    state.rows = rows;
+    state.rows = sortRows(rows);
     renderRows();
   }
 
@@ -139,8 +181,8 @@
     for (const row of state.rows) {
       const tr = document.createElement('tr');
       tr.className = 'clickable';
-      const fullName = [row.client_first_name || '', row.client_last_name || ''].join(' ').trim();
-      tr.appendChild(createCell(row.event_id ? (row.event_title || 'Event') : (row.session_type_title || 'Session')));
+      const fullName = rowClientName(row);
+      tr.appendChild(createCell(rowTitle(row)));
       tr.appendChild(createCell(new Date(row.starts_at).toLocaleString()));
       tr.appendChild(createCell(fullName));
       tr.appendChild(createCell(row.client_email || ''));
@@ -285,6 +327,16 @@
     }
   }
 
+  function toggleSort(sortKey) {
+    if (state.sortKey === sortKey) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    else {
+      state.sortKey = sortKey;
+      state.sortDir = sortKey === 'starts_at' ? 'asc' : 'asc';
+    }
+    state.rows = sortRows(state.rows);
+    renderRows();
+  }
+
   function openEditModal(row) {
     state.editing = row;
     editReadonlyDetailsEl.innerHTML = renderReadonlyDetails(row);
@@ -393,6 +445,10 @@
   document.getElementById('searchInput').addEventListener('input', (e) => {
     state.search = e.target.value.trim().toLowerCase();
     applyClientFilter();
+  });
+
+  document.querySelectorAll('.sort-btn').forEach((btn) => {
+    btn.addEventListener('click', () => toggleSort(btn.getAttribute('data-sort')));
   });
 
   document.getElementById('loadRows').addEventListener('click', () => {
