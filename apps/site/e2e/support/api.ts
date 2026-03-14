@@ -4,6 +4,15 @@ export const SITE_BASE_URL = process.env.E2E_SITE_BASE_URL || 'https://letsillum
 export const ADMIN_BASE_URL = process.env.E2E_ADMIN_BASE_URL || 'https://admin.letsilluminate.co';
 export const API_BASE_URL = process.env.E2E_API_BASE_URL || 'https://api.letsilluminate.co';
 
+type ServiceKey = 'repository' | 'email' | 'calendar' | 'payments' | 'antibot';
+
+interface AdminConfigService {
+  key: ServiceKey;
+  effective_mode: string;
+  env_mode: string;
+  override_mode: string | null;
+}
+
 export interface BookingArtifacts {
   client: {
     id: string;
@@ -64,6 +73,12 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+async function adminJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers || {});
+  headers.set('Cf-Access-Authenticated-User-Email', 'admin@example.com');
+  return apiJson<T>(path, { ...init, headers });
+}
+
 export async function getSlots(from: string, to: string, type: 'intro' | 'session', tz = 'Europe/Zurich'): Promise<PublicSlot[]> {
   const params = new URLSearchParams({ from, to, type, tz });
   const data = await apiJson<{ slots: PublicSlot[] }>(`/api/slots?${params.toString()}`);
@@ -72,6 +87,23 @@ export async function getSlots(from: string, to: string, type: 'intro' | 'sessio
 
 export async function createPayNowBookingForSlot(slot: PublicSlot, email: string): Promise<{ booking_id: string; checkout_url: string | null; checkout_hold_expires_at: string | null }> {
   return apiJson('/api/bookings/pay-now', {
+    method: 'POST',
+    body: JSON.stringify({
+      slot_start: slot.start,
+      slot_end: slot.end,
+      type: slot.type,
+      timezone: 'Europe/Zurich',
+      first_name: 'P4',
+      last_name: 'E2E',
+      client_email: email,
+      client_phone: '+41790000000',
+      turnstile_token: 'test_turnstile_ok',
+    }),
+  });
+}
+
+export async function createPayLaterBookingForSlot(slot: PublicSlot, email: string): Promise<{ booking_id: string; status: string }> {
+  return apiJson('/api/bookings/pay-later', {
     method: 'POST',
     body: JSON.stringify({
       slot_start: slot.start,
@@ -111,6 +143,46 @@ export async function cancelBookingByManageUrl(manageUrl: string): Promise<void>
 export async function getEvents(): Promise<Array<Record<string, any>>> {
   const data = await apiJson<{ events: Array<Record<string, any>> }>('/api/events');
   return Array.isArray(data.events) ? data.events : [];
+}
+
+export async function getSessionTypes(): Promise<Array<Record<string, any>>> {
+  const data = await apiJson<{ session_types: Array<Record<string, any>> }>('/api/session-types');
+  return Array.isArray(data.session_types) ? data.session_types : [];
+}
+
+export async function getAdminEventsAll(): Promise<Array<Record<string, any>>> {
+  const data = await adminJson<{ events: Array<Record<string, any>> }>('/api/admin/events/all');
+  return Array.isArray(data.events) ? data.events : [];
+}
+
+export async function createLateAccessLink(eventId: string): Promise<{ url: string; expires_at: string }> {
+  return adminJson(`/api/admin/events/${encodeURIComponent(eventId)}/late-access-links`, {
+    method: 'POST',
+  });
+}
+
+export async function getAdminContactMessages(): Promise<Array<Record<string, any>>> {
+  const data = await adminJson<{ rows: Array<Record<string, any>> }>('/api/admin/contact-messages');
+  return Array.isArray(data.rows) ? data.rows : [];
+}
+
+export async function ensureAdminServiceMode(key: ServiceKey, mode: string): Promise<void> {
+  const config = await adminJson<{ services: AdminConfigService[] }>('/api/admin/config');
+  const service = Array.isArray(config.services) ? config.services.find((entry) => entry.key === key) : null;
+  if (!service) throw new Error(`Admin config is missing service '${key}'`);
+  if (service.effective_mode === mode) return;
+
+  const updated = await adminJson<{ effective_mode: string }>('/api/admin/config', {
+    method: 'PATCH',
+    body: JSON.stringify({ key, mode }),
+  });
+  if (updated.effective_mode !== mode) {
+    throw new Error(`Could not force ${key} mode to ${mode}. Effective mode is ${updated.effective_mode}`);
+  }
+}
+
+export async function ensureEmailMock(): Promise<void> {
+  await ensureAdminServiceMode('email', 'mock');
 }
 
 export async function waitForBookingArtifacts(email: string): Promise<BookingArtifacts> {

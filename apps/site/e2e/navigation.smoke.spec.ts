@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ADMIN_BASE_URL, SITE_BASE_URL } from './support/api';
+import { ADMIN_BASE_URL, SITE_BASE_URL, ensureEmailMock } from './support/api';
 import { attachRuntimeMonitor } from './support/runtime';
 
 function expectPath(pageUrl: string, pattern: RegExp) {
@@ -27,6 +27,10 @@ async function waitForAdminStatusReady(page: Parameters<typeof attachRuntimeMoni
 }
 
 test.describe('P4 navigation smoke', () => {
+  test.beforeAll(async () => {
+    await ensureEmailMock();
+  });
+
   test('site desktop nav and footer are runtime-clean', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
 

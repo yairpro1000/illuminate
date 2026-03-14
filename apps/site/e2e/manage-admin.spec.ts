@@ -5,6 +5,7 @@ import {
   cancelBookingByManageUrl,
   clickFirstAvailableSlot,
   createPayNowBookingForSlot,
+  ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
   getSlots,
@@ -152,6 +153,10 @@ async function waitForRescheduleDayRecovery(
 }
 
 test.describe('P4 manage and admin interactions', () => {
+  test.beforeAll(async () => {
+    await ensureEmailMock();
+  });
+
   test('manage link reschedules an eligible 1:1 booking', async ({ page }, testInfo) => {
     const email = makeScenarioEmail('p4-reschedule');
     const artifacts = await createConfirmedIntroBooking(page, email, testInfo);

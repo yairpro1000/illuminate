@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   SITE_BASE_URL,
   clickFirstAvailableSlot,
+  ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
   getEvents,
@@ -57,6 +58,10 @@ async function waitForSlotPresence(
 }
 
 test.describe('P4 core booking flows', () => {
+  test.beforeAll(async () => {
+    await ensureEmailMock();
+  });
+
   test('free intro flow confirms, manage link opens, slot disappears, cancel returns slot', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
     const email = makeScenarioEmail('p4-intro');

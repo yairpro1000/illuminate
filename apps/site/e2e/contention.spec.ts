@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import {
   SITE_BASE_URL,
   cancelBookingByManageUrl,
+  ensureEmailMock,
   expectManageStatus,
   getSlots,
   makeScenarioEmail,
@@ -247,6 +248,10 @@ async function newPage(browser: Browser): Promise<Page> {
 }
 
 test.describe('P4 multi-user slot contention', () => {
+  test.beforeAll(async () => {
+    await ensureEmailMock();
+  });
+
   test('a second user loses cleanly when submitting a stale intro slot after the first user confirms it', async ({ browser }, testInfo) => {
     const pageA = await newPage(browser);
     const pageB = await newPage(browser);
