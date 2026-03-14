@@ -149,7 +149,8 @@ Prefer direct, business-level scenario names and IDs that match the user's test 
 The initial smoke plan should verify, at minimum:
 
 - each primary navigation link can be opened from its real navigation surface
-- the destination renders without unexpected console or network errors
+- the destination is allowed to finish loading fully, including relevant API activity for the page
+- the destination renders without unexpected console or network errors after load has settled
 - mobile-only and desktop-only navigation variants both work when they exist
 - obvious broken routes, missing pages, and runtime failures are surfaced before deeper testing begins
 
@@ -176,6 +177,8 @@ For the navigation smoke pass:
 - cover footer links
 - cover hamburger-menu links in mobile layout
 - cover any alternate menu structure discovered in the app
+- wait for each destination page to finish loading fully before judging pass or fail
+- include relevant page API calls in that readiness check instead of passing on early shell render only
 - fail the smoke pass if any primary navigation destination is broken or runtime-noisy
 
 If the app lacks the hooks needed for deterministic coverage, stop and state exactly what must be added.
@@ -187,6 +190,7 @@ Run the approved scope against the agreed environment.
 During execution:
 
 - run the navigation smoke phase first so obvious broken routes or runtime issues are caught before deeper business scenarios
+- for each smoke-tested page, wait for the page and its relevant API requests to settle before evaluating cleanliness
 - collect screenshots at key checkpoints
 - retain traces, reports, videos, or logs when useful
 - collect console-error, page-error, and failed-request evidence for each exercised domain
@@ -270,6 +274,7 @@ Treat these as failures or bugs unless explicitly approved otherwise:
 - unhandled page errors
 - unexpected console errors
 - unexpected failed network requests relevant to the exercised flow
+- pages that appear visually but have not actually finished loading their required data
 
 ### Coverage Note
 
@@ -282,6 +287,8 @@ State:
 Also state whether the tested domains finished clean from a frontend-runtime perspective. If not, list the remaining console or network issues that prevent calling the domain clean.
 
 State separately whether the navigation surfaces are clean across desktop and mobile variants when those variants were in scope.
+
+For smoke navigation results, make clear that a page was only marked PASS after full load completion and relevant API settlement.
 
 ## Scenario Design Examples
 

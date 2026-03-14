@@ -7,6 +7,25 @@ function expectPath(pageUrl: string, pattern: RegExp) {
   expect(pathname).toMatch(pattern);
 }
 
+async function waitForEventsPageReady(page: Parameters<typeof attachRuntimeMonitor>[0]) {
+  await expect(page.locator('#events-grid')).toBeVisible();
+  await expect(page.locator('#events-grid .event-card, #events-grid .events-empty, #events-grid .events-error').first()).toBeVisible();
+}
+
+async function waitForSessionsPageReady(page: Parameters<typeof attachRuntimeMonitor>[0]) {
+  await expect(page.locator('#sessionGrid')).toBeVisible();
+  await expect(page.locator('#sessionGrid .event-card, #sessionGrid .sessions-intro').first()).toBeVisible();
+}
+
+async function waitForAdminStatusReady(page: Parameters<typeof attachRuntimeMonitor>[0], expectedText: RegExp) {
+  await page.waitForFunction((matcherSource) => {
+    const status = document.querySelector('#status');
+    const text = status && status.textContent ? status.textContent.trim() : '';
+    if (!text || /^loading/i.test(text)) return false;
+    return new RegExp(matcherSource, 'i').test(text);
+  }, expectedText.source);
+}
+
 test.describe('P4 navigation smoke', () => {
   test('site desktop nav and footer are runtime-clean', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
@@ -27,25 +46,27 @@ test.describe('P4 navigation smoke', () => {
     checkpoint = runtime.checkpoint();
     await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Evenings' }).click();
     expectPath(page.url(), /\/evenings(?:\.html)?$/);
-    await expect(page.locator('#events-grid')).toBeVisible();
+    await waitForEventsPageReady(page);
     await runtime.assertNoNewIssues(checkpoint, 'site-nav-evenings', testInfo);
 
     checkpoint = runtime.checkpoint();
     await page.getByRole('link', { name: 'Book a Session' }).click();
     expectPath(page.url(), /\/sessions(?:\.html)?$/);
-    await expect(page.locator('#sessionGrid')).toBeVisible();
+    await waitForSessionsPageReady(page);
     await runtime.assertNoNewIssues(checkpoint, 'site-nav-book-session', testInfo);
 
     checkpoint = runtime.checkpoint();
     await page.goto(`${SITE_BASE_URL}/`);
     await page.getByRole('navigation', { name: 'Footer navigation' }).getByRole('link', { name: 'Evenings' }).click();
     expectPath(page.url(), /\/evenings(?:\.html)?$/);
+    await waitForEventsPageReady(page);
     await runtime.assertNoNewIssues(checkpoint, 'site-footer-evenings', testInfo);
 
     checkpoint = runtime.checkpoint();
     await page.goto(`${SITE_BASE_URL}/`);
     await page.getByRole('navigation', { name: 'Footer navigation' }).getByRole('link', { name: '1:1 Sessions' }).click();
     expectPath(page.url(), /\/sessions(?:\.html)?$/);
+    await waitForSessionsPageReady(page);
     await runtime.assertNoNewIssues(checkpoint, 'site-footer-sessions', testInfo);
 
     checkpoint = runtime.checkpoint();
@@ -64,6 +85,7 @@ test.describe('P4 navigation smoke', () => {
     let checkpoint = runtime.checkpoint();
     await page.getByRole('menuitem', { name: 'Evenings' }).click();
     expectPath(page.url(), /\/evenings(?:\.html)?$/);
+    await waitForEventsPageReady(page);
     await runtime.assertNoNewIssues(checkpoint, 'mobile-menu-evenings', testInfo);
 
     checkpoint = runtime.checkpoint();
@@ -90,6 +112,15 @@ test.describe('P4 navigation smoke', () => {
       const checkpoint = runtime.checkpoint();
       await page.locator(`.admin-nav-link:has-text("${item.label}")`).click();
       expectPath(page.url(), item.pattern);
+      if (item.label === 'Bookings') {
+        await waitForAdminStatusReady(page, /ready|loaded .* bookings|no rows/i);
+      } else if (item.label === 'Edit Offers') {
+        await waitForAdminStatusReady(page, /ready/i);
+      } else if (item.label === 'Contact Messages') {
+        await waitForAdminStatusReady(page, /loaded .* messages|no messages/i);
+      } else if (item.label === 'Config') {
+        await waitForAdminStatusReady(page, /ready/i);
+      }
       await runtime.assertNoNewIssues(checkpoint, `admin-nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`, testInfo);
     }
   });

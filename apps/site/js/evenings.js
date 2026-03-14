@@ -5,8 +5,23 @@
 (function initEventCards() {
   const grid = document.getElementById('events-grid');
   const SITE_CLIENT = window.siteClient || null;
-  const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
   if (!grid) return;
+  const eventsLoadController = typeof AbortController === 'function' ? new AbortController() : null;
+  let pageDisposing = false;
+
+  function markPageDisposing() {
+    pageDisposing = true;
+    eventsLoadController?.abort();
+  }
+
+  window.addEventListener('pagehide', markPageDisposing, { once: true });
+
+  function isExpectedEventsLoadAbort(err) {
+    if (pageDisposing || eventsLoadController?.signal.aborted) return true;
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') return true;
+    const message = err instanceof Error ? err.message : String(err || '');
+    return pageDisposing && message.includes('Failed to fetch');
+  }
 
   function formatDateLabel(iso) {
     return new Date(iso).toLocaleString('en-GB', {
@@ -213,13 +228,17 @@
     attachReminderHandlers(grid);
   }
 
-  SITE_CLIENT.requestJson('/api/events')
+  SITE_CLIENT.requestJson('/api/events', {
+    signal: eventsLoadController?.signal,
+  })
     .then((data) => {
+      if (pageDisposing) return;
       const events = Array.isArray(data.events) ? data.events : [];
       events.sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
       renderSections(events);
     })
     .catch((err) => {
+      if (isExpectedEventsLoadAbort(err)) return;
       console.error('[evenings.js] Could not load events:', err);
       grid.innerHTML = '<p class="events-error">Could not load events. Please try again later.</p>';
     });

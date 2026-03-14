@@ -6,10 +6,11 @@
    Depends on: api.js (loaded first in book.html)
    ============================================================ */
 
+(function initBookPage() {
 'use strict';
 const BOOK_OBS = window.siteObservability || null;
-const SITE_CLIENT = window.siteClient || null;
-const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
+const BOOK_PAGE_CLIENT = window.siteClient || null;
+const SITE_CONFIG = BOOK_PAGE_CLIENT && BOOK_PAGE_CLIENT.config ? BOOK_PAGE_CLIENT.config : {};
 const BOOK_SHARED = window.BookPageShared || {};
 const BOOK_EFFECTS = window.BookPageEffects || {};
 const BOOK_VIEWS = window.BookPageViews || {};
@@ -382,3 +383,4 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+})();
