@@ -42,6 +42,15 @@ describe('public config endpoint diagnostics', () => {
             pass: 'site-key-pass',
             fail: 'site-key-fail',
           },
+          env: {
+            ANTIBOT_MODE: 'mock',
+            TURNSTILE_SITE_KEY: 'site-key-live',
+            TURNSTILE_TEST_SITE_KEY_PASS: 'site-key-pass',
+            TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: 'site-key-fail',
+            TURNSTILE_SECRET_KEY_present: true,
+            TURNSTILE_TEST_SECRET_KEY_PASS_present: true,
+            TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL_present: true,
+          },
         },
       },
     });
@@ -58,6 +67,10 @@ describe('public config endpoint diagnostics', () => {
       context: expect.objectContaining({
         antibot_mode: 'mock',
         turnstile_enabled: false,
+        turnstile_env_snapshot: expect.objectContaining({
+          TURNSTILE_TEST_SITE_KEY_PASS: 'site-key-pass',
+          TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: 'site-key-fail',
+        }),
         branch_taken: 'public_config_response_prepared',
       }),
     }));
@@ -138,6 +151,11 @@ describe('public config endpoint diagnostics', () => {
       }),
       antibot: expect.objectContaining({
         mode: 'mock',
+        turnstile: expect.objectContaining({
+          env: expect.objectContaining({
+            ANTIBOT_MODE: 'mock',
+          }),
+        }),
       }),
       booking_policy_text: expect.stringContaining('up to 12 hours before the session'),
     }));

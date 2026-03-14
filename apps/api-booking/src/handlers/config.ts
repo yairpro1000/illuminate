@@ -101,6 +101,15 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
             pass: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
             fail: ctx.env.TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL ?? null,
           },
+          env: {
+            ANTIBOT_MODE: ctx.env.ANTIBOT_MODE ?? null,
+            TURNSTILE_SITE_KEY: ctx.env.TURNSTILE_SITE_KEY ?? null,
+            TURNSTILE_TEST_SITE_KEY_PASS: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
+            TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: ctx.env.TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL ?? null,
+            TURNSTILE_SECRET_KEY_present: !!ctx.env.TURNSTILE_SECRET_KEY,
+            TURNSTILE_TEST_SECRET_KEY_PASS_present: !!ctx.env.TURNSTILE_TEST_SECRET_KEY_PASS,
+            TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL_present: !!ctx.env.TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL,
+          },
         },
       },
     };
@@ -115,6 +124,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         config_version: responseBody.config_version,
         antibot_mode: responseBody.antibot.mode,
         turnstile_enabled: responseBody.antibot.turnstile.enabled,
+        turnstile_env_snapshot: responseBody.antibot.turnstile.env,
         branch_taken: 'public_config_response_prepared',
       },
     });
