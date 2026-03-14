@@ -1,0 +1,144 @@
+import { expect, test, type Browser, type Page } from '@playwright/test';
+import {
+  SITE_BASE_URL,
+  cancelBookingByManageUrl,
+  expectManageStatus,
+  makeScenarioEmail,
+  waitForBookingArtifacts,
+} from './support/api';
+
+async function openIntroFlow(page: Page): Promise<void> {
+  await page.goto(`${SITE_BASE_URL}/sessions.html`);
+  await page.locator('a.btn[href*="book.html?type=intro"]').first().click();
+  await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
+}
+
+async function chooseSpecificIntroSlot(page: Page, dateYmd: string, timeLabel: string): Promise<void> {
+  await page.locator(`[data-date="${dateYmd}"]`).click();
+  await page.locator('.time-slot', { hasText: timeLabel }).click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+}
+
+async function chooseFirstIntroSlot(page: Page): Promise<{ dateYmd: string; timeLabel: string }> {
+  const day = page.locator('.cal-day--available:not([disabled])').first();
+  const dateYmd = await day.getAttribute('data-date');
+  await day.click();
+  const slot = page.locator('.time-slot').first();
+  const timeLabel = (await slot.innerText()).trim();
+  await slot.click();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  return { dateYmd: dateYmd || '', timeLabel };
+}
+
+async function fillIntroDetailsAndReachReview(page: Page, email: string): Promise<void> {
+  await page.locator('#f-first-name').fill('P4');
+  await page.locator('#f-last-name').fill('Race');
+  await page.locator('#f-email').fill(email);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.locator('button[data-submit]')).toBeVisible();
+}
+
+async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'> {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (await page.locator('.confirmation__title').count()) return 'success';
+    const error = page.locator('.form-error[role="alert"]').first();
+    if (await error.count()) {
+      const text = (await error.textContent()) || '';
+      if (text.includes('This slot is no longer available')) return 'slot-lost';
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error('Timed out waiting for booking contention outcome');
+}
+
+async function cleanupConfirmedIntro(email: string): Promise<void> {
+  const artifacts = await expectManageStatus(email, 'CONFIRMED');
+  await cancelBookingByManageUrl(artifacts.links.manage_url);
+  await expectManageStatus(email, 'CANCELED');
+}
+
+async function createPreparedIntroDraft(page: Page, email: string): Promise<{ dateYmd: string; timeLabel: string }> {
+  await openIntroFlow(page);
+  const chosen = await chooseFirstIntroSlot(page);
+  await fillIntroDetailsAndReachReview(page, email);
+  return chosen;
+}
+
+async function createPreparedIntroDraftForSlot(page: Page, email: string, slot: { dateYmd: string; timeLabel: string }): Promise<void> {
+  await openIntroFlow(page);
+  await chooseSpecificIntroSlot(page, slot.dateYmd, slot.timeLabel);
+  await fillIntroDetailsAndReachReview(page, email);
+}
+
+async function newPage(browser: Browser): Promise<Page> {
+  return browser.newPage();
+}
+
+test.describe('P4 multi-user slot contention', () => {
+  test('a second user loses cleanly when submitting a stale intro slot after the first user confirms it', async ({ browser }) => {
+    const pageA = await newPage(browser);
+    const pageB = await newPage(browser);
+    const winnerEmail = makeScenarioEmail('p4-stale-winner');
+    const loserEmail = makeScenarioEmail('p4-stale-loser');
+
+    try {
+      const chosen = await createPreparedIntroDraft(pageA, winnerEmail);
+      await createPreparedIntroDraftForSlot(pageB, loserEmail, chosen);
+
+      await pageA.locator('button[data-submit]').click();
+      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+
+      const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
+      expect(winnerArtifacts.links.confirm_url).toBeTruthy();
+      await pageA.goto(winnerArtifacts.links.confirm_url!);
+      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+
+      await pageB.locator('button[data-submit]').click();
+      expect(await waitForIntroOutcome(pageB)).toBe('slot-lost');
+
+      await cleanupConfirmedIntro(winnerEmail);
+    } finally {
+      await pageA.close();
+      await pageB.close();
+    }
+  });
+
+  test('two users racing for the same intro slot produce one winner and one clean slot-taken failure', async ({ browser }) => {
+    const pageA = await newPage(browser);
+    const pageB = await newPage(browser);
+    const emailA = makeScenarioEmail('p4-race-a');
+    const emailB = makeScenarioEmail('p4-race-b');
+
+    try {
+      const chosen = await createPreparedIntroDraft(pageA, emailA);
+      await createPreparedIntroDraftForSlot(pageB, emailB, chosen);
+
+      await Promise.all([
+        pageA.locator('button[data-submit]').click(),
+        pageB.locator('button[data-submit]').click(),
+      ]);
+
+      const [outcomeA, outcomeB] = await Promise.all([
+        waitForIntroOutcome(pageA),
+        waitForIntroOutcome(pageB),
+      ]);
+
+      expect([outcomeA, outcomeB].sort()).toEqual(['slot-lost', 'success']);
+
+      const winnerEmail = outcomeA === 'success' ? emailA : emailB;
+      const loserEmail = outcomeA === 'slot-lost' ? emailA : emailB;
+
+      const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
+      expect(winnerArtifacts.links.confirm_url).toBeTruthy();
+      await cleanupConfirmedIntro(winnerEmail);
+
+      await expect(async () => {
+        await waitForBookingArtifacts(loserEmail);
+      }).rejects.toThrow();
+    } finally {
+      await pageA.close();
+      await pageB.close();
+    }
+  });
+});

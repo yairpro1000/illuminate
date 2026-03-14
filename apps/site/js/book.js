@@ -328,6 +328,11 @@ async function handleSubmit() {
         },
       });
     }
+    const userMessage =
+      (err && typeof err === 'object' && err.data && typeof err.data.message === 'string' && err.data.message)
+      || (err && typeof err === 'object' && typeof err.message === 'string' && err.message)
+      || 'Something went wrong. Please try again.';
+    S.errors = { global: userMessage };
     S.submitting = false;
     render();
   }

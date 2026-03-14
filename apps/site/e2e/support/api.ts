@@ -31,6 +31,12 @@ export interface BookingArtifacts {
   };
 }
 
+export interface PublicSlot {
+  type: 'intro' | 'session';
+  start: string;
+  end: string;
+}
+
 export function makeScenarioEmail(prefix: string): string {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return `${prefix}-${suffix}@example.test`;
@@ -56,6 +62,50 @@ async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return body as T;
+}
+
+export async function getSlots(from: string, to: string, type: 'intro' | 'session', tz = 'Europe/Zurich'): Promise<PublicSlot[]> {
+  const params = new URLSearchParams({ from, to, type, tz });
+  const data = await apiJson<{ slots: PublicSlot[] }>(`/api/slots?${params.toString()}`);
+  return Array.isArray(data.slots) ? data.slots : [];
+}
+
+export async function createPayNowBookingForSlot(slot: PublicSlot, email: string): Promise<{ booking_id: string; checkout_url: string | null; checkout_hold_expires_at: string | null }> {
+  return apiJson('/api/bookings/pay-now', {
+    method: 'POST',
+    body: JSON.stringify({
+      slot_start: slot.start,
+      slot_end: slot.end,
+      type: slot.type,
+      timezone: 'Europe/Zurich',
+      first_name: 'P4',
+      last_name: 'E2E',
+      client_email: email,
+      client_phone: '+41790000000',
+      turnstile_token: 'test_turnstile_ok',
+    }),
+  });
+}
+
+export async function simulatePaymentSuccess(sessionId: string): Promise<void> {
+  await apiJson(`/api/__dev/simulate-payment?session_id=${encodeURIComponent(sessionId)}&result=success`, {
+    method: 'POST',
+  });
+}
+
+export async function cancelBookingByManageUrl(manageUrl: string): Promise<void> {
+  const url = new URL(manageUrl);
+  const token = url.searchParams.get('token');
+  const adminToken = url.searchParams.get('admin_token');
+  if (!token) throw new Error('Manage URL is missing token');
+
+  await apiJson('/api/bookings/cancel', {
+    method: 'POST',
+    body: JSON.stringify({
+      token,
+      ...(adminToken ? { admin_token: adminToken } : {}),
+    }),
+  });
 }
 
 export async function getEvents(): Promise<Array<Record<string, any>>> {

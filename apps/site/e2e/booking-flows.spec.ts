@@ -31,6 +31,31 @@ async function assertSlotPresence(page: Page, dateYmd: string, timeLabel: string
   }
 }
 
+async function waitForSlotPresence(
+  page: Page,
+  url: string,
+  dateYmd: string,
+  timeLabel: string,
+  expected: 'present' | 'absent',
+  timeoutMs = 30_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await page.goto(url);
+      await assertSlotPresence(page, dateYmd, timeLabel, expected);
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.waitForTimeout(1000);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`Slot did not become ${expected} within ${timeoutMs}ms`);
+}
+
 test.describe('P4 core booking flows', () => {
   test('free intro flow confirms, manage link opens, slot disappears, cancel returns slot', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
@@ -78,8 +103,7 @@ test.describe('P4 core booking flows', () => {
     await expectManageStatus(email, 'CANCELED');
 
     checkpoint = runtime.checkpoint();
-    await page.goto(`${SITE_BASE_URL}/book?type=intro`);
-    await assertSlotPresence(page, chosenSlot.dateYmd, chosenSlot.timeLabel, 'present');
+    await waitForSlotPresence(page, `${SITE_BASE_URL}/book?type=intro`, chosenSlot.dateYmd, chosenSlot.timeLabel, 'present');
     await runtime.assertNoNewIssues(checkpoint, 'intro-slot-restored-after-cancel', testInfo);
   });
 
