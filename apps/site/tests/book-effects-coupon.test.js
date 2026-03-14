@@ -15,6 +15,9 @@ describe('book effects coupon submission', () => {
     window.eventBookWithAccess = vi.fn()
     window._get = vi.fn()
     window.getPublicConfig = vi.fn()
+    window.SiteTurnstile = {
+      resolveToken: vi.fn().mockResolvedValue('turnstile-live-token'),
+    }
   })
 
   it('forwards offer slug and coupon code on paid session booking submissions', async () => {
@@ -50,6 +53,7 @@ describe('book effects coupon submission', () => {
       offer_slug: 'cycle-session',
       coupon_code: 'ISRAEL',
       type: 'session',
+      turnstile_token: 'turnstile-live-token',
     }))
   })
 })

@@ -8,6 +8,7 @@
 (function () {
   const OBS = window.siteObservability || null;
   const SITE_CLIENT = window.siteClient || null;
+  const SITE_TURNSTILE = window.SiteTurnstile || null;
   const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
 
   const form       = document.getElementById('contact-form');
@@ -17,6 +18,38 @@
   const submitErr  = document.getElementById('contact-submit-error');
 
   if (!form) return;
+
+  const contactTurnstileConfigPromise = (async function loadContactTurnstileConfig() {
+    if (typeof getPublicConfig !== 'function') return;
+    try {
+      const data = await getPublicConfig();
+      if (SITE_TURNSTILE && typeof SITE_TURNSTILE.applyPublicConfig === 'function') {
+        SITE_TURNSTILE.applyPublicConfig(SITE_CONFIG, data);
+      }
+      if (OBS) {
+        OBS.logMilestone('contact_turnstile_config_loaded', {
+          flow: 'site_contact_form',
+          antibot_mode: data && data.antibot ? data.antibot.mode : null,
+          turnstile_enabled: !!(data && data.antibot && data.antibot.turnstile && data.antibot.turnstile.enabled),
+        });
+      }
+    } catch (error) {
+      if (SITE_TURNSTILE && typeof SITE_TURNSTILE.markConfigLoadFailed === 'function') {
+        SITE_TURNSTILE.markConfigLoadFailed(SITE_CONFIG, 'public_config_load_failed');
+      }
+      if (OBS) {
+        OBS.logError({
+          eventType: 'contact_turnstile_config_load_failed',
+          message: error && error.message ? error.message : 'Contact form config request failed',
+          error: {
+            errorName: error && error.name || 'Error',
+            stackTrace: error && error.stack || null,
+            extra: { flow: 'site_contact_form' },
+          },
+        });
+      }
+    }
+  })();
 
   /* ── Validation helpers ──────────────────────────────────── */
 
@@ -107,13 +140,22 @@
     if (OBS) OBS.logMilestone('contact_submission_started', { flow: 'site_contact_form' });
 
     try {
+      await contactTurnstileConfigPromise;
+      const turnstileToken = SITE_TURNSTILE && typeof SITE_TURNSTILE.resolveToken === 'function'
+        ? await SITE_TURNSTILE.resolveToken({
+            config: SITE_CONFIG,
+            observability: OBS,
+            formName: 'contact_form',
+            action: 'contact_form_submit',
+          })
+        : (SITE_CONFIG.turnstilePlaceholderToken || 'placeholder');
       await _post('/api/contact', {
         first_name: firstName,
         last_name:  lastName || null,
         email,
         topic: topic || null,
         message,
-        turnstile_token: SITE_CONFIG.turnstilePlaceholderToken || 'placeholder',
+        turnstile_token: turnstileToken,
       });
 
       // Show success

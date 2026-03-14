@@ -99,6 +99,11 @@
     }));
   }
 
+  function logHomeVisitorCountry() {
+    if (!document.body || document.body.getAttribute('data-page') !== 'home') return;
+    console.log('[coupon] request.cf.country via /api/config:', visitorCountry);
+  }
+
   function resolveVisitorCountry() {
     if (visitorCountryResolved) return Promise.resolve(visitorCountry);
     if (visitorCountryRequest) return visitorCountryRequest;
@@ -122,6 +127,7 @@
       })
       .finally(() => {
         visitorCountryRequest = null;
+        logHomeVisitorCountry();
         emitVisitorContextRefresh('visitor_country_resolved');
       });
     return visitorCountryRequest;

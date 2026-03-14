@@ -106,4 +106,23 @@ describe('site coupon helper', () => {
     expect(banner).not.toBeNull()
     expect(banner.textContent).toContain('Apply Israel discount')
   })
+
+  it('logs the resolved request country on the homepage', async () => {
+    document.body.setAttribute('data-page', 'home')
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        visitor: {
+          country: 'IL',
+        },
+      }),
+    })
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    evalCode(couponCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await window.SiteCoupon.resolveVisitorCountry()
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('[coupon] request.cf.country via /api/config:', 'IL')
+  })
 })

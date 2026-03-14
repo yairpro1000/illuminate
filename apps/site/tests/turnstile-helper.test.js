@@ -1,0 +1,58 @@
+import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
+import turnstileCode from '../js/turnstile.js?raw'
+
+function evalCode(code) {
+  // eslint-disable-next-line no-eval
+  ;(0, eval)(code)
+}
+
+describe('site turnstile helper', () => {
+  beforeEach(() => {
+    document.body.innerHTML = ''
+    window.SiteTurnstile = undefined
+    window.turnstile = undefined
+  })
+
+  afterEach(() => {
+    delete window.turnstile
+  })
+
+  it('returns the placeholder token when turnstile is disabled', async () => {
+    evalCode(turnstileCode)
+
+    const token = await window.SiteTurnstile.resolveToken({
+      config: {
+        turnstileEnabled: false,
+        turnstilePlaceholderToken: 'placeholder-token',
+      },
+    })
+
+    expect(token).toBe('placeholder-token')
+  })
+
+  it('executes the invisible widget when turnstile is enabled', async () => {
+    evalCode(turnstileCode)
+    window.turnstile = {
+      render: vi.fn((container, options) => {
+        setTimeout(() => options.callback('resolved-turnstile-token'), 0)
+        return 'widget-1'
+      }),
+      execute: vi.fn(),
+      remove: vi.fn(),
+    }
+
+    const token = await window.SiteTurnstile.resolveToken({
+      config: {
+        turnstileEnabled: true,
+        turnstileSiteKey: 'site-key-live',
+        turnstilePlaceholderToken: 'placeholder-token',
+      },
+      formName: 'booking',
+      action: 'booking_submit',
+    })
+
+    expect(token).toBe('resolved-turnstile-token')
+    expect(window.turnstile.render).toHaveBeenCalled()
+    expect(window.turnstile.execute).toHaveBeenCalledWith('widget-1')
+  })
+})

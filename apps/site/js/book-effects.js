@@ -1,7 +1,25 @@
 (function () {
   'use strict';
 
+  const SITE_TURNSTILE = window.SiteTurnstile || null;
+
+  async function resolveSubmitTurnstileToken(args, action) {
+    if (SITE_TURNSTILE && typeof SITE_TURNSTILE.resolveToken === 'function') {
+      return await SITE_TURNSTILE.resolveToken({
+        config: args.config,
+        observability: args.observability,
+        formName: args.context && args.context.source === 'evening' ? 'event_registration' : 'booking',
+        action: action,
+      });
+    }
+    return args.config.turnstilePlaceholderToken || 'placeholder';
+  }
+
   async function submitBooking(args) {
+    const turnstileToken = await resolveSubmitTurnstileToken(
+      args,
+      args.isIntroFlow() ? 'booking_intro_submit' : (args.state.paymentMethod === 'pay-now' ? 'booking_pay_now_submit' : 'booking_pay_later_submit'),
+    );
     const payload = {
       slot_start: args.state.selectedSlot.start,
       slot_end: args.state.selectedSlot.end,
@@ -13,7 +31,7 @@
       client_phone: args.state.phone.trim() || null,
       reminder_email_opt_in: true,
       reminder_whatsapp_opt_in: false,
-      turnstile_token: args.config.turnstilePlaceholderToken || 'placeholder',
+      turnstile_token: turnstileToken,
       coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
         ? (args.state.appliedCouponCode || null)
         : null,
@@ -56,6 +74,7 @@
   }
 
   async function submitEventRegistration(args) {
+    const turnstileToken = await resolveSubmitTurnstileToken(args, 'event_registration_submit');
     const payload = {
       first_name: args.state.firstName.trim(),
       last_name: args.state.lastName.trim() || null,
@@ -63,7 +82,7 @@
       phone: args.state.phone.trim() || null,
       reminder_email_opt_in: true,
       reminder_whatsapp_opt_in: false,
-      turnstile_token: args.config.turnstilePlaceholderToken || 'placeholder',
+      turnstile_token: turnstileToken,
       coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
         ? (args.state.appliedCouponCode || null)
         : null,
@@ -102,6 +121,9 @@
   async function loadPublicConfig(args) {
     try {
       const data = await getPublicConfig();
+      if (SITE_TURNSTILE && typeof SITE_TURNSTILE.applyPublicConfig === 'function') {
+        SITE_TURNSTILE.applyPublicConfig(args.config, data);
+      }
       const minutes = Number(data && data.booking_policy && data.booking_policy.non_paid_confirmation_window_minutes);
       const validConfig = Number.isFinite(minutes) && minutes > 0;
       args.state.publicConfig = validConfig ? data : null;
@@ -130,6 +152,9 @@
     } catch (err) {
       console.warn('[Book] Failed to load public config:', err);
       args.state.publicConfig = null;
+      if (SITE_TURNSTILE && typeof SITE_TURNSTILE.markConfigLoadFailed === 'function') {
+        SITE_TURNSTILE.markConfigLoadFailed(args.config, 'public_config_load_failed');
+      }
       if (args.observability) {
         args.observability.logError({
           eventType: 'public_config_load_failed',

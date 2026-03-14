@@ -4,6 +4,10 @@
   const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
   const DEFAULT_CONFIG = {
     timezone: 'Europe/Zurich',
+    antibotMode: 'mock',
+    turnstileEnabled: false,
+    turnstileSiteKey: null,
+    turnstileLoadError: null,
     turnstilePlaceholderToken: 'placeholder',
     defaultBookingPolicyLines: [
       'Booking policy',
