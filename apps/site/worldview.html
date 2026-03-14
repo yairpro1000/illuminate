@@ -40,46 +40,16 @@
   <!-- ══════════════════════════════════════════════════════
        NAVIGATION
   ══════════════════════════════════════════════════════ -->
-  <nav class="nav" role="navigation" aria-label="Main navigation">
-    <div class="nav__inner">
-
-      <a href="index.html#hero" class="nav__logo">
-        ILLUMINATE <span>by Yair Benharroch</span>
-      </a>
-
-      <!-- Desktop links -->
-      <ul class="nav__links" role="list">
-        <li><a href="index.html#how-we-work">How We Work</a></li>
-        <li><a href="index.html#investment">Investment</a></li>
-        <li><a href="index.html#about">About</a></li>
-        <li><a href="worldview.html" aria-current="page">My Worldview</a></li>
-      </ul>
-
-      <a href="index.html#final" class="nav__cta">Book a Session</a>
-
-      <!-- Mobile hamburger -->
-      <button class="nav__hamburger" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
-
-    </div>
-
-    <!-- Mobile menu -->
-    <div id="mobile-menu" class="nav__mobile" role="menu">
-      <button id="mobile-theme-toggle" class="nav__mobile-theme" role="menuitem">
-        <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
-        <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
-        <span class="mobile-theme-label">Dark Mode</span>
-      </button>
-      <a href="index.html#how-we-work" role="menuitem">How We Work</a>
-      <a href="index.html#investment" role="menuitem">Investment</a>
-      <a href="index.html#about" role="menuitem">About</a>
-      <a href="worldview.html" role="menuitem" aria-current="page">My Worldview</a>
-      <a href="index.html#final" role="menuitem">Book a Session</a>
-    </div>
-  </nav>
+  <nav
+    class="nav"
+    role="navigation"
+    aria-label="Main navigation"
+    data-nav-variant="worldview"
+    data-home-links="index"
+    data-current-page="worldview"
+    data-logo-href="index.html#hero"
+    data-cta-href="index.html#final"
+    data-inline-theme-toggle="false"></nav>
 
   <!-- ══════════════════════════════════════════════════════
        MAIN CONTENT
@@ -237,6 +207,7 @@
 
   <script src="js/api-base.js"></script>
   <script src="js/client.js"></script>
+  <script src="js/site-nav.js"></script>
   <script src="js/main.js"></script>
 </body>
 
