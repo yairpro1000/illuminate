@@ -9,6 +9,7 @@ import type {
   Client,
   ClientUpdate,
   ContactMessage,
+  Coupon,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
@@ -196,6 +197,13 @@ export class SupabaseRepository implements IRepository {
       `Failed to update client ${id}`,
     );
     return row;
+  }
+
+  async getCouponByCode(code: string): Promise<Coupon | null> {
+    return maybeSingle<Coupon>(
+      this.db.from('coupons').select('*').eq('code', code).limit(1).maybeSingle(),
+      `Failed to load coupon ${code}`,
+    );
   }
 
   // ── Bookings ──────────────────────────────────────────────────────────────

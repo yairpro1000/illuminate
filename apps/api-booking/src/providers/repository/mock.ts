@@ -115,6 +115,11 @@ export class MockRepository implements IRepository {
     return updated;
   }
 
+  async getCouponByCode(code: string): Promise<import('../../types.js').Coupon | null> {
+    const coupon = mockState.coupons.get(code);
+    return coupon ? { ...coupon } : null;
+  }
+
   // ── Bookings ──────────────────────────────────────────────────────────────
 
   async createBooking(data: NewBooking): Promise<Booking> {
@@ -783,7 +788,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'Where your story, values, and patterns come fully into view.',
     description: 'An extended session to map where you are, what is blocking you, and what you truly want. This becomes the foundation everything else is built on. Format: Online or in person · Lugano.',
     duration_minutes: 90,
-    price: 15000,
+    price: 150,
     currency: 'CHF',
     status: 'active',
     sort_order: 2,
@@ -800,7 +805,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'Focused, structured work within an ongoing Clarity Cycle.',
     description: 'Seven sessions per cycle, each building on the last — unpacking what is stuck and practicing the new you. On the final session we reassess whether to pause or begin a new cycle. Format: Online or in person · Lugano.',
     duration_minutes: 60,
-    price: 12000,
+    price: 120,
     currency: 'CHF',
     status: 'active',
     sort_order: 3,
@@ -817,7 +822,7 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     short_description: 'A fresh perspective from the eyes of unconditional love.',
     description: 'In this session we will connect with your guardian angels and translate their messages to illuminate your current situation with new clarity and remind you they are always here for you. Format: Online or in person · Lugano.',
     duration_minutes: 90,
-    price: 15000,
+    price: 150,
     currency: 'CHF',
     status: 'active',
     sort_order: 4,

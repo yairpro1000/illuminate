@@ -18,7 +18,7 @@
 
 </head>
 
-<body>
+<body data-page="home">
   <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
   <script>
     (function () {
@@ -459,7 +459,7 @@
 
           <div class="pricing-card fade-up fade-up--delay-1">
             <p class="pricing-card__label">Extended First Session</p>
-            <p class="pricing-card__amount">CHF 150</p>
+            <p class="pricing-card__amount" data-coupon-price data-price-chf="150" data-price-currency="CHF">CHF 150</p>
             <p class="pricing-card__desc">
               One extended session to map your story, values, patterns, and current conflict.
             </p>
@@ -476,7 +476,7 @@
 
           <div class="pricing-card pricing-card--featured fade-up fade-up--delay-2">
             <p class="pricing-card__label">Full Clarity Cycle</p>
-            <p class="pricing-card__amount">CHF 990 <span>/ cycle</span></p>
+            <p class="pricing-card__amount" data-coupon-price data-price-chf="990" data-price-currency="CHF" data-price-suffix="/ cycle">CHF 990 <span>/ cycle</span></p>
             <p class="pricing-card__desc">
               Extended first session + 7 focused sessions. Payable in full or 3 installments of CHF 330.
             </p>
@@ -591,6 +591,7 @@
 
   <script src="js/api-base.js"></script>
   <script src="js/client.js"></script>
+  <script src="js/coupon.js"></script>
   <script src="js/site-nav.js"></script>
   <script src="js/main.js"></script>
 </body>

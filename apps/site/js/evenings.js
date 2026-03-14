@@ -36,9 +36,9 @@
 
   function formatPrice(event) {
     if (!event.is_paid) return 'Free';
-    const cents = Number(event.price_per_person_cents || 0);
+    const amount = Math.round(Number(event.price_per_person || 0) * 100) / 100;
     const currency = event.currency || 'CHF';
-    return `${currency} ${(cents / 100).toFixed(2)}`;
+    return `${currency} ${Number.isInteger(amount) ? String(amount) : amount.toFixed(2)}`;
   }
 
   function bookingUrl(event) {
@@ -52,7 +52,7 @@
       eventEnd: event.ends_at,
       eventLocation: event.address_line,
       isPaid: String(Boolean(event.is_paid)),
-      price: String(Number(event.price_per_person_cents || 0)),
+      price: String(Number(event.price_per_person || 0)),
     });
 
     return 'book.html?' + params.toString();

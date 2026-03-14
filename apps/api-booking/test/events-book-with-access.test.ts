@@ -26,7 +26,7 @@ const event = {
   address_line: 'Lugano, Switzerland',
   maps_url: 'https://maps.google.com',
   is_paid: false,
-  price_per_person_cents: 0,
+  price_per_person: 0,
   currency: 'CHF',
   capacity: 24,
   status: 'PUBLISHED',

@@ -14,6 +14,7 @@ const SITE_CONFIG = BOOK_PAGE_CLIENT && BOOK_PAGE_CLIENT.config ? BOOK_PAGE_CLIE
 const BOOK_SHARED = window.BookPageShared || {};
 const BOOK_EFFECTS = window.BookPageEffects || {};
 const BOOK_VIEWS = window.BookPageViews || {};
+const SITE_COUPON = window.SiteCoupon || null;
 const parseBookingContext = BOOK_SHARED.parseBookingContext;
 const toYMD = BOOK_SHARED.toYMD;
 const formatTime = BOOK_SHARED.formatTime;
@@ -30,6 +31,8 @@ const submitEventRegistration = BOOK_EFFECTS.submitEventRegistration;
 const loadRescheduleContext = BOOK_EFFECTS.loadRescheduleContext;
 const loadPublicConfig = BOOK_EFFECTS.loadPublicConfig;
 const createBookPageViews = BOOK_VIEWS.createBookPageViews;
+const validateCouponCode = typeof validateCoupon === 'function' ? validateCoupon : null;
+const loadSessionTypes = typeof getSessionTypes === 'function' ? getSessionTypes : null;
 
 /* ══════════════════════════════════════════════════════════
    1. BOOKING CONTEXT — parsed from URL query params
@@ -44,6 +47,36 @@ function isIntroFlow() {
 
 function isSessionPayNowFlow() {
   return CTX.source !== 'evening' && CTX.mode !== 'reschedule' && CTX.slotType === 'session' && S.paymentMethod === 'pay-now';
+}
+
+function getBasePriceChf() {
+  if (CTX.source === 'evening') return Number(CTX.price || 0);
+  if (CTX.slotType === 'intro') return 0;
+  return S.selectedSessionType ? Number(S.selectedSessionType.price || 0) : 0;
+}
+
+function refreshCouponPreview() {
+  const basePrice = getBasePriceChf();
+  if (SITE_COUPON && typeof SITE_COUPON.getPricePreview === 'function') {
+    S.pricePreview = SITE_COUPON.getPricePreview(basePrice, S.appliedCouponCode || null);
+  } else {
+    S.pricePreview = null;
+  }
+}
+
+function syncCouponFromStorage(shouldRender) {
+  const nextCode = SITE_COUPON && typeof SITE_COUPON.getAppliedCouponCode === 'function'
+    ? SITE_COUPON.getAppliedCouponCode()
+    : '';
+  S.appliedCouponCode = nextCode || '';
+  if (!S.couponCodeInput) {
+    S.couponCodeInput = S.appliedCouponCode;
+  } else if (shouldRender) {
+    S.couponCodeInput = S.appliedCouponCode;
+  }
+  S.couponError = null;
+  refreshCouponPreview();
+  if (shouldRender) render();
 }
 
 // Analytics — log booking context on page load
@@ -86,6 +119,12 @@ const S = {
 
   // Payment simulation (paid flows only)
   paymentResult: null,                   // null | 'success' | 'failure'
+  selectedSessionType: null,
+  couponCodeInput: '',
+  appliedCouponCode: '',
+  couponError: null,
+  couponValidating: false,
+  pricePreview: null,
 
   // Reschedule mode
   currentBooking: null,                  // { starts_at, ends_at, status, ... }
@@ -177,6 +216,13 @@ function attachListeners() {
     });
   });
 
+  app.querySelectorAll('[data-coupon-input]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      S.couponCodeInput = e.target.value.toUpperCase();
+      S.couponError = null;
+    });
+  });
+
   // Calendar — month navigation
   const calPrev = app.querySelector('[data-cal-prev]');
   const calNext = app.querySelector('[data-cal-next]');
@@ -236,6 +282,12 @@ function attachListeners() {
   if (backBtn)   backBtn.addEventListener('click',   handleBack);
   if (submitBtn) submitBtn.addEventListener('click', handleSubmit);
   if (repickSlotBtn) repickSlotBtn.addEventListener('click', handleRepickSlot);
+  app.querySelectorAll('[data-coupon-review-apply]').forEach((btn) => {
+    btn.addEventListener('click', handleCouponApply);
+  });
+  app.querySelectorAll('[data-coupon-review-remove]').forEach((btn) => {
+    btn.addEventListener('click', handleCouponRemove);
+  });
 
   // No retry/back buttons needed — paid flows redirect away to Stripe
 
@@ -316,6 +368,56 @@ async function handleRepickSlot() {
   S.step = 1;
   render();
   scrollToApp();
+}
+
+async function handleCouponApply() {
+  const normalized = SITE_COUPON && typeof SITE_COUPON.normalizeCouponCode === 'function'
+    ? SITE_COUPON.normalizeCouponCode(S.couponCodeInput)
+    : String(S.couponCodeInput || '').trim().toUpperCase();
+  if (!normalized) {
+    S.couponError = 'Enter a coupon code.';
+    render();
+    return;
+  }
+  if (!validateCouponCode) {
+    S.couponError = 'Coupon validation is unavailable right now.';
+    render();
+    return;
+  }
+
+  S.couponValidating = true;
+  S.couponError = null;
+  render();
+
+  try {
+    await validateCouponCode(normalized);
+    if (SITE_COUPON && typeof SITE_COUPON.setAppliedCouponCode === 'function') {
+      SITE_COUPON.setAppliedCouponCode(normalized, 'review_apply');
+    } else {
+      S.appliedCouponCode = normalized;
+      refreshCouponPreview();
+    }
+    S.couponCodeInput = normalized;
+  } catch (err) {
+    S.couponError = (err && err.data && err.data.message) || (err && err.message) || 'Coupon code is invalid.';
+  } finally {
+    S.couponValidating = false;
+    refreshCouponPreview();
+    render();
+  }
+}
+
+function handleCouponRemove() {
+  if (SITE_COUPON && typeof SITE_COUPON.clearAppliedCouponCode === 'function') {
+    const shouldRemove = window.confirm('Remove Israel discount and return to standard pricing?');
+    if (!shouldRemove) return;
+    SITE_COUPON.clearAppliedCouponCode('review_remove');
+  } else {
+    S.appliedCouponCode = '';
+    S.couponCodeInput = '';
+    refreshCouponPreview();
+    render();
+  }
 }
 
 function scrollToApp() {
@@ -416,6 +518,7 @@ async function init() {
     });
   }
   await loadPublicConfig({ state: S, observability: BOOK_OBS });
+  syncCouponFromStorage(false);
   try {
     await loadRescheduleContext({ state: S, context: CTX });
   } catch (err) {
@@ -430,13 +533,33 @@ async function init() {
       console.error('[Book] Failed to load slots:', err);
     }
 
+    if (loadSessionTypes) {
+      try {
+        const data = await loadSessionTypes();
+        const rows = Array.isArray(data.session_types) ? data.session_types : [];
+        const introCandidate = rows.find((row) => String(row.slug || '').includes('intro') || Number(row.price || 0) === 0);
+        const explicitOffer = CTX.offerSlug ? rows.find((row) => row.slug === CTX.offerSlug) : null;
+        const paidCandidate = rows.find((row) => row.id !== (introCandidate && introCandidate.id)) || rows[0] || null;
+        S.selectedSessionType = CTX.slotType === 'intro'
+          ? (introCandidate || rows[0] || null)
+          : (explicitOffer || paidCandidate);
+      } catch (err) {
+        console.error('[Book] Failed to load session types:', err);
+      }
+    }
+
     const now = new Date();
     S.calYear  = now.getFullYear();
     S.calMonth = now.getMonth();
   }
 
+  refreshCouponPreview();
   render();
 }
+
+window.addEventListener('sitecouponchange', () => {
+  syncCouponFromStorage(true);
+});
 
 document.addEventListener('DOMContentLoaded', init);
 })();

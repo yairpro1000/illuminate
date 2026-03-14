@@ -9,6 +9,7 @@ import type {
   BookingEventRecord,
   Client,
   ContactMessage,
+  Coupon,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
@@ -26,6 +27,7 @@ export interface SentEmail {
 
 export const mockState = {
   clients: new Map<string, Client>(),
+  coupons: new Map<string, Coupon>(),
   bookings: new Map<string, Booking>(),
   events: new Map<string, Event>(),
   eventLateAccessLinks: new Map<string, EventLateAccessLink>(),
@@ -57,7 +59,7 @@ const SEED_EVENTS: Event[] = [
     address_line: 'Lugano, Switzerland',
     maps_url: 'https://maps.google.com/?q=Lugano+Switzerland',
     is_paid: false,
-    price_per_person_cents: null,
+    price_per_person: null,
     currency: 'CHF',
     capacity: 24,
     status: 'published',
@@ -76,7 +78,7 @@ const SEED_EVENTS: Event[] = [
     address_line: 'Lugano, Switzerland',
     maps_url: 'https://maps.google.com/?q=Lugano+Switzerland',
     is_paid: false,
-    price_per_person_cents: null,
+    price_per_person: null,
     currency: 'CHF',
     capacity: 24,
     status: 'published',
@@ -95,7 +97,7 @@ const SEED_EVENTS: Event[] = [
     address_line: 'Lugano, Switzerland',
     maps_url: 'https://maps.google.com/?q=Lugano+Switzerland',
     is_paid: true,
-    price_per_person_cents: 4500,
+    price_per_person: 45,
     currency: 'CHF',
     capacity: 24,
     status: 'published',
@@ -114,7 +116,7 @@ const SEED_EVENTS: Event[] = [
     address_line: 'Lugano, Switzerland',
     maps_url: 'https://maps.google.com/?q=Lugano+Switzerland',
     is_paid: false,
-    price_per_person_cents: null,
+    price_per_person: null,
     currency: 'CHF',
     capacity: 24,
     status: 'published',
@@ -329,6 +331,17 @@ const SEED_SYSTEM_SETTINGS: SystemSetting[] = [
     updated_at: nowIso,
   },
 ];
+
+const SEED_COUPONS: Coupon[] = [
+  {
+    code: 'ISRAEL',
+    discount_percent: 25,
+  },
+];
+
+for (const coupon of SEED_COUPONS) {
+  mockState.coupons.set(coupon.code, { ...coupon });
+}
 
 for (const ev of SEED_EVENTS) {
   mockState.events.set(ev.id, ev);

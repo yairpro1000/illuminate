@@ -18,7 +18,7 @@ describe('public content status normalization', () => {
       address_line: 'Lugano',
       maps_url: 'https://maps.example/published',
       is_paid: false,
-      price_per_person_cents: 0,
+      price_per_person: 0,
       currency: 'CHF',
       capacity: 24,
       status: 'PUBLISHED',

@@ -137,6 +137,85 @@ describe('booking domain model', () => {
     expect(payLaterEffects).toEqual(expect.arrayContaining(['SEND_BOOKING_CONFIRMATION_REQUEST', 'VERIFY_EMAIL_CONFIRMATION']));
   });
 
+  it('applies coupon discounts to booking snapshots and downstream checkout amounts', async () => {
+    const ctx = makeCtx();
+
+    const payNow = await createPayNowBooking({
+      slotStart: '2026-03-17T10:00:00.000Z',
+      slotEnd: '2026-03-17T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      offerSlug: 'first-clarity-session',
+      clientName: 'Jane Doe',
+      clientEmail: 'jane@example.com',
+      clientPhone: '+41000000001',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'ISRAEL',
+    }, ctx);
+
+    const payNowBooking = await ctx.providers.repository.getBookingById(payNow.bookingId);
+    const payNowPayment = await ctx.providers.repository.getPaymentByBookingId(payNow.bookingId);
+    expect(payNowBooking?.price).toBe(112.5);
+    expect(payNowBooking?.currency).toBe('CHF');
+    expect(payNowBooking?.coupon_code).toBe('ISRAEL');
+    expect(payNowPayment?.amount_cents).toBe(11250);
+
+    const payLater = await createPayLaterBooking({
+      slotStart: '2026-03-18T12:00:00.000Z',
+      slotEnd: '2026-03-18T13:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      offerSlug: 'cycle-session',
+      clientName: 'John Doe',
+      clientEmail: 'john@example.com',
+      clientPhone: '+41000000002',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'ISRAEL',
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === payLater.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    await confirmBookingEmail(token, ctx);
+
+    const payLaterBooking = await ctx.providers.repository.getBookingById(payLater.bookingId);
+    const payLaterPayment = await ctx.providers.repository.getPaymentByBookingId(payLater.bookingId);
+    expect(payLaterBooking?.price).toBe(90);
+    expect(payLaterBooking?.coupon_code).toBe('ISRAEL');
+    expect(payLaterPayment?.amount_cents).toBe(9000);
+  });
+
+  it('rejects invalid coupon codes during booking creation', async () => {
+    const ctx = makeCtx();
+
+    await expect(createPayNowBooking({
+      slotStart: '2026-03-17T10:00:00.000Z',
+      slotEnd: '2026-03-17T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      offerSlug: 'first-clarity-session',
+      clientName: 'Jane Doe',
+      clientEmail: 'jane@example.com',
+      clientPhone: '+41000000001',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'NOTREAL',
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'INVALID_COUPON',
+      message: 'Invalid coupon code',
+    });
+  });
+
   it('confirms free 1:1 bookings after email confirmation', async () => {
     const ctx = makeCtx();
 

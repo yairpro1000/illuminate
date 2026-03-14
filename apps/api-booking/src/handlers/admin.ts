@@ -54,7 +54,7 @@ function buildLateAccessUrl(event: {
   timezone: string;
   address_line: string;
   is_paid: boolean;
-  price_per_person_cents: number | null;
+  price_per_person: number | null;
 }, siteUrl: string, token: string): string {
   const params = new URLSearchParams({
     source: 'evening',
@@ -66,7 +66,7 @@ function buildLateAccessUrl(event: {
     eventEnd: event.ends_at,
     eventLocation: event.address_line,
     isPaid: String(event.is_paid),
-    price: String(event.price_per_person_cents ?? 0),
+    price: String(event.price_per_person ?? 0),
     access: token,
   });
   return `${siteUrl.replace(/\/+$/g, '')}/book.html?${params.toString()}`;
@@ -294,7 +294,7 @@ export async function handleAdminUpdateEvent(
     const updates: EventUpdate = {};
     const allowed: Array<keyof EventUpdate> = [
       'slug', 'title', 'description', 'starts_at', 'ends_at', 'timezone',
-      'location_name', 'address_line', 'maps_url', 'is_paid', 'price_per_person_cents',
+      'location_name', 'address_line', 'maps_url', 'is_paid', 'price_per_person',
       'currency', 'capacity', 'status', 'image_key', 'drive_file_id', 'image_alt',
       'whatsapp_group_invite_url',
     ];

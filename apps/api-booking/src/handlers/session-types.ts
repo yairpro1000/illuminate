@@ -3,6 +3,14 @@ import { ok, created, badRequest } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
 import { normalizeSessionTypeRow } from '../lib/content-status.js';
 
+function parseNonNegativePrice(value: unknown, fieldName: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw badRequest(`${fieldName} must be a non-negative number`);
+  }
+  return Number(parsed.toFixed(2));
+}
+
 // GET /api/session-types (public)
 export async function handleGetSessionTypes(request: Request, ctx: AppContext): Promise<Response> {
   const path = new URL(request.url).pathname;
@@ -76,7 +84,7 @@ export async function handleAdminCreateSessionType(request: Request, ctx: AppCon
       short_description: body.short_description ? String(body.short_description) : null,
       description: String(body.description),
       duration_minutes: Number(body.duration_minutes) | 0,
-      price: Number(body.price) | 0,
+      price: parseNonNegativePrice(body.price, 'price'),
       currency: String(body.currency || 'CHF'),
       status: (body.status === 'draft' || body.status === 'active' || body.status === 'hidden') ? body.status : 'draft',
       sort_order: Number(body.sort_order ?? 0) | 0,
@@ -108,6 +116,7 @@ export async function handleAdminUpdateSessionType(
     ]) {
       if (key in body) updates[key] = body[key];
     }
+    if ('price' in updates) updates.price = parseNonNegativePrice(updates.price, 'price');
     const row = await ctx.providers.repository.updateSessionType(id, updates as any);
     return ok({ session_type: row });
   } catch (err) {

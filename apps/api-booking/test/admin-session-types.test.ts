@@ -25,11 +25,12 @@ describe('Admin session types', () => {
     const row = { id: 's2', title: 'T', slug: 't' };
     const repo = { createSessionType: vi.fn().mockResolvedValue(row) };
     const ctx = makeCtx({ providers: { repository: repo } });
-    const payload = { title: 'T', slug: 't', description: 'd', duration_minutes: 60, price: 12000, currency: 'CHF', status: 'draft' };
+    const payload = { title: 'T', slug: 't', description: 'd', duration_minutes: 60, price: 120.5, currency: 'CHF', status: 'draft' };
     const res = await handleAdminCreateSessionType(adminRequest('POST', 'https://api.local/api/admin/session-types', payload), ctx);
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.session_type).toEqual(row);
+    expect(repo.createSessionType).toHaveBeenCalledWith(expect.objectContaining({ price: 120.5 }));
   });
 
 });

@@ -13,6 +13,7 @@ import type {
   Client,
   ClientUpdate,
   ContactMessage,
+  Coupon,
   Event,
   EventLateAccessLink,
   EventReminderSubscription,
@@ -66,6 +67,10 @@ export interface IRepository {
   listClientsByEmailPrefix(prefix: string): Promise<Client[]>;
   listBookingsByClientTagPrefix(prefix: string): Promise<Booking[]>;
   updateClient(id: string, updates: ClientUpdate): Promise<Client>;
+
+  // ── Coupons ───────────────────────────────────────────────────────────────
+
+  getCouponByCode(code: string): Promise<Coupon | null>;
 
   // ── Bookings ──────────────────────────────────────────────────────────────
 

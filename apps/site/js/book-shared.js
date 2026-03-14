@@ -36,6 +36,7 @@
     return {
       source: '1_on_1',
       slotType: (p.get('type') || '').toLowerCase() === 'session' ? 'session' : 'intro',
+      offerSlug: p.get('offer') || '',
       mode,
       manageToken: p.get('token') || '',
       adminToken: p.get('admin_token') || '',

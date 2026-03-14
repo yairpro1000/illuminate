@@ -55,4 +55,49 @@ describe('evenings page', () => {
     expect(document.getElementById('events-grid').textContent).toContain('Could not load events')
     errorSpy.mockRestore()
   })
+
+  it('renders integer prices without decimals and preserves real decimal prices', async () => {
+    window.siteClient.requestJson.mockResolvedValue({
+      events: [
+        {
+          id: 'event-1',
+          slug: 'event-1',
+          title: 'First event',
+          description: 'Description',
+          starts_at: '2026-06-19T17:00:00Z',
+          ends_at: '2026-06-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: true,
+          price_per_person: 100,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+        {
+          id: 'event-2',
+          slug: 'event-2',
+          title: 'Second event',
+          description: 'Description',
+          starts_at: '2026-07-19T17:00:00Z',
+          ends_at: '2026-07-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: true,
+          price_per_person: 100.99,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+      ],
+    })
+
+    evalCode(eveningsPageCode)
+    await flush()
+
+    const priceRows = Array.from(document.querySelectorAll('.event-card__meta-row dd')).map((node) => node.textContent)
+    expect(priceRows).toContain('CHF 100')
+    expect(priceRows).toContain('CHF 100.99')
+    expect(priceRows).not.toContain('CHF 100.00')
+  })
 })

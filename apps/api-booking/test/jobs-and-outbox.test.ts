@@ -101,7 +101,7 @@ function makeCtx(overrides: any = {}) {
         short_description: null,
         description: 'Session',
         duration_minutes: 60,
-        price: 15000,
+        price: 150,
         currency: 'CHF',
         status: 'active',
         sort_order: 1,

@@ -7,12 +7,16 @@
       slot_end: args.state.selectedSlot.end,
       timezone: args.config.timezone || 'Europe/Zurich',
       type: args.context.slotType,
+      offer_slug: args.context.offerSlug || null,
       client_name: [args.state.firstName, args.state.lastName].filter(Boolean).join(' '),
       client_email: args.state.email.trim(),
       client_phone: args.state.phone.trim() || null,
       reminder_email_opt_in: true,
       reminder_whatsapp_opt_in: false,
       turnstile_token: args.config.turnstilePlaceholderToken || 'placeholder',
+      coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
+        ? (args.state.appliedCouponCode || null)
+        : null,
     };
 
     let result;
@@ -60,6 +64,9 @@
       reminder_email_opt_in: true,
       reminder_whatsapp_opt_in: false,
       turnstile_token: args.config.turnstilePlaceholderToken || 'placeholder',
+      coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
+        ? (args.state.appliedCouponCode || null)
+        : null,
     };
 
     if (args.observability) args.observability.logMilestone('registration_started', { event_slug: args.context.eventSlug });

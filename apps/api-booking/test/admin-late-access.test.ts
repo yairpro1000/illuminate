@@ -30,7 +30,7 @@ describe('Admin late-access link', () => {
     const event = {
       id: 'evt1', slug: 'slug', title: 'Title',
       starts_at: '2026-04-01T18:00:00Z', ends_at: '2026-04-01T20:00:00Z', timezone: 'Europe/Zurich',
-      address_line: 'Addr', is_paid: false, price_per_person_cents: 0,
+      address_line: 'Addr', is_paid: false, price_per_person: 0,
     } as any;
     const repo = {
       getEventById: vi.fn().mockResolvedValue(event),
@@ -54,7 +54,7 @@ describe('Admin late-access link', () => {
     const event = {
       id: 'evt1', slug: 'slug', title: 'Title',
       starts_at: '2026-04-01T18:00:00Z', ends_at: '2026-04-01T20:00:00Z', timezone: 'Europe/Zurich',
-      address_line: 'Addr', is_paid: false, price_per_person_cents: 0,
+      address_line: 'Addr', is_paid: false, price_per_person: 0,
     } as any;
     const repo = {
       getEventById: vi.fn().mockResolvedValue(event),

@@ -28,6 +28,7 @@ import {
   shouldReserveSlotForTransition,
 } from '../domain/booking-effect-policy.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
+import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
 
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
@@ -92,6 +93,7 @@ export interface PayNowInput {
   slotEnd: string;
   timezone: string;
   sessionType: 'intro' | 'session';
+  offerSlug?: string | null;
   clientName: string;
   clientEmail: string;
   clientPhone: string | null;
@@ -99,6 +101,7 @@ export interface PayNowInput {
   reminderWhatsappOptIn: boolean;
   turnstileToken: string;
   remoteIp: string | null;
+  couponCode?: string | null;
 }
 
 export interface PayNowResult {
@@ -112,6 +115,7 @@ export interface PayLaterInput {
   slotEnd: string;
   timezone: string;
   sessionType: 'intro' | 'session';
+  offerSlug?: string | null;
   clientName: string;
   clientEmail: string;
   clientPhone: string | null;
@@ -119,6 +123,7 @@ export interface PayLaterInput {
   reminderWhatsappOptIn: boolean;
   turnstileToken: string;
   remoteIp: string | null;
+  couponCode?: string | null;
 }
 
 export interface PayLaterResult {
@@ -138,6 +143,7 @@ export interface EventBookingInput {
   reminderWhatsappOptIn: boolean;
   turnstileToken: string;
   remoteIp: string | null;
+  couponCode?: string | null;
 }
 
 export interface EventBookingResult {
@@ -174,6 +180,48 @@ export interface BookingPublicActionInfo {
   nextActionLabel: 'Complete Payment' | 'Manage Booking' | null;
 }
 
+async function resolveCommercialTerms(
+  input: {
+    basePrice: number;
+    couponCode?: string | null;
+    bookingKind: 'session' | 'event';
+    paymentMode: 'free' | 'pay_now' | 'pay_later';
+    subjectId: string;
+  },
+  ctx: BookingContext,
+): Promise<{ basePrice: number; finalPrice: number; couponCode: string | null; currency: 'CHF' }> {
+  const coupon = await resolveCouponByCode(input.couponCode, ctx.providers.repository, ctx.logger, {
+    booking_kind: input.bookingKind,
+    booking_subject_id: input.subjectId,
+    requested_coupon_code: normalizeCouponCode(input.couponCode),
+    payment_mode: input.paymentMode,
+  });
+  const pricing = applyCouponToPrice(input.basePrice, coupon);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_price_snapshot_decision',
+    message: 'Evaluated booking price snapshot and coupon application',
+    context: {
+      booking_kind: input.bookingKind,
+      booking_subject_id: input.subjectId,
+      payment_mode: input.paymentMode,
+      requested_coupon_code: normalizeCouponCode(input.couponCode),
+      applied_coupon_code: pricing.couponCode,
+      base_price_chf: pricing.basePrice,
+      final_price_chf: pricing.finalPrice,
+      discount_percent: pricing.discountPercent,
+      branch_taken: pricing.couponCode ? 'apply_coupon_discount' : 'use_base_price',
+      deny_reason: pricing.couponCode ? null : 'coupon_not_applied',
+    },
+  });
+  return {
+    basePrice: pricing.basePrice,
+    finalPrice: pricing.finalPrice,
+    couponCode: pricing.couponCode,
+    currency: 'CHF',
+  };
+}
+
 // ── Session flow: Pay Now ──────────────────────────────────────────────────
 
 export async function createPayNowBooking(
@@ -195,7 +243,14 @@ export async function createPayNowBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind('session', providers);
+  const sessionType = await resolveSessionTypeForKind('session', providers, input.offerSlug ?? null);
+  const commercialTerms = await resolveCommercialTerms({
+    basePrice: sessionType.price,
+    couponCode: input.couponCode,
+    bookingKind: 'session',
+    paymentMode: 'pay_now',
+    subjectId: sessionType.id,
+  }, ctx);
   const booking = await providers.repository.createBooking({
     client_id: client.id,
     event_id: null,
@@ -207,6 +262,9 @@ export async function createPayNowBooking(
     google_event_id: null,
     address_line: env.SESSION_ADDRESS,
     maps_url: env.SESSION_MAPS_URL,
+    price: commercialTerms.finalPrice,
+    currency: commercialTerms.currency,
+    coupon_code: commercialTerms.couponCode,
     current_status: 'PENDING',
     notes: null,
   });
@@ -224,7 +282,11 @@ export async function createPayNowBooking(
     bookingCtx,
   );
 
-  const checkout = await ensureCheckoutForBooking(transitioned.booking, sessionType, bookingCtx);
+  const checkout = await ensureCheckoutForBooking(transitioned.booking, {
+    title: sessionType.title,
+    price: commercialTerms.finalPrice,
+    currency: commercialTerms.currency,
+  }, bookingCtx);
   await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'SUCCESS', null, bookingCtx);
 
   return {
@@ -251,7 +313,14 @@ export async function createPayLaterBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind(input.sessionType, providers);
+  const sessionType = await resolveSessionTypeForKind(input.sessionType, providers, input.offerSlug ?? null);
+  const commercialTerms = await resolveCommercialTerms({
+    basePrice: sessionType.price,
+    couponCode: input.couponCode,
+    bookingKind: 'session',
+    paymentMode: input.sessionType === 'intro' ? 'free' : 'pay_later',
+    subjectId: sessionType.id,
+  }, ctx);
   const confirmToken = generateToken();
   const confirmTokenHash = await hashToken(confirmToken);
 
@@ -266,6 +335,9 @@ export async function createPayLaterBooking(
     google_event_id: null,
     address_line: env.SESSION_ADDRESS,
     maps_url: env.SESSION_MAPS_URL,
+    price: commercialTerms.finalPrice,
+    currency: commercialTerms.currency,
+    coupon_code: commercialTerms.couponCode,
     current_status: 'PENDING',
     notes: null,
   });
@@ -337,6 +409,14 @@ async function createEventBookingInternal(
     },
     providers,
   );
+  const eventBasePrice = input.event.is_paid ? Number(input.event.price_per_person ?? 0) : 0;
+  const commercialTerms = await resolveCommercialTerms({
+    basePrice: eventBasePrice,
+    couponCode: input.couponCode,
+    bookingKind: 'event',
+    paymentMode: input.event.is_paid ? 'pay_now' : 'free',
+    subjectId: input.event.id,
+  }, ctx);
 
   const booking = await providers.repository.createBooking({
     client_id: client.id,
@@ -349,6 +429,9 @@ async function createEventBookingInternal(
     google_event_id: null,
     address_line: input.event.address_line,
     maps_url: input.event.maps_url,
+    price: commercialTerms.finalPrice,
+    currency: commercialTerms.currency,
+    coupon_code: commercialTerms.couponCode,
     current_status: 'PENDING',
     notes: null,
   });
@@ -405,8 +488,8 @@ async function createEventBookingInternal(
     transitioned.booking,
     {
       title: input.event.title,
-      price: input.event.price_per_person_cents ?? 0,
-      currency: input.event.currency,
+      price: commercialTerms.finalPrice,
+      currency: commercialTerms.currency,
     },
     bookingCtx,
   );
@@ -1928,6 +2011,7 @@ function toSyncFailureReason(error: unknown): string {
 async function resolveSessionTypeForKind(
   kind: 'intro' | 'session',
   providers: Providers,
+  offerSlug: string | null = null,
 ): Promise<SessionTypeRecord> {
   const all = await providers.repository.getPublicSessionTypes();
   if (all.length === 0) {
@@ -1935,9 +2019,14 @@ async function resolveSessionTypeForKind(
   }
 
   const introCandidate = all.find((row) => row.slug.includes('intro') || row.price === 0);
+  const explicitOffer = offerSlug && kind === 'session'
+    ? all.find((row) => row.slug === offerSlug)
+    : null;
   const paidCandidate = all.find((row) => row.id !== introCandidate?.id) ?? all[0];
 
-  const selected = kind === 'intro' ? (introCandidate ?? all[0]) : (paidCandidate ?? all[0]);
+  const selected = kind === 'intro'
+    ? (introCandidate ?? all[0])
+    : (explicitOffer ?? paidCandidate ?? all[0]);
   if (!selected) {
     throw badRequest('Unable to resolve session type');
   }
@@ -2027,7 +2116,7 @@ async function ensurePayLaterCheckoutUrlForBooking(
       context: {
         booking_id: booking.id,
         session_type_id: sessionType.id,
-        session_price: sessionType.price,
+        session_price: booking.price,
         branch_taken: 'free_session_no_checkout_link',
         deny_reason: 'session_price_is_zero',
       },
@@ -2035,7 +2124,11 @@ async function ensurePayLaterCheckoutUrlForBooking(
     return null;
   }
 
-  const checkout = await ensureCheckoutForBooking(booking, sessionType, ctx);
+  const checkout = await ensureCheckoutForBooking(booking, {
+    title: sessionType.title,
+    price: booking.price,
+    currency: booking.currency,
+  }, ctx);
   logger.logInfo?.({
     source: 'backend',
     eventType: 'pay_later_checkout_link_created',
@@ -2074,7 +2167,7 @@ async function ensureCheckoutForBooking(
     lineItems: [
       {
         name: chargeable.title,
-        amountCents: Math.max(0, chargeable.price),
+        amountCents: Math.max(0, Math.round(chargeable.price * 100)),
         currency: chargeable.currency || 'CHF',
         quantity: 1,
       },

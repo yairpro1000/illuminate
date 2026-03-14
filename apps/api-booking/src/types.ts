@@ -73,6 +73,9 @@ export interface Booking {
   google_event_id: string | null;
   address_line: string;
   maps_url: string;
+  price: number;
+  currency: string;
+  coupon_code: string | null;
   current_status: BookingCurrentStatus;
   notes: string | null;
   created_at: string;
@@ -130,7 +133,7 @@ export interface Event {
   address_line: string;
   maps_url: string;
   is_paid: boolean;
-  price_per_person_cents: number | null;
+  price_per_person: number | null;
   currency: string;
   capacity: number;
   status: EventStatus;
@@ -175,6 +178,11 @@ export interface SystemSetting {
   updated_at: string;
 }
 
+export interface Coupon {
+  code: string;
+  discount_percent: number;
+}
+
 // ── Session types (offers) ─────────────────────────────────────────────────
 
 export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
@@ -186,7 +194,7 @@ export interface SessionTypeRecord {
   short_description: string | null;
   description: string;
   duration_minutes: number;
-  price: number; // cents
+  price: number;
   currency: string;
   status: SessionTypeStatus;
   sort_order: number;
@@ -208,7 +216,7 @@ export type EventUpdate = Partial<Pick<Event,
   | 'address_line'
   | 'maps_url'
   | 'is_paid'
-  | 'price_per_person_cents'
+  | 'price_per_person'
   | 'currency'
   | 'capacity'
   | 'status'
@@ -369,6 +377,9 @@ export type BookingUpdate = Partial<
     | 'google_event_id'
     | 'address_line'
     | 'maps_url'
+    | 'price'
+    | 'currency'
+    | 'coupon_code'
     | 'current_status'
     | 'notes'
   >

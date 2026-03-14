@@ -28,6 +28,14 @@ function getPublicConfig() {
   return _get('/api/config');
 }
 
+/**
+ * POST /api/coupons/validate
+ * Returns: { coupon: { code, discount_percent } }
+ */
+function validateCoupon(code) {
+  return _post('/api/coupons/validate', { code });
+}
+
 /* ── Slot availability ───────────────────────────────────── */
 
 /**

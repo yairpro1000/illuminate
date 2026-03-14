@@ -46,6 +46,10 @@
   padding: 1.75rem 2rem 2rem;
 }
 
+.booking-card > .coupon-banner {
+  margin: 1.25rem 1.25rem 0;
+}
+
 /* ── Event context banner ────────────────────────────────── */
 
 .event-banner {
@@ -142,6 +146,41 @@
   text-transform: uppercase;
   color: var(--color-lake-light);
   margin-bottom: 1.25rem;
+}
+
+.coupon-review {
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: oklch(15% 0.03 208 / 0.55);
+}
+
+.coupon-review__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.coupon-review__label {
+  color: var(--color-lake-light);
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.coupon-review__applied {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+
+.coupon-review__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
 }
 
 /* ── Calendar ────────────────────────────────────────────── */
@@ -993,6 +1032,11 @@ body.theme-light .review-row {
   border-bottom-color: oklch(59% 0.160 200 / 0.12);
 }
 
+body.theme-light .coupon-review {
+  background: oklch(99% 0 0 / 0.68);
+  border-color: oklch(59% 0.160 200 / 0.16);
+}
+
 body.theme-light .btn-ghost {
   color: oklch(52% 0.018 210);
 }
@@ -1015,5 +1059,9 @@ body.theme-light .btn-ghost:hover {
 
   .cal-grid {
     gap: 0.15rem;
+  }
+
+  .coupon-review__row {
+    grid-template-columns: 1fr;
   }
 }

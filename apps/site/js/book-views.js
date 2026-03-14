@@ -33,6 +33,7 @@
 
       return `
         <div class="booking-card">
+          ${buildCouponSuggestion()}
           ${!isFinal ? `
             <header class="booking-header">
               <h1 class="booking-title">${isEvent ? 'Register' : 'Book a Session'}</h1>
@@ -46,6 +47,15 @@
           </div>
         </div>
       `;
+    }
+
+    function buildCouponSuggestion() {
+      const siteCoupon = window.SiteCoupon || null;
+      const basePrice = state.pricePreview && Number(state.pricePreview.baseChf || 0);
+      if (!siteCoupon || typeof siteCoupon.buildSuggestionBannerHtml !== 'function' || !basePrice || basePrice <= 0 || state.appliedCouponCode) {
+        return '';
+      }
+      return siteCoupon.buildSuggestionBannerHtml();
     }
 
     function buildEventBanner() {
@@ -398,6 +408,7 @@
       const slot = state.selectedSlot;
       const rows = [
         ['Date & time', slot ? formatDateLong(slot.start) + ' · ' + formatTime(slot.start) : '—'],
+        state.selectedSessionType ? ['Offer', state.selectedSessionType.title] : null,
         ['Name', [state.firstName, state.lastName].filter(Boolean).join(' ')],
         ['Email', state.email],
         state.phone ? ['Phone', state.phone] : null,
@@ -406,6 +417,9 @@
           : (state.paymentMethod === 'pay-now'
             ? 'Pay now via Stripe'
             : 'Pay later — payment due 24h before')],
+        state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
+          ? { label: 'Price', value: buildCouponPriceSummary(), html: true }
+          : null,
       ].filter(Boolean);
       const hasSlotConflict = state.submissionError && state.submissionError.kind === 'slot-unavailable';
       const staleSlot = hasSlotConflict
@@ -418,6 +432,7 @@
       return `
         <div class="form-step">
           ${hasSlotConflict ? buildSlotConflictState(staleSlotLabel) : '<p class="step-eyebrow">Review your booking</p>'}
+          ${buildCouponEditor()}
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
           ${hasSlotConflict
@@ -520,11 +535,15 @@
         ['Type', isPaid
           ? 'Paid — Stripe checkout'
           : 'Free — email confirmation required'],
+        isPaid && state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
+          ? { label: 'Price', value: buildCouponPriceSummary(), html: true }
+          : null,
       ].filter(Boolean);
 
       return `
         <div class="form-step">
           <p class="step-eyebrow">Review your registration</p>
+          ${isPaid ? buildCouponEditor() : ''}
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
           <div class="step-footer">
@@ -649,17 +668,54 @@
     function buildReviewTable(rows) {
       const items = rows.map((row) => {
         const rowObj = Array.isArray(row)
-          ? { label: row[0], value: row[1], rowClass: '' }
+          ? { label: row[0], value: row[1], rowClass: '', html: false }
           : row;
         const extraClass = rowObj.rowClass ? ` ${rowObj.rowClass}` : '';
         return `
           <div class="review-row${extraClass}">
             <dt>${escHtml(rowObj.label)}</dt>
-            <dd>${escHtml(String(rowObj.value))}</dd>
+            <dd>${rowObj.html ? rowObj.value : escHtml(String(rowObj.value))}</dd>
           </div>
         `;
       }).join('');
       return `<dl class="review-table">${items}</dl>`;
+    }
+
+    function buildCouponEditor() {
+      if (!state.pricePreview || Number(state.pricePreview.baseChf || 0) <= 0) return '';
+      const applied = Boolean(state.appliedCouponCode);
+      return `
+        <section class="coupon-review">
+          <div class="coupon-review__header">
+            <p class="coupon-review__label">Coupon</p>
+            ${applied ? `<span class="coupon-review__applied">Applied: ${escHtml(state.appliedCouponCode)}</span>` : ''}
+          </div>
+          <div class="coupon-review__row">
+            <input
+              class="form-input coupon-review__input ${state.couponError ? 'form-input--error' : ''}"
+              type="text"
+              placeholder="Enter coupon code"
+              value="${escHtml(state.couponCodeInput || '')}"
+              data-coupon-input
+            />
+            <button class="btn btn-secondary" type="button" data-coupon-review-apply ${state.couponValidating ? 'disabled' : ''}>
+              ${state.couponValidating ? 'Applying…' : 'Apply'}
+            </button>
+            ${applied ? '<button class="btn btn-ghost" type="button" data-coupon-review-remove>Remove</button>' : ''}
+          </div>
+          ${state.couponError ? `<p class="form-error" role="alert">${escHtml(state.couponError)}</p>` : ''}
+        </section>
+      `;
+    }
+
+    function buildCouponPriceSummary() {
+      const siteCoupon = window.SiteCoupon || null;
+      if (!siteCoupon || typeof siteCoupon.buildPriceHtml !== 'function' || !state.pricePreview) {
+        return '—';
+      }
+      return siteCoupon.buildPriceHtml(state.pricePreview.baseChf, 'CHF', {
+        couponCode: state.appliedCouponCode || null,
+      });
     }
 
     return {

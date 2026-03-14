@@ -27,18 +27,29 @@
     return td;
   }
 
+  function normalizePriceValue(price) {
+    const amount = Number(price);
+    if (!Number.isFinite(amount)) return 0;
+    return Math.round(amount * 100) / 100;
+  }
+
+  function formatPriceNumber(price) {
+    const amount = normalizePriceValue(price);
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  }
+
   function formatPrice(price, currency) {
-    const amount = Number(price || 0);
+    const amount = normalizePriceValue(price);
     const code = String(currency || 'CHF').toUpperCase();
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
         currency: code,
         minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
+        maximumFractionDigits: 2,
       }).format(amount);
     } catch (_) {
-      return `${amount} ${code}`;
+      return `${formatPriceNumber(amount)} ${code}`;
     }
   }
 
@@ -179,7 +190,7 @@
     stFShort.value = state.stEditing.short_description || '';
     stFDesc.value = state.stEditing.description || '';
     stFDuration.value = state.stEditing.duration_minutes || 60;
-    stFPrice.value = Number(state.stEditing.price || 0);
+    stFPrice.value = formatPriceNumber(state.stEditing.price || 0);
     stFCurrency.value = state.stEditing.currency || 'CHF';
     stFStatus.value = pickAllowedStatus(state.stEditing.status, SESSION_TYPE_STATUSES, SESSION_TYPE_STATUSES[0]);
     stFSort.value = state.stEditing.sort_order || 0;
@@ -217,8 +228,8 @@
       state.stEditing.drive_file_id = stFDriveId.value.trim() || null;
       const priceRaw = String(stFPrice.value ?? '').trim();
       const price = priceRaw === '' ? 0 : Number(priceRaw);
-      if (!Number.isFinite(price) || price < 0 || !Number.isInteger(price)) {
-        throw new Error('Price must be a non-negative whole number.');
+      if (!Number.isFinite(price) || price < 0) {
+        throw new Error('Price must be a non-negative number.');
       }
       const payload = {
         title: stFTitle.value.trim(),
@@ -226,7 +237,7 @@
         short_description: stFShort.value.trim() || null,
         description: stFDesc.value,
         duration_minutes: Number(stFDuration.value) || 0,
-        price,
+        price: normalizePriceValue(price),
         currency: stFCurrency.value.trim() || 'CHF',
         status: stFStatus.value,
         sort_order: Number(stFSort.value) || 0,
@@ -367,7 +378,7 @@
     state.evEditing = row ? { ...row } : {
       title: '', slug: '', description: '', starts_at: '', ends_at: '',
       timezone: 'Europe/Zurich', location_name: '', address_line: '', maps_url: '',
-      is_paid: false, price_per_person_cents: null, currency: 'CHF', capacity: 0,
+      is_paid: false, price_per_person: null, currency: 'CHF', capacity: 0,
       status: EVENT_STATUSES[0], image_key: null, drive_file_id: null, image_alt: null, whatsapp_group_invite_url: null,
     };
     const ev = state.evEditing;
@@ -382,7 +393,7 @@
     evFAddress.value = ev.address_line || '';
     evFMapsUrl.value = ev.maps_url || '';
     evFIsPaid.value = ev.is_paid ? 'true' : 'false';
-    evFPrice.value = ev.price_per_person_cents != null ? ev.price_per_person_cents : '';
+    evFPrice.value = ev.price_per_person != null ? formatPriceNumber(ev.price_per_person) : '';
     evFCurrency.value = ev.currency || 'CHF';
     evFWhatsapp.value = ev.whatsapp_group_invite_url || '';
     evFDesc.value = ev.description || '';
@@ -416,6 +427,10 @@
       state.evEditing.image_key = evFImageKey.value.trim() || null;
       state.evEditing.drive_file_id = evFDriveId.value.trim() || null;
       const priceRaw = evFPrice.value.trim();
+      const price = priceRaw !== '' ? Number(priceRaw) : null;
+      if (price != null && (!Number.isFinite(price) || price < 0)) {
+        throw new Error('Price must be a non-negative number.');
+      }
       const payload = {
         title: evFTitle.value.trim(),
         slug: evFSlug.value.trim(),
@@ -429,7 +444,7 @@
         address_line: evFAddress.value.trim(),
         maps_url: evFMapsUrl.value.trim(),
         is_paid: evFIsPaid.value === 'true',
-        price_per_person_cents: priceRaw !== '' ? Number(priceRaw) : null,
+        price_per_person: price != null ? normalizePriceValue(price) : null,
         currency: evFCurrency.value.trim() || 'CHF',
         whatsapp_group_invite_url: evFWhatsapp.value.trim() || null,
         image_key: state.evEditing.image_key,

@@ -10,6 +10,8 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
   const slotEnd = requireString(body, 'slot_end');
   const clientEmail = requireString(body, 'client_email');
   const clientName = resolveClientName(body);
+  const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const offerSlug = typeof body['offer_slug'] === 'string' ? body['offer_slug'].trim() : null;
 
   const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
   const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
@@ -20,6 +22,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
       slotEnd,
       timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
       sessionType,
+      offerSlug,
       clientName,
       clientEmail,
       clientPhone: (body['client_phone'] as string | null) ?? null,
@@ -27,6 +30,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
       reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
+      couponCode,
     },
     {
       providers: ctx.providers,
@@ -53,6 +57,8 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
   const slotEnd = requireString(body, 'slot_end');
   const clientEmail = requireString(body, 'client_email');
   const clientName = resolveClientName(body);
+  const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const offerSlug = typeof body['offer_slug'] === 'string' ? body['offer_slug'].trim() : null;
 
   const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
   const sessionType = sessionTypeRaw === 'session' ? 'session' : 'intro';
@@ -63,6 +69,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
       slotEnd,
       timezone: (body['timezone'] as string | undefined) ?? 'Europe/Zurich',
       sessionType,
+      offerSlug,
       clientName,
       clientEmail,
       clientPhone: (body['client_phone'] as string | null) ?? null,
@@ -70,6 +77,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
       reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
+      couponCode,
     },
     {
       providers: ctx.providers,

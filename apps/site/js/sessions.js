@@ -7,14 +7,27 @@
 
 (function () {
   const SITE_CLIENT = window.siteClient || null;
+  const SITE_COUPON = window.SiteCoupon || null;
 
   const FALLBACK_URL = '/fallback_local_data/session_types.json';
   const DELAY_CLASSES = ['', ' fade-up--delay-1', ' fade-up--delay-2', ' fade-up--delay-3'];
 
   /* ── Price display ─────────────────────────────────────── */
+  function formatAmount(price) {
+    const amount = Math.round(Number(price || 0) * 100) / 100;
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  }
+
   function fmtPrice(price, currency) {
     if (price === 0) return 'Free';
-    return currency + ' ' + price;
+    return `${currency} ${formatAmount(price)}`;
+  }
+
+  function renderPriceMarkup(price, currency) {
+    if (SITE_COUPON && typeof SITE_COUPON.buildPriceHtml === 'function') {
+      return SITE_COUPON.buildPriceHtml(price, currency || 'CHF');
+    }
+    return fmtPrice(price, currency || 'CHF');
   }
 
   /* ── Strip the trailing "Format: …" sentence from description ── */
@@ -46,7 +59,7 @@
     tags.className = 'event-card__tags';
     const priceTag = document.createElement('span');
     priceTag.className = 'event-tag';
-    priceTag.textContent = fmtPrice(session.price, session.currency);
+    priceTag.innerHTML = renderPriceMarkup(session.price, session.currency);
     const durTag = document.createElement('span');
     durTag.className = 'event-tag';
     durTag.textContent = session.duration_minutes + ' min';
@@ -72,7 +85,7 @@
     const dl = document.createElement('dl');
     dl.className = 'event-card__meta';
     dl.appendChild(metaRow('Duration', session.duration_minutes + ' min'));
-    dl.appendChild(metaRow('Investment', fmtPrice(session.price, session.currency)));
+    dl.appendChild(metaRow('Investment', renderPriceMarkup(session.price, session.currency), true));
     dl.appendChild(metaRow('Format', 'Online or in person · Lugano'));
 
     // CTA
@@ -94,13 +107,14 @@
     return article;
   }
 
-  function metaRow(label, value) {
+  function metaRow(label, value, isHtml) {
     const row = document.createElement('div');
     row.className = 'event-card__meta-row';
     const dt = document.createElement('dt');
     dt.textContent = label;
     const dd = document.createElement('dd');
-    dd.textContent = value;
+    if (isHtml) dd.innerHTML = value;
+    else dd.textContent = value;
     row.appendChild(dt);
     row.appendChild(dd);
     return row;
@@ -160,6 +174,9 @@
     try {
       const sessions = await fetchSessionTypes();
       renderSessions(sessions, grid);
+      if (SITE_COUPON && typeof SITE_COUPON.applyStaticPrices === 'function') {
+        SITE_COUPON.applyStaticPrices(grid);
+      }
     } catch (err) {
       grid.innerHTML = '';
       const msg = document.createElement('p');

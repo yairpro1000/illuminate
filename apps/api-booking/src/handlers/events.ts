@@ -95,6 +95,7 @@ export async function handleEventBook(
   const email = requireString(body, 'email');
   const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
   const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
+  const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
 
   if (!event.is_paid && !phoneRaw) {
     throw badRequest('phone is required for free events');
@@ -111,6 +112,7 @@ export async function handleEventBook(
       reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
+      couponCode,
     },
     {
       providers: ctx.providers,
@@ -145,6 +147,7 @@ export async function handleEventBookWithAccess(
     const email = requireString(body, 'email');
     const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
     const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
+    const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
 
     const isPhoneRequired = !event.is_paid;
     const hasPhone = Boolean(phoneRaw);
@@ -227,6 +230,7 @@ export async function handleEventBookWithAccess(
         reminderWhatsappOptIn: Boolean(body['reminder_whatsapp_opt_in']),
         turnstileToken: (body['turnstile_token'] as string) ?? '',
         remoteIp: request.headers.get('CF-Connecting-IP'),
+        couponCode,
       },
       {
         providers: ctx.providers,
