@@ -43,10 +43,10 @@ async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'>
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (await page.locator('.confirmation__title').count()) return 'success';
-    const error = page.locator('.form-error[role="alert"]').first();
-    if (await error.count()) {
-      const text = (await error.textContent()) || '';
-      if (text.includes('This slot is no longer available')) return 'slot-lost';
+    const recovery = page.locator('.booking-recovery__title').first();
+    if (await recovery.count()) {
+      const text = (await recovery.textContent()) || '';
+      if (text.includes('That time was just taken')) return 'slot-lost';
     }
     await page.waitForTimeout(200);
   }

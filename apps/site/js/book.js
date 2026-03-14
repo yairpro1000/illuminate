@@ -82,6 +82,7 @@ const S = {
   // Flow A — Payment
   paymentMethod: null,                   // 'pay-now' | 'pay-later'
   submissionStatus: null,                // API status from latest submit
+  submissionError: null,                 // null | { kind, message, staleSlot }
 
   // Payment simulation (paid flows only)
   paymentResult: null,                   // null | 'success' | 'failure'
@@ -191,6 +192,7 @@ function attachListeners() {
   app.querySelectorAll('[data-slot]').forEach(btn => {
     btn.addEventListener('click', () => {
       S.selectedSlot = JSON.parse(btn.dataset.slot);
+      S.submissionError = null;
       render();
     });
   });
@@ -200,6 +202,7 @@ function attachListeners() {
     btn.addEventListener('click', () => {
       S.paymentMethod = btn.dataset.payment;
       delete S.errors.paymentMethod;
+      S.submissionError = null;
       render();
     });
   });
@@ -208,9 +211,11 @@ function attachListeners() {
   const nextBtn   = app.querySelector('[data-next]');
   const backBtn   = app.querySelector('[data-back]');
   const submitBtn = app.querySelector('[data-submit]');
+  const repickSlotBtn = app.querySelector('[data-repick-slot]');
   if (nextBtn)   nextBtn.addEventListener('click',   handleNext);
   if (backBtn)   backBtn.addEventListener('click',   handleBack);
   if (submitBtn) submitBtn.addEventListener('click', handleSubmit);
+  if (repickSlotBtn) repickSlotBtn.addEventListener('click', handleRepickSlot);
 
   // No retry/back buttons needed — paid flows redirect away to Stripe
 
@@ -242,6 +247,7 @@ function handleNext() {
   }
 
   S.errors = {};
+  S.submissionError = null;
   S.step++;
   render();
   scrollToApp();
@@ -249,6 +255,7 @@ function handleNext() {
 
 function handleBack() {
   S.errors = {};
+  S.submissionError = null;
   S.step--;
 
   // Going back to calendar (Flow A step 1): restore day view if slot was selected
@@ -259,6 +266,25 @@ function handleBack() {
     }
   }
 
+  render();
+  scrollToApp();
+}
+
+function handleRepickSlot() {
+  const staleSlot = S.submissionError && S.submissionError.staleSlot
+    ? S.submissionError.staleSlot
+    : S.selectedSlot;
+  if (staleSlot && staleSlot.start) {
+    const slotDate = new Date(staleSlot.start);
+    S.calViewDate = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
+  } else {
+    S.calViewDate = null;
+  }
+  S.selectedSlot = null;
+  S.errors = {};
+  S.submissionError = null;
+  S.submitting = false;
+  S.step = 1;
   render();
   scrollToApp();
 }
@@ -274,6 +300,7 @@ function scrollToApp() {
 
 async function handleSubmit() {
   S.submitting = true;
+  S.submissionError = null;
   render();
 
   try {
@@ -306,6 +333,7 @@ async function handleSubmit() {
     S.submitting    = false;
     S.paymentResult = null;
     S.submissionStatus = status;
+    S.submissionError = null;
     S.step++;
     render();
     scrollToApp();
@@ -332,7 +360,15 @@ async function handleSubmit() {
       (err && typeof err === 'object' && err.data && typeof err.data.message === 'string' && err.data.message)
       || (err && typeof err === 'object' && typeof err.message === 'string' && err.message)
       || 'Something went wrong. Please try again.';
-    S.errors = { global: userMessage };
+    const isSlotUnavailable = /slot is no longer available/i.test(userMessage);
+    S.errors = isSlotUnavailable ? {} : { global: userMessage };
+    S.submissionError = isSlotUnavailable
+      ? {
+          kind: 'slot-unavailable',
+          message: userMessage,
+          staleSlot: S.selectedSlot ? { start: S.selectedSlot.start, end: S.selectedSlot.end } : null,
+        }
+      : null;
     S.submitting = false;
     render();
   }

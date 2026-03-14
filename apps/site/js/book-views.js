@@ -407,19 +407,49 @@
             ? 'Pay now via Stripe'
             : 'Pay later — payment due 24h before')],
       ].filter(Boolean);
+      const hasSlotConflict = state.submissionError && state.submissionError.kind === 'slot-unavailable';
+      const staleSlot = hasSlotConflict
+        ? (state.submissionError.staleSlot || state.selectedSlot)
+        : null;
+      const staleSlotLabel = staleSlot && staleSlot.start
+        ? `${formatDateLong(staleSlot.start)} · ${formatTime(staleSlot.start)}`
+        : 'Your previously selected time';
 
       return `
         <div class="form-step">
-          <p class="step-eyebrow">Review your booking</p>
+          ${hasSlotConflict ? buildSlotConflictState(staleSlotLabel) : '<p class="step-eyebrow">Review your booking</p>'}
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
-          <div class="step-footer">
-            <button class="btn btn-ghost" data-back>← Back</button>
-            <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
-              ${state.submitting ? 'Processing…' : 'Confirm Booking'}
-            </button>
-          </div>
+          ${hasSlotConflict
+            ? ''
+            : `<div class="step-footer">
+                <button class="btn btn-ghost" data-back>← Back</button>
+                <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
+                  ${state.submitting ? 'Processing…' : 'Confirm Booking'}
+                </button>
+              </div>`}
         </div>
+      `;
+    }
+
+    function buildSlotConflictState(staleSlotLabel) {
+      const contactHref = siteConfig.contactHref || 'contact.html';
+      return `
+        <section class="booking-recovery booking-recovery--warning" role="alert" aria-live="assertive">
+          <p class="booking-recovery__eyebrow">Time needs updating</p>
+          <h2 class="booking-recovery__title">That time was just taken</h2>
+          <p class="booking-recovery__message">
+            No problem. Your details are saved, and you can choose another available slot now.
+          </p>
+          <div class="booking-recovery__stale-slot">
+            <span class="booking-recovery__stale-label">Unavailable selection</span>
+            <strong>${escHtml(staleSlotLabel)}</strong>
+          </div>
+          <div class="booking-recovery__actions">
+            <button class="btn btn-primary" type="button" data-repick-slot>Choose another time</button>
+            <a class="btn btn-secondary" href="${escHtml(contactHref)}">Contact Yair directly</a>
+          </div>
+        </section>
       `;
     }
 
