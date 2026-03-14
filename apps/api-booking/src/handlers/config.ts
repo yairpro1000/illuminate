@@ -40,6 +40,7 @@ function toPublicPolicyFieldName(field: string | null): keyof PublicBookingPolic
 export async function handleGetPublicConfig(request: Request, ctx: AppContext): Promise<Response> {
   try {
     const path = new URL(request.url).pathname;
+    const requestCountry = (request.headers.get('cf-ipcountry') || '').trim().toUpperCase() || null;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'public_config_request_started',
@@ -47,6 +48,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       context: {
         path,
         request_id: ctx.requestId,
+        request_country: requestCountry,
         branch_taken: 'evaluate_public_booking_policy',
       },
     });
@@ -74,6 +76,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       context: {
         path,
         request_id: ctx.requestId,
+        request_country: requestCountry,
         booking_policy: bookingPolicy,
         invalid_policy_field: invalidPolicyField?.field ?? null,
         invalid_policy_value: invalidPolicyField?.value ?? null,
@@ -90,6 +93,9 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
 
     const responseBody = {
       config_version: 'booking_policy_v1',
+      visitor: {
+        country: requestCountry,
+      },
       booking_policy: bookingPolicy,
       booking_policy_text: getBookingPolicyText(policy.selfServiceLockWindowHours),
       antibot: {
@@ -121,6 +127,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       context: {
         path,
         request_id: ctx.requestId,
+        request_country: requestCountry,
         config_version: responseBody.config_version,
         antibot_mode: responseBody.antibot.mode,
         turnstile_enabled: responseBody.antibot.turnstile.enabled,
@@ -141,6 +148,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         context: {
           path,
           request_id: ctx.requestId,
+          request_country: request.headers.get('cf-ipcountry'),
           status_code: statusCode,
           error_code: err.code,
           branch_taken: 'handled_api_error',
@@ -156,6 +164,7 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         context: {
           path,
           request_id: ctx.requestId,
+          request_country: request.headers.get('cf-ipcountry'),
           status_code: statusCode,
           branch_taken: 'unexpected_exception',
         },

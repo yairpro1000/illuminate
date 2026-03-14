@@ -25,6 +25,9 @@ describe('public config endpoint diagnostics', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
       config_version: 'booking_policy_v1',
+      visitor: {
+        country: null,
+      },
       booking_policy: {
         non_paid_confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
         pay_now_checkout_window_minutes: policy.payNowCheckoutWindowMinutes,
@@ -58,6 +61,7 @@ describe('public config endpoint diagnostics', () => {
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'public_config_request_decision',
       context: expect.objectContaining({
+        request_country: null,
         branch_taken: 'allow_public_booking_policy',
         deny_reason: null,
       }),
@@ -65,6 +69,7 @@ describe('public config endpoint diagnostics', () => {
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'public_config_response_ready',
       context: expect.objectContaining({
+        request_country: null,
         antibot_mode: 'mock',
         turnstile_enabled: false,
         turnstile_env_snapshot: expect.objectContaining({
@@ -72,6 +77,30 @@ describe('public config endpoint diagnostics', () => {
           TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: 'site-key-fail',
         }),
         branch_taken: 'public_config_response_prepared',
+      }),
+    }));
+  });
+
+  it('returns the Cloudflare request country for refresh-time visitor decisions', async () => {
+    const ctx = makeCtx();
+    const req = new Request('https://api.local/api/config', {
+      headers: {
+        'cf-ipcountry': 'IL',
+      },
+    });
+
+    const res = await handleGetPublicConfig(req, ctx);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      visitor: {
+        country: 'IL',
+      },
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_config_request_started',
+      context: expect.objectContaining({
+        request_country: 'IL',
       }),
     }));
   });

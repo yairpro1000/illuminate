@@ -9,6 +9,9 @@
   });
   const HOME_SUGGESTION_SECTION_ID = 'how-we-work';
   let homeSuggestionTriggered = false;
+  let visitorCountry = null;
+  let visitorCountryResolved = false;
+  let visitorCountryRequest = null;
 
   function roundAmount(amount) {
     return Math.round(Number(amount || 0) * 100) / 100;
@@ -64,7 +67,13 @@
     emitCouponChange(source || 'remove');
   }
 
-  function isLikelyIsraelVisitor() {
+  function normalizeCountryCode(raw) {
+    if (typeof raw !== 'string') return null;
+    const normalized = raw.trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(normalized) ? normalized : null;
+  }
+
+  function getHeuristicIsraelVisitor() {
     let timeZone = '';
     try {
       timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
@@ -73,6 +82,49 @@
     const hasHebrewLanguage = languages.some((language) => /^he\b/i.test(String(language || '').trim()));
     const hasIsraelLocale = languages.some((language) => /-IL\b/i.test(String(language || '').trim()));
     return timeZone === 'Asia/Jerusalem' || hasHebrewLanguage || hasIsraelLocale;
+  }
+
+  function isLikelyIsraelVisitor() {
+    if (!visitorCountryResolved) return false;
+    if (visitorCountry) return visitorCountry === 'IL';
+    return getHeuristicIsraelVisitor();
+  }
+
+  function emitVisitorContextRefresh(source) {
+    window.dispatchEvent(new CustomEvent('sitecouponchange', {
+      detail: {
+        source: source || 'visitor_context_refresh',
+        couponCode: getAppliedCouponCode() || null,
+      },
+    }));
+  }
+
+  function resolveVisitorCountry() {
+    if (visitorCountryResolved) return Promise.resolve(visitorCountry);
+    if (visitorCountryRequest) return visitorCountryRequest;
+    visitorCountryRequest = window.fetch('/api/config', {
+      headers: {
+        Accept: 'application/json',
+      },
+      credentials: 'same-origin',
+    })
+      .then((response) => {
+        if (!response || !response.ok) throw new Error(`config_fetch_failed:${response ? response.status : 'unknown'}`);
+        return response.json();
+      })
+      .then((payload) => {
+        visitorCountry = normalizeCountryCode(payload && payload.visitor ? payload.visitor.country : null);
+        visitorCountryResolved = true;
+      })
+      .catch(() => {
+        visitorCountry = null;
+        visitorCountryResolved = true;
+      })
+      .finally(() => {
+        visitorCountryRequest = null;
+        emitVisitorContextRefresh('visitor_country_resolved');
+      });
+    return visitorCountryRequest;
   }
 
   function formatNumber(amount) {
@@ -227,7 +279,7 @@
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
         homeSuggestionTriggered = true;
-        mountSuggestionInto(section.querySelector('.container') || section);
+        refreshPageSuggestions();
         observer.disconnect();
       });
     }, { threshold: 0.35 });
@@ -273,6 +325,7 @@
     renderAppliedIndicator();
     applyStaticPrices(document);
     initPageSuggestions();
+    resolveVisitorCountry();
   });
 
   window.addEventListener('resize', syncCouponOffset);
@@ -288,6 +341,7 @@
     buildPriceHtml,
     buildSuggestionBannerHtml,
     isLikelyIsraelVisitor,
+    resolveVisitorCountry,
     setAppliedCouponCode,
     clearAppliedCouponCode,
     applyStaticPrices,

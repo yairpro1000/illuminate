@@ -348,6 +348,56 @@ describe('booking domain model', () => {
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
   });
 
+  it('generates and persists a mock invoice URL when mock payment settlement succeeds without one', async () => {
+    const ctx = makeCtx();
+
+    const created = await createPayNowBooking({
+      slotStart: '2026-03-27T10:00:00.000Z',
+      slotEnd: '2026-03-27T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Invoice Doe',
+      clientEmail: 'invoice@example.com',
+      clientPhone: '+41000000017',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    await confirmBookingPayment({
+      id: payment!.id,
+      booking_id: payment!.booking_id,
+      provider_payment_id: payment!.provider_payment_id,
+    }, {
+      paymentIntentId: 'pi_456',
+      invoiceId: null,
+      invoiceUrl: null,
+    }, ctx);
+
+    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'invoice@example.com',
+    );
+
+    expect(refreshedPayment?.status).toBe('SUCCEEDED');
+    expect(refreshedPayment?.invoice_url).toBe(
+      `https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+    );
+    expect(confirmationEmail?.body).toContain(
+      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+    );
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'payment_settlement_invoice_resolution_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'generated_mock_invoice_url_for_settlement',
+        resolved_invoice_url_present: true,
+      }),
+    }));
+  });
+
   it('sends confirmation without a broken meet placeholder when calendar creation returns no meet link', async () => {
     const ctx = makeCtx({
       calendar: {

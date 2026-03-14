@@ -97,6 +97,40 @@ function withBookingOperationContext(ctx: BookingContext, bookingId: string): Bo
   };
 }
 
+function resolveSettlementInvoiceDetails(
+  input: Pick<PaymentSettlementInput, 'payment' | 'invoiceId' | 'invoiceUrl'>,
+  env: Pick<Env, 'SITE_URL' | 'PAYMENTS_MODE'>,
+): { invoiceId: string | null; invoiceUrl: string | null; branchTaken: string; denyReason: string | null } {
+  if (input.invoiceUrl) {
+    return {
+      invoiceId: input.invoiceId ?? null,
+      invoiceUrl: input.invoiceUrl,
+      branchTaken: 'reuse_upstream_invoice_url',
+      denyReason: null,
+    };
+  }
+
+  const isMockSettlement = env.PAYMENTS_MODE === 'mock'
+    || (input.payment.provider_payment_id ?? '').startsWith('mock_');
+
+  if (!isMockSettlement) {
+    return {
+      invoiceId: input.invoiceId ?? null,
+      invoiceUrl: null,
+      branchTaken: 'missing_invoice_url_non_mock_settlement',
+      denyReason: 'invoice_url_missing_from_upstream_settlement',
+    };
+  }
+
+  const invoiceId = input.invoiceId ?? `mock_inv_${input.payment.provider_payment_id ?? input.payment.id}`;
+  return {
+    invoiceId,
+    invoiceUrl: `${env.SITE_URL}/mock-invoice/${invoiceId}.pdf`,
+    branchTaken: 'generated_mock_invoice_url_for_settlement',
+    denyReason: null,
+  };
+}
+
 // ── Session booking inputs ─────────────────────────────────────────────────
 
 export interface PayNowInput {
@@ -787,17 +821,50 @@ async function settleBookingPayment(
 ): Promise<void> {
   const { providers, logger } = ctx;
   const settledAt = input.settledAt ?? new Date().toISOString();
+  const resolvedInvoice = resolveSettlementInvoiceDetails(input, ctx.env);
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'payment_settlement_invoice_resolution_decision',
+    message: 'Evaluated invoice URL resolution for payment settlement',
+    context: {
+      booking_id: input.payment.booking_id,
+      payment_id: input.payment.id,
+      provider_payment_id: input.payment.provider_payment_id,
+      payments_mode: ctx.env.PAYMENTS_MODE ?? null,
+      invoice_id_from_input: input.invoiceId ?? null,
+      invoice_url_from_input_present: Boolean(input.invoiceUrl),
+      resolved_invoice_id: resolvedInvoice.invoiceId,
+      resolved_invoice_url_present: Boolean(resolvedInvoice.invoiceUrl),
+      branch_taken: resolvedInvoice.branchTaken,
+      deny_reason: resolvedInvoice.denyReason,
+    },
+  });
 
   await providers.repository.updatePayment(input.payment.id, {
     status: 'SUCCEEDED',
     paid_at: settledAt,
-    invoice_url: input.invoiceUrl ?? null,
+    invoice_url: resolvedInvoice.invoiceUrl,
     raw_payload: {
       payment_intent_id: input.paymentIntentId ?? null,
-      invoice_id: input.invoiceId ?? null,
+      invoice_id: resolvedInvoice.invoiceId,
       provider_payment_id: input.payment.provider_payment_id,
       settlement_source: input.settlementSource,
       ...(input.rawPayload ?? {}),
+    },
+  });
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'payment_settlement_invoice_resolution_completed',
+    message: 'Persisted invoice URL resolution for payment settlement',
+    context: {
+      booking_id: input.payment.booking_id,
+      payment_id: input.payment.id,
+      resolved_invoice_id: resolvedInvoice.invoiceId,
+      resolved_invoice_url_present: Boolean(resolvedInvoice.invoiceUrl),
+      branch_taken: resolvedInvoice.branchTaken,
+      deny_reason: resolvedInvoice.denyReason,
     },
   });
 
@@ -823,8 +890,8 @@ async function settleBookingPayment(
         late: true,
         prior_status: booking.current_status,
         payment_intent_id: input.paymentIntentId ?? null,
-        invoice_id: input.invoiceId ?? null,
-        invoice_url: input.invoiceUrl ?? null,
+        invoice_id: resolvedInvoice.invoiceId,
+        invoice_url: resolvedInvoice.invoiceUrl,
         settled_at: settledAt,
       },
     });
@@ -838,8 +905,8 @@ async function settleBookingPayment(
     input.settlementSource,
     {
       payment_intent_id: input.paymentIntentId ?? null,
-      invoice_id: input.invoiceId ?? null,
-      invoice_url: input.invoiceUrl ?? null,
+      invoice_id: resolvedInvoice.invoiceId,
+      invoice_url: resolvedInvoice.invoiceUrl,
       settled_at: settledAt,
       ...(input.rawPayload ?? {}),
     },

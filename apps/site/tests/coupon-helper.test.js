@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import couponCode from '../js/coupon.js?raw'
 
 function evalCode(code) {
@@ -7,11 +7,26 @@ function evalCode(code) {
 }
 
 describe('site coupon helper', () => {
+  let fetchMock
+
   beforeEach(() => {
     document.body.innerHTML = `
       <div data-coupon-price data-price-chf="150" data-price-currency="CHF"></div>
     `
     window.localStorage.clear()
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        visitor: {
+          country: null,
+        },
+      }),
+    })
+    window.fetch = fetchMock
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
   })
 
   it('persists the Israel coupon and rewrites static price displays with discount markup', () => {
@@ -42,5 +57,53 @@ describe('site coupon helper', () => {
     expect(text).toContain('CHF 742.50')
     expect(text).toContain('3,960 ₪')
     expect(text).toContain('2,970 ₪')
+  })
+
+  it('re-checks request country on refresh before showing the Israel banner', async () => {
+    document.body.setAttribute('data-page', 'sessions')
+    document.body.innerHTML = `
+      <section id="session-types">
+        <div class="container"></div>
+      </section>
+    `
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        visitor: {
+          country: 'CH',
+        },
+      }),
+    })
+    evalCode(couponCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await window.SiteCoupon.resolveVisitorCountry()
+
+    expect(document.querySelector('[data-coupon-suggestion]')).toBeNull()
+  })
+
+  it('shows the Israel banner after refresh when request country resolves to IL', async () => {
+    document.body.setAttribute('data-page', 'sessions')
+    document.body.innerHTML = `
+      <section id="session-types">
+        <div class="container"></div>
+      </section>
+    `
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        visitor: {
+          country: 'IL',
+        },
+      }),
+    })
+    evalCode(couponCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await window.SiteCoupon.resolveVisitorCountry()
+
+    const banner = document.querySelector('[data-coupon-suggestion]')
+    expect(banner).not.toBeNull()
+    expect(banner.textContent).toContain('Apply Israel discount')
   })
 })
