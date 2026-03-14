@@ -83,13 +83,55 @@ function toTestBookingSummary(row: OrganizerBookingRow) {
 }
 
 async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): Promise<OrganizerBookingRow[]> {
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_lookup_clients_started',
+    message: 'Started loading test-booking clients by email prefix',
+    context: {
+      email_prefix: emailPrefix,
+      branch_taken: 'load_test_clients_by_email_prefix',
+    },
+  });
   const clients = await ctx.providers.repository.listClientsByEmailPrefix(emailPrefix);
   const matchingClients = clients.filter((client) => isExampleTestEmail(client.email));
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_lookup_clients_completed',
+    message: 'Resolved test-booking clients by email prefix',
+    context: {
+      email_prefix: emailPrefix,
+      matched_client_count: matchingClients.length,
+      branch_taken: 'return_matching_test_clients',
+    },
+  });
   if (matchingClients.length === 0) return [];
 
   const rows: OrganizerBookingRow[] = [];
   for (const client of matchingClients) {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'test_bookings_lookup_client_bookings_started',
+      message: 'Started loading organizer bookings for matched test client',
+      context: {
+        email_prefix: emailPrefix,
+        client_id: client.id,
+        client_email: client.email,
+        branch_taken: 'load_organizer_bookings_for_test_client',
+      },
+    });
     const clientRows = await ctx.providers.repository.getOrganizerBookings({ client_id: client.id });
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'test_bookings_lookup_client_bookings_completed',
+      message: 'Resolved organizer bookings for matched test client',
+      context: {
+        email_prefix: emailPrefix,
+        client_id: client.id,
+        client_email: client.email,
+        booking_count: clientRows.length,
+        branch_taken: 'return_organizer_bookings_for_test_client',
+      },
+    });
     rows.push(...clientRows);
   }
 
@@ -483,7 +525,37 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
     });
   }
 
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'test_bookings_cleanup_batch_planned',
+    message: 'Planned test bookings cleanup batch',
+    context: {
+      path,
+      email_prefix: emailPrefix,
+      matched_count: matches.length,
+      active_matched_count: activeMatches.length,
+      terminal_matched_count: terminalMatches.length,
+      processed_count: batch.length,
+      batch_limit: limit,
+      branch_taken: 'cleanup_batch_planned',
+    },
+  });
+
   for (const row of batch) {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'test_bookings_cleanup_booking_started',
+      message: 'Started cleanup for test booking',
+      context: {
+        path,
+        email_prefix: emailPrefix,
+        booking_id: row.booking_id,
+        booking_status: row.current_status,
+        client_id: row.client_id,
+        client_email: row.client_email,
+        branch_taken: 'cleanup_single_booking_started',
+      },
+    });
     try {
       const booking = await ctx.providers.repository.getBookingById(row.booking_id);
       if (!booking) {
@@ -545,6 +617,18 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       canceled.push({
         booking_id: row.booking_id,
         status: result.booking.current_status,
+      });
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'test_bookings_cleanup_booking_completed',
+        message: 'Completed cleanup for test booking',
+        context: {
+          path,
+          email_prefix: emailPrefix,
+          booking_id: row.booking_id,
+          booking_status: result.booking.current_status,
+          branch_taken: 'cleanup_single_booking_canceled',
+        },
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
