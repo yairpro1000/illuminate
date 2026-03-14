@@ -1,4 +1,9 @@
-import type { ICalendarProvider, CalendarEvent, CreateCalendarEventOptions } from './interface.js';
+import type {
+  ICalendarProvider,
+  CalendarEvent,
+  CalendarEventUpsertResult,
+  CreateCalendarEventOptions,
+} from './interface.js';
 import type { TimeSlot } from '../../types.js';
 import type { Logger } from '../../lib/logger.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
@@ -24,6 +29,17 @@ interface ParsedGoogleApiError {
   status: string | null;
   message: string | null;
   reason: string | null;
+}
+
+interface GoogleCalendarEventResponse {
+  id: string;
+  hangoutLink?: string | null;
+  conferenceData?: {
+    entryPoints?: Array<{
+      uri?: string | null;
+      entryPointType?: string | null;
+    }> | null;
+  } | null;
 }
 
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
@@ -417,7 +433,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     return data.calendars[this.calendarId]?.busy ?? [];
   }
 
-  async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<{ eventId: string }> {
+  async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
@@ -446,22 +462,38 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       requestId: diagnostics.requestId,
     });
     const calId = encodeURIComponent(this.calendarId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: options?.eventIdHint ?? null,
+        createConference: true,
       }),
     );
     const initialRes = await this.postCalendarEvent(url, token, initialBody);
 
     if (initialRes.ok) {
-      const data = await initialRes.json() as { id: string };
-      return { eventId: data.id };
+      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const result = toCalendarUpsertResult(data);
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: 'google_calendar_insert_completed',
+        message: 'Google Calendar events.insert succeeded',
+        context: {
+          booking_id: diagnostics.bookingId,
+          request_id: diagnostics.requestId,
+          google_event_id: result.eventId,
+          meeting_provider: result.meetingProvider,
+          has_meeting_link: Boolean(result.meetingLink),
+          meeting_link_source: detectMeetingLinkSource(data),
+          branch_taken: result.meetingLink ? 'google_event_created_with_meet_link' : 'google_event_created_without_meet_link',
+          deny_reason: result.meetingLink ? null : 'google_meet_link_missing_in_create_response',
+        },
+      });
+      return result;
     }
 
     if (initialRes.status === 409 && options?.eventIdHint) {
-      await this.updateEvent(options.eventIdHint, event);
-      return { eventId: options.eventIdHint };
+      return this.updateEvent(options.eventIdHint, event);
     }
 
     const initialErrorBody = await initialRes.text();
@@ -479,7 +511,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     throw new Error(`Google createEvent failed (${initialRes.status}): ${initialErrorBody}`);
   }
 
-  async updateEvent(eventId: string, event: CalendarEvent): Promise<void> {
+  async updateEvent(eventId: string, event: CalendarEvent): Promise<CalendarEventUpsertResult> {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
@@ -491,14 +523,34 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: null,
+        createConference: false,
       }),
     );
     const initialRes = await this.putCalendarEvent(url, token, initialBody);
-    if (initialRes.ok) return;
+    if (initialRes.ok) {
+      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const result = toCalendarUpsertResult(data);
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: 'google_calendar_update_completed',
+        message: 'Google Calendar events.update succeeded',
+        context: {
+          booking_id: diagnostics.bookingId,
+          request_id: diagnostics.requestId,
+          google_event_id: result.eventId,
+          meeting_provider: result.meetingProvider,
+          has_meeting_link: Boolean(result.meetingLink),
+          meeting_link_source: detectMeetingLinkSource(data),
+          branch_taken: result.meetingLink ? 'google_event_updated_with_meet_link' : 'google_event_updated_without_meet_link',
+          deny_reason: null,
+        },
+      });
+      return result;
+    }
 
     const initialErrorBody = await initialRes.text();
     const initialGoogleError = parseGoogleApiError(initialErrorBody);
@@ -653,7 +705,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
 function buildGoogleEventBody(
   event: CalendarEvent,
-  options: { eventIdHint: string | null },
+  options: { eventIdHint: string | null; createConference: boolean },
 ): Record<string, unknown> {
   return {
     ...(options.eventIdHint ? { id: options.eventIdHint } : {}),
@@ -663,8 +715,48 @@ function buildGoogleEventBody(
     start: { dateTime: event.startIso, timeZone: event.timezone },
     end: { dateTime: event.endIso, timeZone: event.timezone },
     attendees: [{ email: event.attendeeEmail, displayName: event.attendeeName }],
+    ...(options.createConference
+      ? {
+        conferenceData: {
+          createRequest: {
+            requestId: `meet-${crypto.randomUUID()}`,
+          },
+        },
+      }
+      : {}),
     ...(event.privateMetadata ? { extendedProperties: { private: event.privateMetadata } } : {}),
   };
+}
+
+function toCalendarUpsertResult(data: GoogleCalendarEventResponse): CalendarEventUpsertResult {
+  const meetingLink = extractGoogleMeetLink(data);
+  return {
+    eventId: data.id,
+    meetingProvider: meetingLink ? 'google_meet' : null,
+    meetingLink,
+  };
+}
+
+function extractGoogleMeetLink(data: GoogleCalendarEventResponse): string | null {
+  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
+    return data.hangoutLink.trim();
+  }
+
+  const videoEntryPoint = data.conferenceData?.entryPoints?.find(
+    (entryPoint) => entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string' && entryPoint.uri.trim(),
+  );
+  return videoEntryPoint?.uri?.trim() ?? null;
+}
+
+function detectMeetingLinkSource(data: GoogleCalendarEventResponse): 'hangoutLink' | 'conferenceData.video' | 'missing' {
+  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
+    return 'hangoutLink';
+  }
+  return data.conferenceData?.entryPoints?.some(
+    (entryPoint) => entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string' && entryPoint.uri.trim(),
+  )
+    ? 'conferenceData.video'
+    : 'missing';
 }
 
 function toGoogleDiagnosticsContext(event: CalendarEvent): { bookingId: string | null; requestId: string | null } {

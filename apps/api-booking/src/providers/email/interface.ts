@@ -48,8 +48,11 @@ export interface IEmailProvider {
   /** Session follow-up when email not yet confirmed. */
   sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult>;
 
-  /** Session cancellation/expiry. Optionally include a start-new-booking URL. */
+  /** Session cancellation. Optionally include a start-new-booking URL. */
   sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
+
+  /** Session expired because it was not confirmed/paid in time. Optionally include a start-new-booking URL. */
+  sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
 
   /** Event (free) pending-confirmation request. */
   sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult>;

@@ -17,6 +17,12 @@ export interface CreateCalendarEventOptions {
   eventIdHint?: string;
 }
 
+export interface CalendarEventUpsertResult {
+  eventId: string;
+  meetingProvider: 'google_meet' | null;
+  meetingLink: string | null;
+}
+
 export interface ICalendarProvider {
   /**
    * Returns periods when the calendar is busy between `from` and `to` (ISO 8601 dates).
@@ -24,11 +30,11 @@ export interface ICalendarProvider {
    */
   getBusyTimes(from: string, to: string): Promise<TimeSlot[]>;
 
-  /** Creates a calendar event. Returns the provider's event ID (google_event_id). */
-  createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<{ eventId: string }>;
+  /** Creates a calendar event. Returns the provider's event ID and meeting data when available. */
+  createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult>;
 
-  /** Updates an existing event by provider event ID. */
-  updateEvent(eventId: string, event: CalendarEvent): Promise<void>;
+  /** Updates an existing event by provider event ID and returns meeting data when available. */
+  updateEvent(eventId: string, event: CalendarEvent): Promise<CalendarEventUpsertResult>;
 
   /** Deletes an event by provider event ID. Idempotent — must not throw if already gone. */
   deleteEvent(eventId: string): Promise<void>;

@@ -531,6 +531,8 @@ CREATE TABLE IF NOT EXISTS "public"."bookings" (
     "ends_at" timestamp with time zone NOT NULL,
     "timezone" "text" DEFAULT 'Europe/Zurich'::"text" NOT NULL,
     "google_event_id" "text",
+    "meeting_provider" "text",
+    "meeting_link" "text",
     "address_line" "text" NOT NULL,
     "maps_url" "text" NOT NULL,
     "current_status" "text" NOT NULL,
@@ -539,6 +541,7 @@ CREATE TABLE IF NOT EXISTS "public"."bookings" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "bookings_booking_type_check" CHECK (("booking_type" = ANY (ARRAY['FREE'::"text", 'PAY_NOW'::"text", 'PAY_LATER'::"text"]))),
     CONSTRAINT "bookings_current_status_check" CHECK (("current_status" = ANY (ARRAY['PENDING'::"text", 'CONFIRMED'::"text", 'CANCELED'::"text", 'EXPIRED'::"text", 'COMPLETED'::"text", 'NO_SHOW'::"text"]))),
+    CONSTRAINT "bookings_meeting_provider_check" CHECK (("meeting_provider" = ANY (ARRAY['google_meet'::"text", 'zoom'::"text"]))),
     CONSTRAINT "bookings_exactly_one_kind_check" CHECK ((((("event_id" IS NOT NULL))::integer + (("session_type_id" IS NOT NULL))::integer) = 1)),
     CONSTRAINT "bookings_time_order_check" CHECK (("ends_at" > "starts_at"))
 );
@@ -1610,7 +1613,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
 
 
 

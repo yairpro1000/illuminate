@@ -772,7 +772,7 @@ async function executeSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
       return;
     }
 

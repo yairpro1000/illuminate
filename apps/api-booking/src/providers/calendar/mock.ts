@@ -1,4 +1,4 @@
-import type { ICalendarProvider, CalendarEvent, CreateCalendarEventOptions } from './interface.js';
+import type { ICalendarProvider, CalendarEvent, CalendarEventUpsertResult, CreateCalendarEventOptions } from './interface.js';
 import type { TimeSlot } from '../../types.js';
 
 /**
@@ -39,7 +39,7 @@ export class MockCalendarProvider implements ICalendarProvider {
     return mockBusyTimes(from, to);
   }
 
-  async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<{ eventId: string }> {
+  async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     const eventId = options?.eventIdHint ?? `mock_gcal_${crypto.randomUUID()}`;
     this.events.set(eventId, event);
     console.log(`[calendar:mock] createEvent → ${eventId}`, {
@@ -47,15 +47,24 @@ export class MockCalendarProvider implements ICalendarProvider {
       start: event.startIso,
       end: event.endIso,
     });
-    return { eventId };
+    return {
+      eventId,
+      meetingProvider: 'google_meet',
+      meetingLink: `https://meet.google.com/${eventId.slice(-3)}-${eventId.slice(-6, -3)}-${eventId.slice(-9, -6)}`,
+    };
   }
 
-  async updateEvent(eventId: string, event: CalendarEvent): Promise<void> {
+  async updateEvent(eventId: string, event: CalendarEvent): Promise<CalendarEventUpsertResult> {
     this.events.set(eventId, event);
     console.log(`[calendar:mock] updateEvent ${eventId}`, {
       title: event.title,
       start: event.startIso,
     });
+    return {
+      eventId,
+      meetingProvider: 'google_meet',
+      meetingLink: `https://meet.google.com/${eventId.slice(-3)}-${eventId.slice(-6, -3)}-${eventId.slice(-9, -6)}`,
+    };
   }
 
   async deleteEvent(eventId: string): Promise<void> {

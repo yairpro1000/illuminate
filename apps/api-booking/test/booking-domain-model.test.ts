@@ -241,11 +241,15 @@ describe('booking domain model', () => {
     const confirmed = await confirmBookingEmail(token, ctx);
     expect(confirmed.current_status).toBe('CONFIRMED');
     expect(confirmed.google_event_id).toBeTruthy();
+    expect(confirmed.meeting_provider).toBe('google_meet');
+    expect(confirmed.meeting_link).toContain('https://meet.google.com/');
 
     const confirmationEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_confirmation' && email.to === 'intro@example.com',
     );
     expect(confirmationEmail).toBeTruthy();
+    expect(confirmationEmail?.body).toContain('Join Google Meet:');
+    expect(confirmationEmail?.body).toContain(String(confirmed.meeting_link));
   });
 
   it('keeps pay-later bookings pending after email confirmation and sends payment link', async () => {
@@ -315,7 +319,68 @@ describe('booking domain model', () => {
     const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(updated?.current_status).toBe('CONFIRMED');
     expect(updated?.google_event_id).toBeTruthy();
+    expect(updated?.meeting_provider).toBe('google_meet');
+    expect(updated?.meeting_link).toContain('https://meet.google.com/');
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
+  });
+
+  it('sends confirmation without a broken meet placeholder when calendar creation returns no meet link', async () => {
+    const ctx = makeCtx({
+      calendar: {
+        getBusyTimes: vi.fn().mockResolvedValue([]),
+        createEvent: vi.fn().mockResolvedValue({
+          eventId: 'g-no-meet',
+          meetingProvider: null,
+          meetingLink: null,
+        }),
+        updateEvent: vi.fn().mockResolvedValue({
+          eventId: 'g-no-meet',
+          meetingProvider: null,
+          meetingLink: null,
+        }),
+        deleteEvent: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-29T15:00:00.000Z',
+      slotEnd: '2026-03-29T15:30:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'No Meet Doe',
+      clientEmail: 'nomeet@example.com',
+      clientPhone: '+41000000016',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+
+    const confirmed = await confirmBookingEmail(token, ctx);
+    expect(confirmed.google_event_id).toBe('g-no-meet');
+    expect(confirmed.meeting_provider ?? null).toBeNull();
+    expect(confirmed.meeting_link ?? null).toBeNull();
+
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'nomeet@example.com',
+    );
+    expect(confirmationEmail).toBeTruthy();
+    expect(confirmationEmail?.body).not.toContain('Join Google Meet: undefined');
+    expect(confirmationEmail?.body).not.toContain('Join Google Meet: null');
+    expect(confirmationEmail?.body).not.toContain('Join Google Meet:');
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'calendar_meet_link_missing_after_create',
+      context: expect.objectContaining({
+        booking_id: confirmed.id,
+        google_event_id: 'g-no-meet',
+        branch_taken: 'calendar_event_created_without_meet_link',
+      }),
+    }));
   });
 
   it('expires pending bookings through verification side effects and keeps reschedule/cancel flows on new intents', async () => {
@@ -345,6 +410,14 @@ describe('booking domain model', () => {
 
     const expired = await ctx.providers.repository.getBookingById(created.bookingId);
     expect(expired?.current_status).toBe('EXPIRED');
+    const expiryEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_expired' && email.to === 'nora@example.com',
+    );
+    expect(expiryEmail).toBeTruthy();
+    expect(expiryEmail?.subject).toBe('Your booking expired');
+    expect(expiryEmail?.body).toContain('expired because it was not completed in time');
+    expect(expiryEmail?.body).toContain('The slot has been released.');
+    expect(expiryEmail?.body).not.toMatch(/cancelled/i);
 
     const rescheduleAttempt = await rescheduleBooking(expired!, {
       newStart: '2026-03-24T10:00:00.000Z',

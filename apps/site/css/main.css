@@ -226,6 +226,9 @@ ul, ol { list-style: none; }
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  position: sticky;
+  top: calc(var(--coupon-banner-offset, 4.75rem) + 0.5rem);
+  z-index: 90;
   margin-bottom: 1.5rem;
   padding: 1rem 1.125rem;
   border: 1px solid var(--color-border);
@@ -279,6 +282,55 @@ ul, ol { list-style: none; }
   color: var(--color-lake-light);
   font: inherit;
   cursor: pointer;
+}
+
+body.theme-light .coupon-banner {
+  background: linear-gradient(135deg, oklch(99% 0.01 195 / 0.96), oklch(95% 0.018 198 / 0.92));
+  border-color: oklch(44% 0.152 200 / 0.18);
+  box-shadow: 0 10px 30px oklch(14% 0.025 210 / 0.10);
+}
+
+body.theme-light .coupon-banner__eyebrow {
+  color: var(--color-lake-deep);
+}
+
+body.theme-light .coupon-banner__text {
+  color: oklch(18% 0.024 210);
+}
+
+body.theme-light .coupon-indicator {
+  background: oklch(99% 0.005 195 / 0.96);
+  border-color: oklch(44% 0.152 200 / 0.2);
+  box-shadow: 0 8px 24px oklch(14% 0.025 210 / 0.10);
+}
+
+body.theme-light .coupon-indicator__label {
+  color: oklch(18% 0.024 210);
+}
+
+body.theme-light .coupon-indicator__remove {
+  color: var(--color-lake-deep);
+}
+
+body.theme-light .coupon-price__old {
+  color: oklch(42% 0.02 210);
+}
+
+body.theme-light .coupon-price__note,
+body.theme-light .coupon-price__suffix {
+  color: oklch(44% 0.018 210);
+}
+
+@media (max-width: 48rem) {
+  .coupon-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    top: calc(var(--coupon-banner-offset, 4.5rem) + 0.4rem);
+  }
+
+  .coupon-banner__action {
+    width: 100%;
+  }
 }
 
 .coupon-price {

@@ -37,11 +37,14 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   it('exchanges refresh token and inserts attendee event into trimmed calendar id', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'google-event-1' }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-1',
+        hangoutLink: 'https://meet.google.com/abc-defg-hij',
+      }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     const provider = makeProvider();
-    await provider.createEvent(makeCalendarEvent() as any);
+    const created = await provider.createEvent(makeCalendarEvent() as any);
 
     const tokenUrl = String(fetchMock.mock.calls[0]?.[0] ?? '');
     const tokenRequest = fetchMock.mock.calls[0]?.[1] as RequestInit;
@@ -54,12 +57,46 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     expect(tokenBody).toContain('grant_type=refresh_token');
 
     const insertUrl = String(fetchMock.mock.calls[1]?.[0] ?? '');
-    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=all');
+    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=all&conferenceDataVersion=1');
     expect(insertUrl).not.toContain('%0A');
     expect(insertUrl).not.toContain('%20');
 
     const insertBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
     expect(insertBody['attendees']).toEqual([{ email: 'test@example.com', displayName: 'Test User' }]);
+    expect(insertBody['conferenceData']).toEqual({
+      createRequest: {
+        requestId: expect.any(String),
+      },
+    });
+    expect(created).toEqual({
+      eventId: 'google-event-1',
+      meetingProvider: 'google_meet',
+      meetingLink: 'https://meet.google.com/abc-defg-hij',
+    });
+  });
+
+  it('falls back to conferenceData video entry points when hangoutLink is missing', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-2',
+        conferenceData: {
+          entryPoints: [
+            { entryPointType: 'more', uri: 'https://calendar.google.com' },
+            { entryPointType: 'video', uri: 'https://meet.google.com/fallback-link' },
+          ],
+        },
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = makeProvider();
+    const created = await provider.createEvent(makeCalendarEvent() as any);
+
+    expect(created).toEqual({
+      eventId: 'google-event-2',
+      meetingProvider: 'google_meet',
+      meetingLink: 'https://meet.google.com/fallback-link',
+    });
   });
 
   it('logs booking_id, request_id, and google response body when events.insert fails', async () => {

@@ -8,6 +8,7 @@
 (function () {
   const SITE_CLIENT = window.siteClient || null;
   const SITE_COUPON = window.SiteCoupon || null;
+  let latestSessions = null;
 
   const FALLBACK_URL = '/fallback_local_data/session_types.json';
   const DELAY_CLASSES = ['', ' fade-up--delay-1', ' fade-up--delay-2', ' fade-up--delay-3'];
@@ -122,6 +123,7 @@
 
   /* ── Render sessions into the grid ──────────────────────── */
   function renderSessions(sessions, grid) {
+    latestSessions = Array.isArray(sessions) ? sessions : null;
     grid.innerHTML = '';
     if (!sessions || !sessions.length) {
       const msg = document.createElement('p');
@@ -185,6 +187,12 @@
       grid.appendChild(msg);
     }
   }
+
+  window.addEventListener('sitecouponchange', () => {
+    const grid = document.getElementById('sessionGrid');
+    if (!grid || !Array.isArray(latestSessions)) return;
+    renderSessions(latestSessions, grid);
+  });
 
   init();
 

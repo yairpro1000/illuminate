@@ -76,6 +76,7 @@ function bookingConfirmationBody(
     `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
     `Location: ${booking.address_line}`,
     booking.maps_url ? `Map: ${booking.maps_url}` : null,
+    booking.meeting_link ? `Join Google Meet: ${booking.meeting_link}` : null,
     '',
     'A calendar invitation has been sent to you.',
     "If you don't see it, please check your spam folder.",
@@ -209,6 +210,9 @@ function bookingConfirmationHtml(
   if (booking.maps_url) {
     rows.push(['Map', `<a href="${esc(booking.maps_url)}">Open in Maps</a>`]);
   }
+  if (booking.meeting_link) {
+    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
+  }
 
   const extraLinks = [
     payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
@@ -264,6 +268,9 @@ function eventConfirmationHtml(
   ];
   if (event.maps_url) {
     rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
+  }
+  if (booking.meeting_link) {
+    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
   }
 
   const invoiceLine = invoiceUrl
@@ -465,6 +472,27 @@ export class ResendEmailProvider implements IEmailProvider {
     return this.sendEmail(clientEmail(booking), 'booking_cancellation', 'Your booking has been cancelled', text, undefined, html);
   }
 
+  async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
+    const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
+    const text = `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`;
+    const html = simpleHtml(
+      `Hi ${clientName(booking)}`,
+      [
+        ['Session', esc(sessionLabel(booking))],
+        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+        ['Location', esc(booking.address_line ?? '')],
+      ],
+      [
+        'Your booking request expired because it was not confirmed or paid in time.',
+        'The slot has been released.',
+      ],
+      startNewBookingUrl ? 'Book again' : 'Back to homepage',
+      startNewBookingUrl ?? 'https://yairb.ch',
+    );
+    return this.sendEmail(clientEmail(booking), 'booking_expired', 'Your booking expired', text, undefined, html);
+  }
+
   async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
     const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`;
     const html = simpleHtml(
@@ -484,7 +512,7 @@ export class ResendEmailProvider implements IEmailProvider {
     invoiceUrl: string | null,
     policyText = '',
   ): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
+    const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
     const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, policyText);
     return this.sendEmail(clientEmail(booking), 'event_confirmation', `You're confirmed – ${event.title}`, text, undefined, html);
   }

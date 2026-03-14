@@ -125,6 +125,8 @@ starts\_at
 ends\_at  
 timezone  
 google\_event\_id  
+meeting\_provider  
+meeting\_link  
 address\_line  
 maps\_url  
 current\_status  
@@ -439,4 +441,3 @@ If you'd like, I can also give you the **two extremely valuable companion artifa
 2. **A decision tree for the sweeper** (so the coder doesn't accidentally create duplicate verification rows again)
 
 Both dramatically reduce future complexity.
-

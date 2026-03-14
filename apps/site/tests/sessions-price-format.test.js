@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import couponCode from '../js/coupon.js?raw'
 import sessionsCode from '../js/sessions.js?raw'
 
 function evalCode(code) {
@@ -54,5 +55,21 @@ describe('sessions price formatting', () => {
     expect(text).toContain('CHF 100')
     expect(text).toContain('CHF 100.99')
     expect(text).not.toContain('CHF 100.00')
+  })
+
+  it('rerenders session prices immediately when the Israel coupon is applied', async () => {
+    evalCode(couponCode)
+    evalCode(sessionsCode)
+    await flush()
+
+    expect(document.getElementById('sessionGrid').textContent).toContain('CHF 100')
+
+    window.SiteCoupon.setAppliedCouponCode('ISRAEL', 'test')
+    await flush()
+
+    const text = document.getElementById('sessionGrid').textContent.replace(/\s+/g, ' ')
+    expect(text).toContain('CHF 75')
+    expect(text).toContain('400 ₪')
+    expect(text).toContain('300 ₪')
   })
 })

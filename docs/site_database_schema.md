@@ -122,6 +122,8 @@ create table if not exists bookings (
   ends_at timestamptz not null,
   timezone text not null default 'Europe/Zurich',
   google_event_id text null,
+  meeting_provider text null check (meeting_provider in ('google_meet', 'zoom')),
+  meeting_link text null,
   address_line text not null,
   maps_url text not null,
   current_status text not null check (

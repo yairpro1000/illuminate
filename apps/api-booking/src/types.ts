@@ -1,4 +1,5 @@
 export type BookingType = 'FREE' | 'PAY_NOW' | 'PAY_LATER';
+export type MeetingProvider = 'google_meet' | 'zoom';
 
 // ── Booking domain enums ────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ export interface Booking {
   ends_at: string;
   timezone: string;
   google_event_id: string | null;
+  meeting_provider?: MeetingProvider | null;
+  meeting_link?: string | null;
   address_line: string;
   maps_url: string;
   price: number;
@@ -378,6 +381,8 @@ export type BookingUpdate = Partial<
     | 'ends_at'
     | 'timezone'
     | 'google_event_id'
+    | 'meeting_provider'
+    | 'meeting_link'
     | 'address_line'
     | 'maps_url'
     | 'price'

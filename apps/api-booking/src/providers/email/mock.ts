@@ -72,6 +72,7 @@ function bookingConfirmationBody(
     `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
     `Location: ${booking.address_line}`,
     booking.maps_url ? `Map: ${booking.maps_url}` : null,
+    booking.meeting_link ? `Join Google Meet: ${booking.meeting_link}` : null,
     '',
     'A calendar invitation has been sent to you.',
     "If you don't see it, please check your spam folder.",
@@ -195,6 +196,16 @@ export class MockEmailProvider implements IEmailProvider {
     );
   }
 
+  async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
+    const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
+    return this.send(
+      clientEmail(booking),
+      'booking_expired',
+      'Your booking expired',
+      `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`,
+    );
+  }
+
   async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
     return this.send(
       clientEmail(booking),
@@ -215,7 +226,7 @@ export class MockEmailProvider implements IEmailProvider {
       clientEmail(booking),
       'event_confirmation',
       `You're confirmed – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
+      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
     );
   }
 

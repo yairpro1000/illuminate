@@ -7,6 +7,7 @@
     code: 'ISRAEL',
     discountPercent: 25,
   });
+  let homeSuggestionTriggered = false;
 
   function roundAmount(amount) {
     return Math.round(Number(amount || 0) * 100) / 100;
@@ -172,6 +173,12 @@
     `;
   }
 
+  function syncCouponOffset() {
+    const nav = document.querySelector('.nav');
+    const navHeight = nav ? Math.ceil(nav.getBoundingClientRect().height) : 72;
+    document.documentElement.style.setProperty('--coupon-banner-offset', `${navHeight}px`);
+  }
+
   function applyStaticPrices(root) {
     (root || document).querySelectorAll('[data-coupon-price]').forEach((node) => {
       const basePrice = Number(node.getAttribute('data-price-chf') || 0);
@@ -186,12 +193,32 @@
     container.insertAdjacentHTML('afterbegin', buildSuggestionBannerHtml());
   }
 
+  function removeSuggestionBanners() {
+    document.querySelectorAll('[data-coupon-suggestion]').forEach((node) => node.remove());
+  }
+
+  function refreshPageSuggestions() {
+    removeSuggestionBanners();
+    if (getAppliedCoupon() || !isLikelyIsraelVisitor()) return;
+
+    const page = document.body.getAttribute('data-page');
+    if (page === 'home' && homeSuggestionTriggered) {
+      const section = document.getElementById('investment');
+      mountSuggestionInto(section && (section.querySelector('.container') || section));
+      return;
+    }
+    if (page === 'sessions') {
+      mountSuggestionInto(document.querySelector('#session-types .container'));
+    }
+  }
+
   function initHomeSuggestion() {
     const section = document.getElementById('investment');
     if (!section || !('IntersectionObserver' in window)) return;
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (!entry.isIntersecting) return;
+        homeSuggestionTriggered = true;
         mountSuggestionInto(section.querySelector('.container') || section);
         observer.disconnect();
       });
@@ -227,15 +254,21 @@
   });
 
   window.addEventListener('sitecouponchange', () => {
+    syncCouponOffset();
     renderAppliedIndicator();
     applyStaticPrices(document);
+    refreshPageSuggestions();
   });
 
   document.addEventListener('DOMContentLoaded', () => {
+    syncCouponOffset();
     renderAppliedIndicator();
     applyStaticPrices(document);
     initPageSuggestions();
   });
+
+  window.addEventListener('resize', syncCouponOffset);
+  window.addEventListener('scroll', syncCouponOffset, { passive: true });
 
   global.SiteCoupon = {
     CHF_TO_ILS_DISPLAY_RATE,

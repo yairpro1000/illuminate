@@ -124,6 +124,7 @@ function makeCtx(overrides: any = {}) {
       email: {
         sendBookingPaymentReminder: vi.fn().mockResolvedValue(undefined),
         sendBookingCancellation: vi.fn().mockResolvedValue(undefined),
+        sendBookingExpired: vi.fn().mockResolvedValue(undefined),
         sendBookingConfirmRequest: vi.fn().mockResolvedValue(undefined),
         sendEventConfirmRequest: vi.fn().mockResolvedValue(undefined),
         sendBookingPaymentDue: vi.fn().mockResolvedValue(undefined),
@@ -265,6 +266,39 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: 'SUCCESS' }),
+    );
+  });
+
+  it('dispatches booking expiry notifications through the dedicated expired email path', async () => {
+    const effect = {
+      id: 'se-expired-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'SEND_BOOKING_EXPIRATION_NOTIFICATION',
+      entity: 'EMAIL',
+      status: 'PENDING',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendBookingExpired).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'b1' }),
+      'https://example.com/book.html',
+    );
+    expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se-expired-1', status: 'SUCCESS' }),
     );
   });
 

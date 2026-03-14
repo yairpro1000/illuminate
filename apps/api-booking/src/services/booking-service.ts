@@ -260,6 +260,8 @@ export async function createPayNowBooking(
     ends_at: input.slotEnd,
     timezone: input.timezone,
     google_event_id: null,
+    meeting_provider: null,
+    meeting_link: null,
     address_line: env.SESSION_ADDRESS,
     maps_url: env.SESSION_MAPS_URL,
     price: commercialTerms.finalPrice,
@@ -333,6 +335,8 @@ export async function createPayLaterBooking(
     ends_at: input.slotEnd,
     timezone: input.timezone,
     google_event_id: null,
+    meeting_provider: null,
+    meeting_link: null,
     address_line: env.SESSION_ADDRESS,
     maps_url: env.SESSION_MAPS_URL,
     price: commercialTerms.finalPrice,
@@ -427,6 +431,8 @@ async function createEventBookingInternal(
     ends_at: input.event.ends_at,
     timezone: input.event.timezone,
     google_event_id: null,
+    meeting_provider: null,
+    meeting_link: null,
     address_line: input.event.address_line,
     maps_url: input.event.maps_url,
     price: commercialTerms.finalPrice,
@@ -1371,7 +1377,11 @@ async function syncSessionBookingCalendar(
 
     try {
       await providers.calendar.deleteEvent(booking.google_event_id);
-      const updated = await providers.repository.updateBooking(booking.id, { google_event_id: null });
+      const updated = await providers.repository.updateBooking(booking.id, {
+        google_event_id: null,
+        meeting_provider: null,
+        meeting_link: null,
+      });
       return { booking: updated, calendarSynced: true, failureReason: null };
     } catch (error) {
       if (isCalendarEventMissingError(error)) {
@@ -1389,7 +1399,11 @@ async function syncSessionBookingCalendar(
           },
         });
         try {
-          const updated = await providers.repository.updateBooking(booking.id, { google_event_id: null });
+          const updated = await providers.repository.updateBooking(booking.id, {
+            google_event_id: null,
+            meeting_provider: null,
+            meeting_link: null,
+          });
           return { booking: updated, calendarSynced: true, failureReason: null };
         } catch (persistError) {
           logger.logError?.({
@@ -1424,8 +1438,13 @@ async function syncSessionBookingCalendar(
     }
 
     try {
-      await providers.calendar.updateEvent(booking.google_event_id, payload);
-      return { booking, calendarSynced: true, failureReason: null };
+      const updatedEvent = await providers.calendar.updateEvent(booking.google_event_id, payload);
+      const updates = buildMeetingPersistenceUpdate(booking, updatedEvent);
+      if (!updates) {
+        return { booking, calendarSynced: true, failureReason: null };
+      }
+      const updated = await providers.repository.updateBooking(booking.id, updates);
+      return { booking: updated, calendarSynced: true, failureReason: null };
     } catch (error) {
       if (isCalendarEventMissingError(error)) {
         logger.logWarn?.({
@@ -1443,7 +1462,11 @@ async function syncSessionBookingCalendar(
         });
         try {
           const created = await providers.calendar.createEvent(payload);
-          const updated = await providers.repository.updateBooking(booking.id, { google_event_id: created.eventId });
+          logMissingMeetLinkAfterCalendarCreate(booking, created, options.operation, logger);
+          const updated = await providers.repository.updateBooking(
+            booking.id,
+            buildCreateCalendarPersistenceUpdate(created),
+          );
           logger.logInfo?.({
             source: 'backend',
             eventType: 'calendar_event_recreated_after_missing',
@@ -1488,7 +1511,11 @@ async function syncSessionBookingCalendar(
 
   try {
     const created = await providers.calendar.createEvent(payload);
-    const updated = await providers.repository.updateBooking(booking.id, { google_event_id: created.eventId });
+    logMissingMeetLinkAfterCalendarCreate(booking, created, options.operation, logger);
+    const updated = await providers.repository.updateBooking(
+      booking.id,
+      buildCreateCalendarPersistenceUpdate(created),
+    );
     return { booking: updated, calendarSynced: true, failureReason: null };
   } catch (error) {
     logger.error('Calendar create failed', {
@@ -1498,6 +1525,67 @@ async function syncSessionBookingCalendar(
     });
     return { booking, calendarSynced: false, failureReason: toSyncFailureReason(error) };
   }
+}
+
+function buildCreateCalendarPersistenceUpdate(
+  created: { eventId: string; meetingProvider: 'google_meet' | null; meetingLink: string | null },
+): Pick<Booking, 'google_event_id' | 'meeting_provider' | 'meeting_link'> {
+  return {
+    google_event_id: created.eventId,
+    meeting_provider: created.meetingLink ? created.meetingProvider : null,
+    meeting_link: created.meetingLink,
+  };
+}
+
+function buildMeetingPersistenceUpdate(
+  booking: Booking,
+  updatedEvent: { eventId: string; meetingProvider: 'google_meet' | null; meetingLink: string | null },
+): Pick<Booking, 'google_event_id' | 'meeting_provider' | 'meeting_link'> | null {
+  if (!updatedEvent.meetingLink) {
+    return updatedEvent.eventId !== booking.google_event_id
+      ? {
+        google_event_id: updatedEvent.eventId,
+        meeting_provider: booking.meeting_provider ?? null,
+        meeting_link: booking.meeting_link ?? null,
+      }
+      : null;
+  }
+
+  if (
+    updatedEvent.eventId === booking.google_event_id
+    && updatedEvent.meetingLink === (booking.meeting_link ?? null)
+    && (updatedEvent.meetingProvider ?? null) === (booking.meeting_provider ?? null)
+  ) {
+    return null;
+  }
+
+  return {
+    google_event_id: updatedEvent.eventId,
+    meeting_provider: updatedEvent.meetingProvider,
+    meeting_link: updatedEvent.meetingLink,
+  };
+}
+
+function logMissingMeetLinkAfterCalendarCreate(
+  booking: Booking,
+  created: { eventId: string; meetingProvider: 'google_meet' | null; meetingLink: string | null },
+  operation: string,
+  logger: BookingContext['logger'],
+): void {
+  if (created.meetingLink) return;
+
+  logger.logWarn?.({
+    source: 'backend',
+    eventType: 'calendar_meet_link_missing_after_create',
+    message: 'Calendar event creation succeeded but no Google Meet link was returned.',
+    context: {
+      booking_id: booking.id,
+      operation,
+      google_event_id: created.eventId,
+      branch_taken: 'calendar_event_created_without_meet_link',
+      deny_reason: 'google_meet_link_missing_in_create_response',
+    },
+  });
 }
 
 function isCalendarEventMissingError(error: unknown): boolean {
@@ -1733,7 +1821,7 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL));
       return booking;
     }
 
