@@ -110,7 +110,8 @@ Also confirm schema state before implementation:
 2. Identify the schema documentation file, DDL script, migration, or spec section that defines the source-of-truth schema for the refactor.
 3. If no source-of-truth schema reference is found, stop and tell the user exactly:
    `I looked for a reference source-of-truth schema for the refactor and didn't find any. I need your intervention before I can move on with the refactoring.`
-4. If schema state or governing schema reference is unclear, stop and resolve it before coding.
+4. If the code and the database disagree, stop and ask the user which one is true before changing anything.
+5. If schema state or governing schema reference is unclear, stop and resolve it before coding.
 
 ## Preserve Production Results
 
@@ -123,6 +124,7 @@ This means:
 - Distinguish clearly between intentional product change and accidental regression.
 - If a proposed simplification conflicts with frozen expected results, surface that conflict before coding.
 - Do not refactor against an assumed schema or an unstated schema source.
+- If code and database reality diverge, do not assume the code is right and do not assume the database is right. Ask the user which one is the intended truth.
 
 ## Sequencing Rules
 
@@ -156,6 +158,7 @@ When refactoring:
 - Do not reintroduce fragmented observability patterns.
 - Do not scatter side-effect handling and failure behavior across unrelated handlers.
 - Do not let schema or runtime contracts drift silently during cleanup.
+- Do not silently "fix" a code-versus-database mismatch without user confirmation on which side is authoritative.
 
 ## Review Standard
 
@@ -183,6 +186,7 @@ When using this skill, always make the workflow visible. State:
 - Whether the database schema change is already implemented.
 - Which schema documentation file, DDL script, migration, or spec section is being treated as the source of truth.
 - Whether work is blocked because no source-of-truth schema reference was found.
+- Whether a code-versus-database discrepancy was found and, if so, that user confirmation is required before any change.
 - What the frozen expected results say for the relevant scope.
 - Whether there are discrepancies between target and baseline.
 - What sequence of changes is required.

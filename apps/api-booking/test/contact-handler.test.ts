@@ -53,8 +53,8 @@ describe('handleContact', () => {
       client_id: 'client-1',
       topic: 'sessions',
       message: 'Hello there',
-      status: 'NEW',
-      source: 'WEBSITE_CONTACT_FORM',
+      status: 'new',
+      source: 'website_contact_form',
     });
     expect(logger.logWarn).not.toHaveBeenCalled();
     expect(logger.logError).not.toHaveBeenCalled();
@@ -102,8 +102,8 @@ describe('handleContact', () => {
       client_id: 'client-2',
       topic: null,
       message: 'Need more info',
-      status: 'NEW',
-      source: 'WEBSITE_CONTACT_FORM',
+      status: 'new',
+      source: 'website_contact_form',
     });
     expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'contact_email_send_failed_after_persist',

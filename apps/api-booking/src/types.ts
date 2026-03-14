@@ -258,7 +258,7 @@ export interface ContactMessage {
   client_id: string;
   topic: string | null;
   message: string;
-  status: 'NEW' | 'HANDLED' | 'ARCHIVED' | 'SPAM';
+  status: 'new' | 'read' | 'replied' | 'archived' | 'spam';
   source: string;
   created_at: string;
   updated_at: string;

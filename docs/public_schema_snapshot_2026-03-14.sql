@@ -565,9 +565,6 @@ ALTER TABLE "public"."clients" OWNER TO "postgres";
 CREATE TABLE IF NOT EXISTS "public"."contact_messages" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "client_id" "uuid",
-    "first_name" "text" NOT NULL,
-    "last_name" "text",
-    "email" "text" NOT NULL,
     "topic" "text",
     "message" "text" NOT NULL,
     "status" "text" DEFAULT 'NEW'::"text" NOT NULL,

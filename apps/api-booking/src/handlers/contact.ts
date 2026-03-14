@@ -59,8 +59,8 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
       client_id: client.id,
       topic,
       message,
-      status: 'NEW',
-      source: 'WEBSITE_CONTACT_FORM',
+      status: 'new',
+      source: 'website_contact_form',
     });
     ctx.logger.logMilestone('contact_message_persisted', {
       flow: 'contact_form',
