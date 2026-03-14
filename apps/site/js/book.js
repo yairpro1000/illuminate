@@ -117,6 +117,8 @@ const S = {
   // Flow A — Payment
   paymentMethod: null,                   // 'pay-now' | 'pay-later'
   submissionStatus: null,                // API status from latest submit
+  submissionManageUrl: null,
+  submissionContinuePaymentUrl: null,
   submissionError: null,                 // null | { kind, message, staleSlot }
 
   // Payment simulation (paid flows only)
@@ -434,6 +436,8 @@ function scrollToApp() {
 async function handleSubmit() {
   S.submitting = true;
   S.submissionError = null;
+  S.submissionManageUrl = null;
+  S.submissionContinuePaymentUrl = null;
   render();
 
   try {
@@ -450,6 +454,8 @@ async function handleSubmit() {
     }
     let checkoutUrl = null;
     let status = null;
+    let manageUrl = null;
+    let continuePaymentUrl = null;
     if (CTX.mode === 'reschedule') {
       const result = await submitReschedule({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS });
       S.rescheduleUpdated = { starts_at: result.starts_at, ends_at: result.ends_at };
@@ -461,11 +467,15 @@ async function handleSubmit() {
       const result = await submitBooking({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, isIntroFlow });
       checkoutUrl = result.checkout_url || null;
       status = result.status || null;
+      manageUrl = result.manage_url || null;
+      continuePaymentUrl = result.continue_payment_url || null;
     }
 
     S.submitting    = false;
     S.paymentResult = null;
     S.submissionStatus = status;
+    S.submissionManageUrl = manageUrl;
+    S.submissionContinuePaymentUrl = continuePaymentUrl;
     S.submissionError = null;
     S.step++;
     render();

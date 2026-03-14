@@ -1,6 +1,11 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
-import { createPayNowBooking, createPayLaterBooking } from '../services/booking-service.js';
+import {
+  buildContinuePaymentUrl,
+  buildManageUrl,
+  createPayNowBooking,
+  createPayLaterBooking,
+} from '../services/booking-service.js';
 
 // POST /api/bookings/pay-now
 export async function handlePayNow(request: Request, ctx: AppContext): Promise<Response> {
@@ -89,9 +94,17 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
     },
   );
 
+  const booking = await ctx.providers.repository.getBookingById(result.bookingId);
+
   return ok({
     booking_id: result.bookingId,
     status: result.status,
+    ...(booking?.booking_type === 'PAY_LATER'
+      ? {
+          continue_payment_url: buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
+          manage_url: await buildManageUrl(ctx.env.SITE_URL, booking),
+        }
+      : {}),
   });
 }
 

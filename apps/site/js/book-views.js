@@ -585,9 +585,35 @@
 
       if (!isPaid) {
         const isConfirmedNow = state.submissionStatus === 'CONFIRMED';
+        const isPayLaterSubmission = !isEvent
+          && !isIntroFlow()
+          && state.paymentMethod === 'pay-later'
+          && Boolean(state.submissionContinuePaymentUrl);
         const noun = isEvent ? 'registration' : 'booking';
         const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes(state.publicConfig);
         const widget = buildConfirmationWidget(isEvent);
+        if (isPayLaterSubmission) {
+          return `
+            <div class="confirmation">
+              <div class="confirmation__icon" aria-hidden="true">
+                <svg viewBox="0 0 64 64" fill="none">
+                  <circle cx="32" cy="32" r="30" stroke="var(--color-lake)" stroke-width="1.25"/>
+                  <polyline points="18,32 28,42 46,22" stroke="var(--color-lake-light)"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <h2 class="confirmation__title">Booking received!</h2>
+              <p class="confirmation__message">
+                A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.
+                Please confirm your booking there first. After that, payment is due 24 hours before your session.
+              </p>
+              <div class="confirmation__actions" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+                <a href="${escHtml(state.submissionContinuePaymentUrl)}" class="btn btn-primary">Complete payment</a>
+                <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
+              </div>
+            </div>
+          `;
+        }
         return `
           <div class="confirmation">
             <div class="confirmation__icon" aria-hidden="true">

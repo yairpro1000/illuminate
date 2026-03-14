@@ -134,8 +134,9 @@ function htmlLayout(bodyContent: string): string {
   body,table,td,p,a { -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
   body { margin:0; padding:0; background:#0d1820; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }
   .wrap { max-width:560px; margin:0 auto; background:#0d1820; border-radius:12px; overflow:hidden; }
-  .header { background:#0a1219; padding:0; text-align:center; font-size:0; }
-  .header__logo { display:block; width:100%; max-width:100%; height:auto; }
+  .header { background:#0a1219; padding:18px 24px; text-align:center; border-left:1px solid #1d3848; border-right:1px solid #1d3848; }
+  .header__brand { margin:0; font-size:13px; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; color:#4fc3d8; }
+  .header__sub { display:block; margin-top:6px; font-size:13px; font-weight:400; letter-spacing:0.02em; text-transform:none; color:#88abb5; }
   .body { background:#111f2a; padding:36px 40px 32px; border-left:1px solid #1d3848; border-right:1px solid #1d3848; text-align:center; }
   .body p { margin:0 0 18px; font-size:15px; line-height:1.7; color:#ddeef2; }
   .body p:last-child { margin-bottom:0; }
@@ -164,7 +165,8 @@ function htmlLayout(bodyContent: string): string {
 <body>
 <div class="wrap">
   <div class="header">
-    <img class="header__logo" src="https://letsilluminate.co/img/ILLUMINATE_hero.png" alt="ILLUMINATE by Yair Benharroch" />
+    <p class="header__brand">ILLUMINATE</p>
+    <span class="header__sub">by Yair Benharroch</span>
   </div>
   <div class="body">${bodyContent}</div>
   <div class="footer"><p class="footer__brand">ILLUMINATE <span class="footer__sub">by Yair Benharroch</span></p></div>
@@ -253,14 +255,17 @@ function simpleHtml(
   ctaLabel: string,
   ctaUrl: string,
   extraLinks: string[] = [],
+  postDetailLine?: string,
 ): string {
   const detail = rows && rows.length ? detailBlock(rows) : '';
   const paras = bodyLines.map(l => `<p>${l}</p>`).join('');
+  const postDetail = postDetailLine ? `<p>${esc(postDetailLine)}</p>` : '';
   const extras = extraLinks.map(l => `<p class="secondary-link">${l}</p>`).join('');
   const body = `
     <p>${esc(greeting)},</p>
     ${paras}
     ${detail}
+    ${postDetail}
     <p><a class="btn" href="${esc(ctaUrl)}">${esc(ctaLabel)}</a></p>
     ${extras}
   `;
@@ -500,10 +505,11 @@ export class ResendEmailProvider implements IEmailProvider {
       [
         'Your booking request expired because it was not confirmed or paid in time.',
         'The slot has been released.',
-        ...(startNewBookingUrl ? ['It\'s ok, you can:'] : []),
       ],
       startNewBookingUrl ? 'Book again' : 'Back to homepage',
       startNewBookingUrl ?? 'https://yairb.ch',
+      [],
+      startNewBookingUrl ? 'It\'s ok, you can:' : undefined,
     );
     return this.sendEmail(clientEmail(booking), 'booking_expired', 'Your booking expired', text, undefined, html);
   }
