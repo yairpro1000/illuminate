@@ -54,13 +54,29 @@ async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'>
 }
 
 async function chooseAlternativeIntroSlot(page: Page, staleSlot: { dateYmd: string; timeLabel: string }): Promise<{ dateYmd: string; timeLabel: string }> {
+  const visibleSlots = page.locator('.time-slot');
+  const visibleSlotCount = await visibleSlots.count();
+  if (visibleSlotCount > 0) {
+    for (let i = 0; i < visibleSlotCount; i += 1) {
+      const slot = visibleSlots.nth(i);
+      const timeLabel = (await slot.innerText()).trim();
+      if (timeLabel === staleSlot.timeLabel) continue;
+      await slot.click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      return { dateYmd: staleSlot.dateYmd, timeLabel };
+    }
+  }
+
   const staleDateButton = page.locator(`[data-date="${staleSlot.dateYmd}"]`);
   if (await staleDateButton.count()) {
     await staleDateButton.click();
-    const alternativeOnSameDay = page.locator('.time-slot').filter({ hasNotText: staleSlot.timeLabel }).first();
-    if (await alternativeOnSameDay.count()) {
-      const timeLabel = (await alternativeOnSameDay.innerText()).trim();
-      await alternativeOnSameDay.click();
+    const slots = page.locator('.time-slot');
+    const slotCount = await slots.count();
+    for (let i = 0; i < slotCount; i += 1) {
+      const slot = slots.nth(i);
+      const timeLabel = (await slot.innerText()).trim();
+      if (timeLabel === staleSlot.timeLabel) continue;
+      await slot.click();
       await page.getByRole('button', { name: 'Continue' }).click();
       return { dateYmd: staleSlot.dateYmd, timeLabel };
     }
@@ -177,6 +193,26 @@ test.describe('P4 multi-user slot contention', () => {
             messageIncludes: '-> 409',
             urlIncludes: '/api/bookings/pay-later',
           },
+          {
+            kind: 'console',
+            messageIncludes: 'Failed to load resource: the server responded with a status of 409',
+            urlIncludes: '/api/bookings/pay-later',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '"eventType":"request_failure"',
+            urlIncludes: '/js/client.js',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '[Book] Submission error: Error: This slot is no longer available',
+            urlIncludes: '/js/book.js',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '"eventType":"handled_exception"',
+            urlIncludes: '/js/client.js',
+          },
         ],
       });
       await recoverLoserToSuccessfulIntroBooking(pageB, runtimeB, chosen, loserEmail, testInfo);
@@ -231,6 +267,26 @@ test.describe('P4 multi-user slot contention', () => {
             kind: 'http',
             messageIncludes: '-> 409',
             urlIncludes: '/api/bookings/pay-later',
+          },
+          {
+            kind: 'console',
+            messageIncludes: 'Failed to load resource: the server responded with a status of 409',
+            urlIncludes: '/api/bookings/pay-later',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '"eventType":"request_failure"',
+            urlIncludes: '/js/client.js',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '[Book] Submission error: Error: This slot is no longer available',
+            urlIncludes: '/js/book.js',
+          },
+          {
+            kind: 'console',
+            messageIncludes: '"eventType":"handled_exception"',
+            urlIncludes: '/js/client.js',
           },
         ],
       });

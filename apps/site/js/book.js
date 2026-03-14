@@ -126,6 +126,26 @@ function render() {
   attachListeners();
 }
 
+async function refreshSlots() {
+  if (CTX.source === 'evening') return;
+
+  const from = toYMD(new Date());
+  const future = new Date();
+  future.setMonth(future.getMonth() + SLOT_WINDOW_MONTHS);
+  const to = toYMD(future);
+  const data = await getSlots(from, to, CTX.slotType);
+  const nextSlots = Array.isArray(data.slots) ? data.slots : [];
+  S.slots = nextSlots;
+  S.slotsByDate = {};
+  S.availableDates = new Set();
+  nextSlots.forEach(slot => {
+    const day = slot.start.slice(0, 10);
+    if (!S.slotsByDate[day]) S.slotsByDate[day] = [];
+    S.slotsByDate[day].push(slot);
+    S.availableDates.add(day);
+  });
+}
+
 /* ══════════════════════════════════════════════════════════
    6. EVENT LISTENERS
    ══════════════════════════════════════════════════════════ */
@@ -270,10 +290,19 @@ function handleBack() {
   scrollToApp();
 }
 
-function handleRepickSlot() {
+async function handleRepickSlot() {
   const staleSlot = S.submissionError && S.submissionError.staleSlot
     ? S.submissionError.staleSlot
     : S.selectedSlot;
+  S.submitting = true;
+  render();
+
+  try {
+    await refreshSlots();
+  } catch (err) {
+    console.error('[Book] Failed to refresh slots after conflict:', err);
+  }
+
   if (staleSlot && staleSlot.start) {
     const slotDate = new Date(staleSlot.start);
     S.calViewDate = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
@@ -395,22 +424,8 @@ async function init() {
   }
 
   if (CTX.source !== 'evening') {
-    // Fetch 4 months of available slots for the calendar
-    const from = toYMD(new Date());
-    const future = new Date();
-    future.setMonth(future.getMonth() + SLOT_WINDOW_MONTHS);
-    const to = toYMD(future);
-
     try {
-      const data = await getSlots(from, to, CTX.slotType);
-      S.slots = Array.isArray(data.slots) ? data.slots : [];
-      S.slotsByDate = {};
-      S.slots.forEach(slot => {
-        const day = slot.start.slice(0, 10);
-        if (!S.slotsByDate[day]) S.slotsByDate[day] = [];
-        S.slotsByDate[day].push(slot);
-        S.availableDates.add(day);
-      });
+      await refreshSlots();
     } catch (err) {
       console.error('[Book] Failed to load slots:', err);
     }

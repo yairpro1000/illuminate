@@ -100,6 +100,7 @@ describe('book submit error handling', () => {
   it('returns the user to slot selection and preserves entered details after choosing another time', async () => {
     evalCode("const SITE_CLIENT = window.siteClient || null;")
     evalCode(`
+      let slotCall = 0;
       function getPublicConfig() {
         return Promise.resolve({
           config_version: 'booking_policy_v1',
@@ -108,13 +109,25 @@ describe('book submit error handling', () => {
         });
       }
       function getSlots() {
+        slotCall += 1;
+        if (slotCall === 1) {
+          return Promise.resolve({
+            ok: true,
+            timezone: 'Europe/Zurich',
+            slots: [{
+              type: 'intro',
+              start: '2026-03-16T09:00:00+01:00',
+              end: '2026-03-16T08:30:00.000Z',
+            }],
+          });
+        }
         return Promise.resolve({
           ok: true,
           timezone: 'Europe/Zurich',
           slots: [{
             type: 'intro',
-            start: '2026-03-16T09:00:00+01:00',
-            end: '2026-03-16T08:30:00.000Z',
+            start: '2026-03-16T10:00:00+01:00',
+            end: '2026-03-16T09:30:00.000Z',
           }],
         });
       }
@@ -155,8 +168,11 @@ describe('book submit error handling', () => {
 
     document.querySelector('[data-repick-slot]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush()
+    await flush()
 
     expect(document.querySelector('.time-slots')).not.toBeNull()
+    expect(document.querySelector('.time-slot')?.textContent).toContain('10:00')
+    expect(document.querySelector('.time-slots')?.textContent).not.toContain('09:00')
     expect(document.querySelector('[data-submit]')).toBeNull()
     expect(document.getElementById('f-first-name')).toBeNull()
 
