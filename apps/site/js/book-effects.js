@@ -123,10 +123,14 @@
   }
 
   async function loadPublicConfig(args) {
+    const targetConfig = args && args.config
+      ? args.config
+      : ((window.siteClient && window.siteClient.config) ? window.siteClient.config : {});
+
     try {
       const data = await getPublicConfig();
       if (SITE_TURNSTILE && typeof SITE_TURNSTILE.applyPublicConfig === 'function') {
-        SITE_TURNSTILE.applyPublicConfig(args.config, data);
+        SITE_TURNSTILE.applyPublicConfig(targetConfig, data);
       }
       const minutes = Number(data && data.booking_policy && data.booking_policy.non_paid_confirmation_window_minutes);
       const validConfig = Number.isFinite(minutes) && minutes > 0;
@@ -157,7 +161,7 @@
       console.warn('[Book] Failed to load public config:', err);
       args.state.publicConfig = null;
       if (SITE_TURNSTILE && typeof SITE_TURNSTILE.markConfigLoadFailed === 'function') {
-        SITE_TURNSTILE.markConfigLoadFailed(args.config, 'public_config_load_failed');
+        SITE_TURNSTILE.markConfigLoadFailed(targetConfig, 'public_config_load_failed');
       }
       if (args.observability) {
         args.observability.logError({

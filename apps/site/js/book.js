@@ -584,7 +584,7 @@ async function init() {
       mode: CTX.mode,
     });
   }
-  await loadPublicConfig({ state: S, observability: BOOK_OBS });
+  await loadPublicConfig({ state: S, config: SITE_CONFIG, observability: BOOK_OBS });
   syncCouponFromStorage(false);
   try {
     await loadRescheduleContext({ state: S, context: CTX });
