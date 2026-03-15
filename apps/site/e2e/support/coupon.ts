@@ -1,7 +1,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 export async function clearAppliedCouponState(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+  await page.goto('about:blank');
+  await page.evaluate(() => {
     try {
       window.localStorage.removeItem('couponCode');
     } catch (_) {}
