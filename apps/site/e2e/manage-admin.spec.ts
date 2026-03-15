@@ -15,46 +15,9 @@ import {
   waitForBookingArtifacts,
   type PublicSlot,
 } from './support/api';
+import { createConfirmedIntroBookingViaUi } from './support/intro-booking';
 import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
-
-async function createConfirmedIntroBooking(page: Page, email: string, testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2]) {
-  const runtime = attachRuntimeMonitor(page);
-
-  await page.goto(`${SITE_BASE_URL}/sessions.html`);
-  await page.locator('a.btn[href*="book.html?type=intro"]').first().click();
-  await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
-
-  let checkpoint = runtime.checkpoint();
-  await clickFirstAvailableSlot(page);
-  await fillContactDetails(page, {
-    firstName: 'P4',
-    lastName: 'Manage',
-    email,
-    phone: '',
-  });
-  await page.locator('button[data-submit]').click();
-  await expectInlineMockEmailPreview(page, {
-    title: 'Booking received',
-    frameText: 'Please confirm your session booking.',
-    actionName: 'Confirm booking',
-    actionHref: /\/confirm\.html\?token=/,
-  });
-  await runtime.assertNoNewIssues(checkpoint, 'manage-admin-create-intro', testInfo);
-
-  const pendingArtifacts = await waitForBookingArtifacts(email);
-  expect(pendingArtifacts.links.confirm_url).toBeTruthy();
-
-  checkpoint = runtime.checkpoint();
-  await page.goto(pendingArtifacts.links.confirm_url!);
-  await expectInlineMockEmailPreview(page, {
-    title: 'Confirmed!',
-    frameText: /confirmed|Manage booking|Complete payment/i,
-  });
-  await runtime.assertNoNewIssues(checkpoint, 'manage-admin-confirm-intro', testInfo);
-
-  return expectManageStatus(email, 'CONFIRMED');
-}
 
 async function createConfirmedSessionBookingForSlot(slot: PublicSlot, email: string): Promise<Awaited<ReturnType<typeof waitForBookingArtifacts>>> {
   await createPayNowBookingForSlot(slot, email);
@@ -170,7 +133,15 @@ test.describe('P4 manage and admin interactions', () => {
 
   test('manage link reschedules an eligible 1:1 booking', async ({ page }, testInfo) => {
     const email = makeScenarioEmail('p4-reschedule');
-    const artifacts = await createConfirmedIntroBooking(page, email, testInfo);
+    const artifacts = await createConfirmedIntroBookingViaUi(page, {
+      email,
+      firstName: 'P4',
+      lastName: 'Manage',
+      phone: '',
+      createIssueLabel: 'manage-admin-create-intro',
+      confirmIssueLabel: 'manage-admin-confirm-intro',
+      testInfo,
+    });
     const originalStartsAt = artifacts.booking.starts_at;
     const runtime = attachRuntimeMonitor(page);
 
@@ -193,7 +164,15 @@ test.describe('P4 manage and admin interactions', () => {
 
   test('admin can edit booking notes on a live session booking', async ({ browser, page }, testInfo) => {
     const email = makeScenarioEmail('p4-admin-edit');
-    const artifacts = await createConfirmedIntroBooking(page, email, testInfo);
+    const artifacts = await createConfirmedIntroBookingViaUi(page, {
+      email,
+      firstName: 'P4',
+      lastName: 'Manage',
+      phone: '',
+      createIssueLabel: 'manage-admin-create-intro',
+      confirmIssueLabel: 'manage-admin-confirm-intro',
+      testInfo,
+    });
     const noteText = `P4 note ${Date.now()}`;
 
     const adminPage = await browser.newPage();

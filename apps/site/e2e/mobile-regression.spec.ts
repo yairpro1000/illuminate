@@ -15,6 +15,7 @@ import {
   waitForBookingArtifacts,
   type PublicSlot,
 } from './support/api';
+import { createConfirmedIntroBookingViaUi } from './support/intro-booking';
 import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
@@ -98,41 +99,15 @@ async function waitForSlotPresence(
 }
 
 async function createConfirmedIntroBooking(page: Page, email: string, testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2]) {
-  const runtime = attachRuntimeMonitor(page);
-
-  await page.goto(`${SITE_BASE_URL}/sessions.html`);
-  await page.locator('a.btn[href*="book.html?type=intro"]').first().click();
-  await expect(page).toHaveURL(/\/book(?:\.html)?\?type=intro/);
-
-  let checkpoint = runtime.checkpoint();
-  await clickFirstAvailableSlot(page);
-  await fillContactDetails(page, {
+  return createConfirmedIntroBookingViaUi(page, {
+    email,
     firstName: 'P4',
     lastName: 'Manage',
-    email,
     phone: '',
+    createIssueLabel: 'mobile-create-intro',
+    confirmIssueLabel: 'mobile-confirm-intro',
+    testInfo,
   });
-  await page.locator('button[data-submit]').click();
-  await expectInlineMockEmailPreview(page, {
-    title: 'Booking received',
-    frameText: 'Please confirm your session booking.',
-    actionName: 'Confirm booking',
-    actionHref: /confirm\.html\?token=/,
-  });
-  await runtime.assertNoNewIssues(checkpoint, 'mobile-create-intro', testInfo);
-
-  const pendingArtifacts = await waitForBookingArtifacts(email);
-  expect(pendingArtifacts.links.confirm_url).toBeTruthy();
-
-  checkpoint = runtime.checkpoint();
-  await page.goto(pendingArtifacts.links.confirm_url!);
-  await expectInlineMockEmailPreview(page, {
-    title: 'Confirmed!',
-    frameText: /confirmed|Manage booking|Complete payment/i,
-  });
-  await runtime.assertNoNewIssues(checkpoint, 'mobile-confirm-intro', testInfo);
-
-  return expectManageStatus(email, 'CONFIRMED');
 }
 
 async function chooseReplacementSlot(page: Page): Promise<void> {

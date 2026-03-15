@@ -3,45 +3,17 @@ import {
   ADMIN_BASE_URL,
   API_BASE_URL,
   SITE_BASE_URL,
-  clickFirstAvailableSlot,
   createAdminSessionType,
   ensureAntiBotMock,
   ensureEmailMock,
   expectManageStatus,
-  fillContactDetails,
   getAdminContactMessages,
   getAdminEventsAll,
   makeScenarioEmail,
-  waitForBookingArtifacts,
 } from './support/api';
+import { createConfirmedIntroBookingViaUi } from './support/intro-booking';
 import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
-
-async function createConfirmedIntroBooking(page: import('@playwright/test').Page, email: string) {
-  await page.goto(`${SITE_BASE_URL}/sessions.html`);
-  await page.locator('a.btn[href*="book.html?type=intro"]').first().click();
-  await clickFirstAvailableSlot(page);
-  await fillContactDetails(page, {
-    firstName: 'P4',
-    lastName: 'Admin',
-    email,
-    phone: '',
-  });
-  await page.locator('button[data-submit]').click();
-  await expectInlineMockEmailPreview(page, {
-    title: 'Booking received',
-    frameText: 'Please confirm your session booking.',
-    actionName: 'Confirm booking',
-    actionHref: /\/confirm\.html\?token=/,
-  });
-  const pending = await waitForBookingArtifacts(email);
-  await page.goto(pending.links.confirm_url!);
-  await expectInlineMockEmailPreview(page, {
-    title: 'Confirmed!',
-    frameText: /confirmed|Manage booking|Complete payment/i,
-  });
-  return expectManageStatus(email, 'CONFIRMED');
-}
 
 async function openBookingRowByEmail(page: import('@playwright/test').Page, email: string, dateYmd: string) {
   await page.goto(`${ADMIN_BASE_URL}/index.html`);
@@ -67,7 +39,12 @@ test.describe('P4 remaining admin and content coverage', () => {
 
   test('T28 view and filter bookings in admin', async ({ page }, testInfo) => {
     const email = makeScenarioEmail('p4-admin-filter');
-    const booking = await createConfirmedIntroBooking(page, email);
+    const booking = await createConfirmedIntroBookingViaUi(page, {
+      email,
+      firstName: 'P4',
+      lastName: 'Admin',
+      phone: '',
+    });
     const runtime = attachRuntimeMonitor(page);
 
     const checkpoint = runtime.checkpoint();
@@ -82,7 +59,12 @@ test.describe('P4 remaining admin and content coverage', () => {
 
   test('T30 generate client-safe manage link', async ({ browser, page }, testInfo) => {
     const email = makeScenarioEmail('p4-admin-client-link');
-    const booking = await createConfirmedIntroBooking(page, email);
+    const booking = await createConfirmedIntroBookingViaUi(page, {
+      email,
+      firstName: 'P4',
+      lastName: 'Admin',
+      phone: '',
+    });
     const context = await browser.newContext();
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     const adminPage = await context.newPage();
@@ -102,7 +84,12 @@ test.describe('P4 remaining admin and content coverage', () => {
 
   test('T31 generate privileged admin link', async ({ browser, page }, testInfo) => {
     const email = makeScenarioEmail('p4-admin-priv-link');
-    const booking = await createConfirmedIntroBooking(page, email);
+    const booking = await createConfirmedIntroBookingViaUi(page, {
+      email,
+      firstName: 'P4',
+      lastName: 'Admin',
+      phone: '',
+    });
     const adminPage = await browser.newPage();
     const runtime = attachRuntimeMonitor(adminPage);
 

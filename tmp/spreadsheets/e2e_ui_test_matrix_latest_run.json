@@ -1,150 +1,302 @@
 {
-  "E01": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "First command invocation was malformed and did not start the test. Reran the exact T01 Playwright case and it passed cleanly against the deployed mock email/antibot environment."
+  "desktop": {
+    "E01": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "First command invocation was malformed and did not start the test. Reran the exact T01 Playwright case and it passed cleanly against the deployed mock email/antibot environment."
+    },
+    "E02": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T04 passed cleanly."
+    },
+    "E03": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T05 passed cleanly."
+    },
+    "E04": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T06 passed cleanly."
+    },
+    "E05": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial headed run failed because the test selected a reminder-eligible event on a hidden tab; I fixed the shared evenings helper to reveal the correct tab first. Reran T07 in headed Chromium with yairilluminatetest@gmail.com and it passed cleanly."
+    },
+    "E06": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T09 passed cleanly."
+    },
+    "E07": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Updated the matrix source to the real mobile automation owner. Headed mobile Chromium run passed using the requested customer-email base."
+    },
+    "E08": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial failure was the live confirm endpoint returning \"Could not confirm / Internal server error\". I deployed a backend fix, then fixed a local E2E navigation-race that was aborting in-flight slot fetches after cancel; the final headed desktop rerun passed cleanly."
+    },
+    "E09": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial headed run expected an inline preview that the current session payment-success page no longer renders. I updated the local E2E assertion to the current success-page contract and the rerun passed."
+    },
+    "E10": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial headed run failed because the deployed booking-artifacts test endpoint only accepts @example.test addresses. Reran the pay-later case without the forced Gmail override and it passed cleanly."
+    },
+    "E11": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of the free evening confirmation flow passed cleanly."
+    },
+    "E12": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of the paid evening checkout flow passed cleanly."
+    },
+    "E13": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run initially invalidated the late-access token. Reran T15 serially in headed Chromium and it passed cleanly."
+    },
+    "E14": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T19 passed cleanly."
+    },
+    "E15": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T20 passed cleanly."
+    },
+    "E16": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T22 passed cleanly."
+    },
+    "E17": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial run hit live slot contention before reschedule setup completed. I hardened the shared intro-booking helper to recover or restart after slot loss, and the headed rerun passed."
+    },
+    "E18": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of the empty-day reschedule recovery flow passed cleanly."
+    },
+    "E19": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of admin booking-note edit passed cleanly."
+    },
+    "E20": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial rerun hit slot contention during intro-booking setup with no alternate slot available. I hardened the shared intro-booking helper to restart cleanly, and the headed rerun passed."
+    },
+    "E21": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T30 passed cleanly."
+    },
+    "E22": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T31 passed cleanly."
+    },
+    "E23": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T32 passed cleanly."
+    },
+    "E24": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T33 passed cleanly."
+    },
+    "E25": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E26": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E27": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E28": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E29": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E30": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E31": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E32": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E33": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E34": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E35": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E36": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E37": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    }
   },
-  "E02": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of T04 passed cleanly."
-  },
-  "E03": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of T05 passed cleanly."
-  },
-  "E04": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of T06 passed cleanly."
-  },
-  "E05": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Initial headed run failed because the test selected a reminder-eligible event on a hidden tab; I fixed the shared evenings helper to reveal the correct tab first. Reran T07 in headed Chromium with yairilluminatetest@gmail.com and it passed cleanly."
-  },
-  "E06": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of T09 passed cleanly."
-  },
-  "E07": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Updated the matrix source to the real mobile automation owner. Headed mobile Chromium run passed using the requested customer-email base."
-  },
-  "E08": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Initial failure was the live confirm endpoint returning \"Could not confirm / Internal server error\". I deployed a backend fix, then fixed a local E2E navigation-race that was aborting in-flight slot fetches after cancel; the final headed desktop rerun passed cleanly."
-  },
-  "E09": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Initial headed run expected an inline preview that the current session payment-success page no longer renders. I updated the local E2E assertion to the current success-page contract and the rerun passed."
-  },
-  "E10": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Initial headed run failed because the deployed booking-artifacts test endpoint only accepts @example.test addresses. Reran the pay-later case without the forced Gmail override and it passed cleanly."
-  },
-  "E11": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of the free evening confirmation flow passed cleanly."
-  },
-  "E12": {
-    "latest_run_status": "PASS",
-    "latest_run_comments": "Headed desktop Chromium run of the paid evening checkout flow passed cleanly."
-  },
-  "E13": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E14": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E15": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E16": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E17": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E18": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E19": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E20": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E21": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E22": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E23": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E24": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E25": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E26": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E27": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E28": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E29": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E30": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E31": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E32": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E33": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E34": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E35": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E36": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
-  },
-  "E37": {
-    "latest_run_status": "",
-    "latest_run_comments": ""
+  "mobile": {
+    "E01": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T01 passed cleanly."
+    },
+    "E02": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T04 passed cleanly."
+    },
+    "E03": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T05 passed cleanly."
+    },
+    "E04": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T06 passed cleanly."
+    },
+    "E05": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T07 passed cleanly."
+    },
+    "E06": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T09 passed cleanly."
+    },
+    "E07": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile contact form valid submit passed using the requested customer-email base."
+    },
+    "E08": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the free intro confirm-manage-cancel flow passed cleanly."
+    },
+    "E09": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the session pay-now checkout recovery flow passed cleanly."
+    },
+    "E10": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the pay-later confirmation-first flow passed cleanly."
+    },
+    "E11": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the free evening confirmation flow passed cleanly."
+    },
+    "E12": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the paid evening checkout flow passed cleanly."
+    },
+    "E13": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T15 passed cleanly."
+    },
+    "E14": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T19 passed cleanly."
+    },
+    "E15": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T20 passed cleanly."
+    },
+    "E16": {
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of @mobile T22 passed cleanly."
+    },
+    "E17": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E18": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E19": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E20": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E21": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E22": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E23": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E24": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E25": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E26": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E27": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E28": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E29": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E30": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E31": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E32": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E33": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E34": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E35": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E36": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E37": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    }
   }
 }
