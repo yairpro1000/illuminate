@@ -1003,7 +1003,7 @@ export function ListBrowser(props: {
   const isAddTranslateMode = activeAddList()?.id === TRANSLATE_LIST_ID;
 
   return (
-    <div className="card" style={undoMode ? { borderColor: "#1a90d4", boxShadow: "0 0 0 2px rgba(26,144,212,0.25)" } : undefined}>
+    <div className="card" style={undoMode ? { borderColor: "var(--color-lake)", boxShadow: "0 0 0 2px var(--color-lake-mist)" } : undefined}>
       <ListBrowserChrome
         undoMode={undoMode}
         filteredUndoLog={filteredUndoLog}

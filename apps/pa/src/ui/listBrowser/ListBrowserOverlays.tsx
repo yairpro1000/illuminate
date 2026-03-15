@@ -233,7 +233,7 @@ export function ListBrowserOverlays(props: {
                   </button>
                   <button
                     className="iconbtn"
-                    style={{ flexShrink: 0, color: "var(--danger)", borderColor: "rgba(255,107,107,0.4)" }}
+                    style={{ flexShrink: 0, color: "var(--color-danger)", borderColor: "var(--color-danger-border)" }}
                     onClick={() => setSortDraft((prev) => prev.filter((_, j) => j !== i))}
                     title="Remove"
                   >
@@ -453,9 +453,9 @@ export function ListBrowserOverlays(props: {
       ) : null}
 
       {undoToast ? (
-        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "10px 16px", display: "flex", alignItems: "center", gap: 12, zIndex: 1000, color: "#e7ecff", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
+        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "var(--color-bg-card)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "0.625rem 1rem", display: "flex", alignItems: "center", gap: 12, zIndex: 1000, color: "var(--color-text)", boxShadow: "0 12px 40px oklch(0% 0 0 / 0.4)" }}>
           <span className="small">{undoToast.label}</span>
-          <button onClick={() => executeUndo([undoToast.id], false)} disabled={undoBusy} style={{ background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" }}>
+          <button onClick={() => executeUndo([undoToast.id], false)} disabled={undoBusy} className="primary">
             Undo
           </button>
           <button className="iconbtn" onClick={dismissUndoToast}>×</button>
@@ -485,7 +485,7 @@ export function ListBrowserOverlays(props: {
       {err ? <div style={{ marginTop: 10 }} className="error small">{err}</div> : null}
 
       {busy ? (
-        <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0, 0, 0, 0.35)", backdropFilter: "blur(2px)", WebkitBackdropFilter: "blur(2px)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", background: "oklch(0% 0 0 / 0.35)" }}>
           <div className="spinner spinnerLg" title="Loading…" />
         </div>
       ) : null}

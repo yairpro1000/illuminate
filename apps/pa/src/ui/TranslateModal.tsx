@@ -245,7 +245,7 @@ export function TranslateModal(props: {
               />
               <button
                 className="iconbtn"
-                style={{ color: "var(--danger)", borderColor: "rgba(255,107,107,0.4)" }}
+                style={{ color: "var(--color-danger)", borderColor: "var(--color-danger-border)" }}
                 onClick={() => opts.onChange(opts.values.filter((_, j) => j !== i))}
                 disabled={busy}
                 title="Remove"

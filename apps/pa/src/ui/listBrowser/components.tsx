@@ -73,7 +73,7 @@ export function ColorSwatch(props: { color: string; size?: number }) {
         height: size,
         borderRadius: 6,
         background: props.color,
-        border: "1px solid rgba(231, 236, 255, 0.22)",
+        border: "1px solid var(--color-border)",
       }}
     />
   );

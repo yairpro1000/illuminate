@@ -3,10 +3,24 @@ import { ListBrowser } from "./ListBrowser";
 import { VoicePanel } from "./VoicePanel";
 import { PA_LOGOUT_URL } from "../runtime";
 
+function useThemeToggle() {
+  const [isLight, setIsLight] = React.useState(
+    () => document.documentElement.classList.contains("theme-light"),
+  );
+  const toggle = React.useCallback(() => {
+    const next = !document.documentElement.classList.contains("theme-light");
+    document.documentElement.classList.toggle("theme-light", next);
+    try { localStorage.setItem("yb-theme", next ? "light" : "dark"); } catch {}
+    setIsLight(next);
+  }, []);
+  return { isLight, toggle };
+}
+
 export function Main(props: { email: string; llmLabel: string }) {
   const [lastCommittedAt, setLastCommittedAt] = React.useState<number | null>(null);
   const [translatePending, setTranslatePending] = React.useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const theme = useThemeToggle();
 
   const emailLabel = props.email;
 
@@ -65,6 +79,14 @@ export function Main(props: { email: string; llmLabel: string }) {
         <div className="topbar">
           <div className="kpi">
             <div className="title">PA</div>
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={theme.toggle}
+              title="Toggle light/dark mode"
+            >
+              {theme.isLight ? "Dark" : "Light"}
+            </button>
             <div style={{ position: "relative" }}>
               <button
                 ref={userButtonRef}
@@ -85,12 +107,12 @@ export function Main(props: { email: string; llmLabel: string }) {
                     position: "absolute",
                     top: "calc(100% + 6px)",
                     left: 0,
-                    background: "var(--bg, #1a1a1a)",
-                    border: "1px solid var(--border, #333)",
-                    borderRadius: 8,
+                    background: "var(--color-bg-card)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-md)",
                     minWidth: 180,
                     zIndex: 100,
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+                    boxShadow: "0 12px 40px oklch(0% 0 0 / 0.4)",
                     overflow: "hidden",
                   }}
                 >
