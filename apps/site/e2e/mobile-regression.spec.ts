@@ -490,7 +490,7 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
     await expectInlineMockEmailPreview(page, {
-      title: /Payment confirmed|Payment received/,
+      title: /Confirmed!|Payment confirmed|Payment received/,
       frameText: /confirmed|Manage booking/i,
       actionName: /Manage booking/i,
       actionHref: /manage\.html\?token=/,
@@ -546,7 +546,7 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
     await expectInlineMockEmailPreview(page, {
-      title: /Payment confirmed|Payment received/,
+      title: /Confirmed!|Payment confirmed|Payment received/,
       frameText: /confirmed|Manage booking/i,
       actionName: /Manage booking/i,
       actionHref: /manage\.html\?token=/,

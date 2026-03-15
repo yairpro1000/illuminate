@@ -96,13 +96,17 @@ Show or allow **Complete Payment** only when both of these are true:
 
 ## Continue-payment fallback bootstrap
 
-If the payment row exists but there is still no Stripe invoice URL or checkout URL, `/continue-payment` must bootstrap payment from scratch.
+`/continue-payment` is a checkout recovery path, not an invoice-document redirect.
+
+If the payment row exists but there is still no checkout URL, `/continue-payment` must bootstrap payment from scratch.
+
+An existing invoice URL may still appear in emails or admin views, but it does not count as the `/continue-payment` target.
 
 That fallback must:
 
 - reuse the existing payment row
 - create Stripe state from scratch, like the pay-now bootstrap path
-- update the existing payment row with the new Stripe details and payment URL
+- update the existing payment row with the new Stripe checkout details
 - redirect the user into payment if bootstrap succeeds
 
 This fallback exists specifically for the case where the booking confirmation succeeded but the original Stripe invoice bootstrap failed.
@@ -201,4 +205,3 @@ After confirmation, pay-later continues into payment initiation:
 10. `/continue-payment` bootstraps Stripe from scratch
 11. Existing payment row is updated
 12. User pays
-

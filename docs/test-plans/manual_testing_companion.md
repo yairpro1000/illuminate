@@ -43,6 +43,7 @@ Manual checks for pay-later must use this exact contract:
 - the email body keeps the pending-payment language
 - the email includes an `INVOICE` row only when an invoice URL exists
 - if Stripe bootstrap failed, the confirmation still succeeds and `continue-payment` must rebuild Stripe state from scratch
+- `continue-payment` must redirect into checkout, not to an invoice document page
 - `continue-payment` is allowed for booking `CONFIRMED` with payment `PENDING`, `INVOICE_SENT`, `FAILED`, or `CASH_OK`
 
 Older manual notes or stale UI automation that assume a submit-time pay-later invoice are obsolete.

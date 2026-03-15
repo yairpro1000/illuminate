@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
-import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
+import { getMockEmailPreviewDecision, resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
 import { getBookingPublicActionInfoByPaymentSession } from '../services/booking-service.js';
 
 // GET /api/bookings/payment-status?session_id=<provider-session-id>
@@ -17,9 +17,11 @@ export async function handlePaymentStatus(request: Request, ctx: AppContext): Pr
     correlationId: ctx.correlationId,
     operation: ctx.operation,
   });
+  const previewDecision = getMockEmailPreviewDecision(ctx.env.EMAIL_MODE, request);
   const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(actionInfo.booking.id, {
     emailMode: ctx.env.EMAIL_MODE,
     apiOrigin: url.origin,
+    uiTestMode: previewDecision.uiTestMode,
   }, {
     emailKinds: ['booking_confirmation', 'event_confirmation'],
   });
@@ -32,14 +34,15 @@ export async function handlePaymentStatus(request: Request, ctx: AppContext): Pr
       session_id: sessionId,
       booking_status: actionInfo.booking.current_status,
       email_mode: ctx.env.EMAIL_MODE,
+      ui_test_mode: previewDecision.uiTestMode,
       has_mock_email_preview: Boolean(mockEmailPreview),
-      branch_taken: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'skip_mock_email_preview_email_mode_not_mock'
+      branch_taken: !previewDecision.shouldExpose
+        ? previewDecision.branchTaken
         : mockEmailPreview
           ? 'include_mock_email_preview'
           : 'skip_mock_email_preview_captured_email_missing',
-      deny_reason: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'email_mode_not_mock'
+      deny_reason: !previewDecision.shouldExpose
+        ? previewDecision.denyReason
         : mockEmailPreview
           ? null
           : 'captured_email_not_found_for_booking',

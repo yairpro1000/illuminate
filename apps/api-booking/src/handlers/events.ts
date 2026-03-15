@@ -1,7 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
-import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
+import { consumeLatestEmailDispatch } from '../lib/execution.js';
 import {
   createEventBooking,
   createEventBookingWithAccess,
@@ -90,7 +90,6 @@ export async function handleEventBook(
   params: Record<string, string>,
 ): Promise<Response> {
   const event = await getBookableEventBySlug(params['slug'], ctx);
-  const apiOrigin = new URL(request.url).origin;
 
   const body = await request.json() as Record<string, unknown>;
   const firstName = requireString(body, 'first_name');
@@ -126,17 +125,8 @@ export async function handleEventBook(
     },
   );
 
-  const mockEmailKinds = result.checkoutUrl
-    ? []
-    : result.status === 'CONFIRMED'
-      ? ['event_confirmation']
-      : ['event_confirm_request'];
-  const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(result.bookingId, {
-    emailMode: ctx.env.EMAIL_MODE,
-    apiOrigin,
-  }, {
-    emailKinds: mockEmailKinds,
-  });
+  const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
+  const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'event_booking_mock_email_preview_decision',
@@ -147,22 +137,16 @@ export async function handleEventBook(
       booking_id: result.bookingId,
       booking_status: result.status,
       email_mode: ctx.env.EMAIL_MODE,
+      ui_test_mode: emailDispatch?.uiTestMode ?? null,
       has_checkout_url: Boolean(result.checkoutUrl),
       has_mock_email_preview: Boolean(mockEmailPreview),
+      email_kind: emailDispatch?.emailKind ?? null,
       branch_taken: result.checkoutUrl
         ? 'skip_mock_email_preview_checkout_redirect_flow'
-        : ctx.env.EMAIL_MODE !== 'mock'
-          ? 'skip_mock_email_preview_email_mode_not_mock'
-          : mockEmailPreview
-            ? 'include_mock_email_preview'
-            : 'skip_mock_email_preview_captured_email_missing',
+        : emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
       deny_reason: result.checkoutUrl
         ? 'checkout_redirect_flow_has_no_inline_email'
-        : ctx.env.EMAIL_MODE !== 'mock'
-          ? 'email_mode_not_mock'
-          : mockEmailPreview
-            ? null
-            : 'captured_email_not_found_for_booking',
+        : emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
     },
   });
 
@@ -183,7 +167,6 @@ export async function handleEventBookWithAccess(
 ): Promise<Response> {
   try {
     const event = await getBookableEventBySlug(params['slug'], ctx, { skipPublicCutoffCheck: true });
-    const apiOrigin = new URL(request.url).origin;
 
     const body = await request.json() as Record<string, unknown>;
     const accessToken = requireString(body, 'access_token');
@@ -299,17 +282,8 @@ export async function handleEventBookWithAccess(
       },
     });
 
-    const mockEmailKinds = result.checkoutUrl
-      ? []
-      : result.status === 'CONFIRMED'
-        ? ['event_confirmation']
-        : ['event_confirm_request'];
-    const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(result.bookingId, {
-      emailMode: ctx.env.EMAIL_MODE,
-      apiOrigin,
-    }, {
-      emailKinds: mockEmailKinds,
-    });
+    const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
+    const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'event_booking_with_access_mock_email_preview_decision',
@@ -320,22 +294,16 @@ export async function handleEventBookWithAccess(
         booking_id: result.bookingId,
         booking_status: result.status,
         email_mode: ctx.env.EMAIL_MODE,
+        ui_test_mode: emailDispatch?.uiTestMode ?? null,
         has_checkout_url: Boolean(result.checkoutUrl),
         has_mock_email_preview: Boolean(mockEmailPreview),
+        email_kind: emailDispatch?.emailKind ?? null,
         branch_taken: result.checkoutUrl
           ? 'skip_mock_email_preview_checkout_redirect_flow'
-          : ctx.env.EMAIL_MODE !== 'mock'
-            ? 'skip_mock_email_preview_email_mode_not_mock'
-            : mockEmailPreview
-              ? 'include_mock_email_preview'
-              : 'skip_mock_email_preview_captured_email_missing',
+          : emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
         deny_reason: result.checkoutUrl
           ? 'checkout_redirect_flow_has_no_inline_email'
-          : ctx.env.EMAIL_MODE !== 'mock'
-            ? 'email_mode_not_mock'
-            : mockEmailPreview
-              ? null
-              : 'captured_email_not_found_for_booking',
+          : emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
       },
     });
 

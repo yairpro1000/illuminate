@@ -1,7 +1,6 @@
 (async function () {
   'use strict';
   const siteClient = window.siteClient || null;
-  const siteMockEmailPreview = window.SiteMockEmailPreview || null;
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id');
   const card = document.querySelector('.result-card');
@@ -13,23 +12,6 @@
     const isConfirmed = data.status === 'CONFIRMED' || data.status === 'COMPLETED';
     const actionHref = data.next_action_url || data.manage_url || 'index.html';
     const actionText = data.next_action_label || (data.manage_url ? 'Manage booking' : '← Back to homepage');
-    if (data.mock_email_preview && siteMockEmailPreview && typeof siteMockEmailPreview.render === 'function') {
-      siteMockEmailPreview.render({
-        container: card,
-        preview: data.mock_email_preview,
-        title: isConfirmed ? 'Payment confirmed!' : 'Payment received',
-        message: 'Test mode is active. The email was captured and rendered here instead of being sent to the provider.',
-        primaryAction: actionHref ? {
-          href: actionHref,
-          text: actionText,
-        } : null,
-        secondaryAction: {
-          href: 'index.html',
-          text: '← Back to homepage',
-        },
-      });
-      return;
-    }
     card.innerHTML = `
       <div class="result-icon" aria-hidden="true">
         <svg viewBox="0 0 64 64" fill="none">

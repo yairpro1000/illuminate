@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import type { Providers } from '../providers/index.js';
 import type { Logger } from './logger.js';
 import { operationReferenceFields, type OperationContext } from './execution.js';
+import { resolveEmailDispatchState } from './mock-email-preview.js';
 import { makeSupabase, type Db } from '../repo/supabase.js';
 import {
   errorMessage,
@@ -295,6 +296,13 @@ export function wrapProvidersForOperation(
   env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
   logger: Logger,
   operation: OperationContext,
+  options: {
+    emailPreviewContext?: {
+      emailMode: string;
+      apiOrigin: string;
+      request: Request;
+    };
+  } = {},
 ): Providers {
   function wrapGroup<T extends object>(providerName: string, target: T): T {
     if ((!target || (typeof target !== 'object' && typeof target !== 'function')) as boolean) {
@@ -315,7 +323,16 @@ export function wrapProvidersForOperation(
               operationName: String(prop),
               args,
             },
-            async () => value.apply(innerTarget, args),
+            async () => {
+              const result = await value.apply(innerTarget, args);
+              if (providerName === 'email' && options.emailPreviewContext) {
+                operation.latestEmailDispatch = resolveEmailDispatchState(
+                  result as { messageId?: string; debug?: Record<string, unknown> } | null | undefined,
+                  options.emailPreviewContext,
+                );
+              }
+              return result;
+            },
           );
       },
     }) as T;

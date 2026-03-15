@@ -360,7 +360,13 @@ async function executeObservedRoute(
     ...ctx,
     operation: ctx.operation,
   };
-  routeCtx.providers = wrapProvidersForOperation(routeCtx.providers, routeCtx.env, routeCtx.logger, routeCtx.operation);
+  routeCtx.providers = wrapProvidersForOperation(routeCtx.providers, routeCtx.env, routeCtx.logger, routeCtx.operation, {
+    emailPreviewContext: {
+      emailMode: routeCtx.env.EMAIL_MODE,
+      apiOrigin: new URL(request.url).origin,
+      request,
+    },
+  });
 
   if (!shouldSuppressSuccessLifecycleLogs) {
     routeCtx.logger.logInfo({

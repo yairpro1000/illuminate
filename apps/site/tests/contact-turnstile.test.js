@@ -44,6 +44,12 @@ describe('contact form turnstile submission', () => {
         turnstileLoadError: null,
         turnstilePlaceholderToken: 'placeholder',
       },
+      detectUiTestMode: () => 'playwright',
+      maybeRenderMockEmailPreview: async (data) => {
+        if (data && data.mock_email_preview) {
+          window.IlluminateMockEmailPreview.render({ preview: data.mock_email_preview })
+        }
+      },
     }
     window.siteObservability = {
       logMilestone: vi.fn(),
@@ -106,14 +112,18 @@ describe('contact form turnstile submission', () => {
   })
 
   it('replaces the success body with the inline email preview when the backend returns mock_email_preview', async () => {
-    window._post = vi.fn().mockResolvedValue({
-      ok: true,
-      mock_email_preview: {
-        email_id: 'mock_msg_contact',
-        to: 'ada@example.com',
-        subject: 'New contact form message',
-        html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
-      },
+    window._post = vi.fn().mockImplementation(async () => {
+      const response = {
+        ok: true,
+        mock_email_preview: {
+          email_id: 'mock_msg_contact',
+          to: 'ada@example.com',
+          subject: 'New contact form message',
+          html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
+        },
+      }
+      await window.siteClient.maybeRenderMockEmailPreview(response)
+      return response
     })
 
     evalCode(contactCode)
@@ -127,7 +137,7 @@ describe('contact form turnstile submission', () => {
     await flush()
     await flush()
 
-    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
       'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
     )
     expect(document.getElementById('contact-form-wrap').hidden).toBe(true)

@@ -149,7 +149,7 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
 
     checkpoint = runtime.checkpoint();
     await page.goto(continuePaymentUrlFromManageUrl(confirmedArtifacts.links.manage_url));
-    await page.waitForURL(/\/(?:dev-pay\?session_id=|mock-invoice\/)/);
+    await page.waitForURL(/\/dev-pay\?session_id=/);
     await runtime.assertNoNewIssues(checkpoint, 'continue-payment-allows-online-continuation-after-cash-ok', testInfo);
 
     const refreshedArtifacts = await waitForBookingArtifacts(email);

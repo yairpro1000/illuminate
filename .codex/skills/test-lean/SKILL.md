@@ -11,9 +11,19 @@ Follow a minimal, integration-first testing policy for the pre-launch phase. Opt
 
 Before designing, writing, or running any automated test, enforce all of the following:
 
+- Start each testing conversation by asking the user for explicit confirmation before changing email provider mode, antibot provider mode, and payment provider mode to `mock`.
+- Do not change those provider modes until the user confirms.
 - Never use a real payment provider integration for automated tests. Keep all payment transactions, payment attempts, and payment-side effects strictly mock-only. If there is any doubt, or if mock scaffolding does not already exist, stop and ask the user immediately.
 - Never read real customer or client data from the database, files, or documents for use in tests. Never send real emails or messages. Never change or delete real customer or business data as part of automated testing.
 - Never update or delete existing business data that was not created by the current test run. Unless the user explicitly authorizes otherwise, automated tests must create fresh test data first. Only data created by that same test run may be updated or deleted during cleanup or scenario execution.
+
+After all tests pass:
+
+- Ask the user for explicit confirmation before reverting email provider mode, antibot provider mode, and payment provider mode away from `mock`.
+- Ask the user for explicit confirmation before running the existing `__test` cleanup utilities that:
+  a. loop over test bookings and cancel them
+  b. delete the test `client_id` and all related rows in other tables
+- Do not run either cleanup utility without that confirmation.
 
 ## Core Rules
 
@@ -153,3 +163,5 @@ When finishing work under this policy, state:
 - what external providers were mocked, if any
 - how test database isolation and cleanup are handled
 - how each new test was sanity-checked to confirm it can really fail
+- whether provider modes were switched to `mock`, whether the user confirmed that change, and whether provider-mode reversion is waiting on user confirmation
+- whether cleanup is waiting on user confirmation to run the existing `__test` booking-cancel and `client_id` deletion utilities

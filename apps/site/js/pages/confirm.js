@@ -1,7 +1,6 @@
 (async function () {
   'use strict';
   const siteClient = window.siteClient || null;
-  const siteMockEmailPreview = window.SiteMockEmailPreview || null;
   const params  = new URLSearchParams(window.location.search);
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
@@ -37,23 +36,6 @@
     const data = await siteClient.requestJson(`/api/bookings/confirm?token=${encodeURIComponent(token)}`);
     const isEvent = data.source === 'event';
     const awaitsPayment = String(data.next_action_label || '').toLowerCase() === 'complete payment';
-    if (data.mock_email_preview && siteMockEmailPreview && typeof siteMockEmailPreview.render === 'function') {
-      siteMockEmailPreview.render({
-        container: card,
-        preview: data.mock_email_preview,
-        title: 'Confirmed!',
-        message: 'Test mode is active. The email was captured and rendered here instead of being sent to the provider.',
-        primaryAction: data.next_action_url ? {
-          href: data.next_action_url,
-          text: data.next_action_label || 'Continue',
-        } : null,
-        secondaryAction: {
-          href: 'index.html',
-          text: '← Back to homepage',
-        },
-      });
-      return;
-    }
     show(
       checkSvg,
       'Confirmed!',

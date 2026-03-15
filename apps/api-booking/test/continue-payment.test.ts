@@ -34,15 +34,18 @@ describe('Continue payment public guard', () => {
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
       status: 'CONFIRMED',
-      payment_status: 'INVOICE_SENT',
+      payment_status: 'PENDING',
       action: 'checkout',
-      action_url: expect.stringContaining('/mock-invoice/'),
+      action_url: expect.stringContaining('/dev-pay?session_id=mock_cs_'),
     }));
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(payment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
+    expect(payment?.invoice_url).toContain('/mock-invoice/');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'allow_continue_payment_redirect',
+        branch_taken: 'allow_continue_payment_redirect_after_bootstrap',
         deny_reason: null,
       }),
     }));
@@ -79,15 +82,18 @@ describe('Continue payment public guard', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
-      payment_status: 'FAILED',
+      payment_status: 'PENDING',
       action: 'checkout',
-      action_url: expect.stringContaining('/mock-invoice/'),
+      action_url: expect.stringContaining('/dev-pay?session_id=mock_cs_'),
     }));
+    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(refreshedPayment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
+    expect(refreshedPayment?.invoice_url).toContain('/mock-invoice/');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'allow_continue_payment_redirect',
+        branch_taken: 'allow_continue_payment_redirect_after_bootstrap',
         deny_reason: null,
       }),
     }));
@@ -124,15 +130,18 @@ describe('Continue payment public guard', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
-      payment_status: 'CASH_OK',
+      payment_status: 'PENDING',
       action: 'checkout',
-      action_url: expect.stringContaining('/mock-invoice/'),
+      action_url: expect.stringContaining('/dev-pay?session_id=mock_cs_'),
     }));
+    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(refreshedPayment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
+    expect(refreshedPayment?.invoice_url).toContain('/mock-invoice/');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'allow_continue_payment_redirect',
+        branch_taken: 'allow_continue_payment_redirect_after_bootstrap',
         deny_reason: null,
       }),
     }));
@@ -177,6 +186,56 @@ describe('Continue payment public guard', () => {
       context: expect.objectContaining({
         booking_id: created.bookingId,
         branch_taken: 'allow_continue_payment_redirect_after_bootstrap',
+        deny_reason: null,
+      }),
+    }));
+  });
+
+  it('reuses an existing continue-payment checkout session instead of bootstrapping again', async () => {
+    const ctx = makeBookingCtx();
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-23T10:00:00.000Z',
+      slotEnd: '2026-03-23T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Reuse Checkout',
+      clientEmail: 'reuse-checkout@example.com',
+      clientPhone: '+41000000025',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const token = getConfirmToken(created.bookingId);
+    await confirmBookingEmail(token, ctx);
+
+    const firstRes = await handleRequest(
+      new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+    const firstBody = await firstRes.json();
+
+    const secondRes = await handleRequest(
+      new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+
+    expect(secondRes.status).toBe(200);
+    await expect(secondRes.json()).resolves.toEqual(expect.objectContaining({
+      booking_id: created.bookingId,
+      payment_status: 'PENDING',
+      action: 'checkout',
+      action_url: firstBody.checkout_url,
+      checkout_url: firstBody.checkout_url,
+    }));
+    expect(ctx.providers.payments.createCheckoutSession).toHaveBeenCalledTimes(1);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'continue_payment_request_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'allow_continue_payment_redirect',
         deny_reason: null,
       }),
     }));

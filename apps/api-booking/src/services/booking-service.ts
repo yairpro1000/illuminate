@@ -87,6 +87,7 @@ function withBookingOperationContext(ctx: BookingContext, bookingId: string): Bo
       latestProviderApiLogId: null,
       latestInboundErrorCode: null,
       latestInboundErrorMessage: null,
+      latestEmailDispatch: null,
     },
     { bookingId },
   );
@@ -289,8 +290,12 @@ async function resolveCommercialTerms(
   };
 }
 
-function paymentUrlForContinuation(payment: Pick<Payment, 'invoice_url' | 'checkout_url'> | null | undefined): string | null {
+function paymentProviderUrl(payment: Pick<Payment, 'invoice_url' | 'checkout_url'> | null | undefined): string | null {
   return payment?.invoice_url ?? payment?.checkout_url ?? null;
+}
+
+function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'> | null | undefined): string | null {
+  return payment?.checkout_url ?? null;
 }
 
 function canContinuePayLaterPayment(
@@ -687,7 +692,7 @@ export async function confirmBookingEmail(
         booking_status: finalizedBooking.current_status,
         payment_id: bootstrappedPayment?.id ?? null,
         payment_status: bootstrappedPayment?.status ?? null,
-        has_payment_url: Boolean(paymentUrlForContinuation(bootstrappedPayment)),
+        has_payment_url: Boolean(paymentProviderUrl(bootstrappedPayment)),
         has_invoice_url: Boolean(bootstrappedPayment?.invoice_url),
         branch_taken: bootstrappedPayment?.invoice_url
           ? 'confirmation_created_invoice_before_email'
@@ -1353,7 +1358,7 @@ export async function getBookingPublicActionInfo(
       && !isTerminalStatus(booking.current_status)
       && booking.booking_type !== 'PAY_LATER'
       && isPaymentContinuableOnline(payment.status)
-      && Boolean(paymentUrlForContinuation(payment))
+      && Boolean(paymentProviderUrl(payment))
       ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
       : null;
 
@@ -1431,18 +1436,18 @@ export async function getContinuePaymentActionInfo(
     denyReason = 'payment_status_not_continuable_online';
   }
 
-  if (!denyReason && payment && !paymentUrlForContinuation(payment)) {
+  if (!denyReason && payment && !paymentCheckoutUrlForContinuation(payment)) {
     const bootstrappedPayment = await ensureContinuePaymentUrlForBooking(booking, payment, ctx);
     payment = bootstrappedPayment ?? payment;
-    if (!paymentUrlForContinuation(payment)) {
-      branchTaken = 'deny_continue_payment_payment_url_missing_after_bootstrap';
-      denyReason = 'payment_url_missing_after_bootstrap';
+    if (!paymentCheckoutUrlForContinuation(payment)) {
+      branchTaken = 'deny_continue_payment_checkout_url_missing_after_bootstrap';
+      denyReason = 'checkout_url_missing_after_bootstrap';
     } else {
       branchTaken = 'allow_continue_payment_redirect_after_bootstrap';
     }
   }
 
-  const continuationUrl = denyReason ? null : paymentUrlForContinuation(payment);
+  const continuationUrl = denyReason ? null : paymentCheckoutUrlForContinuation(payment);
   const canContinueToCheckout = !denyReason && Boolean(continuationUrl);
 
   return {
@@ -2619,7 +2624,7 @@ async function ensurePayLaterInvoiceForBooking(
 ): Promise<Payment | null> {
   const { logger } = ctx;
   const payment = await ensurePayLaterPendingPaymentRecord(booking, ctx, options.bootstrapSource);
-  const existingPaymentUrl = paymentUrlForContinuation(payment);
+  const existingPaymentUrl = paymentProviderUrl(payment);
 
   logger.logInfo?.({
     source: 'backend',
@@ -2749,14 +2754,15 @@ async function ensureContinuePaymentUrlForBooking(
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'continue_payment_bootstrap_decision',
-    message: 'Evaluated continue-payment bootstrap for missing payment URL',
+    message: 'Evaluated continue-payment bootstrap for missing checkout URL',
     context: {
       booking_id: booking.id,
       payment_id: payment.id,
       booking_status: booking.current_status,
       payment_status: payment.status,
-      has_payment_url: Boolean(paymentUrlForContinuation(payment)),
-      branch_taken: 'create_checkout_session_for_missing_payment_url',
+      has_checkout_url: Boolean(payment.checkout_url),
+      has_invoice_url: Boolean(payment.invoice_url),
+      branch_taken: 'create_checkout_session_for_missing_checkout_url',
       deny_reason: null,
     },
   });
@@ -2782,7 +2788,7 @@ async function ensureContinuePaymentUrlForBooking(
       currency: session.currency,
       status: 'PENDING',
       checkout_url: session.checkoutUrl,
-      invoice_url: null,
+      invoice_url: payment.invoice_url ?? null,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
         checkout_session_id: session.sessionId,
@@ -2802,6 +2808,7 @@ async function ensureContinuePaymentUrlForBooking(
         payment_status_after: updatedPayment.status,
         provider_payment_id: updatedPayment.provider_payment_id,
         has_checkout_url: Boolean(updatedPayment.checkout_url),
+        has_invoice_url: Boolean(updatedPayment.invoice_url),
         branch_taken: 'continue_payment_checkout_created',
         deny_reason: null,
       },

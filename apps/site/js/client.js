@@ -214,6 +214,65 @@
     return { message: text.slice(0, 300) };
   }
 
+  function detectUiTestMode() {
+    try {
+      if (window.__ILLUMINATE_UI_TEST_MODE__) return String(window.__ILLUMINATE_UI_TEST_MODE__).trim().toLowerCase() || null;
+    } catch (_) {}
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      const fromQuery = String(params.get('ui_test_mode') || '').trim().toLowerCase();
+      if (fromQuery) return fromQuery;
+    } catch (_) {}
+    try {
+      const fromStorage = String(localStorage.getItem('illuminate_ui_test_mode') || '').trim().toLowerCase();
+      if (fromStorage) return fromStorage;
+    } catch (_) {}
+    if (typeof navigator !== 'undefined' && navigator.webdriver) return 'playwright';
+    return null;
+  }
+
+  function ensureMockEmailPreviewRendererLoaded() {
+    if (window.IlluminateMockEmailPreview && typeof window.IlluminateMockEmailPreview.render === 'function') {
+      return Promise.resolve(window.IlluminateMockEmailPreview);
+    }
+
+    if (window.__illuminateMockEmailPreviewLoadPromise) {
+      return window.__illuminateMockEmailPreviewLoadPromise;
+    }
+
+    window.__illuminateMockEmailPreviewLoadPromise = new Promise(function (resolve, reject) {
+      const existing = document.querySelector('script[data-illuminate-mock-email-preview="true"]');
+      if (existing) {
+        existing.addEventListener('load', function () { resolve(window.IlluminateMockEmailPreview || null); }, { once: true });
+        existing.addEventListener('error', reject, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'js/mock-email-preview.js';
+      script.async = true;
+      script.dataset.illuminateMockEmailPreview = 'true';
+      script.addEventListener('load', function () { resolve(window.IlluminateMockEmailPreview || null); }, { once: true });
+      script.addEventListener('error', reject, { once: true });
+      document.head.appendChild(script);
+    });
+
+    return window.__illuminateMockEmailPreviewLoadPromise;
+  }
+
+  async function maybeRenderMockEmailPreview(data) {
+    const uiTestMode = detectUiTestMode();
+    const preview = data && data.mock_email_preview;
+    if (!uiTestMode || !preview) return;
+
+    try {
+      const renderer = await ensureMockEmailPreviewRendererLoaded();
+      if (renderer && typeof renderer.render === 'function') {
+        renderer.render({ preview: preview });
+      }
+    } catch (_) {}
+  }
+
   async function requestJson(path, init) {
     const method = String((init && init.method) || 'GET').toUpperCase();
     const apiBase = getApiBase();
@@ -226,6 +285,8 @@
     }
     headers.set('x-request-id', requestId);
     headers.set('x-correlation-id', correlationId);
+    const uiTestMode = detectUiTestMode();
+    if (uiTestMode) headers.set('x-illuminate-ui-test-mode', uiTestMode);
 
     const _sp = window.siteSpinner;
     if (_sp) _sp.show();
@@ -264,6 +325,7 @@
         error.data = data;
         throw error;
       }
+      await maybeRenderMockEmailPreview(data);
       return data;
     } finally {
       if (_sp) _sp.hide();
@@ -275,6 +337,8 @@
     makeRequestId: makeRequestId,
     parseJsonishResponse: parseJsonishResponse,
     requestJson: requestJson,
+    detectUiTestMode: detectUiTestMode,
+    maybeRenderMockEmailPreview: maybeRenderMockEmailPreview,
     config: DEFAULT_CONFIG,
   };
 

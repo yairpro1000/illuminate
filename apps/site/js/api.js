@@ -137,12 +137,16 @@ async function requestJson(method, path, body) {
   const requestId = (crypto.randomUUID && crypto.randomUUID()) || ('rid_' + Date.now().toString(36));
   const correlationId = OBS && OBS.getCorrelationId ? OBS.getCorrelationId() : requestId;
   const startedAt = Date.now();
+  const uiTestMode = SITE_CLIENT && typeof SITE_CLIENT.detectUiTestMode === 'function'
+    ? SITE_CLIENT.detectUiTestMode()
+    : (typeof navigator !== 'undefined' && navigator.webdriver ? 'playwright' : null);
   const res = await fetch(API_BASE + path, {
     method:  method,
     headers: {
       'Content-Type': 'application/json',
       'x-request-id': requestId,
       'x-correlation-id': correlationId,
+      ...(uiTestMode ? { 'x-illuminate-ui-test-mode': uiTestMode } : {}),
     },
     body:    body === undefined ? undefined : JSON.stringify(body),
   });
@@ -208,6 +212,9 @@ async function requestJson(method, path, body) {
   }
 
   if (!res.ok) throw Object.assign(new Error(data.message || 'API error'), { status: res.status, data });
+  if (SITE_CLIENT && typeof SITE_CLIENT.maybeRenderMockEmailPreview === 'function') {
+    await SITE_CLIENT.maybeRenderMockEmailPreview(data);
+  }
   return data;
   } finally {
     if (_sp) _sp.hide();

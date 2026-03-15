@@ -59,7 +59,7 @@ describe('book pay-later confirmation UI', () => {
     expect(html).toContain('← Back to homepage')
   })
 
-  it('renders the inline preview host instead of the standard confirmation copy when a mock email preview exists', () => {
+  it('keeps the standard confirmation copy even when preview metadata is present because rendering moved to the shared client layer', () => {
     const views = window.BookPageViews.createBookPageViews({
       ctx: {
         source: '1_on_1',
@@ -105,7 +105,7 @@ describe('book pay-later confirmation UI', () => {
     })
 
     const html = views.buildShell().replace(/\s+/g, ' ')
-    expect(html).toContain('data-mock-email-preview-host')
-    expect(html).not.toContain('Please confirm your booking there first')
+    expect(html).toContain('Please confirm your booking there first')
+    expect(html).not.toContain('data-mock-email-preview-host')
   })
 })

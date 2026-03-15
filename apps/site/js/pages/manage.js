@@ -1,7 +1,6 @@
 (async function () {
   'use strict';
   const siteClient = window.siteClient || null;
-  const siteMockEmailPreview = window.SiteMockEmailPreview || null;
   const siteConfig = siteClient && siteClient.config ? siteClient.config : {};
   const params = new URLSearchParams(window.location.search);
   const token  = params.get('token');
@@ -198,24 +197,11 @@
       document.getElementById('cancel-yes').textContent = 'Cancelling…';
       document.getElementById('cancel-yes').disabled = true;
       try {
-        const result = await siteClient.requestJson('/api/bookings/cancel', {
+        await siteClient.requestJson('/api/bookings/cancel', {
           method: 'POST',
           body: JSON.stringify(adminToken ? { token, admin_token: adminToken } : { token }),
         });
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
-        if (result.mock_email_preview && siteMockEmailPreview && typeof siteMockEmailPreview.render === 'function') {
-          siteMockEmailPreview.render({
-            container: card,
-            preview: result.mock_email_preview,
-            title: 'Cancelled',
-            message: 'Test mode is active. The cancellation email was captured and rendered here instead of being sent to the provider.',
-            secondaryAction: {
-              href: 'index.html',
-              text: '← Back to homepage',
-            },
-          });
-          return;
-        }
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
           <p class="manage-subtitle">Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.</p>

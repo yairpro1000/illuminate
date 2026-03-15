@@ -200,7 +200,7 @@ Visible steps:
 - Visitor confirms the email
 
 Clarification:
-The March 15, 2026 pay-later refinement governs this scenario. On submit, the booking remains `PENDING` and no Stripe invoice is created yet. On confirmation, the booking becomes `CONFIRMED`, a payment row is created immediately, Stripe invoice bootstrap is attempted synchronously, and the visitor receives a confirmed-style subject line with payment still pending. If Stripe bootstrap fails, confirmation still succeeds and later `continue-payment` must bootstrap payment from scratch.
+The March 15, 2026 pay-later refinement governs this scenario. On submit, the booking remains `PENDING` and no Stripe invoice is created yet. On confirmation, the booking becomes `CONFIRMED`, a payment row is created immediately, Stripe invoice bootstrap is attempted synchronously, and the visitor receives a confirmed-style subject line with payment still pending. If Stripe bootstrap fails, confirmation still succeeds and later `continue-payment` must bootstrap payment from scratch. `continue-payment` is a checkout recovery path, not an invoice-document redirect.
 
 Artifacts:
 - pending booking after submit

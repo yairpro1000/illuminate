@@ -85,6 +85,58 @@
     return next;
   }
 
+  function detectUiTestMode() {
+    try {
+      if (window.__ILLUMINATE_UI_TEST_MODE__) return String(window.__ILLUMINATE_UI_TEST_MODE__).trim().toLowerCase() || null;
+    } catch (_) {}
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var fromQuery = String(params.get('ui_test_mode') || '').trim().toLowerCase();
+      if (fromQuery) return fromQuery;
+    } catch (_) {}
+    try {
+      var fromStorage = String(localStorage.getItem('illuminate_ui_test_mode') || '').trim().toLowerCase();
+      if (fromStorage) return fromStorage;
+    } catch (_) {}
+    if (typeof navigator !== 'undefined' && navigator.webdriver) return 'playwright';
+    return null;
+  }
+
+  function ensureMockEmailPreviewRendererLoaded() {
+    if (window.IlluminateMockEmailPreview && typeof window.IlluminateMockEmailPreview.render === 'function') {
+      return Promise.resolve(window.IlluminateMockEmailPreview);
+    }
+    if (window.__illuminateMockEmailPreviewLoadPromise) return window.__illuminateMockEmailPreviewLoadPromise;
+
+    window.__illuminateMockEmailPreviewLoadPromise = new Promise(function (resolve, reject) {
+      var existing = document.querySelector('script[data-illuminate-mock-email-preview="true"]');
+      if (existing) {
+        existing.addEventListener('load', function () { resolve(window.IlluminateMockEmailPreview || null); }, { once: true });
+        existing.addEventListener('error', reject, { once: true });
+        return;
+      }
+
+      var script = document.createElement('script');
+      script.src = 'js/mock-email-preview.js';
+      script.async = true;
+      script.dataset.illuminateMockEmailPreview = 'true';
+      script.addEventListener('load', function () { resolve(window.IlluminateMockEmailPreview || null); }, { once: true });
+      script.addEventListener('error', reject, { once: true });
+      document.head.appendChild(script);
+    });
+    return window.__illuminateMockEmailPreviewLoadPromise;
+  }
+
+  async function maybeRenderMockEmailPreview(body) {
+    var preview = body && body.mock_email_preview;
+    var uiTestMode = detectUiTestMode();
+    if (!uiTestMode || !preview) return;
+    try {
+      var renderer = await ensureMockEmailPreviewRendererLoaded();
+      if (renderer && typeof renderer.render === 'function') renderer.render({ preview: preview });
+    } catch (_) {}
+  }
+
   async function requestJson(path, init) {
     const method = String((init && init.method) || 'GET').toUpperCase();
     const obs = window.adminObservability || null;
@@ -96,6 +148,8 @@
     const headers = new Headers(next.headers || undefined);
     headers.set('x-request-id', requestId);
     headers.set('x-correlation-id', correlationId);
+    const uiTestMode = detectUiTestMode();
+    if (uiTestMode) headers.set('x-illuminate-ui-test-mode', uiTestMode);
     next.headers = headers;
 
     const res = await fetch(resolveUrl(path), next);
@@ -152,6 +206,7 @@
         },
       });
     }
+    await maybeRenderMockEmailPreview(body);
     return body;
   }
 
@@ -160,5 +215,7 @@
     resolveUrl: resolveUrl,
     buildRequestInit: buildRequestInit,
     requestJson: requestJson,
+    detectUiTestMode: detectUiTestMode,
+    maybeRenderMockEmailPreview: maybeRenderMockEmailPreview,
   };
 })();

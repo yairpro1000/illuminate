@@ -160,6 +160,7 @@ test.describe('P0 turnstile UI integration', () => {
           to: 'turnstile@example.test',
           subject: 'Please confirm your booking - ILLUMINATE',
           html_url: `${SITE_BASE_URL}/api/__dev/emails/${emailId}/html`,
+          email_kind: 'booking_confirm_request',
         },
       });
     });
@@ -247,6 +248,7 @@ test.describe('P0 turnstile UI integration', () => {
           to: 'turnstile@example.test',
           subject: 'Message sent - ILLUMINATE',
           html_url: `${SITE_BASE_URL}/api/__dev/emails/${emailId}/html`,
+          email_kind: 'contact_message',
         },
       });
     });

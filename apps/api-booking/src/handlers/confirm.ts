@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
-import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
+import { consumeLatestEmailDispatch } from '../lib/execution.js';
 import { confirmBookingEmail, getBookingPublicActionInfo } from '../services/booking-service.js';
 
 // GET /api/bookings/confirm?token=<raw>
@@ -25,12 +25,8 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     correlationId: ctx.correlationId,
     operation: ctx.operation,
   });
-  const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(booking.id, {
-    emailMode: ctx.env.EMAIL_MODE,
-    apiOrigin: url.origin,
-  }, {
-    emailKinds: ['booking_confirmation', 'event_confirmation'],
-  });
+  const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
+  const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_confirm_mock_email_preview_decision',
@@ -39,17 +35,11 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
       booking_id: booking.id,
       booking_status: booking.current_status,
       email_mode: ctx.env.EMAIL_MODE,
+      ui_test_mode: emailDispatch?.uiTestMode ?? null,
       has_mock_email_preview: Boolean(mockEmailPreview),
-      branch_taken: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'skip_mock_email_preview_email_mode_not_mock'
-        : mockEmailPreview
-          ? 'include_mock_email_preview'
-          : 'skip_mock_email_preview_captured_email_missing',
-      deny_reason: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'email_mode_not_mock'
-        : mockEmailPreview
-          ? null
-          : 'captured_email_not_found_for_booking',
+      email_kind: emailDispatch?.emailKind ?? null,
+      branch_taken: emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
+      deny_reason: emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
     },
   });
 

@@ -1,6 +1,16 @@
 import type { Logger } from './logger.js';
+import type { MockEmailPreview } from './mock-email-preview.js';
 
 export type AppArea = 'website' | 'admin' | 'pa';
+
+export interface EmailDispatchState {
+  messageId: string | null;
+  emailKind: string | null;
+  uiTestMode: string | null;
+  mockEmailPreview: MockEmailPreview | null;
+  branchTaken: string;
+  denyReason: string | null;
+}
 
 export interface OperationContext {
   appArea: AppArea;
@@ -13,6 +23,7 @@ export interface OperationContext {
   latestProviderApiLogId: string | null;
   latestInboundErrorCode: string | null;
   latestInboundErrorMessage: string | null;
+  latestEmailDispatch: EmailDispatchState | null;
 }
 
 export function createOperationContext(input: {
@@ -31,6 +42,7 @@ export function createOperationContext(input: {
     latestProviderApiLogId: null,
     latestInboundErrorCode: null,
     latestInboundErrorMessage: null,
+    latestEmailDispatch: null,
   };
 }
 
@@ -48,6 +60,7 @@ export function extendOperationContext(
   base.latestProviderApiLogId = overrides.latestProviderApiLogId ?? base.latestProviderApiLogId;
   base.latestInboundErrorCode = overrides.latestInboundErrorCode ?? base.latestInboundErrorCode;
   base.latestInboundErrorMessage = overrides.latestInboundErrorMessage ?? base.latestInboundErrorMessage;
+  base.latestEmailDispatch = overrides.latestEmailDispatch ?? base.latestEmailDispatch;
   return base;
 }
 
@@ -85,5 +98,12 @@ export function consumeLatestProviderApiLogId(operation?: OperationContext): str
   if (!operation) return null;
   const value = operation.latestProviderApiLogId;
   operation.latestProviderApiLogId = null;
+  return value;
+}
+
+export function consumeLatestEmailDispatch(operation?: OperationContext): EmailDispatchState | null {
+  if (!operation) return null;
+  const value = operation.latestEmailDispatch;
+  operation.latestEmailDispatch = null;
   return value;
 }

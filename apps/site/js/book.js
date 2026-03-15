@@ -15,7 +15,6 @@ const BOOK_SHARED = window.BookPageShared || {};
 const BOOK_EFFECTS = window.BookPageEffects || {};
 const BOOK_VIEWS = window.BookPageViews || {};
 const SITE_COUPON = window.SiteCoupon || null;
-const SITE_MOCK_EMAIL_PREVIEW = window.SiteMockEmailPreview || null;
 const parseBookingContext = BOOK_SHARED.parseBookingContext;
 const toYMD = BOOK_SHARED.toYMD;
 const formatTime = BOOK_SHARED.formatTime;
@@ -120,7 +119,6 @@ const S = {
   submissionStatus: null,                // API status from latest submit
   submissionManageUrl: null,
   submissionContinuePaymentUrl: null,
-  mockEmailPreview: null,
   submissionError: null,                 // null | { kind, message, staleSlot }
 
   // Payment simulation (paid flows only)
@@ -168,32 +166,8 @@ function render() {
   const app = document.getElementById('booking-app');
   if (!app) return;
   app.innerHTML = VIEWS.buildShell();
-  renderInlineMockEmailPreview();
   attachListeners();
   mountTurnstileWidget();
-}
-
-function renderInlineMockEmailPreview() {
-  if (!S.mockEmailPreview || !SITE_MOCK_EMAIL_PREVIEW || typeof SITE_MOCK_EMAIL_PREVIEW.render !== 'function') {
-    return;
-  }
-
-  const host = document.querySelector('[data-mock-email-preview-host]');
-  if (!host) return;
-
-  const title = CTX.source === 'evening'
-    ? (S.submissionStatus === 'CONFIRMED' ? 'Registration confirmed' : 'Registration received')
-    : (S.submissionStatus === 'CONFIRMED' ? 'Booking confirmed' : 'Booking received');
-  SITE_MOCK_EMAIL_PREVIEW.render({
-    container: host,
-    preview: S.mockEmailPreview,
-    title: title,
-    message: 'Test mode is active. The email was captured and rendered here instead of being sent to the provider.',
-    secondaryAction: {
-      href: 'index.html',
-      text: '← Back to homepage',
-    },
-  });
 }
 
 async function refreshSlots() {
@@ -465,7 +439,6 @@ async function handleSubmit() {
   S.submissionError = null;
   S.submissionManageUrl = null;
   S.submissionContinuePaymentUrl = null;
-  S.mockEmailPreview = null;
 
   try {
     const submitTurnstileToken = await resolveBookingTurnstileToken();
@@ -489,19 +462,16 @@ async function handleSubmit() {
     if (CTX.mode === 'reschedule') {
       const result = await submitReschedule({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS });
       S.rescheduleUpdated = { starts_at: result.starts_at, ends_at: result.ends_at };
-      S.mockEmailPreview = result.mock_email_preview || null;
     } else if (CTX.source === 'evening') {
       const result = await submitEventRegistration({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, turnstileToken: submitTurnstileToken });
       checkoutUrl = result.checkout_url || null;
       status = result.status || null;
-      S.mockEmailPreview = result.mock_email_preview || null;
     } else {
       const result = await submitBooking({ state: S, context: CTX, config: SITE_CONFIG, observability: BOOK_OBS, isIntroFlow, turnstileToken: submitTurnstileToken });
       checkoutUrl = result.checkout_url || null;
       status = result.status || null;
       manageUrl = result.manage_url || null;
       continuePaymentUrl = result.continue_payment_url || null;
-      S.mockEmailPreview = result.mock_email_preview || null;
     }
 
     S.submitting    = false;

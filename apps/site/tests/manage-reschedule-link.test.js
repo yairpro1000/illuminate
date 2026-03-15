@@ -25,6 +25,12 @@ describe('manage page reschedule link type', () => {
     window.getSiteApiBase = () => ''
     window.siteClient = {
       requestJson: async () => ({}),
+      detectUiTestMode: () => 'playwright',
+      maybeRenderMockEmailPreview: async (data) => {
+        if (data && data.mock_email_preview) {
+          window.IlluminateMockEmailPreview.render({ preview: data.mock_email_preview })
+        }
+      },
     }
     window.history.replaceState({}, '', '/manage.html?token=tok-123')
     evalCode(mockEmailPreviewCode)
@@ -92,7 +98,7 @@ describe('manage page reschedule link type', () => {
         }
       }
       expect(init.method).toBe('POST')
-      return {
+      const response = {
         booking_id: 'booking-3',
         status: 'CANCELED',
         result_code: 'CANCELED',
@@ -103,6 +109,8 @@ describe('manage page reschedule link type', () => {
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
         },
       }
+      await window.siteClient.maybeRenderMockEmailPreview(response)
+      return response
     }
 
     evalCode(managePageCode)
@@ -113,7 +121,7 @@ describe('manage page reschedule link type', () => {
     await flush()
     await flush()
 
-    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
       'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
     )
   })

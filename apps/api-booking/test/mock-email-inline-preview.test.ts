@@ -55,13 +55,17 @@ function makeCtx(envOverrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function jsonRequest(path: string, body?: Record<string, unknown>): Request {
+function jsonRequest(path: string, body?: Record<string, unknown>, options: { uiTestMode?: string | null } = {}): Request {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'CF-Connecting-IP': '203.0.113.10',
+  };
+  if (options.uiTestMode !== null) {
+    headers['x-illuminate-ui-test-mode'] = options.uiTestMode || 'playwright';
+  }
   return new Request(`https://api.local${path}`, {
     method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      'CF-Connecting-IP': '203.0.113.10',
-    },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -103,6 +107,29 @@ describe('mock email inline preview contract', () => {
       eventType: 'booking_pay_later_mock_email_preview_decision',
       context: expect.objectContaining({
         branch_taken: 'include_mock_email_preview',
+      }),
+    }));
+
+    resetMockState();
+    const noUiCtx = makeCtx();
+    const noUiResponse = await handleRequest(jsonRequest('/api/bookings/pay-later', {
+      slot_start: '2026-03-20T12:00:00.000Z',
+      slot_end: '2026-03-20T13:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      type: 'session',
+      first_name: 'Maya',
+      last_name: 'NoUi',
+      client_email: 'maya-no-ui@example.test',
+      client_phone: '+41790000009',
+      turnstile_token: 'ok',
+    }, { uiTestMode: null }), noUiCtx);
+    const noUiData = await noUiResponse.json() as Record<string, unknown>;
+    expect(noUiData).not.toHaveProperty('mock_email_preview');
+    expect(noUiCtx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_pay_later_mock_email_preview_decision',
+      context: expect.objectContaining({
+        branch_taken: 'skip_mock_email_preview_ui_test_mode_not_enabled',
+        deny_reason: 'ui_test_mode_not_enabled',
       }),
     }));
 
@@ -175,7 +202,7 @@ describe('mock email inline preview contract', () => {
     const submitEventA = mockState.bookingEvents.find((entry) => entry.booking_id === pendingAData.booking_id && entry.event_type === 'BOOKING_FORM_SUBMITTED');
     const confirmToken = String(submitEventA?.payload?.['confirm_token'] ?? '');
 
-    const confirmResponse = await handleRequest(new Request(`https://api.local/api/bookings/confirm?token=${encodeURIComponent(confirmToken)}`), ctx);
+    const confirmResponse = await handleRequest(jsonRequest(`/api/bookings/confirm?token=${encodeURIComponent(confirmToken)}`), ctx);
     const confirmData = await confirmResponse.json() as Record<string, any>;
     expect(confirmData.mock_email_preview).toEqual(expect.objectContaining({
       email_id: bookingEmailId(pendingAData.booking_id, 'booking_confirmation'),
@@ -227,7 +254,7 @@ describe('mock email inline preview contract', () => {
     }, ctx);
 
     const statusResponse = await handleRequest(
-      new Request(`https://api.local/api/bookings/payment-status?session_id=${encodeURIComponent(String(sessionIdA))}`),
+      jsonRequest(`/api/bookings/payment-status?session_id=${encodeURIComponent(String(sessionIdA))}`),
       ctx,
     );
     const statusData = await statusResponse.json() as Record<string, any>;

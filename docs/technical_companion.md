@@ -201,7 +201,7 @@ Current intended pay-later architecture:
 - payment row is created after confirmation
 - Stripe invoice bootstrap is attempted synchronously after confirmation
 - invoice bootstrap failure is non-fatal
-- `continue-payment` can rebuild Stripe state if the first bootstrap failed
+- `continue-payment` reuses or rebuilds a checkout session; it does not open the invoice document URL
 
 ## 6. Schema and Data Model References
 
@@ -605,7 +605,7 @@ Execution artifacts:
 - **Cloudflare Access**: The identity/access gate used for organizer/admin sign-in.
 - **Captured email**: The exact provider-bound email payload stored locally in `mock` mode instead of being sent to Resend.
 - **Confirmation link**: The tokenized public URL used to confirm pending free or pay-later bookings.
-- **Continue-payment**: The public recovery path that either redirects into an existing payment URL or bootstraps one if needed.
+- **Continue-payment**: The public recovery path that redirects into a checkout session, reusing an existing checkout URL or bootstrapping one if needed.
 - **Correlation id**: The operation-level identifier used to trace one business operation across logs and provider calls.
 - **Dev email preview**: The developer surface made of `/api/__dev/emails*` plus `dev-emails.html`, used to inspect captured email payloads and render their real HTML in-browser.
 - **Editor-ready DDL companion**: The shorter schema script intended for human/editor use, normalized away from authored enum/type dependencies.

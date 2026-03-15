@@ -187,7 +187,9 @@ The public continue-payment path must be allowed when:
 - booking status is `CONFIRMED`
 - and payment status is `PENDING`, `INVOICE_SENT`, `FAILED`, or `CASH_OK`
 
-If the payment row exists but no invoice/checkout URL is available, continue-payment must bootstrap Stripe state from scratch and patch the existing payment row.
+Continue-payment is checkout-only. It must not redirect the user to an invoice document URL.
+
+If the payment row exists but no checkout URL is available, continue-payment must bootstrap Stripe state from scratch and patch the existing payment row.
 
 ## 8. Event Registration Requirements
 

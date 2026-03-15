@@ -9,7 +9,6 @@
   const OBS = window.siteObservability || null;
   const SITE_CLIENT = window.siteClient || null;
   const SITE_TURNSTILE = window.SiteTurnstile || null;
-  const SITE_MOCK_EMAIL_PREVIEW = window.SiteMockEmailPreview || null;
   const SITE_CONFIG = SITE_CLIENT && SITE_CLIENT.config ? SITE_CLIENT.config : {};
 
   const form       = document.getElementById('contact-form');
@@ -207,19 +206,6 @@
       if (OBS) OBS.logMilestone('contact_message_submitted', { flow: 'site_contact_form' });
       formWrap.hidden = true;
       successEl.hidden = false;
-      if (
-        response &&
-        response.mock_email_preview &&
-        SITE_MOCK_EMAIL_PREVIEW &&
-        typeof SITE_MOCK_EMAIL_PREVIEW.render === 'function'
-      ) {
-        SITE_MOCK_EMAIL_PREVIEW.render({
-          container: successEl,
-          preview: response.mock_email_preview,
-          title: 'Message sent',
-          message: 'Test mode is active. The email was captured and rendered here instead of being sent to the provider.',
-        });
-      }
       successEl.focus();
 
     } catch (err) {

@@ -1,6 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
-import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
+import { consumeLatestEmailDispatch } from '../lib/execution.js';
 import {
   buildContinuePaymentUrl,
   buildManageUrl,
@@ -58,8 +58,6 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
 // POST /api/bookings/pay-later
 export async function handlePayLater(request: Request, ctx: AppContext): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
-  const apiOrigin = new URL(request.url).origin;
-
   const slotStart = requireString(body, 'slot_start');
   const slotEnd = requireString(body, 'slot_end');
   const clientEmail = requireString(body, 'client_email');
@@ -97,12 +95,8 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
   );
 
   const booking = await ctx.providers.repository.getBookingById(result.bookingId);
-  const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(result.bookingId, {
-    emailMode: ctx.env.EMAIL_MODE,
-    apiOrigin,
-  }, {
-    emailKinds: ['booking_confirm_request'],
-  });
+  const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
+  const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -113,17 +107,11 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
       booking_status: result.status,
       booking_type: booking?.booking_type ?? null,
       email_mode: ctx.env.EMAIL_MODE,
+      ui_test_mode: emailDispatch?.uiTestMode ?? null,
       has_mock_email_preview: Boolean(mockEmailPreview),
-      branch_taken: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'skip_mock_email_preview_email_mode_not_mock'
-        : mockEmailPreview
-          ? 'include_mock_email_preview'
-          : 'skip_mock_email_preview_captured_email_missing',
-      deny_reason: ctx.env.EMAIL_MODE !== 'mock'
-        ? 'email_mode_not_mock'
-        : mockEmailPreview
-          ? null
-          : 'captured_email_not_found_for_booking',
+      email_kind: emailDispatch?.emailKind ?? null,
+      branch_taken: emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
+      deny_reason: emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
     },
   });
 
