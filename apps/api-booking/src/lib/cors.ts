@@ -1,8 +1,11 @@
+import { UI_TEST_MODE_HEADER } from './mock-email-preview.js';
+
 const ALLOWED_HEADERS = [
   'Content-Type',
   'Authorization',
   'x-request-id',
   'x-correlation-id',
+  UI_TEST_MODE_HEADER,
   'cf-access-authenticated-user-email',
   'Cf-Access-Authenticated-User-Email',
   'cf-access-jwt-assertion',

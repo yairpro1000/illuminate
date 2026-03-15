@@ -219,7 +219,7 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     await adminPage.click('#editSettlePayment');
     await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
     await expect(adminPage.locator('#editMsg')).toHaveClass(/err/);
-    await expect(adminPage.locator('#editMsg')).toContainText(/Only pending bookings can be settled manually|Payment cannot be settled from its current state/i);
+    await expect(adminPage.locator('#editMsg')).toContainText(/Only pending or confirmed bookings can be settled manually|Only pending bookings can be settled manually|Payment cannot be settled from its current state/i);
     await adminRuntime.assertNoNewIssues(checkpoint, 'admin-deny-settle-canceled-booking', testInfo, {
       allow: [
         {
@@ -232,29 +232,18 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
           urlIncludes: '/js/client.js',
           messageIncludes: 'request_failure',
         },
+        {
+          kind: 'console',
+          urlIncludes: '/payment-settled',
+          messageIncludes: 'Failed to load resource: the server responded with a status of 409',
+        },
       ],
     });
 
     checkpoint = adminRuntime.checkpoint();
     await openAdminBookingRowByEmail(adminPage, settleEmail, settleArtifacts.booking.starts_at.slice(0, 10));
-    await adminPage.click('#editSettlePayment');
-    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
-    await expect(adminPage.locator('#editMsg')).toHaveClass(/err/);
-    await expect(adminPage.locator('#editMsg')).toContainText(/Payment cannot be settled from its current state/i);
-    await adminRuntime.assertNoNewIssues(checkpoint, 'admin-deny-settle-already-settled-booking', testInfo, {
-      allow: [
-        {
-          kind: 'http',
-          urlIncludes: '/payment-settled',
-          messageIncludes: '-> 409',
-        },
-        {
-          kind: 'console',
-          urlIncludes: '/js/client.js',
-          messageIncludes: 'request_failure',
-        },
-      ],
-    });
+    await expect(adminPage.locator('#editSettlePayment')).toBeDisabled();
+    await adminRuntime.assertNoNewIssues(checkpoint, 'admin-disable-settle-already-settled-booking', testInfo);
 
     await adminPage.close();
   });

@@ -8,11 +8,62 @@ function makeOriginReq(method: string, path: string, origin = 'http://localhost:
 }
 
 describe('Router integration (admin)', () => {
-  it('handles OPTIONS preflight with CORS headers', async () => {
+  it('handles OPTIONS preflight with CORS headers and logs the allowed branch', async () => {
     const ctx = makeCtx();
-    const res = await handleRequest(makeOriginReq('OPTIONS', 'https://api.local/api/health'), ctx);
+    const req = new Request('https://api.local/api/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://letsilluminate.co',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'x-illuminate-ui-test-mode, x-request-id, x-correlation-id',
+      },
+    });
+    const res = await handleRequest(req, ctx);
     expect(res.status).toBe(204);
-    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('x-illuminate-ui-test-mode');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cors_preflight_evaluation_started',
+      context: expect.objectContaining({
+        branch_taken: 'evaluate_cors_preflight',
+        requested_headers: ['x-illuminate-ui-test-mode', 'x-request-id', 'x-correlation-id'],
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cors_preflight_evaluation_completed',
+      context: expect.objectContaining({
+        branch_taken: 'allow_cors_preflight',
+        allowed_origin: 'https://letsilluminate.co',
+        requested_headers: ['x-illuminate-ui-test-mode', 'x-request-id', 'x-correlation-id'],
+        deny_reason: null,
+      }),
+    }));
+  });
+
+  it('rejects disallowed OPTIONS preflight requests and logs the deny reason', async () => {
+    const ctx = makeCtx({ env: { SITE_URL: 'https://example.com', ADMIN_DEV_EMAIL: '' } as any });
+    const req = new Request('https://api.local/api/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'x-illuminate-ui-test-mode',
+      },
+    });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(403);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(res.headers.get('Vary')).toBe('Origin');
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cors_preflight_evaluation_completed',
+      context: expect.objectContaining({
+        branch_taken: 'deny_cors_preflight_origin_not_allowed',
+        deny_reason: 'origin_not_allowed',
+        request_origin: 'https://evil.example',
+        requested_headers: ['x-illuminate-ui-test-mode'],
+        status_code: 403,
+      }),
+    }));
   });
 
   it('routes to admin config with auth', async () => {

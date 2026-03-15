@@ -165,6 +165,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   const url = new URL(request.url);
   const isAdminEventsPath = url.pathname === '/api/admin/events';
   const isFrontendObservabilityPath = url.pathname === '/api/observability/frontend';
+  const devMode = !!ctx.env.ADMIN_DEV_EMAIL;
   const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS, !!ctx.env.ADMIN_DEV_EMAIL);
   const requestSizeBytes = headerByteLength(request.headers);
   if (isAdminEventsPath) {
@@ -181,12 +182,69 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   }
 
   if (request.method === 'OPTIONS') {
+    const requestedHeaders = String(request.headers.get('Access-Control-Request-Headers') || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    ctx.logger.logInfo({
+      source: 'worker',
+      eventType: 'cors_preflight_evaluation_started',
+      message: 'Evaluating CORS preflight request',
+      context: {
+        method: request.method,
+        path: url.pathname,
+        request_origin: request.headers.get('Origin'),
+        requested_method: request.headers.get('Access-Control-Request-Method'),
+        requested_headers: requestedHeaders,
+        site_url: ctx.env.SITE_URL,
+        configured_origins: ctx.env.API_ALLOWED_ORIGINS || null,
+        dev_mode: devMode,
+        branch_taken: 'evaluate_cors_preflight',
+      },
+    });
     const preflightRes = origin
       ? handlePreflight(origin)
       : new Response(null, {
         status: 403,
         headers: { Vary: 'Origin' },
       });
+    if (origin) {
+      ctx.logger.logInfo({
+        source: 'worker',
+        eventType: 'cors_preflight_evaluation_completed',
+        message: 'Allowed CORS preflight request',
+        context: {
+          method: request.method,
+          path: url.pathname,
+          request_origin: request.headers.get('Origin'),
+          allowed_origin: origin,
+          requested_method: request.headers.get('Access-Control-Request-Method'),
+          requested_headers: requestedHeaders,
+          status_code: preflightRes.status,
+          branch_taken: 'allow_cors_preflight',
+          deny_reason: null,
+          dev_mode: devMode,
+        },
+      });
+    } else {
+      ctx.logger.logWarn({
+        source: 'worker',
+        eventType: 'cors_preflight_evaluation_completed',
+        message: 'Rejected CORS preflight request',
+        context: {
+          method: request.method,
+          path: url.pathname,
+          request_origin: request.headers.get('Origin'),
+          allowed_origin: null,
+          requested_method: request.headers.get('Access-Control-Request-Method'),
+          requested_headers: requestedHeaders,
+          status_code: preflightRes.status,
+          branch_taken: 'deny_cors_preflight_origin_not_allowed',
+          deny_reason: 'origin_not_allowed',
+          dev_mode: devMode,
+        },
+      });
+    }
     if (isAdminEventsPath) {
       console.log('[admin-events-debug] preflight', JSON.stringify({
         status: preflightRes.status,
