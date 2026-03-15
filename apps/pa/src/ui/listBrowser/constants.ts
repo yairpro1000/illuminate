@@ -23,27 +23,26 @@ export const STATUS_STYLE: Record<StatusValue, { label: string; bg: string; fg: 
   {
     todo: {
       label: "Todo",
-      bg: "rgba(170, 179, 214, 0.16)",
-      fg: "var(--text)",
-      border: "rgba(170, 179, 214, 0.28)",
+      bg: "var(--color-bg-alt)",
+      fg: "var(--color-text)",
+      border: "var(--color-border)",
     },
     in_progress: {
       label: "In progress",
-      bg: "rgba(122, 162, 255, 0.18)",
-      fg: "var(--text)",
-      border: "rgba(122, 162, 255, 0.35)",
+      bg: "var(--color-accent-bg)",
+      fg: "var(--color-text)",
+      border: "var(--color-accent-border)",
     },
     on_hold: {
       label: "On hold",
-      bg: "rgba(255, 204, 0, 0.18)",
-      fg: "var(--text)",
-      border: "rgba(255, 204, 0, 0.32)",
+      bg: "var(--color-warning-bg)",
+      fg: "var(--color-text)",
+      border: "var(--color-warning-border)",
     },
     done: {
       label: "Done",
-      bg: "rgba(73, 210, 140, 0.18)",
-      fg: "var(--text)",
-      border: "rgba(73, 210, 140, 0.35)",
+      bg: "var(--color-ok-bg)",
+      fg: "var(--color-text)",
+      border: "var(--color-ok-border)",
     },
   };
-

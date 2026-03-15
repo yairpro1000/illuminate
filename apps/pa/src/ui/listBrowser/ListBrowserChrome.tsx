@@ -207,7 +207,7 @@ export function ListBrowserChrome(props: {
           ) : null}
           <button
             onClick={undoMode ? exitUndoMode : enterUndoMode}
-            style={undoMode ? { background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" } : {}}
+            className={undoMode ? "primary" : undefined}
           >
             {undoMode ? "Exit Undo" : "↩ Undo"}
           </button>
@@ -262,7 +262,7 @@ export function ListBrowserChrome(props: {
           <button
             className="iconbtn"
             onClick={() => setFiltersOpen((f) => !f)}
-            style={{ flexShrink: 0, borderColor: "rgba(232,180,40,0.45)", color: "#e8b428", background: filtersOpen ? "rgba(232,180,40,0.12)" : "rgba(232,180,40,0.05)" }}
+            style={{ flexShrink: 0, borderColor: "var(--color-warning-border)", color: "var(--color-warning)", background: filtersOpen ? "var(--color-warning-bg)" : undefined }}
             title={filtersOpen ? "Hide filters" : "Show filters"}
           >
             {filtersOpen ? "− Filters" : "+ Filters"}
@@ -270,7 +270,7 @@ export function ListBrowserChrome(props: {
           <button
             className="iconbtn"
             onClick={() => { setSortDraft([...sortLayers]); setSortModalOpen(true); }}
-            style={{ flexShrink: 0, borderColor: "rgba(122,162,255,0.45)", color: "var(--accent)", background: sortLayers.length > 1 ? "rgba(122,162,255,0.12)" : "rgba(122,162,255,0.05)" }}
+            style={{ flexShrink: 0, borderColor: "var(--color-accent-border)", color: "var(--color-accent)", background: sortLayers.length > 1 ? "var(--color-accent-bg)" : undefined }}
             title="Sort by"
           >
             ↕ Sort{sortLayers.length > 1 ? ` (${sortLayers.length})` : ""}
@@ -281,7 +281,7 @@ export function ListBrowserChrome(props: {
       {!reorderMode && !undoMode && selectedIdsSize > 0 ? (
         <div className="filterBar bulkBar">
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", flexShrink: 0 }}>
-            <span style={{ fontWeight: 600, color: "var(--danger)", fontSize: 13 }}>{selectedIdsSize} selected</span>
+            <span style={{ fontWeight: 600, color: "var(--color-danger)", fontSize: 13 }}>{selectedIdsSize} selected</span>
           </div>
           <div className="filterItem">
             <label className="small muted">Move to list</label>
@@ -469,7 +469,7 @@ export function ListBrowserChrome(props: {
 
           <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
             <button
-              style={{ background: "#1a90d4", color: "#fff", borderColor: "#1a90d4" }}
+              className="primary"
               onClick={() => executeUndo(Array.from(undoSelectedIds), false)}
               disabled={undoBusy || undoSelectedIds.size === 0}
             >
