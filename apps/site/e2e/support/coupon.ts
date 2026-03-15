@@ -53,6 +53,70 @@ export async function expectCouponIndicatorVisible(page: Page): Promise<void> {
   await expect(couponIndicator(page)).toContainText('Israel discount applied');
 }
 
+export async function expectViewportRelativeCouponIndicator(page: Page): Promise<void> {
+  await expectCouponIndicatorVisible(page);
+  await expect.poll(async () => page.evaluate(() => {
+    const indicator = document.querySelector('[data-coupon-indicator]');
+    if (!indicator) return 'missing';
+    const style = window.getComputedStyle(indicator);
+    return JSON.stringify({
+      position: style.position,
+      right: style.right,
+      bottom: style.bottom,
+      parentTag: indicator.parentElement ? indicator.parentElement.tagName : 'missing',
+    });
+  }), {
+    message: 'Expected coupon indicator to stay anchored to the viewport',
+  }).toBe(JSON.stringify({ position: 'fixed', right: '16px', bottom: '16px', parentTag: 'BODY' }));
+
+  const before = await couponIndicator(page).boundingBox();
+  if (!before) throw new Error('Coupon indicator is missing a bounding box before scroll');
+
+  await page.mouse.wheel(0, 500);
+  await page.waitForTimeout(200);
+
+  const after = await couponIndicator(page).boundingBox();
+  if (!after) throw new Error('Coupon indicator is missing a bounding box after scroll');
+
+  expect(Math.abs(after.x - before.x)).toBeLessThan(2);
+  expect(Math.abs(after.y - before.y)).toBeLessThan(2);
+}
+
+export async function removeCouponFromIndicator(page: Page): Promise<void> {
+  page.once('dialog', async (dialog) => {
+    await dialog.accept();
+  });
+  await couponIndicator(page).locator('[data-coupon-remove="true"]').click();
+}
+
+export async function expectDiscountedPrices(
+  page: Page,
+  scopeSelector: string,
+  minimumCount = 1,
+): Promise<void> {
+  const scope = page.locator(scopeSelector);
+  await expect(scope).toBeVisible();
+  await expect.poll(async () => scope.locator('.coupon-price--discounted').count(), {
+    message: `Expected at least ${minimumCount} discounted prices in ${scopeSelector}`,
+  }).toBeGreaterThanOrEqual(minimumCount);
+  await expect(scope.locator('.coupon-price__old').first()).toBeVisible();
+  await expect(scope.locator('.coupon-price__new').first()).toBeVisible();
+}
+
+export async function expectStandardPrices(
+  page: Page,
+  scopeSelector: string,
+  minimumCount = 1,
+): Promise<void> {
+  const scope = page.locator(scopeSelector);
+  await expect(scope).toBeVisible();
+  const standard = scope.locator('.coupon-price--standard, .coupon-price--free');
+  await expect.poll(async () => standard.count(), {
+    message: `Expected at least ${minimumCount} standard prices in ${scopeSelector}`,
+  }).toBeGreaterThanOrEqual(minimumCount);
+  await expect(scope.locator('.coupon-price--discounted')).toHaveCount(0);
+}
+
 export async function expectStickyCouponBanner(page: Page): Promise<void> {
   const banner = couponBanner(page);
   await expect(banner).toBeVisible();

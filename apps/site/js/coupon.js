@@ -227,6 +227,16 @@
       document.body.appendChild(indicator);
     }
 
+    if (indicator.parentElement !== document.body) {
+      document.body.appendChild(indicator);
+    }
+
+    indicator.style.position = 'fixed';
+    indicator.style.right = 'max(1rem, env(safe-area-inset-right, 0px))';
+    indicator.style.bottom = 'max(1rem, env(safe-area-inset-bottom, 0px))';
+    indicator.style.left = 'auto';
+    indicator.style.top = 'auto';
+
     indicator.innerHTML = `
       <span class="coupon-indicator__label">🇮🇱 Israel discount applied</span>
       <button type="button" class="coupon-indicator__remove" data-coupon-remove="true" aria-label="Remove Israel discount">✕</button>
