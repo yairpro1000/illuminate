@@ -27,22 +27,11 @@
     .confirm-icon { width: 64px; height: 64px; margin: 0 auto 1.5rem; }
     .confirm-title { font-size: 1.5rem; font-weight: 700; margin: 0 0 .75rem; color: var(--color-text); }
     .confirm-msg { color: var(--color-text-muted); margin: 0 0 2rem; line-height: 1.6; }
-    .spinner { animation: spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <main class="confirm-page">
-  <div class="confirm-card" id="confirm-card">
-    <div class="confirm-icon" aria-hidden="true">
-      <svg viewBox="0 0 64 64" fill="none" class="spinner">
-        <circle cx="32" cy="32" r="28" stroke="var(--color-lake-mist,#cde)" stroke-width="3"/>
-        <path d="M32 4a28 28 0 0 1 28 28" stroke="var(--color-lake,#4a8fa8)" stroke-width="3" stroke-linecap="round"/>
-      </svg>
-    </div>
-    <h1 class="confirm-title">Confirming…</h1>
-    <p class="confirm-msg">Please wait a moment.</p>
-  </div>
+  <div class="confirm-card" id="confirm-card"></div>
 </main>
 <script src="js/api-base.js"></script>
 <script src="js/client.js"></script>
