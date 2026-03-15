@@ -99,16 +99,17 @@ test.describe('Israel coupon banner', () => {
     await runtime.assertNoNewIssues(checkpoint, 'coupon-discount-home', testInfo);
 
     checkpoint = runtime.checkpoint();
-    await page.goto(`${SITE_BASE_URL}/evenings.html`);
-    await expectViewportRelativeCouponIndicator(page);
-    await expectDiscountedPrices(page, '#events-grid', 1);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-discount-evenings', testInfo);
-
-    checkpoint = runtime.checkpoint();
     await removeCouponFromIndicator(page);
     await expect(page.locator('[data-coupon-indicator]')).toHaveCount(0);
-    await expectStandardPrices(page, '#events-grid', 1);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-remove-evenings', testInfo);
+    await expectCouponBannerVisible(page);
+    await expectStandardPrices(page, '#how-we-work', 2);
+    await runtime.assertNoNewIssues(checkpoint, 'coupon-remove-home', testInfo);
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(`${SITE_BASE_URL}/evenings.html`);
+    await expect(page.locator('[data-coupon-indicator]')).toHaveCount(0);
+    await expectNoCouponBanner(page);
+    await runtime.assertNoNewIssues(checkpoint, 'coupon-evenings-unchanged', testInfo);
 
     checkpoint = runtime.checkpoint();
     await page.goto(`${SITE_BASE_URL}/sessions.html`);
@@ -143,15 +144,24 @@ test.describe('Israel coupon banner', () => {
     await runtime.assertNoNewIssues(checkpoint, 'coupon-discount-home-mobile', testInfo);
 
     checkpoint = runtime.checkpoint();
-    await page.goto(`${SITE_BASE_URL}/evenings.html`);
-    await expectViewportRelativeCouponIndicator(page);
-    await expectDiscountedPrices(page, '#events-grid', 1);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-discount-evenings-mobile', testInfo);
-
-    checkpoint = runtime.checkpoint();
     await removeCouponFromIndicator(page);
     await expect(page.locator('[data-coupon-indicator]')).toHaveCount(0);
-    await expectStandardPrices(page, '#events-grid', 1);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-remove-evenings-mobile', testInfo);
+    await expectCouponBannerVisible(page);
+    await expectStandardPrices(page, '#how-we-work', 2);
+    await runtime.assertNoNewIssues(checkpoint, 'coupon-remove-home-mobile', testInfo);
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(`${SITE_BASE_URL}/evenings.html`);
+    await expect(page.locator('[data-coupon-indicator]')).toHaveCount(0);
+    await expectNoCouponBanner(page);
+    await runtime.assertNoNewIssues(checkpoint, 'coupon-evenings-unchanged-mobile', testInfo);
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(`${SITE_BASE_URL}/sessions.html`);
+    await scrollSessionsBannerIntoView(page);
+    await expect(page.locator('[data-coupon-indicator]')).toHaveCount(0);
+    await expectCouponBannerVisible(page);
+    await expectStandardPrices(page, '#sessionGrid', 1);
+    await runtime.assertNoNewIssues(checkpoint, 'coupon-remove-sessions-mobile', testInfo);
   });
 });
