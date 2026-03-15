@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import managePageCode from '../js/pages/manage.js?raw'
+import mockEmailPreviewCode from '../js/mock-email-preview.js?raw'
 
 function evalCode(code) {
   // Evaluate in the browser-like global scope
@@ -26,6 +27,7 @@ describe('manage page reschedule link type', () => {
       requestJson: async () => ({}),
     }
     window.history.replaceState({}, '', '/manage.html?token=tok-123')
+    evalCode(mockEmailPreviewCode)
   })
 
   it('uses session slots for a 90-minute first session reschedule', async () => {
@@ -70,5 +72,49 @@ describe('manage page reschedule link type', () => {
     const href = document.querySelector('.manage-actions a.btn.btn-primary')?.getAttribute('href')
     const query = new URLSearchParams(href.slice(href.indexOf('?') + 1))
     expect(query.get('type')).toBe('intro')
+  })
+
+  it('renders the captured cancellation email after a successful cancel in mock mode', async () => {
+    let callCount = 0
+    window.siteClient.requestJson = async (_path, init) => {
+      callCount += 1
+      if (callCount === 1) {
+        return {
+          source: 'session',
+          booking_id: 'booking-3',
+          status: 'CONFIRMED',
+          starts_at: '2026-03-20T09:00:00.000Z',
+          ends_at: '2026-03-20T10:30:00.000Z',
+          title: 'First Clarity Session',
+          client: { first_name: 'A', last_name: 'B' },
+          actions: { can_reschedule: false, can_cancel: true },
+          policy: {},
+        }
+      }
+      expect(init.method).toBe('POST')
+      return {
+        booking_id: 'booking-3',
+        status: 'CANCELED',
+        result_code: 'CANCELED',
+        mock_email_preview: {
+          email_id: 'mock_msg_cancel',
+          to: 'cancel@example.test',
+          subject: 'Booking cancelled',
+          html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
+        },
+      }
+    }
+
+    evalCode(managePageCode)
+    await flush()
+
+    document.getElementById('cancel-btn').click()
+    document.getElementById('cancel-yes').click()
+    await flush()
+    await flush()
+
+    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
+    )
   })
 })

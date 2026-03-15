@@ -19,7 +19,14 @@ import {
 } from './resend.js';
 
 export class MockEmailProvider implements IEmailProvider {
-  private send(message: BuiltEmailMessage): SendResult {
+  private send(
+    message: BuiltEmailMessage,
+    metadata: {
+      bookingId?: string | null;
+      eventId?: string | null;
+      contactMessageId?: string | null;
+    } = {},
+  ): SendResult {
     const messageId = `mock_msg_${crypto.randomUUID()}`;
     const { kind, payload } = message;
     const sentAt = new Date().toISOString();
@@ -30,11 +37,16 @@ export class MockEmailProvider implements IEmailProvider {
       to: payload.to,
       subject: payload.subject,
       kind,
+      email_kind: kind,
       replyTo: payload.replyTo,
       text: payload.text,
       html: payload.html,
       body: payload.text,
       sentAt,
+      sent_at: sentAt,
+      booking_id: metadata.bookingId ?? null,
+      event_id: metadata.eventId ?? null,
+      contact_message_id: metadata.contactMessageId ?? null,
     });
 
     console.info('[email:mock] capture', JSON.stringify({
@@ -64,7 +76,10 @@ export class MockEmailProvider implements IEmailProvider {
   }
 
   async sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult> {
-    return this.send(buildBookingConfirmRequestEmail(booking, confirmUrl, confirmationWindowMinutes));
+    return this.send(buildBookingConfirmRequestEmail(booking, confirmUrl, confirmationWindowMinutes), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingPaymentDue(
@@ -73,7 +88,10 @@ export class MockEmailProvider implements IEmailProvider {
     manageUrl: string,
     paymentDueAt: string,
   ): Promise<SendResult> {
-    return this.send(buildBookingPaymentDueEmail(booking, payUrl, manageUrl, paymentDueAt));
+    return this.send(buildBookingPaymentDueEmail(booking, payUrl, manageUrl, paymentDueAt), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingConfirmation(
@@ -84,31 +102,52 @@ export class MockEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    return this.send(buildBookingConfirmationEmail(booking, manageUrl, invoiceUrl, payUrl, policyText, options));
+    return this.send(buildBookingConfirmationEmail(booking, manageUrl, invoiceUrl, payUrl, policyText, options), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult> {
-    return this.send(buildBookingPaymentReminderEmail(booking, payUrl));
+    return this.send(buildBookingPaymentReminderEmail(booking, payUrl), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingReminder24h(booking: Booking, manageUrl: string): Promise<SendResult> {
-    return this.send(buildBookingReminder24hEmail(booking, manageUrl));
+    return this.send(buildBookingReminder24hEmail(booking, manageUrl), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    return this.send(buildBookingFollowupEmail(booking, confirmUrl));
+    return this.send(buildBookingFollowupEmail(booking, confirmUrl), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.send(buildBookingCancellationEmail(booking, startNewBookingUrl));
+    return this.send(buildBookingCancellationEmail(booking, startNewBookingUrl), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.send(buildBookingExpiredEmail(booking, startNewBookingUrl));
+    return this.send(buildBookingExpiredEmail(booking, startNewBookingUrl), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
   }
 
   async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
-    return this.send(buildEventConfirmRequestEmail(booking, event, confirmUrl));
+    return this.send(buildEventConfirmRequestEmail(booking, event, confirmUrl), {
+      bookingId: booking.id,
+      eventId: event.id,
+    });
   }
 
   async sendEventConfirmation(
@@ -120,14 +159,23 @@ export class MockEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    return this.send(buildEventConfirmationEmail(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options));
+    return this.send(buildEventConfirmationEmail(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options), {
+      bookingId: booking.id,
+      eventId: event.id,
+    });
   }
 
   async sendEventReminder24h(booking: Booking, event: Event, manageUrl: string): Promise<SendResult> {
-    return this.send(buildEventReminder24hEmail(booking, event, manageUrl));
+    return this.send(buildEventReminder24hEmail(booking, event, manageUrl), {
+      bookingId: booking.id,
+      eventId: event.id,
+    });
   }
 
   async sendEventFollowup(booking: Booking, event: Event, actionUrl: string): Promise<SendResult> {
-    return this.send(buildEventFollowupEmail(booking, event, actionUrl));
+    return this.send(buildEventFollowupEmail(booking, event, actionUrl), {
+      bookingId: booking.id,
+      eventId: event.id,
+    });
   }
 }

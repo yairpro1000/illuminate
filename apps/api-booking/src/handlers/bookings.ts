@@ -1,5 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
+import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
 import {
   buildContinuePaymentUrl,
   buildManageUrl,
@@ -57,6 +58,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
 // POST /api/bookings/pay-later
 export async function handlePayLater(request: Request, ctx: AppContext): Promise<Response> {
   const body = await request.json() as Record<string, unknown>;
+  const apiOrigin = new URL(request.url).origin;
 
   const slotStart = requireString(body, 'slot_start');
   const slotEnd = requireString(body, 'slot_end');
@@ -95,6 +97,35 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
   );
 
   const booking = await ctx.providers.repository.getBookingById(result.bookingId);
+  const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(result.bookingId, {
+    emailMode: ctx.env.EMAIL_MODE,
+    apiOrigin,
+  }, {
+    emailKinds: ['booking_confirm_request'],
+  });
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_pay_later_mock_email_preview_decision',
+    message: 'Evaluated inline mock email preview for pay-later booking submission',
+    context: {
+      booking_id: result.bookingId,
+      booking_status: result.status,
+      booking_type: booking?.booking_type ?? null,
+      email_mode: ctx.env.EMAIL_MODE,
+      has_mock_email_preview: Boolean(mockEmailPreview),
+      branch_taken: ctx.env.EMAIL_MODE !== 'mock'
+        ? 'skip_mock_email_preview_email_mode_not_mock'
+        : mockEmailPreview
+          ? 'include_mock_email_preview'
+          : 'skip_mock_email_preview_captured_email_missing',
+      deny_reason: ctx.env.EMAIL_MODE !== 'mock'
+        ? 'email_mode_not_mock'
+        : mockEmailPreview
+          ? null
+          : 'captured_email_not_found_for_booking',
+    },
+  });
 
   return ok({
     booking_id: result.bookingId,
@@ -105,6 +136,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
           manage_url: await buildManageUrl(ctx.env.SITE_URL, booking),
         }
       : {}),
+    ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
   });
 }
 

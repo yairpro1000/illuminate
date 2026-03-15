@@ -1,11 +1,13 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
+import { resolveLatestMockEmailPreviewForBooking } from '../lib/mock-email-preview.js';
 import { cancelBooking, resolveBookingManageAccess } from '../services/booking-service.js';
 
 // POST /api/bookings/cancel
 // Body: { token: string }
 export async function handleManageCancel(request: Request, ctx: AppContext): Promise<Response> {
   const path = new URL(request.url).pathname;
+  const apiOrigin = new URL(request.url).origin;
   try {
     let body: Record<string, unknown>;
     try {
@@ -104,11 +106,41 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       },
     });
 
+    const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(result.booking.id, {
+      emailMode: ctx.env.EMAIL_MODE,
+      apiOrigin,
+    }, {
+      emailKinds: ['booking_cancellation'],
+    });
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'manage_booking_cancel_mock_email_preview_decision',
+      message: 'Evaluated inline mock email preview for manage-booking cancellation',
+      context: {
+        path,
+        booking_id: result.booking.id,
+        booking_status: result.booking.current_status,
+        email_mode: ctx.env.EMAIL_MODE,
+        has_mock_email_preview: Boolean(mockEmailPreview),
+        branch_taken: ctx.env.EMAIL_MODE !== 'mock'
+          ? 'skip_mock_email_preview_email_mode_not_mock'
+          : mockEmailPreview
+            ? 'include_mock_email_preview'
+            : 'skip_mock_email_preview_captured_email_missing',
+        deny_reason: ctx.env.EMAIL_MODE !== 'mock'
+          ? 'email_mode_not_mock'
+          : mockEmailPreview
+            ? null
+            : 'captured_email_not_found_for_booking',
+      },
+    });
+
     return ok({
       booking_id: result.booking.id,
       status: result.booking.current_status,
       result_code: result.code,
       message: result.message,
+      ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
     });
   } catch (err) {
     const statusCode = err instanceof ApiError ? err.statusCode : 500;

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import contactCode from '../js/contact.js?raw'
+import mockEmailPreviewCode from '../js/mock-email-preview.js?raw'
 
 function evalCode(code) {
   // eslint-disable-next-line no-eval
@@ -71,6 +72,7 @@ describe('contact form turnstile submission', () => {
       resetVisibleWidget: vi.fn(),
     }
     window._post = vi.fn().mockResolvedValue({ ok: true })
+    evalCode(mockEmailPreviewCode)
   })
 
   it('loads turnstile config and submits the resolved token', async () => {
@@ -101,5 +103,33 @@ describe('contact form turnstile submission', () => {
       email: 'ada@example.com',
       turnstile_token: 'contact-turnstile-token',
     }))
+  })
+
+  it('replaces the success body with the inline email preview when the backend returns mock_email_preview', async () => {
+    window._post = vi.fn().mockResolvedValue({
+      ok: true,
+      mock_email_preview: {
+        email_id: 'mock_msg_contact',
+        to: 'ada@example.com',
+        subject: 'New contact form message',
+        html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
+      },
+    })
+
+    evalCode(contactCode)
+    await flush()
+
+    document.getElementById('contact-first-name').value = 'Ada'
+    document.getElementById('contact-email').value = 'ada@example.com'
+    document.getElementById('contact-message').value = 'Hello there'
+
+    document.getElementById('contact-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flush()
+    await flush()
+
+    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
+    )
+    expect(document.getElementById('contact-form-wrap').hidden).toBe(true)
   })
 })

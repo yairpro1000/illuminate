@@ -33,7 +33,10 @@ describe('dev captured email preview', () => {
       from: 'Illuminate Contact <bookings@letsilluminate.co>',
       to: 'maya@example.test',
       kind: 'booking_confirm_request',
+      email_kind: 'booking_confirm_request',
       replyTo: 'hello@yairb.ch',
+      booking_id: 'bk-1',
+      event_id: null,
     });
     expect(mockState.sentEmails[0]?.text).toContain('Confirm: https://letsilluminate.co/confirm.html?token=test-confirm');
     expect(mockState.sentEmails[0]?.html).toContain('Confirm booking');
@@ -68,6 +71,9 @@ describe('dev captured email preview', () => {
           id: captured?.id,
           to: 'maya@example.test',
           kind: 'booking_confirm_request',
+          email_kind: 'booking_confirm_request',
+          booking_id: 'bk-2',
+          event_id: null,
           has_html: true,
           preview_html_url: `https://api.local/api/__dev/emails/${captured?.id}/html`,
         }),
@@ -86,6 +92,7 @@ describe('dev captured email preview', () => {
       email: expect.objectContaining({
         id: captured?.id,
         to: 'maya@example.test',
+        booking_id: 'bk-2',
         text: expect.stringContaining('preview-token'),
         html: expect.stringContaining('Confirm booking'),
       }),

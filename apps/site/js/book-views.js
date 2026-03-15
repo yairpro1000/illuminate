@@ -598,6 +598,9 @@
       }
 
       if (!isPaid) {
+        if (state.mockEmailPreview) {
+          return '<div class="confirmation" data-mock-email-preview-host></div>';
+        }
         const isConfirmedNow = state.submissionStatus === 'CONFIRMED';
         const isPayLaterSubmission = !isEvent
           && !isIntroFlow()

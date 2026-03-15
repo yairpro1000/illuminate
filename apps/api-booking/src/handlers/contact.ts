@@ -1,11 +1,13 @@
 import type { AppContext } from '../router.js';
 import { EmailProviderError } from '../providers/email/interface.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
+import { resolveMockEmailPreviewById } from '../lib/mock-email-preview.js';
 import { sanitizeContext } from '../../../shared/observability/backend.js';
 
 // POST /api/contact
 export async function handleContact(request: Request, ctx: AppContext): Promise<Response> {
   ctx.logger.logMilestone('incoming_request_received', { flow: 'contact_form' });
+  const apiOrigin = new URL(request.url).origin;
 
   try {
     const body = await request.json() as Record<string, unknown>;
@@ -75,6 +77,34 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
         kind: 'contact_message',
       });
       const sendResult = await ctx.providers.email.sendContactMessage(name, normalizedEmail, message, topic);
+      const mockEmailPreview = resolveMockEmailPreviewById(sendResult.messageId, {
+        emailMode: ctx.env.EMAIL_MODE,
+        apiOrigin,
+      });
+
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'contact_mock_email_preview_decision',
+        message: 'Evaluated inline mock email preview for contact form submission',
+        context: sanitizeContext({
+          flow: 'contact_form',
+          request_id: ctx.requestId,
+          contact_message_id: contact.id,
+          client_id: client.id,
+          email_mode: ctx.env.EMAIL_MODE,
+          has_mock_email_preview: Boolean(mockEmailPreview),
+          branch_taken: ctx.env.EMAIL_MODE !== 'mock'
+            ? 'skip_mock_email_preview_email_mode_not_mock'
+            : mockEmailPreview
+              ? 'include_mock_email_preview'
+              : 'skip_mock_email_preview_captured_email_missing',
+          deny_reason: ctx.env.EMAIL_MODE !== 'mock'
+            ? 'email_mode_not_mock'
+            : mockEmailPreview
+              ? null
+              : 'captured_email_not_found_for_message_id',
+        }),
+      });
 
       ctx.logger.logMilestone('provider_result_persisted', {
         flow: 'contact_form',
@@ -90,6 +120,7 @@ export async function handleContact(request: Request, ctx: AppContext): Promise<
         contact_id: contact.id,
         email_delivery: 'sent',
         request_id: ctx.requestId,
+        ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
       });
     } catch (emailErr) {
       const providerDebug = emailErr instanceof EmailProviderError ? emailErr.debug : undefined;

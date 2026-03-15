@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import confirmPageCode from '../js/pages/confirm.js?raw'
 import devPayPageCode from '../js/pages/dev-pay.js?raw'
+import mockEmailPreviewCode from '../js/mock-email-preview.js?raw'
 import paymentSuccessPageCode from '../js/pages/payment-success.js?raw'
 
 function evalCode(code) {
@@ -19,6 +20,7 @@ describe('post-booking pages', () => {
       requestJson: async () => ({}),
     }
     window.history.replaceState({}, '', '/')
+    evalCode(mockEmailPreviewCode)
   })
 
   it('confirm page treats confirmed complete-payment action as awaiting payment', async () => {
@@ -53,6 +55,60 @@ describe('post-booking pages', () => {
 
     expect(document.querySelector('.result-title')?.textContent).toContain('Payment confirmed')
     expect(document.querySelector('.result-card a')?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+  })
+
+  it('confirm page renders the captured email iframe when mock preview metadata is present', async () => {
+    document.body.innerHTML = '<div id="confirm-card"></div>'
+    window.history.replaceState({}, '', '/confirm.html?token=tok-456')
+    window.siteClient.requestJson = async () => ({
+      source: 'session',
+      status: 'CONFIRMED',
+      next_action_url: '/manage.html?token=tok-456',
+      next_action_label: 'Manage booking',
+      mock_email_preview: {
+        email_id: 'mock_msg_confirm',
+        to: 'maya@example.test',
+        subject: 'Booking confirmed',
+        html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_confirm/html',
+      },
+    })
+
+    evalCode(confirmPageCode)
+    await flush()
+
+    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_confirm/html',
+    )
+    const links = Array.from(document.querySelectorAll('#confirm-card a'))
+    expect(links[1]?.getAttribute('href')).toBe('/manage.html?token=tok-456')
+    expect(links[2]?.getAttribute('href')).toBe('index.html')
+  })
+
+  it('payment success page renders the captured email iframe when mock preview metadata is present', async () => {
+    document.body.innerHTML = '<div class="result-card"></div>'
+    window.history.replaceState({}, '', '/payment-success.html?session_id=sess-preview')
+    window.siteClient.requestJson = async () => ({
+      status: 'CONFIRMED',
+      manage_url: '/manage.html?token=tok-preview',
+      next_action_url: '/manage.html?token=tok-preview',
+      next_action_label: 'Manage booking',
+      mock_email_preview: {
+        email_id: 'mock_msg_payment',
+        to: 'maya@example.test',
+        subject: 'Payment confirmed',
+        html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_payment/html',
+      },
+    })
+
+    evalCode(paymentSuccessPageCode)
+    await flush()
+
+    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
+      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_payment/html',
+    )
+    const links = Array.from(document.querySelectorAll('.result-card a'))
+    expect(links[1]?.getAttribute('href')).toBe('/manage.html?token=tok-preview')
+    expect(links[2]?.getAttribute('href')).toBe('index.html')
   })
 
   it('dev pay success redirects to payment-success after mock settlement', async () => {

@@ -23,11 +23,16 @@ export interface SentEmail {
   to: string;
   subject: string;
   kind: string;
+  email_kind: string;
   replyTo: string;
   text: string;
   html?: string;
   body: string;
   sentAt: string;
+  sent_at: string;
+  booking_id: string | null;
+  event_id: string | null;
+  contact_message_id: string | null;
 }
 
 export const mockState = {

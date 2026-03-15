@@ -90,6 +90,20 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         branch_taken: 'return_reschedule_success',
       },
     });
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'manage_booking_reschedule_mock_email_preview_decision',
+      message: 'Skipped inline mock email preview because rescheduling does not send a synchronous public email',
+      context: {
+        path,
+        booking_id: updated.id,
+        booking_status: updated.current_status,
+        email_mode: ctx.env.EMAIL_MODE,
+        has_mock_email_preview: false,
+        branch_taken: 'skip_mock_email_preview_no_synchronous_email',
+        deny_reason: 'no_synchronous_email_sent_for_reschedule',
+      },
+    });
 
     return ok({
       booking_id: updated.id,
