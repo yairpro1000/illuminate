@@ -1,4 +1,4 @@
 interface:
   display_name: "Refactor"
   short_description: "Project-specific refactoring discipline"
-  default_prompt: "Use $refactor to plan and control a refactor in this project with frozen expected results, strict sequencing, and aggressive simplification."
+  default_prompt: "Use $refactor to run a reuse-first refactor in this project with frozen expected results, strict sequencing, and aggressive simplification."

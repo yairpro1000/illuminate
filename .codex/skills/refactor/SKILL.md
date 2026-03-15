@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: Enforce project-specific refactoring discipline for this coaching-business production system. Use when Codex is handling a system-wide reshaping, local refactor, bug fix, feature addition, or improvement and must preserve production-visible outcomes, apply strict sequencing, compare against expected results, reinforce the current business-modeling and observability architecture, and simplify aggressively instead of layering patchwork on top of legacy structure.
+description: Enforce project-specific refactoring discipline for this coaching-business production system. Use when Codex is handling a system-wide reshaping, local refactor, bug fix, feature addition, or improvement and must first load and apply the reuse-first skill, preserve production-visible outcomes, apply strict sequencing, compare against expected results, reinforce the current business-modeling and observability architecture, and simplify aggressively instead of layering patchwork on top of legacy structure.
 ---
 
 # Refactor
@@ -29,12 +29,25 @@ Strongly discourage:
 
 ## Mandatory Prerequisites
 
-Before planning or implementing a refactor, load and use:
+Before planning or implementing a refactor, first load and use:
+
+- `$reuse`
+
+Keep `$reuse` active throughout the entire task. Make the reuse decision before proposing structure, before writing code, and again during review. Prefer extending an existing shared path or moving logic to the narrowest reusable layer over introducing local one-off refactor changes.
+
+After that, load and use:
 
 - `$freeze-expected-results`
 - `$test-lean`
 
 Treat them as required inputs to the workflow, not optional helpers.
+
+When multiple skills are active for a refactor, use them in this order:
+
+1. `$reuse`
+2. `$freeze-expected-results`
+3. `$test-lean`
+4. `$refactor`
 
 Before starting practical work, ask:
 
@@ -90,6 +103,13 @@ Apply the same guardrails as Type 1:
 ## Freeze Expected Results First
 
 Before implementation, ask the user for the file name and path of the relevant output created by `$freeze-expected-results`.
+
+Before comparing against the freeze output, state the reuse plan:
+
+1. Name the shared module, utility, service, component, or boundary that should own the change.
+2. State whether you are extending an existing shared path or creating one new shared path.
+3. State what thin callers should pass in as parameters, configuration, or callbacks.
+4. If reuse is not viable, state the exact constraint that blocks it.
 
 Then:
 
@@ -164,6 +184,8 @@ When refactoring:
 
 At review time, check for:
 
+- Reuse decisions were made first and kept active throughout the task.
+- One obvious shared implementation path exists for the changed behavior, or a concrete constraint justified not sharing it.
 - Smaller and clearer structure than before.
 - Fewer active paths, not more.
 - Clearer boundaries between business logic, infrastructure, and side effects.
@@ -181,6 +203,9 @@ Use a cold, technical, concise, opinionated tone. Do not use fluff or motivation
 
 When using this skill, always make the workflow visible. State:
 
+- That `$reuse` was loaded first and is being used throughout.
+- What shared location owns the changed behavior and whether an existing abstraction was extended or a new shared one was created.
+- What parameters or customization points callers use, or the exact reason reuse was not possible.
 - Which refactor type applies.
 - Which prerequisite artifacts were read.
 - Whether the database schema change is already implemented.
