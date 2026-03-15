@@ -14,6 +14,7 @@ import {
   makeScenarioEmail,
   waitForBookingArtifacts,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 async function createConfirmedIntroBooking(page: import('@playwright/test').Page, email: string) {
@@ -27,9 +28,18 @@ async function createConfirmedIntroBooking(page: import('@playwright/test').Page
     phone: '',
   });
   await page.locator('button[data-submit]').click();
+  await expectInlineMockEmailPreview(page, {
+    title: 'Booking received',
+    frameText: 'Please confirm your session booking.',
+    actionName: 'Confirm booking',
+    actionHref: /\/confirm\.html\?token=/,
+  });
   const pending = await waitForBookingArtifacts(email);
   await page.goto(pending.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+  });
   return expectManageStatus(email, 'CONFIRMED');
 }
 
@@ -172,7 +182,10 @@ test.describe('P4 remaining admin and content coverage', () => {
     await page.fill('[name="email"]', email);
     await page.fill('[name="message"]', 'P4 admin message body');
     await page.click('#contact-submit-btn');
-    await expect(page.locator('#contact-success')).toBeVisible();
+    await expectInlineMockEmailPreview(page, {
+      title: 'Message sent',
+      frameText: 'P4 admin message body',
+    });
 
     const rows = await getAdminContactMessages();
     const row = rows.find((entry) => entry.client_email === email);

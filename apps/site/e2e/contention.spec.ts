@@ -9,6 +9,7 @@ import {
   makeScenarioEmail,
   waitForBookingArtifacts,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 const EXPECTED_SLOT_CONFLICT_ISSUES = [
@@ -108,7 +109,7 @@ async function fillIntroDetailsAndReachReview(page: Page, email: string): Promis
 async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (await page.locator('.confirmation__title').count()) return 'success';
+    if (await page.locator('iframe.mock-email-preview__frame').count()) return 'success';
     const recovery = page.locator('.booking-recovery__title').first();
     if (await recovery.count()) {
       const text = (await recovery.textContent()) || '';
@@ -201,14 +202,22 @@ async function recoverLoserToSuccessfulIntroBooking(
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.locator('button[data-submit]')).toBeVisible();
   await page.locator('button[data-submit]').click();
-  await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Booking received',
+    frameText: 'Please confirm your session booking.',
+    actionName: 'Confirm booking',
+    actionHref: /\/confirm\.html\?token=/,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'contention-loser-rebook-success', testInfo);
 
   const loserArtifacts = await waitForBookingArtifacts(email);
   expect(loserArtifacts.booking.starts_at.slice(0, 10)).toBe(repicked.dateYmd);
   expect(loserArtifacts.links.confirm_url).toBeTruthy();
   await page.goto(loserArtifacts.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+  });
 }
 
 async function cleanupConfirmedIntro(email: string): Promise<void> {
@@ -226,8 +235,10 @@ async function submitContactForm(page: Page, email: string): Promise<void> {
   await page.locator('#contact-topic').selectOption({ label: 'Question about 1:1 sessions' });
   await page.locator('#contact-message').fill('A slot conflict occurred. Please help me choose another time.');
   await page.locator('#contact-submit-btn').click();
-  await expect(page.locator('#contact-success')).toBeVisible();
-  await expect(page.locator('.contact-success__title')).toContainText('Message sent');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Message sent',
+    frameText: 'A slot conflict occurred. Please help me choose another time.',
+  });
 }
 
 async function createPreparedIntroDraft(page: Page, email: string): Promise<{ dateYmd: string; timeLabel: string }> {
@@ -267,12 +278,20 @@ test.describe('P4 multi-user slot contention', () => {
       await createPreparedIntroDraftForSlot(pageB, loserEmail, chosen);
 
       await pageA.locator('button[data-submit]').click();
-      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Booking received',
+        frameText: 'Please confirm your session booking.',
+        actionName: 'Confirm booking',
+        actionHref: /\/confirm\.html\?token=/,
+      });
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
       await pageA.goto(winnerArtifacts.links.confirm_url!);
-      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
 
       const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
@@ -300,12 +319,20 @@ test.describe('P4 multi-user slot contention', () => {
       await createPreparedIntroDraftForSlot(pageB, contactEmail, chosen);
 
       await pageA.locator('button[data-submit]').click();
-      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Booking received',
+        frameText: 'Please confirm your session booking.',
+        actionName: 'Confirm booking',
+        actionHref: /\/confirm\.html\?token=/,
+      });
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
       await pageA.goto(winnerArtifacts.links.confirm_url!);
-      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
 
       const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
@@ -362,7 +389,10 @@ test.describe('P4 multi-user slot contention', () => {
       expect(winnerArtifacts.links.confirm_url).toBeTruthy();
       const winnerPage = outcomeA === 'success' ? pageA : pageB;
       await winnerPage.goto(winnerArtifacts.links.confirm_url!);
-      await expect(winnerPage.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(winnerPage, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
       await winnerRuntime.assertNoNewIssues(winnerCheckpoint, 'contention-race-winner', testInfo);
       await loserRuntime.assertNoNewIssues(loserCheckpoint, 'contention-race-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
       const loserPage = outcomeA === 'slot-lost' ? pageA : pageB;

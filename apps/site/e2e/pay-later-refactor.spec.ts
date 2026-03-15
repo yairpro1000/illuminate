@@ -16,6 +16,7 @@ import {
   waitForSupabasePaymentStatus,
   waitForBookingArtifacts,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 type RuntimeMonitor = ReturnType<typeof attachRuntimeMonitor>;
@@ -60,8 +61,12 @@ async function confirmPendingPayLaterBooking(
 ): Promise<BookingArtifacts> {
   const checkpoint = runtime.checkpoint();
   await page.goto(pendingArtifacts.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
-  await expect(page.getByRole('link', { name: 'Complete Payment' })).toHaveAttribute('href', /\/continue-payment\.html\?token=/);
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+    actionName: /Complete payment/i,
+    actionHref: /\/continue-payment\.html\?token=/,
+  });
   await runtime.assertNoNewIssues(checkpoint, label, testInfo);
 
   const confirmedArtifacts = await waitForBookingArtifacts(pendingArtifacts.client.email);
@@ -94,8 +99,12 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     await page.locator('[data-payment="pay-later"]').click();
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Booking received');
-    await expect(page.getByRole('link', { name: 'Complete payment' })).toHaveAttribute('href', /\/continue-payment\.html\?token=/);
+    await expectInlineMockEmailPreview(page, {
+      title: 'Booking received',
+      frameText: 'Please confirm your session booking.',
+      actionName: 'Confirm booking',
+      actionHref: /\/confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'pay-later-submit-before-manual-arrangement', testInfo);
 
     const pendingArtifacts = await waitForBookingArtifacts(email);

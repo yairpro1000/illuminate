@@ -15,6 +15,7 @@ import {
   updateAdminTimingSetting,
   waitForBookingArtifacts,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 type RemainingPublicFn = (args: {
@@ -174,7 +175,12 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         await page.locator('[data-payment="pay-later"]').click();
         await page.getByRole('button', { name: 'Continue' }).click();
         await page.locator('button[data-submit]').click();
-        await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+        await expectInlineMockEmailPreview(page, {
+          title: 'Booking received',
+          frameText: 'Please confirm your session booking.',
+          actionName: 'Confirm booking',
+          actionHref: /\/confirm\.html\?token=/,
+        });
         await runtime.assertNoNewIssues(checkpoint, 'pay-later-submit', testInfo);
 
         const pendingArtifacts = await waitForBookingArtifacts(email);
@@ -184,8 +190,12 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
 
         checkpoint = runtime.checkpoint();
         await page.goto(pendingArtifacts.links.confirm_url!);
-        await expect(page.locator('.confirm-title')).toContainText('Confirmed');
-        await expect(page.getByRole('link', { name: 'Complete Payment' })).toHaveAttribute('href', /\/continue-payment\.html\?token=/);
+        await expectInlineMockEmailPreview(page, {
+          title: 'Confirmed!',
+          frameText: /confirmed|Manage booking|Complete payment/i,
+          actionName: /Complete payment/i,
+          actionHref: /\/continue-payment\.html\?token=/,
+        });
         await runtime.assertNoNewIssues(checkpoint, 'pay-later-confirm', testInfo);
 
         const confirmedArtifacts = await waitForBookingArtifacts(email);
@@ -219,7 +229,10 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
             phone: '+41790000000',
           });
           await page.locator('button[data-submit]').click();
-          await expect(page.locator('.confirmation__title')).toContainText(/Registration received|Registration confirmed|Booking received|Confirmed/i);
+          await expectInlineMockEmailPreview(page, {
+            title: /Registration received|Registration confirmed|Booking received|Confirmed!/i,
+            frameText: /confirm your spot|confirmed|Manage booking/i,
+          });
           const artifacts = await waitForBookingArtifacts(email);
           expect(artifacts.booking.status).toBe('CONFIRMED');
           await runtime.assertNoNewIssues(checkpoint, 'late-access-evening-booking', testInfo);
@@ -272,7 +285,12 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
           phone: '+41790000000',
         });
         await page.locator('button[data-submit]').click();
-        await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+        await expectInlineMockEmailPreview(page, {
+          title: 'Booking received',
+          frameText: 'Please confirm your session booking.',
+          actionName: 'Confirm booking',
+          actionHref: /\/confirm\.html\?token=/,
+        });
 
         const artifacts = await waitForBookingArtifacts(email);
         expect(artifacts.links.confirm_url).toBeTruthy();
@@ -351,10 +369,18 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
           phone: '+41790000000',
         });
         await page.locator('button[data-submit]').click();
-        await expect(page.locator('.confirmation__title')).toContainText('Registration received');
+        await expectInlineMockEmailPreview(page, {
+          title: 'Registration received',
+          frameText: 'Please confirm your spot.',
+          actionName: 'Confirm my spot',
+          actionHref: /\/confirm\.html\?token=/,
+        });
         const pendingArtifacts = await waitForBookingArtifacts(email);
         await page.goto(pendingArtifacts.links.confirm_url!);
-        await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+        await expectInlineMockEmailPreview(page, {
+          title: 'Confirmed!',
+          frameText: /confirmed|Manage booking/i,
+        });
         const confirmedArtifacts = await expectManageStatus(email, 'CONFIRMED');
 
         const checkpoint = runtime.checkpoint();
@@ -382,7 +408,10 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         await page.locator('button[data-submit]').click();
         const pending = await waitForBookingArtifacts(email);
         await page.goto(pending.links.confirm_url!);
-        await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+        await expectInlineMockEmailPreview(page, {
+          title: 'Confirmed!',
+          frameText: /confirmed|Manage booking|Complete payment/i,
+        });
 
         const confirmed = await expectManageStatus(email, 'CONFIRMED');
         const originalPolicy = (await getAdminTimingSettings()).find((entry) => entry.keyname === 'selfServiceLockWindowHours');

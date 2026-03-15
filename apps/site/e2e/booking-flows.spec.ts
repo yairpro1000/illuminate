@@ -10,6 +10,7 @@ import {
   makeScenarioEmail,
   waitForBookingArtifacts,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 const BOOK_PAGE_RE = /\/book(?:\.html)?\?/;
@@ -81,7 +82,12 @@ test.describe('P4 core booking flows', () => {
       phone: '',
     });
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Booking received',
+      frameText: 'Please confirm your session booking.',
+      actionName: 'Confirm booking',
+      actionHref: /confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'intro-booking-submit', testInfo);
 
     const pendingArtifacts = await waitForBookingArtifacts(email);
@@ -89,7 +95,10 @@ test.describe('P4 core booking flows', () => {
 
     checkpoint = runtime.checkpoint();
     await page.goto(pendingArtifacts.links.confirm_url!);
-    await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Confirmed!',
+      frameText: /confirmed|Manage booking|Complete payment/i,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'intro-confirm-page', testInfo);
 
     const confirmedArtifacts = await expectManageStatus(email, 'CONFIRMED');
@@ -104,7 +113,10 @@ test.describe('P4 core booking flows', () => {
     await expect(page.locator('#cancel-btn')).toBeVisible();
     await page.locator('#cancel-btn').click();
     await page.locator('#cancel-yes').click();
-    await expect(page.locator('.manage-title')).toContainText('Cancelled');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Cancelled',
+      frameText: 'Your session has been cancelled.',
+    });
     await runtime.assertNoNewIssues(checkpoint, 'intro-manage-cancel', testInfo);
 
     await expectManageStatus(email, 'CANCELED');
@@ -140,7 +152,12 @@ test.describe('P4 core booking flows', () => {
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-    await expect(page.locator('.result-title')).toContainText(/Payment confirmed|Payment received/);
+    await expectInlineMockEmailPreview(page, {
+      title: /Payment confirmed|Payment received/,
+      frameText: /confirmed|Manage booking/i,
+      actionName: /Manage booking/i,
+      actionHref: /manage\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'pay-now-session-success', testInfo);
 
     const paidArtifacts = await waitForBookingArtifacts(email);
@@ -172,7 +189,12 @@ test.describe('P4 core booking flows', () => {
       phone: '+41790000000',
     });
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Registration received');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Registration received',
+      frameText: 'Please confirm your spot.',
+      actionName: 'Confirm my spot',
+      actionHref: /confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'free-evening-submit', testInfo);
 
     const artifacts = await waitForBookingArtifacts(email);
@@ -180,7 +202,10 @@ test.describe('P4 core booking flows', () => {
 
     checkpoint = runtime.checkpoint();
     await page.goto(artifacts.links.confirm_url!);
-    await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Confirmed!',
+      frameText: /confirmed|Manage booking/i,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'free-evening-confirm', testInfo);
 
     await expectManageStatus(email, 'CONFIRMED');
@@ -212,7 +237,12 @@ test.describe('P4 core booking flows', () => {
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-    await expect(page.locator('.result-title')).toContainText(/Payment confirmed|Payment received/);
+    await expectInlineMockEmailPreview(page, {
+      title: /Payment confirmed|Payment received/,
+      frameText: /confirmed|Manage booking/i,
+      actionName: /Manage booking/i,
+      actionHref: /manage\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'paid-evening-success', testInfo);
 
     const artifacts = await waitForBookingArtifacts(email);

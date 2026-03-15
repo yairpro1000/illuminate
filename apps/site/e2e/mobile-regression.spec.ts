@@ -15,6 +15,7 @@ import {
   waitForBookingArtifacts,
   type PublicSlot,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 const EXPECTED_SLOT_CONFLICT_ISSUES = [
@@ -105,7 +106,12 @@ async function createConfirmedIntroBooking(page: Page, email: string, testInfo: 
     phone: '',
   });
   await page.locator('button[data-submit]').click();
-  await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Booking received',
+    frameText: 'Please confirm your session booking.',
+    actionName: 'Confirm booking',
+    actionHref: /confirm\.html\?token=/,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'mobile-create-intro', testInfo);
 
   const pendingArtifacts = await waitForBookingArtifacts(email);
@@ -113,7 +119,10 @@ async function createConfirmedIntroBooking(page: Page, email: string, testInfo: 
 
   checkpoint = runtime.checkpoint();
   await page.goto(pendingArtifacts.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'mobile-confirm-intro', testInfo);
 
   return expectManageStatus(email, 'CONFIRMED');
@@ -252,7 +261,7 @@ async function fillIntroDetailsAndReachReview(page: Page, email: string): Promis
 async function waitForIntroOutcome(page: Page): Promise<'success' | 'slot-lost'> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    if (await page.locator('.confirmation__title').count()) return 'success';
+    if (await page.locator('iframe.mock-email-preview__frame').count()) return 'success';
     const recovery = page.locator('.booking-recovery__title').first();
     if (await recovery.count()) {
       const text = (await recovery.textContent()) || '';
@@ -338,13 +347,21 @@ async function recoverLoserToSuccessfulIntroBooking(
   await expect(page.locator('#f-email')).toHaveValue(email);
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.locator('button[data-submit]').click();
-  await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Booking received',
+    frameText: 'Please confirm your session booking.',
+    actionName: 'Confirm booking',
+    actionHref: /confirm\.html\?token=/,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'mobile-contention-loser-rebook-success', testInfo);
 
   const loserArtifacts = await waitForBookingArtifacts(email);
   expect(loserArtifacts.booking.starts_at.slice(0, 10)).toBe(repicked.dateYmd);
   await page.goto(loserArtifacts.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+  });
 }
 
 async function submitContactForm(page: Page, email: string): Promise<void> {
@@ -356,8 +373,10 @@ async function submitContactForm(page: Page, email: string): Promise<void> {
   await page.locator('#contact-topic').selectOption({ label: 'Question about 1:1 sessions' });
   await page.locator('#contact-message').fill('A slot conflict occurred. Please help me choose another time.');
   await page.locator('#contact-submit-btn').click();
-  await expect(page.locator('#contact-success')).toBeVisible();
-  await expect(page.locator('.contact-success__title')).toContainText('Message sent');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Message sent',
+    frameText: 'A slot conflict occurred. Please help me choose another time.',
+  });
 }
 
 async function cleanupConfirmedIntro(email: string): Promise<void> {
@@ -408,13 +427,21 @@ test.describe('@mobile P4 mobile regression', () => {
     const chosenSlot = await clickFirstAvailableSlot(page);
     await fillContactDetails(page, { firstName: 'P4', lastName: 'Intro', email, phone: '' });
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Booking received',
+      frameText: 'Please confirm your session booking.',
+      actionName: 'Confirm booking',
+      actionHref: /confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-intro-booking-submit', testInfo);
 
     const pendingArtifacts = await waitForBookingArtifacts(email);
     checkpoint = runtime.checkpoint();
     await page.goto(pendingArtifacts.links.confirm_url!);
-    await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Confirmed!',
+      frameText: /confirmed|Manage booking|Complete payment/i,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-intro-confirm-page', testInfo);
 
     const confirmedArtifacts = await expectManageStatus(email, 'CONFIRMED');
@@ -429,7 +456,10 @@ test.describe('@mobile P4 mobile regression', () => {
     await expect(page.locator('#cancel-btn')).toBeVisible();
     await page.locator('#cancel-btn').click();
     await page.locator('#cancel-yes').click();
-    await expect(page.locator('.manage-title')).toContainText('Cancelled');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Cancelled',
+      frameText: 'Your session has been cancelled.',
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-intro-manage-cancel', testInfo);
 
     await expectManageStatus(email, 'CANCELED');
@@ -459,7 +489,12 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-    await expect(page.locator('.result-title')).toContainText(/Payment confirmed|Payment received/);
+    await expectInlineMockEmailPreview(page, {
+      title: /Payment confirmed|Payment received/,
+      frameText: /confirmed|Manage booking/i,
+      actionName: /Manage booking/i,
+      actionHref: /manage\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-pay-now-session-success', testInfo);
   });
 
@@ -476,13 +511,21 @@ test.describe('@mobile P4 mobile regression', () => {
     let checkpoint = runtime.checkpoint();
     await fillContactDetails(page, { firstName: 'P4', lastName: 'EveningFree', email, phone: '+41790000000' });
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Registration received');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Registration received',
+      frameText: 'Please confirm your spot.',
+      actionName: 'Confirm my spot',
+      actionHref: /confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-free-evening-submit', testInfo);
 
     const artifacts = await waitForBookingArtifacts(email);
     checkpoint = runtime.checkpoint();
     await page.goto(artifacts.links.confirm_url!);
-    await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+    await expectInlineMockEmailPreview(page, {
+      title: 'Confirmed!',
+      frameText: /confirmed|Manage booking/i,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-free-evening-confirm', testInfo);
   });
 
@@ -502,7 +545,12 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-    await expect(page.locator('.result-title')).toContainText(/Payment confirmed|Payment received/);
+    await expectInlineMockEmailPreview(page, {
+      title: /Payment confirmed|Payment received/,
+      frameText: /confirmed|Manage booking/i,
+      actionName: /Manage booking/i,
+      actionHref: /manage\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-paid-evening-success', testInfo);
   });
 
@@ -518,7 +566,10 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.locator('#contact-topic').selectOption({ label: 'Question about 1:1 sessions' });
     await page.locator('#contact-message').fill('Testing valid mobile contact submission.');
     await page.locator('#contact-submit-btn').click();
-    await expect(page.locator('#contact-success')).toBeVisible();
+    await expectInlineMockEmailPreview(page, {
+      title: 'Message sent',
+      frameText: 'Testing valid mobile contact submission.',
+    });
     await runtime.assertNoNewIssues(checkpoint, 'mobile-contact-submit', testInfo);
   });
 
@@ -556,11 +607,19 @@ test.describe('@mobile P4 mobile regression', () => {
       await createPreparedIntroDraftForSlot(pageB, loserEmail, chosen);
 
       await pageA.locator('button[data-submit]').click();
-      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Booking received',
+        frameText: 'Please confirm your session booking.',
+        actionName: 'Confirm booking',
+        actionHref: /confirm\.html\?token=/,
+      });
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       await pageA.goto(winnerArtifacts.links.confirm_url!);
-      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
 
       const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
@@ -590,11 +649,19 @@ test.describe('@mobile P4 mobile regression', () => {
       await createPreparedIntroDraftForSlot(pageB, contactEmail, chosen);
 
       await pageA.locator('button[data-submit]').click();
-      await expect(pageA.locator('.confirmation__title')).toContainText('Booking received');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Booking received',
+        frameText: 'Please confirm your session booking.',
+        actionName: 'Confirm booking',
+        actionHref: /confirm\.html\?token=/,
+      });
 
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       await pageA.goto(winnerArtifacts.links.confirm_url!);
-      await expect(pageA.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(pageA, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
 
       const loserCheckpoint = runtimeB.checkpoint();
       await pageB.locator('button[data-submit]').click();
@@ -652,7 +719,10 @@ test.describe('@mobile P4 mobile regression', () => {
       const winnerArtifacts = await waitForBookingArtifacts(winnerEmail);
       const winnerPage = outcomeA === 'success' ? pageA : pageB;
       await winnerPage.goto(winnerArtifacts.links.confirm_url!);
-      await expect(winnerPage.locator('.confirm-title')).toContainText('Confirmed');
+      await expectInlineMockEmailPreview(winnerPage, {
+        title: 'Confirmed!',
+        frameText: /confirmed|Manage booking|Complete payment/i,
+      });
       await winnerRuntime.assertNoNewIssues(winnerCheckpoint, 'mobile-contention-race-winner', testInfo);
       await loserRuntime.assertNoNewIssues(loserCheckpoint, 'mobile-contention-race-loser', testInfo, { allow: EXPECTED_SLOT_CONFLICT_ISSUES });
 

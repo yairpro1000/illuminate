@@ -15,6 +15,7 @@ import {
   waitForBookingArtifacts,
   type PublicSlot,
 } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 async function createConfirmedIntroBooking(page: Page, email: string, testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2]) {
@@ -33,7 +34,12 @@ async function createConfirmedIntroBooking(page: Page, email: string, testInfo: 
     phone: '',
   });
   await page.locator('button[data-submit]').click();
-  await expect(page.locator('.confirmation__title')).toContainText('Booking received');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Booking received',
+    frameText: 'Please confirm your session booking.',
+    actionName: 'Confirm booking',
+    actionHref: /\/confirm\.html\?token=/,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'manage-admin-create-intro', testInfo);
 
   const pendingArtifacts = await waitForBookingArtifacts(email);
@@ -41,7 +47,10 @@ async function createConfirmedIntroBooking(page: Page, email: string, testInfo: 
 
   checkpoint = runtime.checkpoint();
   await page.goto(pendingArtifacts.links.confirm_url!);
-  await expect(page.locator('.confirm-title')).toContainText('Confirmed');
+  await expectInlineMockEmailPreview(page, {
+    title: 'Confirmed!',
+    frameText: /confirmed|Manage booking|Complete payment/i,
+  });
   await runtime.assertNoNewIssues(checkpoint, 'manage-admin-confirm-intro', testInfo);
 
   return expectManageStatus(email, 'CONFIRMED');

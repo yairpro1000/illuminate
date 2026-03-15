@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { SITE_BASE_URL, clickFirstAvailableSlot, fillContactDetails, makeScenarioEmail } from './support/api';
+import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
 
 function buildTurnstileConfigResponse() {
@@ -108,11 +109,35 @@ async function mockBookingFormBootstrap(page: Page) {
   });
 }
 
+async function mockEmailPreviewHtml(page: Page, emailId: string, html: string) {
+  const emailPath = new RegExp(`/api/__dev/emails/${emailId}/html$`);
+  await page.route(emailPath, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/html; charset=utf-8',
+      body: html,
+    });
+  });
+}
+
 test.describe('P0 turnstile UI integration', () => {
   test('booking form handles turnstile verification failure and succeeds on retry', async ({ page }, testInfo) => {
+    const emailId = 'mock_turnstile_booking_email';
     await installFakeTurnstile(page);
     await mockTurnstileConfig(page);
     await mockBookingFormBootstrap(page);
+    await mockEmailPreviewHtml(
+      page,
+      emailId,
+      `
+        <html>
+          <body>
+            <h1>Please confirm your session booking.</h1>
+            <a href="${SITE_BASE_URL}/confirm.html?token=mock-turnstile-booking">Confirm booking</a>
+          </body>
+        </html>
+      `,
+    );
 
     await page.route(/\/api\/bookings\/pay-later$/, async (route) => {
       const payload = JSON.parse(route.request().postData() || '{}') as { turnstile_token?: string };
@@ -130,6 +155,12 @@ test.describe('P0 turnstile UI integration', () => {
         status: 'PENDING',
         manage_url: `${SITE_BASE_URL}/manage.html?token=m1.bk_turnstile_booking`,
         continue_payment_url: `${SITE_BASE_URL}/continue-payment.html?token=m1.bk_turnstile_booking`,
+        mock_email_preview: {
+          email_id: emailId,
+          to: 'turnstile@example.test',
+          subject: 'Please confirm your booking - ILLUMINATE',
+          html_url: `${SITE_BASE_URL}/api/__dev/emails/${emailId}/html`,
+        },
       });
     });
 
@@ -180,19 +211,44 @@ test.describe('P0 turnstile UI integration', () => {
 
     checkpoint = runtime.checkpoint();
     await page.locator('button[data-submit]').click();
-    await expect(page.locator('.confirmation__title')).toContainText('Booking received');
-    await expect(page.getByRole('link', { name: 'Complete payment' })).toHaveAttribute('href', /\/continue-payment\.html\?token=/);
+    await expectInlineMockEmailPreview(page, {
+      title: 'Booking received',
+      frameText: 'Please confirm your session booking.',
+      actionName: 'Confirm booking',
+      actionHref: /\/confirm\.html\?token=/,
+    });
     await runtime.assertNoNewIssues(checkpoint, 'booking-turnstile-retry-success', testInfo);
   });
 
   test('contact form submits successfully with turnstile enabled', async ({ page }, testInfo) => {
+    const emailId = 'mock_turnstile_contact_email';
     await installFakeTurnstile(page);
     await mockTurnstileConfig(page);
+    await mockEmailPreviewHtml(
+      page,
+      emailId,
+      `
+        <html>
+          <body>
+            <h1>Turnstile-protected contact form submission.</h1>
+            <p>Thanks for your message.</p>
+          </body>
+        </html>
+      `,
+    );
 
     await page.route(/\/api\/contact$/, async (route) => {
       const payload = JSON.parse(route.request().postData() || '{}') as { turnstile_token?: string };
       expect(payload.turnstile_token).toBe('valid-turnstile-token');
-      await fulfillJson(route, { ok: true });
+      await fulfillJson(route, {
+        ok: true,
+        mock_email_preview: {
+          email_id: emailId,
+          to: 'turnstile@example.test',
+          subject: 'Message sent - ILLUMINATE',
+          html_url: `${SITE_BASE_URL}/api/__dev/emails/${emailId}/html`,
+        },
+      });
     });
 
     const runtime = attachRuntimeMonitor(page);
@@ -203,7 +259,10 @@ test.describe('P0 turnstile UI integration', () => {
 
     const checkpoint = runtime.checkpoint();
     await page.click('#contact-submit-btn');
-    await expect(page.locator('#contact-success')).toBeVisible();
+    await expectInlineMockEmailPreview(page, {
+      title: 'Message sent',
+      frameText: 'Turnstile-protected contact form submission.',
+    });
     await runtime.assertNoNewIssues(checkpoint, 'contact-turnstile-submit-success', testInfo);
   });
 
