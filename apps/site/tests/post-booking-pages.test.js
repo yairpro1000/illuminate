@@ -127,7 +127,7 @@ describe('post-booking pages', () => {
     const originalLocation = window.location
     delete window.location
     window.location = {
-      search: '?session_id=sess-123&amount=150&currency=chf',
+      search: '?session_id=sess-123&amount=83&currency=chf',
       get href() {
         return navigatedTo
       },
@@ -142,7 +142,7 @@ describe('post-booking pages', () => {
     document.getElementById('btn-success')?.click()
     await flush()
 
-    expect(document.getElementById('dev-detail')?.textContent).toContain('CHF 1.50')
+    expect(document.getElementById('dev-detail')?.textContent).toContain('CHF 83.00')
     expect(navigatedTo).toBe('payment-success?session_id=sess-123')
 
     window.location = originalLocation

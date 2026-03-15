@@ -84,6 +84,16 @@ export interface SupabasePaymentRow {
   updated_at: string;
 }
 
+export interface SupabaseBookingRow {
+  id: string;
+  price: number | null;
+  currency: string | null;
+  coupon_code: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 let cachedSupabaseEnv: { url: string; secretKey: string } | null = null;
 
 function stripOptionalQuotes(value: string): string {
@@ -394,6 +404,46 @@ export async function getSupabasePaymentRowByBookingId(bookingId: string): Promi
 
   const rows = JSON.parse(body) as SupabasePaymentRow[];
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function getSupabaseBookingRowById(bookingId: string): Promise<SupabaseBookingRow | null> {
+  const { url, secretKey } = getSupabaseEnv();
+  const params = new URLSearchParams({
+    select: 'id,price,currency,coupon_code,status,created_at,updated_at',
+    id: `eq.${bookingId}`,
+    limit: '1',
+  });
+
+  const response = await fetch(`${url}/rest/v1/bookings?${params.toString()}`, {
+    headers: {
+      apikey: secretKey,
+      Authorization: `Bearer ${secretKey}`,
+    },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`GET bookings by id -> ${response.status}: ${body}`);
+  }
+
+  const rows = JSON.parse(body) as SupabaseBookingRow[];
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function waitForSupabaseBookingSnapshot(
+  bookingId: string,
+  predicate: (row: SupabaseBookingRow) => boolean,
+  timeoutMs = 20_000,
+): Promise<SupabaseBookingRow> {
+  const deadline = Date.now() + timeoutMs;
+  let lastRow: SupabaseBookingRow | null = null;
+
+  while (Date.now() < deadline) {
+    lastRow = await getSupabaseBookingRowById(bookingId);
+    if (lastRow && predicate(lastRow)) return lastRow;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Timed out waiting for Supabase booking snapshot for booking ${bookingId}. Last row: ${JSON.stringify(lastRow)}`);
 }
 
 export async function waitForSupabasePaymentStatus(

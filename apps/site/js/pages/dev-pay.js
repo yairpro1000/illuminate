@@ -8,7 +8,8 @@
 
   const detail = document.getElementById('dev-detail');
   if (amount) {
-    const chf = (parseInt(amount, 10) / 100).toFixed(2);
+    const parsedAmount = Number(amount);
+    const chf = Number.isFinite(parsedAmount) ? parsedAmount.toFixed(2) : amount;
     detail.textContent = `Amount: ${currency} ${chf} · Session: ${sessionId}`;
   } else {
     detail.textContent = `Session: ${sessionId}`;
