@@ -118,7 +118,7 @@
             <div class="event-card__meta-row"><dt>When</dt><dd>${formatDateLabel(event.starts_at)}</dd></div>
             <div class="event-card__meta-row"><dt>Where</dt><dd>${event.address_line}</dd></div>
             <div class="event-card__meta-row"><dt>Price</dt><dd>${formatPrice(event)}</dd></div>
-            <div class="event-card__meta-row"><dt>Capacity</dt><dd>${event.stats?.active_bookings ?? 0}/${event.stats?.capacity ?? event.capacity}</dd></div>
+            ${(() => { const cap = event.stats?.capacity ?? event.capacity; const booked = event.stats?.active_bookings ?? 0; const left = cap - booked; return left <= 5 ? `<div class="event-card__meta-row"><dt>Seats left</dt><dd>${left}</dd></div>` : ''; })()}
           </dl>
 
           <div class="event-card__actions">
