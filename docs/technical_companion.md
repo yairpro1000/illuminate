@@ -135,6 +135,7 @@ The booking worker owns:
 - manage/reschedule/cancel routes
 - contact capture
 - organizer/admin routes
+- dev/test inspection routes for captured emails and booking artifacts
 - Stripe webhook
 - cron job triggers
 
@@ -263,6 +264,35 @@ Modes:
 
 - `mock`
 - `resend`
+
+Mode behavior:
+
+- `resend` sends the built provider payload to Resend
+- `mock` reuses the same payload builders as the Resend path and captures the exact provider-bound payload instead of generating a separate simplified mock body
+
+Captured payload contract in `mock` mode:
+
+- stored fields include `from`, `replyTo`, `subject`, `text`, and `html`
+- backend tests should assert against those captured payload fields and links directly
+- browser preview should render the captured `html` as-is, not a fake reconstructed email body
+
+Developer/testing routes when email is captured:
+
+- `GET /api/__dev/emails`
+- `GET /api/__dev/emails/:emailId`
+- `GET /api/__dev/emails/:emailId/html`
+
+Developer/testing preview surface:
+
+- `apps/site/dev-emails.html`
+- the page lists captured emails
+- the preview pane loads `preview_html_url` into an iframe
+- the iframe therefore shows the real captured email HTML, including the real CTA links/buttons
+
+Availability rule:
+
+- these preview routes exist only when email delivery is captured
+- if `EMAIL_MODE=resend`, the preview endpoints are intentionally unavailable because the worker is sending to the real provider instead of storing the payload locally
 
 ### 7.3 Stripe / payments
 
@@ -515,6 +545,8 @@ Use these for:
 - route behavior
 - error envelopes and CORS
 - booking orchestration
+- captured email payload contract testing
+- dev email preview route behavior
 - provider wiring
 - sweeper behavior
 - admin diagnostics
@@ -528,6 +560,7 @@ Current suite shape:
 
 - navigation smoke
 - public booking flows
+- dev email preview flow
 - public remaining-state coverage
 - pay-later and admin interactions
 - turnstile UI integration
@@ -545,6 +578,8 @@ Execution artifacts:
 - write tests around user-visible outcomes and critical business rules
 - keep provider mocks explicit
 - verify diagnostic paths on important backend failures
+- when email is mocked, assert against the captured production payload rather than a custom fake rendering
+- for browser preview coverage, inspect the real iframe-rendered email HTML and CTA links
 - use scenario ids in manual/E2E planning so docs and tests map cleanly
 - mark automation gaps explicitly when the suite still lags behind the latest source-of-truth behavior
 
@@ -553,6 +588,9 @@ Execution artifacts:
 - the booking worker currently runs a unified minute cron
 - the live schema snapshot must be refreshed from Supabase when schema docs are updated
 - the shorter DDL companion is for editor use and documentation, not a promise that the literal live DB dump is already normalized the same way
+- captured email preview depends on `EMAIL_MODE=mock`; it is not a mirror of Resend inbox state
+- deterministic browser email-preview setup also benefits from `ANTIBOT_MODE=mock` so the booking flow can create a captured email without extra anti-bot variability
+- the browser preview Playwright spec is ready, but live end-to-end verification should be rerun after deploying the latest worker/site fixes to the target environment
 - some older automated tests may lag behind the March 15, 2026 pay-later refinement; the pay-later refinement doc overrides those stale expectations
 
 ## 14. Glossary
@@ -565,9 +603,11 @@ Execution artifacts:
 - **Booking side-effect attempt**: The execution record for one side effect run or retry.
 - **Checkout session**: The payment-provider object used for pay-now flows and some continue-payment fallbacks.
 - **Cloudflare Access**: The identity/access gate used for organizer/admin sign-in.
+- **Captured email**: The exact provider-bound email payload stored locally in `mock` mode instead of being sent to Resend.
 - **Confirmation link**: The tokenized public URL used to confirm pending free or pay-later bookings.
 - **Continue-payment**: The public recovery path that either redirects into an existing payment URL or bootstraps one if needed.
 - **Correlation id**: The operation-level identifier used to trace one business operation across logs and provider calls.
+- **Dev email preview**: The developer surface made of `/api/__dev/emails*` plus `dev-emails.html`, used to inspect captured email payloads and render their real HTML in-browser.
 - **Editor-ready DDL companion**: The shorter schema script intended for human/editor use, normalized away from authored enum/type dependencies.
 - **Event late-access link**: A tokenized organizer-generated URL that temporarily reopens a closed event for registration.
 - **Manage link**: The tokenized public URL that lets a client inspect and, when allowed, reschedule or cancel a booking.

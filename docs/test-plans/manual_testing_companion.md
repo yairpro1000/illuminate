@@ -11,10 +11,11 @@ Run in this order:
 1. P0 public booking and payment flows
 2. P0 manage, reschedule, cancel, and expiry behavior
 3. P0 slot-contention and stale-slot recovery
-4. P1 organizer/admin booking operations
-5. P1 public content-state checks for sessions and evenings
-6. P1 contact and anti-bot flows
-7. P2 session-type, event, config, and image-upload edits
+4. P1 captured-email payload and browser-preview checks
+5. P1 organizer/admin booking operations
+6. P1 public content-state checks for sessions and evenings
+7. P1 contact and anti-bot flows
+8. P2 session-type, event, config, and image-upload edits
 
 ## 2. Release-Blocking Outcomes
 
@@ -54,7 +55,8 @@ Fill these in before running:
 - admin base URL:
 - API base URL:
 - organizer auth mode:
-- email mode and inbox access:
+- email mode:
+- captured email preview access:
 - payments mode and Stripe test card or mock flow:
 - anti-bot mode:
 - one public intro offer URL:
@@ -69,7 +71,37 @@ Fill these in before running:
 - one rotated or expired late-access link:
 - bug tracker or execution-notes location:
 
-## 5. Must-Cover Manual Assertions
+For deterministic email-preview testing, set:
+
+- `EMAIL_MODE=mock`
+- `ANTIBOT_MODE=mock`
+
+The preview routes are intentionally tied to captured email mode. If email is being sent to Resend, `/api/__dev/emails`, `/api/__dev/emails/:emailId`, `/api/__dev/emails/:emailId/html`, and `dev-emails.html` are not the correct inspection surface.
+
+## 5. Captured Email Preview Workflow
+
+Use this flow when validating email content in mock mode:
+
+1. Force email service to `mock`.
+2. Force antibot to `mock` for deterministic booking setup.
+3. Create a booking or registration that emits the target email.
+4. Open `GET /api/__dev/emails` to find the captured email id and preview URLs.
+5. Open `GET /api/__dev/emails/:emailId` when you need the raw captured payload fields for assertions.
+6. Open `GET /api/__dev/emails/:emailId/html` for raw HTML inspection.
+7. Open `dev-emails.html` or `dev-emails.html?email_id=<id>` to preview the real captured HTML in the iframe.
+
+What to inspect:
+
+- `from`
+- `replyTo`
+- `subject`
+- `text`
+- `html`
+- real CTA href values inside the rendered email HTML
+
+Do not validate against a custom fake preview body. The whole point of this flow is to inspect the same production-bound payload that the Resend path would have sent.
+
+## 6. Must-Cover Manual Assertions
 
 Always verify these, even if the automated suite already covers them:
 
@@ -80,20 +112,22 @@ Always verify these, even if the automated suite already covers them:
 - reminder signup on an unavailable evening does not create a booking
 - invalid or expired confirmation and manage links fail explicitly
 - admin manual settlement and manage-link generation respect booking state
+- captured email preview shows the real HTML and the expected CTA destinations
 
-## 6. Suggested Session
+## 7. Suggested Session
 
 For one focused regression pass:
 
 1. Run one free intro booking through confirmation, manage, and cancel.
 2. Run one paid session with pay-now through checkout success.
 3. Run one paid session with pay-later through submit, email confirmation, and continue-payment.
-4. Run one free evening registration and one paid evening registration.
-5. Run one late-access evening registration after rotating the link in admin.
-6. Verify one slot-contention path with two browsers.
-7. Verify organizer bookings, contact messages, one session-type edit, one event edit, and one config save.
+4. Use `dev-emails.html` to inspect the captured confirmation-request email and its real CTA links.
+5. Run one free evening registration and one paid evening registration.
+6. Run one late-access evening registration after rotating the link in admin.
+7. Verify one slot-contention path with two browsers.
+8. Verify organizer bookings, contact messages, one session-type edit, one event edit, and one config save.
 
-## 7. Bug Logging Format
+## 8. Bug Logging Format
 
 Use one line per finding:
 
@@ -107,7 +141,22 @@ If the bug touches pay-later, include:
 - whether invoice URL existed
 - whether continue-payment recovered or failed
 
-## 8. Out of Scope For This Pack
+If the bug touches captured email preview, include:
+
+- email id
+- email kind
+- whether `html` existed
+- failing route or preview page URL
+- unexpected CTA href or missing element
+
+## 9. Current Validation Status
+
+- API-side tests for captured email payload and preview routes passed.
+- Backend type-check passed.
+- The Playwright browser-preview spec is in place.
+- For live end-to-end verification, deploy the latest fixes first and then rerun the preview spec against the updated target environment.
+
+## 10. Out of Scope For This Pack
 
 - PA flows
 - broad browser-matrix expansion
