@@ -298,5 +298,305 @@
       "latest_run_status": "",
       "latest_run_comments": ""
     }
+  },
+  "desktop_israel": {
+    "E01": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E02": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E03": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E04": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E05": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E06": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E07": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E08": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E09": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E10": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E11": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E12": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E13": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E14": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E15": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E16": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E17": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E18": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E19": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E20": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E21": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E22": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E23": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E24": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E25": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E26": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E27": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E28": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E29": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E30": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E31": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E32": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E33": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E34": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E35": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E36": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E37": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    }
+  },
+  "mobile_israel": {
+    "E01": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E02": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E03": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E04": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E05": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E06": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E07": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E08": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E09": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E10": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E11": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E12": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E13": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E14": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E15": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E16": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E17": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E18": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E19": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E20": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E21": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E22": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E23": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E24": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E25": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E26": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E27": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E28": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E29": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E30": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E31": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E32": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E33": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E34": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E35": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E36": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    },
+    "E37": {
+      "latest_run_status": "",
+      "latest_run_comments": ""
+    }
   }
 }
