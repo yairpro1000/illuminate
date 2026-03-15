@@ -44,24 +44,37 @@ async function installFakeTurnstile(page: Page) {
       failuresRemaining: 0,
       renderCount: 0,
     };
+    const widgets = new Map<string, Record<string, (...args: unknown[]) => void>>();
+
+    const dispatch = (options: Record<string, (...args: unknown[]) => void>) => {
+      window.setTimeout(() => {
+        if (state.failuresRemaining > 0) {
+          state.failuresRemaining -= 1;
+          options['error-callback']?.('forced-test-failure');
+          return;
+        }
+        options.callback?.(state.nextToken);
+      }, 0);
+    };
 
     (window as typeof window & { __turnstileTestState: typeof state }).__turnstileTestState = state;
     (window as typeof window & { turnstile: Record<string, unknown> }).turnstile = {
       render(_container: Element, options: Record<string, (...args: unknown[]) => void>) {
         state.renderCount += 1;
         const widgetId = `widget-${state.renderCount}`;
-        window.setTimeout(() => {
-          if (state.failuresRemaining > 0) {
-            state.failuresRemaining -= 1;
-            options['error-callback']?.('forced-test-failure');
-            return;
-          }
-          options.callback?.(state.nextToken);
-        }, 0);
+        widgets.set(widgetId, options);
+        dispatch(options);
         return widgetId;
       },
-      execute() {},
-      remove() {},
+      execute(widgetId?: string) {
+        const target = typeof widgetId === 'string'
+          ? widgets.get(widgetId)
+          : [...widgets.values()][widgets.size - 1];
+        if (target) dispatch(target);
+      },
+      remove(widgetId?: string) {
+        if (typeof widgetId === 'string') widgets.delete(widgetId);
+      },
     };
   });
 }
@@ -101,8 +114,8 @@ async function mockBookingFormBootstrap(page: Page) {
       slots: [
         {
           type: 'session',
-          start: '2026-05-06T09:00:00.000Z',
-          end: '2026-05-06T10:00:00.000Z',
+          start: '2026-03-25T09:00:00.000Z',
+          end: '2026-03-25T10:00:00.000Z',
         },
       ],
     });
@@ -139,9 +152,12 @@ test.describe('P0 turnstile UI integration', () => {
       `,
     );
 
+    let bookingAttemptCount = 0;
     await page.route(/\/api\/bookings\/pay-later$/, async (route) => {
+      bookingAttemptCount += 1;
       const payload = JSON.parse(route.request().postData() || '{}') as { turnstile_token?: string };
-      if (payload.turnstile_token === 'invalid-turnstile-token') {
+      if (bookingAttemptCount === 1) {
+        expect(payload.turnstile_token).toBe('invalid-turnstile-token');
         await fulfillJson(route, {
           error: 'TURNSTILE_TOKEN_INVALID',
           message: 'Turnstile verification failed',
@@ -149,7 +165,7 @@ test.describe('P0 turnstile UI integration', () => {
         return;
       }
 
-      expect(payload.turnstile_token).toBe('valid-turnstile-token');
+      expect(bookingAttemptCount).toBe(2);
       await fulfillJson(route, {
         booking_id: 'bk_turnstile_booking',
         status: 'PENDING',
@@ -195,13 +211,23 @@ test.describe('P0 turnstile UI integration', () => {
         },
         {
           kind: 'console',
-          urlIncludes: '/js/client.js',
-          messageIncludes: 'request_failure',
+          urlIncludes: '/api/bookings/pay-later',
+          messageIncludes: 'status of 400',
         },
         {
           kind: 'console',
           urlIncludes: '/js/book.js',
           messageIncludes: 'Submission error',
+        },
+        {
+          kind: 'console',
+          urlIncludes: '/js/client.js',
+          messageIncludes: 'request_failure',
+        },
+        {
+          kind: 'console',
+          urlIncludes: '/js/client.js',
+          messageIncludes: 'handled_exception',
         },
       ],
     });

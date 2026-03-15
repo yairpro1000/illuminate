@@ -97,48 +97,48 @@
       "latest_run_comments": "Headed desktop Chromium run of T33 passed cleanly."
     },
     "E25": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T34 passed cleanly."
     },
     "E26": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T35 passed cleanly."
     },
     "E27": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of T36 passed cleanly."
     },
     "E28": {
       "latest_run_status": "",
       "latest_run_comments": ""
     },
     "E29": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the desktop contention case serially in headed Chromium and it passed cleanly."
     },
     "E30": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the desktop contention contact fallback case serially in headed Chromium and it passed cleanly."
     },
     "E31": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the desktop concurrent-race case serially in headed Chromium and it passed cleanly."
     },
     "E32": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Initial headed run exposed a local mock mismatch: the fake Turnstile booking harness needed a visible slot date, current observability allowlist, and an explicit retry-success route. After those local spec fixes, the rerun passed cleanly."
     },
     "E33": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of the Turnstile contact flow passed cleanly."
     },
     "E34": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium run of the Turnstile helper scoping check passed cleanly."
     },
     "E35": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed desktop Chromium runs of the site desktop nav/footer smoke and admin sidebar smoke both passed cleanly."
     },
     "E36": {
       "latest_run_status": "",
@@ -215,8 +215,8 @@
       "latest_run_comments": "Headed mobile Chromium run of @mobile T22 passed cleanly."
     },
     "E17": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the manage-link reschedule flow passed cleanly."
     },
     "E18": {
       "latest_run_status": "",
@@ -263,16 +263,16 @@
       "latest_run_comments": ""
     },
     "E29": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the mobile contention case serially in headed Chromium and it passed cleanly."
     },
     "E30": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the mobile contention contact fallback case serially in headed Chromium and it passed cleanly."
     },
     "E31": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Parallel desktop/mobile run first collided on shared live intro inventory and produced false failures. Reran the mobile concurrent-race case serially in headed Chromium and it passed cleanly."
     },
     "E32": {
       "latest_run_status": "",
@@ -287,8 +287,8 @@
       "latest_run_comments": ""
     },
     "E35": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Headed mobile Chromium run of the hamburger navigation smoke passed cleanly."
     },
     "E36": {
       "latest_run_status": "",
