@@ -20,6 +20,7 @@ describe('mock email preview helper', () => {
         to: 'preview@example.test',
         subject: 'Please confirm your booking',
         html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_1/html',
+        html_content: '<html><body><a href="https://letsilluminate.co/confirm.html?token=abc">Confirm booking</a></body></html>',
       },
       title: 'Booking received',
       message: 'Captured inline for test mode.',
@@ -32,11 +33,9 @@ describe('mock email preview helper', () => {
     expect(rendered).toBe(true)
     expect(document.querySelector('.mock-email-preview__title')?.textContent).toContain('Booking received')
     expect(document.querySelector('.mock-email-preview__meta')?.textContent).toContain('preview@example.test')
-    expect(document.querySelector('.mock-email-preview__frame')?.getAttribute('src')).toBe(
-      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_1/html',
-    )
+    expect(document.querySelector('.mock-email-preview__frame')?.srcdoc).toContain('Confirm booking')
     const links = Array.from(document.querySelectorAll('.mock-email-preview__actions a'))
-    expect(links[0]?.getAttribute('href')).toBe('https://api.letsilluminate.co/api/__dev/emails/mock_msg_1/html')
+    expect(links[0]?.getAttribute('href')).toMatch(/^(blob:|data:text\/html)/)
     expect(links[1]?.getAttribute('href')).toBe('index.html')
   })
 })

@@ -33,6 +33,7 @@ describe('site client mock email preview integration', () => {
           to: 'site@example.test',
           subject: 'Booking received',
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_site/html',
+          html_content: '<html><body><a href="https://letsilluminate.co/confirm.html?token=abc">Confirm booking</a></body></html>',
           email_kind: 'booking_confirm_request',
         },
       }), {
@@ -48,9 +49,7 @@ describe('site client mock email preview integration', () => {
   it('sends the ui-test header and renders the preview overlay from the shared site request client', async () => {
     await window.siteClient.requestJson('/api/example')
 
-    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
-      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_site/html',
-    )
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Confirm booking')
     expect(document.querySelector('.mock-email-preview__title')?.textContent).toContain('Booking received')
   })
 })

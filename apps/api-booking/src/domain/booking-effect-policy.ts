@@ -2,6 +2,7 @@ import type {
   Booking,
   BookingCurrentStatus,
   BookingEffectIntent,
+  BookingEventSource,
   BookingEventType,
   BookingSideEffectEntity,
   BookingType,
@@ -16,14 +17,17 @@ import {
   resetBookingPolicyForTests,
 } from '../config/booking-policy.js';
 import { inferEntityFromIntent } from '../providers/repository/interface.js';
+import { isPaymentSettledStatus } from './payment-status.js';
 export type { BookingPolicyConfig } from '../config/booking-policy.js';
 export { applyBookingPolicyOverridesForTests, getBookingPolicyConfig, getBookingPolicyText, resetBookingPolicyForTests } from '../config/booking-policy.js';
 
 export interface BookingPolicyContext {
   booking: Pick<Booking, 'id' | 'event_id' | 'starts_at' | 'current_status' | 'booking_type'>;
   eventType: BookingEventType;
+  eventSource?: BookingEventSource;
   eventAtIso: string;
   paymentStatus?: PaymentStatus | null;
+  eventPayload?: Record<string, unknown> | null;
 }
 
 export interface BookingEffectSpec {
@@ -82,6 +86,15 @@ export function getEffectsForEvent(
     max_attempts: policy.processingMaxAttempts,
   });
 
+  const priorPaymentStatus = typeof input.eventPayload?.['prior_payment_status'] === 'string'
+    ? input.eventPayload['prior_payment_status'] as PaymentStatus
+    : null;
+  const shouldSendSettlementConfirmationForAlreadyConfirmedBooking = input.eventType === 'PAYMENT_SETTLED'
+    && previousStatus === 'CONFIRMED'
+    && nextStatus === 'CONFIRMED'
+    && input.eventSource === 'ADMIN_UI'
+    && !isPaymentSettledStatus(priorPaymentStatus);
+
   switch (input.eventType) {
     case 'BOOKING_FORM_SUBMITTED':
       switch (input.booking.booking_type) {
@@ -123,6 +136,10 @@ export function getEffectsForEvent(
       const effects: BookingEffectSpec[] = [];
       if (!isReservationEntitledStatus(previousStatus) && isReservationEntitledStatus(nextStatus)) {
         effects.push(make('RESERVE_CALENDAR_SLOT', null));
+        effects.push(make('SEND_BOOKING_CONFIRMATION', null));
+        return effects;
+      }
+      if (shouldSendSettlementConfirmationForAlreadyConfirmedBooking) {
         effects.push(make('SEND_BOOKING_CONFIRMATION', null));
       }
       return effects;

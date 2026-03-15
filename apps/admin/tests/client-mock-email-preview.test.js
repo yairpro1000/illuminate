@@ -35,6 +35,7 @@ describe('admin client mock email preview integration', () => {
           to: 'admin@example.test',
           subject: 'Booking received',
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_admin/html',
+          html_content: '<html><body><a href="https://letsilluminate.co/confirm.html?token=abc">Confirm booking</a></body></html>',
           email_kind: 'booking_confirm_request',
         },
       }), {
@@ -50,9 +51,7 @@ describe('admin client mock email preview integration', () => {
   it('sends the ui-test header and renders the preview overlay from shared admin requestJson', async () => {
     await window.adminClient.requestJson('/admin/example')
 
-    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
-      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_admin/html',
-    )
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Confirm booking')
     expect(document.querySelector('.mock-email-preview__title')?.textContent).toContain('Booking received')
   })
 })

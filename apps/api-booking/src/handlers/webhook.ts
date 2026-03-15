@@ -32,6 +32,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
       id: payment.id,
       booking_id: payment.booking_id,
       provider_payment_id: payment.provider_payment_id,
+      status: payment.status,
     },
     {
       paymentIntentId: event.paymentIntentId,

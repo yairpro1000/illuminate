@@ -6,6 +6,7 @@ export interface MockEmailPreview {
   to: string;
   subject: string;
   html_url: string;
+  html_content: string;
   email_kind: string;
 }
 
@@ -35,13 +36,26 @@ function normalizeApiOrigin(apiOrigin: string): string {
 }
 
 function toPreview(email: SentEmail, context: PreviewContext): MockEmailPreview {
+  const htmlContent = typeof email.html === 'string' && email.html.trim()
+    ? email.html
+    : `<pre>${escapeHtml(email.text || '')}</pre>`;
   return {
     email_id: email.id,
     to: email.to,
     subject: email.subject,
     html_url: `${normalizeApiOrigin(context.apiOrigin)}/api/__dev/emails/${encodeURIComponent(email.id)}/html`,
+    html_content: htmlContent,
     email_kind: email.email_kind || email.kind,
   };
+}
+
+function escapeHtml(value: string): string {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 export function resolveUiTestMode(request: Request): string | null {

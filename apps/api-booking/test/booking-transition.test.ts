@@ -90,11 +90,36 @@ describe('booking effect policy', () => {
         booking_type: 'PAY_LATER',
       },
       eventType: 'PAYMENT_SETTLED',
+      eventSource: 'SYSTEM',
       eventAtIso: '2026-03-10T10:00:00.000Z',
       paymentStatus: 'SUCCEEDED',
     }, policy);
 
     expect(effects).toEqual([]);
+  });
+
+  it('sends the settled confirmation email when admin settles an already confirmed unsettled booking', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b5',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'CONFIRMED',
+        booking_type: 'PAY_LATER',
+      },
+      eventType: 'PAYMENT_SETTLED',
+      eventSource: 'ADMIN_UI',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentStatus: 'SUCCEEDED',
+      eventPayload: {
+        prior_payment_status: 'CASH_OK',
+      },
+    }, policy);
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'SEND_BOOKING_CONFIRMATION',
+    ]);
   });
 
   it('reserves only on finalizing transitions for 1:1 bookings', () => {

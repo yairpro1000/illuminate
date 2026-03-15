@@ -141,9 +141,22 @@
     return overlay;
   }
 
+  function createRawEmailUrl(preview) {
+    if (!preview || !preview.html_content) {
+      return preview && preview.html_url ? String(preview.html_url) : '';
+    }
+
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      var blob = new Blob([String(preview.html_content)], { type: 'text/html;charset=utf-8' });
+      return URL.createObjectURL(blob);
+    }
+
+    return 'data:text/html;charset=utf-8,' + encodeURIComponent(String(preview.html_content));
+  }
+
   function render(args) {
     const preview = args && args.preview;
-    if (!preview || !preview.html_url) return false;
+    if (!preview || (!preview.html_content && !preview.html_url)) return false;
 
     ensureStyles();
 
@@ -181,6 +194,24 @@
         </div>
       </div>
     `;
+
+    var frame = container.querySelector('.mock-email-preview__frame');
+    if (frame) {
+      if (preview.html_content) {
+        frame.srcdoc = String(preview.html_content);
+      } else if (preview.html_url) {
+        frame.src = String(preview.html_url);
+      }
+    }
+
+    var rawLink = container.querySelector('.mock-email-preview__actions a');
+    if (rawLink) {
+      if (preview.html_content) {
+        rawLink.href = createRawEmailUrl(preview);
+      } else if (preview.html_url) {
+        rawLink.href = String(preview.html_url);
+      }
+    }
 
     if (overlay) overlay.hidden = false;
     return true;

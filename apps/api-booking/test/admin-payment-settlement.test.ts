@@ -4,10 +4,11 @@ import { MockRepository } from '../src/providers/repository/mock.js';
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin manual payment settlement', () => {
-  it('settles a CASH_OK payment on an already confirmed booking and logs the allowed branch', async () => {
+  it('settles a CASH_OK payment on an already confirmed booking, sends the settled confirmation email, and logs the allowed branch', async () => {
     const policyRepo = new MockRepository();
     const paymentUpdates = [];
     const bookingUpdates = [];
+    const createdSideEffects = [];
     const booking = {
       id: 'b1',
       client_id: 'c1',
@@ -41,13 +42,15 @@ describe('Admin manual payment settlement', () => {
       raw_payload: { invoice_id: 'mock_in_1' },
       paid_at: null,
     } as any;
+    let currentPayment = payment;
     const refreshed = { booking_id: 'b1', client_id: 'c1', current_status: 'CONFIRMED', payment_status: 'SUCCEEDED' } as any;
     const repo = {
       getBookingById: vi.fn().mockResolvedValue(booking),
-      getPaymentByBookingId: vi.fn().mockResolvedValue(payment),
+      getPaymentByBookingId: vi.fn().mockImplementation(async () => currentPayment),
       updatePayment: vi.fn().mockImplementation(async (_id, updates) => {
         paymentUpdates.push(updates);
-        return { ...payment, ...updates };
+        currentPayment = { ...currentPayment, ...updates };
+        return currentPayment;
       }),
       createBookingEvent: vi.fn().mockResolvedValue({
         id: 'be1',
@@ -57,8 +60,22 @@ describe('Admin manual payment settlement', () => {
         payload: {},
         created_at: '2026-03-01T00:00:00.000Z',
       }),
-      createBookingSideEffects: vi.fn().mockResolvedValue([
-      ]),
+      createBookingSideEffects: vi.fn().mockImplementation(async (rows) => {
+        createdSideEffects.push(...rows);
+        return rows.map((row, index) => ({
+          id: `se-${index + 1}`,
+          booking_event_id: row.booking_event_id,
+          entity: row.entity,
+          effect_intent: row.effect_intent,
+          status: row.status,
+          expires_at: row.expires_at,
+          max_attempts: row.max_attempts,
+          attempt_count: 0,
+          last_error: null,
+          created_at: '2026-03-01T00:00:00.000Z',
+          updated_at: '2026-03-01T00:00:00.000Z',
+        }));
+      }),
       updateBooking: vi.fn().mockImplementation(async (_id, updates) => {
         bookingUpdates.push(updates);
         return { ...booking, ...updates };
@@ -98,6 +115,24 @@ describe('Admin manual payment settlement', () => {
       invoice_url: 'https://example.com/mock-invoice/mock_in_1',
     }));
     expect(bookingUpdates).toEqual([]);
+    expect(createdSideEffects).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        booking_event_id: 'be1',
+        effect_intent: 'SEND_BOOKING_CONFIRMATION',
+        status: 'PENDING',
+      }),
+    ]));
+    expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'b1' }),
+      expect.any(String),
+      'https://example.com/mock-invoice/mock_in_1',
+      null,
+      expect.any(String),
+      expect.objectContaining({
+        paymentSettled: true,
+        paymentDueAt: null,
+      }),
+    );
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_booking_payment_settlement_decision',
       context: expect.objectContaining({
@@ -106,6 +141,14 @@ describe('Admin manual payment settlement', () => {
         payment_status: 'CASH_OK',
         branch_taken: 'allow_manual_payment_settlement',
         deny_reason: null,
+      }),
+    }));
+    expect(repo.createBookingEvent).toHaveBeenCalledWith(expect.objectContaining({
+      booking_id: 'b1',
+      event_type: 'PAYMENT_SETTLED',
+      source: 'ADMIN_UI',
+      payload: expect.objectContaining({
+        prior_payment_status: 'CASH_OK',
       }),
     }));
   });

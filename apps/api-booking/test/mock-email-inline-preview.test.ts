@@ -101,6 +101,7 @@ describe('mock email inline preview contract', () => {
         email_id: expect.stringMatching(/^mock_msg_/),
         to: 'maya-preview@example.test',
         html_url: expect.stringContaining('/api/__dev/emails/'),
+        html_content: expect.stringContaining('Confirm booking'),
       }),
     }));
     expect(mockCtx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
@@ -173,6 +174,7 @@ describe('mock email inline preview contract', () => {
       mock_email_preview: expect.objectContaining({
         to: 'hello@yairb.ch',
         html_url: expect.stringContaining('/api/__dev/emails/'),
+        html_content: expect.stringContaining('Hello from the inline preview test'),
       }),
     }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({

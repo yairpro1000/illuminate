@@ -217,6 +217,7 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
         id: payment.id,
         booking_id: payment.booking_id,
         provider_payment_id: payment.provider_payment_id,
+        status: payment.status,
       },
       {
         paymentIntentId: `mock_pi_${crypto.randomUUID()}`,

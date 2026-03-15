@@ -107,6 +107,7 @@ describe('manage page reschedule link type', () => {
           to: 'cancel@example.test',
           subject: 'Booking cancelled',
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
+          html_content: '<html><body><p>Your booking has been cancelled.</p></body></html>',
         },
       }
       await window.siteClient.maybeRenderMockEmailPreview(response)
@@ -121,8 +122,6 @@ describe('manage page reschedule link type', () => {
     await flush()
     await flush()
 
-    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
-      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_cancel/html',
-    )
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('cancelled')
   })
 })

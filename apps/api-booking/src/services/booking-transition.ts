@@ -84,8 +84,10 @@ export async function appendBookingEventWithEffects(
   const effectSpecs = getEffectsForEvent({
     booking,
     eventType,
+    eventSource: source,
     eventAtIso: event.created_at,
     paymentStatus: payment?.status ?? null,
+    eventPayload: normalizedPayload,
   }, policy);
 
   const sideEffects = effectSpecs.length > 0

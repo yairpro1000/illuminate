@@ -120,6 +120,7 @@ describe('contact form turnstile submission', () => {
           to: 'ada@example.com',
           subject: 'New contact form message',
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
+          html_content: '<html><body><p>Hello there</p></body></html>',
         },
       }
       await window.siteClient.maybeRenderMockEmailPreview(response)
@@ -137,9 +138,7 @@ describe('contact form turnstile submission', () => {
     await flush()
     await flush()
 
-    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.getAttribute('src')).toBe(
-      'https://api.letsilluminate.co/api/__dev/emails/mock_msg_contact/html',
-    )
-    expect(document.getElementById('contact-form-wrap').hidden).toBe(true)
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Hello there')
+    expect(document.getElementById('mock-email-preview-overlay')?.hidden).toBe(false)
   })
 })

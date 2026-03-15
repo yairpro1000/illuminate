@@ -16,6 +16,7 @@ import type {
   BookingSideEffect,
   Event,
   Payment,
+  PaymentStatus,
   SessionTypeRecord,
 } from '../types.js';
 import type { CalendarEvent } from '../providers/calendar/interface.js';
@@ -239,7 +240,7 @@ export interface ContinuePaymentActionInfo {
 }
 
 interface PaymentSettlementInput {
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id'>;
+  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>;
   settlementSource: 'WEBHOOK' | 'ADMIN_UI' | 'SYSTEM';
   settledAt?: string;
   paymentIntentId?: string | null;
@@ -729,7 +730,7 @@ export async function confirmBookingEmail(
 // ── Payment success (webhook/dev) ──────────────────────────────────────────
 
 export async function confirmBookingPayment(
-  payment: { id: string; booking_id: string; provider_payment_id: string | null },
+  payment: { id: string; booking_id: string; provider_payment_id: string | null; status: PaymentStatus },
   stripeData: { paymentIntentId: string | null; invoiceId: string | null; invoiceUrl: string | null },
   ctx: BookingContext,
 ): Promise<void> {
@@ -746,7 +747,7 @@ export async function confirmBookingPayment(
 }
 
 export async function settleBookingPaymentManually(
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id'>,
+  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>,
   input: {
     invoiceUrl?: string | null;
     invoiceId?: string | null;
@@ -860,6 +861,7 @@ async function settleBookingPayment(
     'PAYMENT_SETTLED',
     input.settlementSource,
     {
+      prior_payment_status: input.payment.status,
       payment_intent_id: input.paymentIntentId ?? null,
       invoice_id: resolvedInvoice.invoiceId,
       invoice_url: resolvedInvoice.invoiceUrl,
