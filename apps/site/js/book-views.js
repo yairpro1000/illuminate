@@ -352,8 +352,8 @@
           ${buildReviewTable(rows)}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
-            <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
-              ${state.submitting ? 'Updating…' : 'Confirm New Time'}
+            <button class="btn btn-primary" data-submit>
+              Confirm New Time
             </button>
           </div>
         </div>
@@ -440,10 +440,8 @@
             ? ''
             : `<div class="step-footer">
                 <button class="btn btn-ghost" data-back>← Back</button>
-                <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
-                  ${state.submitting
-                    ? 'Processing…'
-                    : (state.paymentMethod === 'pay-now' ? 'Proceed to Payment' : 'Confirm Booking')}
+                <button class="btn btn-primary" data-submit>
+                  ${state.paymentMethod === 'pay-now' ? 'Proceed to Payment' : 'Confirm Booking'}
                 </button>
               </div>`}
         </div>
@@ -552,8 +550,8 @@
           ${buildTurnstileBlock('event_registration_submit')}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
-            <button class="btn btn-primary" data-submit ${state.submitting ? 'disabled' : ''}>
-              ${state.submitting ? 'Processing…' : isPaid ? 'Proceed to Payment' : 'Complete Registration'}
+            <button class="btn btn-primary" data-submit>
+              ${isPaid ? 'Proceed to Payment' : 'Complete Registration'}
             </button>
           </div>
         </div>
