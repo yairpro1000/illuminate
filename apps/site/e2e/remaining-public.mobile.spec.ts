@@ -1,9 +1,10 @@
 import { test } from '@playwright/test';
-import { ensureEmailMock } from './support/api';
+import { ensureAntiBotMock, ensureEmailMock } from './support/api';
 import { getRemainingPublicCases } from './remaining-public.shared';
 
 test.beforeAll(async () => {
   await ensureEmailMock();
+  await ensureAntiBotMock();
 });
 
 for (const publicCase of getRemainingPublicCases('@mobile')) {

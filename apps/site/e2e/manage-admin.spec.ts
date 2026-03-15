@@ -5,6 +5,7 @@ import {
   cancelBookingByManageUrl,
   clickFirstAvailableSlot,
   createPayNowBookingForSlot,
+  ensureAntiBotMock,
   ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
@@ -155,6 +156,7 @@ async function waitForRescheduleDayRecovery(
 test.describe('P4 manage and admin interactions', () => {
   test.beforeAll(async () => {
     await ensureEmailMock();
+    await ensureAntiBotMock();
   });
 
   test('manage link reschedules an eligible 1:1 booking', async ({ page }, testInfo) => {

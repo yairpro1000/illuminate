@@ -7,7 +7,8 @@
     "deploy": "wrangler deploy --env \"\"",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "delete:client-prefix": "node ./scripts/delete-client-prefix.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240605.0",

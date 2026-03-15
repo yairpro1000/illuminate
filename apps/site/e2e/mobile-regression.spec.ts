@@ -4,6 +4,7 @@ import {
   cancelBookingByManageUrl,
   clickFirstAvailableSlot,
   createPayNowBookingForSlot,
+  ensureAntiBotMock,
   ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
@@ -392,6 +393,7 @@ async function newMobileSession(browser: Browser): Promise<{ context: BrowserCon
 test.describe('@mobile P4 mobile regression', () => {
   test.beforeAll(async () => {
     await ensureEmailMock();
+    await ensureAntiBotMock();
   });
 
   test('@mobile free intro flow confirms, manage link opens, slot disappears, cancel returns slot', async ({ page }, testInfo) => {

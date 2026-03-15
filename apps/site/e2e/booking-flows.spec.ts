@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   SITE_BASE_URL,
   clickFirstAvailableSlot,
+  ensureAntiBotMock,
   ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
@@ -60,6 +61,7 @@ async function waitForSlotPresence(
 test.describe('P4 core booking flows', () => {
   test.beforeAll(async () => {
     await ensureEmailMock();
+    await ensureAntiBotMock();
   });
 
   test('free intro flow confirms, manage link opens, slot disappears, cancel returns slot', async ({ page }, testInfo) => {

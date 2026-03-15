@@ -148,6 +148,8 @@ describe('test bookings helpers', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email_prefix: 'p4-wipe' }),
     });
+    const getBookingByIdSpy = vi.spyOn(ctx.providers.repository, 'getBookingById');
+    getBookingByIdSpy.mockClear();
 
     const res = await handleRequest(req, ctx);
     const body = await res.json();
@@ -167,6 +169,8 @@ describe('test bookings helpers', () => {
     expect(body.skipped).toEqual([
       { booking_id: terminal.bookingId, status: 'CANCELED', reason: 'already_terminal' },
     ]);
+    expect(getBookingByIdSpy).toHaveBeenCalledTimes(1);
+    expect(getBookingByIdSpy).toHaveBeenCalledWith(active.bookingId);
 
     const activeBooking = await ctx.providers.repository.getBookingById(active.bookingId);
     const otherBooking = await ctx.providers.repository.getBookingById(other.bookingId);

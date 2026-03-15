@@ -10,6 +10,7 @@ import {
   getEvents,
   getSessionTypes,
   makeScenarioEmail,
+  mutateTestBooking,
   updateAdminEvent,
   updateAdminTimingSetting,
   waitForBookingArtifacts,
@@ -154,7 +155,7 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
       },
     },
     {
-      title: title(prefix, 'T12 and T17 pay-later session booking submits and confirmation advances to payment step'),
+      title: title(prefix, 'T12 and T17 pay-later session booking stays pending until confirmation, then starts payment'),
       async fn({ page, testInfo }) {
         const runtime = attachRuntimeMonitor(page);
         const email = makeScenarioEmail('p4-pay-later');
@@ -178,16 +179,19 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
 
         const pendingArtifacts = await waitForBookingArtifacts(email);
         expect(pendingArtifacts.booking.status).toBe('PENDING');
+        expect(pendingArtifacts.payment).toBeNull();
         expect(pendingArtifacts.links.confirm_url).toBeTruthy();
 
         checkpoint = runtime.checkpoint();
         await page.goto(pendingArtifacts.links.confirm_url!);
         await expect(page.locator('.confirm-title')).toContainText('Confirmed');
-        await expect(page.locator('.btn.btn-primary')).toHaveAttribute('href', /\/dev-pay\?session_id=|\/manage(\.html)?\?/);
+        await expect(page.getByRole('link', { name: 'Complete Payment' })).toHaveAttribute('href', /\/continue-payment\.html\?token=/);
         await runtime.assertNoNewIssues(checkpoint, 'pay-later-confirm', testInfo);
 
         const confirmedArtifacts = await waitForBookingArtifacts(email);
-        expect(confirmedArtifacts.booking.status).toBe('PENDING');
+        expect(confirmedArtifacts.booking.status).toBe('CONFIRMED');
+        expect(confirmedArtifacts.payment).toBeTruthy();
+        expect(['PENDING', 'INVOICE_SENT']).toContain(confirmedArtifacts.payment?.status);
       },
     },
     {

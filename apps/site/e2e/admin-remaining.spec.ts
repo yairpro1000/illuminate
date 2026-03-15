@@ -5,6 +5,7 @@ import {
   SITE_BASE_URL,
   clickFirstAvailableSlot,
   createAdminSessionType,
+  ensureAntiBotMock,
   ensureEmailMock,
   expectManageStatus,
   fillContactDetails,
@@ -47,6 +48,7 @@ async function openBookingRowByEmail(page: import('@playwright/test').Page, emai
 test.describe('P4 remaining admin and content coverage', () => {
   test.beforeAll(async () => {
     await ensureEmailMock();
+    await ensureAntiBotMock();
   });
 
   test('T27 organizer pages require sign-in', async () => {

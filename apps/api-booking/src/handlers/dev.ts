@@ -6,6 +6,7 @@
 
 import type { AppContext } from '../router.js';
 import { ok, badRequest, notFound } from '../lib/errors.js';
+import { normalizeLowercasePrefix } from '../lib/prefix-utils.js';
 import { mockState } from '../providers/mock-state.js';
 import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment, expireBooking } from '../services/booking-service.js';
 import type { Booking } from '../types.js';
@@ -53,8 +54,7 @@ function normalizeExampleTestEmail(raw: string | null): string | null {
 }
 
 function normalizeTestEmailPrefix(raw: string | null): string | null {
-  const value = raw?.trim().toLowerCase() ?? '';
-  return value || null;
+  return normalizeLowercasePrefix(raw);
 }
 
 function normalizeCleanupLimit(value: unknown): number {
@@ -122,13 +122,47 @@ async function findMatchingTestBookings(emailPrefix: string, ctx: AppContext): P
       branch_taken: 'return_matching_test_bookings',
     },
   });
-  return bookings
-    .filter((row) => {
-      const email = (row.client_email ?? '').toLowerCase();
-      const firstName = (row.client_first_name ?? '').trim().toLowerCase();
-      return (isExampleTestEmail(email) && email.startsWith(emailPrefix)) || firstName.startsWith(emailPrefix);
-    })
-    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  return bookings.filter((row) => {
+    const email = (row.client_email ?? '').toLowerCase();
+    const firstName = (row.client_first_name ?? '').trim().toLowerCase();
+    return (isExampleTestEmail(email) && email.startsWith(emailPrefix)) || firstName.startsWith(emailPrefix);
+  });
+}
+
+function planTestBookingsCleanup(matches: Booking[], limit: number): {
+  activeMatchedCount: number;
+  terminalMatchedCount: number;
+  batch: Booking[];
+  skipped: Array<{ booking_id: string; status: string; reason: string }>;
+} {
+  const batch: Booking[] = [];
+  const skipped: Array<{ booking_id: string; status: string; reason: string }> = [];
+  let activeMatchedCount = 0;
+  let terminalMatchedCount = 0;
+
+  for (const row of matches) {
+    if (isTerminalBookingStatus(row.current_status)) {
+      terminalMatchedCount += 1;
+      skipped.push({
+        booking_id: row.id,
+        status: row.current_status,
+        reason: 'already_terminal',
+      });
+      continue;
+    }
+
+    activeMatchedCount += 1;
+    if (batch.length < limit) {
+      batch.push(row);
+    }
+  }
+
+  return {
+    activeMatchedCount,
+    terminalMatchedCount,
+    batch,
+    skipped,
+  };
 }
 
 async function getLatestTestBookingByEmail(email: string, ctx: AppContext): Promise<{
@@ -844,20 +878,15 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
   }
 
   const matches = await findMatchingTestBookings(emailPrefix, ctx);
-  const activeMatches = matches.filter((row) => !isTerminalBookingStatus(row.current_status));
-  const terminalMatches = matches.filter((row) => isTerminalBookingStatus(row.current_status));
-  const batch = activeMatches.slice(0, limit);
+  const {
+    activeMatchedCount,
+    terminalMatchedCount,
+    batch,
+    skipped,
+  } = planTestBookingsCleanup(matches, limit);
   const canceled: Array<{ booking_id: string; status: string }> = [];
-  const skipped: Array<{ booking_id: string; status: string; reason: string }> = [];
   const failed: Array<{ booking_id: string; status: string; reason: string }> = [];
-
-  for (const row of terminalMatches) {
-    skipped.push({
-      booking_id: row.id,
-      status: row.current_status,
-      reason: 'already_terminal',
-    });
-  }
+  const remainingActiveCount = Math.max(activeMatchedCount - batch.length, 0);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -867,8 +896,8 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       path,
       email_prefix: emailPrefix,
       matched_count: matches.length,
-      active_matched_count: activeMatches.length,
-      terminal_matched_count: terminalMatches.length,
+      active_matched_count: activeMatchedCount,
+      terminal_matched_count: terminalMatchedCount,
       processed_count: batch.length,
       batch_limit: limit,
       branch_taken: 'cleanup_batch_planned',
@@ -891,30 +920,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       },
     });
     try {
-      const booking = await ctx.providers.repository.getBookingById(row.id);
-      if (!booking) {
-        failed.push({
-          booking_id: row.id,
-          status: row.current_status,
-          reason: 'booking_lookup_failed',
-        });
-        ctx.logger.logWarn?.({
-          source: 'backend',
-          eventType: 'test_bookings_cleanup_booking_failed',
-          message: 'Failed test booking cleanup because booking lookup did not return a row',
-          context: {
-            path,
-            email_prefix: emailPrefix,
-            booking_id: row.id,
-            booking_status: row.current_status,
-            branch_taken: 'cleanup_booking_lookup_failed',
-            deny_reason: 'booking_lookup_failed',
-          },
-        });
-        continue;
-      }
-
-      const result = await cancelBooking(booking, {
+      const result = await cancelBooking(row, {
         providers: ctx.providers,
         env: ctx.env,
         logger: ctx.logger,
@@ -948,10 +954,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         continue;
       }
 
-        canceled.push({
-          booking_id: row.id,
-          status: result.booking.current_status,
-        });
+      canceled.push({
+        booking_id: row.id,
+        status: result.booking.current_status,
+      });
       ctx.logger.logInfo?.({
         source: 'backend',
         eventType: 'test_bookings_cleanup_booking_completed',
@@ -959,18 +965,18 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         context: {
           path,
           email_prefix: emailPrefix,
-            booking_id: row.id,
-            booking_status: result.booking.current_status,
-            branch_taken: 'cleanup_single_booking_canceled',
-          },
-        });
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
-        failed.push({
           booking_id: row.id,
-          status: row.current_status,
-          reason,
-        });
+          booking_status: result.booking.current_status,
+          branch_taken: 'cleanup_single_booking_canceled',
+        },
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unexpected_cleanup_failure';
+      failed.push({
+        booking_id: row.id,
+        status: row.current_status,
+        reason,
+      });
       ctx.logger.captureException?.({
         source: 'backend',
         eventType: 'test_bookings_cleanup_booking_failed',
@@ -979,10 +985,10 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         context: {
           path,
           email_prefix: emailPrefix,
-            booking_id: row.id,
-            booking_status: row.current_status,
-            branch_taken: 'cleanup_unexpected_exception',
-          },
+          booking_id: row.id,
+          booking_status: row.current_status,
+          branch_taken: 'cleanup_unexpected_exception',
+        },
       });
     }
   }
@@ -995,9 +1001,9 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
       path,
       email_prefix: emailPrefix,
       matched_count: matches.length,
-      active_matched_count: activeMatches.length,
+      active_matched_count: activeMatchedCount,
       processed_count: batch.length,
-      remaining_active_count: Math.max(activeMatches.length - batch.length, 0),
+      remaining_active_count: remainingActiveCount,
       batch_limit: limit,
       canceled_count: canceled.length,
       skipped_count: skipped.length,
@@ -1010,9 +1016,9 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
   return ok({
     email_prefix: emailPrefix,
     matched_count: matches.length,
-    active_matched_count: activeMatches.length,
+    active_matched_count: activeMatchedCount,
     processed_count: batch.length,
-    remaining_active_count: Math.max(activeMatches.length - batch.length, 0),
+    remaining_active_count: remainingActiveCount,
     batch_limit: limit,
     canceled_count: canceled.length,
     skipped_count: skipped.length,
