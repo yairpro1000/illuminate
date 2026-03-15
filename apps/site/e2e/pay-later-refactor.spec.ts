@@ -13,6 +13,7 @@ import {
   fillContactDetails,
   getSlots,
   makeScenarioEmail,
+  waitForSupabasePaymentStatus,
   waitForBookingArtifacts,
 } from './support/api';
 import { attachRuntimeMonitor } from './support/runtime';
@@ -117,10 +118,15 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     await expect(adminPage.locator('#editReadonlyDetails')).toContainText(confirmedArtifacts.payment?.status || '');
     await expect(adminPage.locator('#editReadonlyDetails')).toContainText('Invoice URL');
     await adminPage.click('#editSetCashOk');
-    await openAdminBookingRowByEmail(adminPage, email, confirmedArtifacts.booking.starts_at.slice(0, 10));
+    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
+    await expect(adminPage.locator('#editMsg')).toHaveClass(/ok/);
+    await expect(adminPage.locator('#editMsg')).toContainText('Manual arrangement approved.');
     await expect(adminPage.locator('#editReadonlyDetails')).toContainText('CASH_OK');
     await expect(adminPage.locator('#editSettlePayment')).toBeEnabled();
     await adminRuntime.assertNoNewIssues(checkpoint, 'admin-approve-manual-arrangement', testInfo);
+
+    const cashOkPayment = await waitForSupabasePaymentStatus(confirmedArtifacts.booking.id, 'CASH_OK');
+    expect(cashOkPayment.status).toBe('CASH_OK');
     await adminPage.close();
 
     const cashOkArtifacts = await waitForBookingArtifacts(email);
@@ -169,11 +175,16 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     await openAdminBookingRowByEmail(adminPage, settleEmail, settleArtifacts.booking.starts_at.slice(0, 10));
     await adminPage.fill('#editSettlementNote', 'E2E manual settlement');
     await adminPage.click('#editSettlePayment');
-    await openAdminBookingRowByEmail(adminPage, settleEmail, settleArtifacts.booking.starts_at.slice(0, 10));
+    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
+    await expect(adminPage.locator('#editMsg')).toHaveClass(/ok/);
+    await expect(adminPage.locator('#editMsg')).toContainText('Payment settled.');
     await expect(adminPage.locator('#editReadonlyDetails')).toContainText('CONFIRMED');
     await expect(adminPage.locator('#editReadonlyDetails')).toContainText('SUCCEEDED');
     await expect(adminPage.locator('#editSettlePayment')).toBeDisabled();
     await adminRuntime.assertNoNewIssues(checkpoint, 'admin-settle-pay-later-booking', testInfo);
+
+    const settledPayment = await waitForSupabasePaymentStatus(settleArtifacts.booking.id, 'SUCCEEDED');
+    expect(settledPayment.paid_at).toBeTruthy();
 
     checkpoint = runtime.checkpoint();
     await page.goto(settleArtifacts.links.manage_url);
@@ -197,6 +208,8 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     checkpoint = adminRuntime.checkpoint();
     await openAdminBookingRowByEmail(adminPage, canceledEmail, canceledArtifacts.booking.starts_at.slice(0, 10));
     await adminPage.click('#editSettlePayment');
+    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
+    await expect(adminPage.locator('#editMsg')).toHaveClass(/err/);
     await expect(adminPage.locator('#editMsg')).toContainText(/Only pending bookings can be settled manually|Payment cannot be settled from its current state/i);
     await adminRuntime.assertNoNewIssues(checkpoint, 'admin-deny-settle-canceled-booking', testInfo, {
       allow: [
@@ -216,6 +229,8 @@ test.describe('P0 pay-later manual arrangement and settlement', () => {
     checkpoint = adminRuntime.checkpoint();
     await openAdminBookingRowByEmail(adminPage, settleEmail, settleArtifacts.booking.starts_at.slice(0, 10));
     await adminPage.click('#editSettlePayment');
+    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
+    await expect(adminPage.locator('#editMsg')).toHaveClass(/err/);
     await expect(adminPage.locator('#editMsg')).toContainText(/Payment cannot be settled from its current state/i);
     await adminRuntime.assertNoNewIssues(checkpoint, 'admin-deny-settle-already-settled-booking', testInfo, {
       allow: [

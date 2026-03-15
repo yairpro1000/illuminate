@@ -9,62 +9,6 @@ function makeLogger() {
   };
 }
 
-function makeDbFixture({
-  clients = [],
-  bookings = [],
-  payments = [],
-  contactMessages = [],
-  reminderSubscriptions = [],
-} = {}) {
-  const deleteOrder: string[] = [];
-
-  const selectRowsByTable = {
-    clients,
-    bookings,
-    payments,
-    contact_messages: contactMessages,
-    event_reminder_subscriptions: reminderSubscriptions,
-  } as Record<string, Array<Record<string, unknown>>>;
-
-  return {
-    deleteOrder,
-    db: {
-      from(table: string) {
-        return {
-          select() {
-            return this;
-          },
-          ilike() {
-            return Promise.resolve({ data: selectRowsByTable[table] ?? [], error: null });
-          },
-          order() {
-            return Promise.resolve({ data: selectRowsByTable[table] ?? [], error: null });
-          },
-          in() {
-            return this;
-          },
-          delete() {
-            return this;
-          },
-          async select(_columns?: string) {
-            if (arguments.length > 0 && deleteOrder.includes(table)) {
-              return { data: [], error: null };
-            }
-            return { data: selectRowsByTable[table] ?? [], error: null };
-          },
-          async then(resolve: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown) {
-            return resolve({ data: selectRowsByTable[table] ?? [], error: null });
-          },
-        };
-      },
-    },
-    markDeleted(table: string, rows: Array<Record<string, unknown>>) {
-      deleteOrder.push(table);
-      selectRowsByTable[table] = rows;
-    },
-  };
-}
-
 function makeDeletingDbFixture({
   clients = [],
   bookings = [],
@@ -91,14 +35,20 @@ function makeDeletingDbFixture({
         };
 
         return {
-          select() {
+          select(_columns?: string) {
+            if (state.mode === 'delete') {
+              deleteOrder.push(table);
+              const deleted = (rowsByTable[table] ?? []).filter((row) => state.ids.includes(String(row.id)));
+              rowsByTable[table] = (rowsByTable[table] ?? []).filter((row) => !state.ids.includes(String(row.id)));
+              return Promise.resolve({ data: deleted, error: null });
+            }
             return this;
           },
           ilike() {
-            return Promise.resolve({ data: rowsByTable[table] ?? [], error: null });
+            return this;
           },
           order() {
-            return Promise.resolve({ data: rowsByTable[table] ?? [], error: null });
+            return this;
           },
           in(_column: string, ids: string[]) {
             state.ids = ids;
@@ -108,17 +58,12 @@ function makeDeletingDbFixture({
             state.mode = 'delete';
             return this;
           },
-          async select(_columns?: string) {
-            if (state.mode === 'delete') {
-              deleteOrder.push(table);
-              const deleted = (rowsByTable[table] ?? []).filter((row) => state.ids.includes(String(row.id)));
-              rowsByTable[table] = (rowsByTable[table] ?? []).filter((row) => !state.ids.includes(String(row.id)));
-              return { data: deleted, error: null };
-            }
-            return { data: rowsByTable[table] ?? [], error: null };
-          },
           async then(resolve: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown) {
-            return resolve({ data: rowsByTable[table] ?? [], error: null });
+            const data = state.ids.length > 0
+              ? (rowsByTable[table] ?? []).filter((row) =>
+                state.ids.includes(String(row.client_id ?? row.booking_id ?? row.id)))
+              : (rowsByTable[table] ?? []);
+            return resolve({ data, error: null });
           },
         };
       },

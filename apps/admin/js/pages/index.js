@@ -50,9 +50,47 @@
     statusEl.textContent = text || '';
   }
 
-  function setEditMessage(text, isError) {
-    editMsgEl.className = isError ? 'status err' : 'status muted';
+  function setEditMessage(text, tone = 'muted') {
+    editMsgEl.className = `status ${tone}`;
     editMsgEl.textContent = text || '';
+  }
+
+  function syncEditActionAvailability(row) {
+    const canAdjustPaymentStatus = Boolean(
+      row.payment_status && row.payment_status !== 'SUCCEEDED' && row.payment_status !== 'REFUNDED',
+    );
+    editSetCashOkEl.disabled = !canAdjustPaymentStatus || state.saving;
+    editSettlePaymentEl.disabled = !canAdjustPaymentStatus || state.saving;
+    editSaveEl.disabled = state.saving;
+  }
+
+  function syncEditFormFromRow(row, options = {}) {
+    const preserveSettlementNote = Boolean(options.preserveSettlementNote);
+    state.editing = row;
+    editReadonlyDetailsEl.innerHTML = renderReadonlyDetails(row);
+    editFirstNameEl.value = row.client_first_name || '';
+    editLastNameEl.value = row.client_last_name || '';
+    editEmailEl.value = row.client_email || '';
+    editPhoneEl.value = row.client_phone || '';
+    editStatusEl.value = row.current_status || 'PENDING';
+    editPriceEl.value = row.booking_price != null ? String(row.booking_price) : '';
+    editNotesEl.value = row.notes || '';
+    if (!preserveSettlementNote) editSettlementNoteEl.value = '';
+    syncEditActionAvailability(row);
+  }
+
+  async function refreshEditingRow(bookingId, options = {}) {
+    await loadRows();
+    const refreshed = state.allRows.find((row) => row.booking_id === bookingId) || null;
+    if (!refreshed) {
+      state.editing = null;
+      setEditMessage('Booking updated, but it is no longer visible in the current filtered list.', 'err');
+      return null;
+    }
+    syncEditFormFromRow(refreshed, options);
+    editOverlayEl.classList.remove('hidden');
+    editOverlayEl.setAttribute('aria-hidden', 'false');
+    return refreshed;
   }
 
   function createCell(text, className) {
@@ -367,35 +405,25 @@
   }
 
   function openEditModal(row) {
-    state.editing = row;
-    editReadonlyDetailsEl.innerHTML = renderReadonlyDetails(row);
-    editFirstNameEl.value = row.client_first_name || '';
-    editLastNameEl.value = row.client_last_name || '';
-    editEmailEl.value = row.client_email || '';
-    editPhoneEl.value = row.client_phone || '';
-    editStatusEl.value = row.current_status || 'PENDING';
-    editPriceEl.value = row.booking_price != null ? String(row.booking_price) : '';
-    editNotesEl.value = row.notes || '';
-    editSettlementNoteEl.value = '';
-    editSetCashOkEl.disabled = !(row.payment_status && row.payment_status !== 'SUCCEEDED' && row.payment_status !== 'REFUNDED');
-    editSettlePaymentEl.disabled = !(row.payment_status && row.payment_status !== 'SUCCEEDED' && row.payment_status !== 'REFUNDED');
-    setEditMessage('', false);
+    syncEditFormFromRow(row);
+    setEditMessage('', 'muted');
     editOverlayEl.classList.remove('hidden');
     editOverlayEl.setAttribute('aria-hidden', 'false');
   }
 
   function closeEditModal() {
     state.editing = null;
-    setEditMessage('', false);
+    setEditMessage('', 'muted');
     editOverlayEl.classList.add('hidden');
     editOverlayEl.setAttribute('aria-hidden', 'true');
   }
 
   async function saveEdit() {
     if (!state.editing || state.saving) return;
+    const bookingId = state.editing.booking_id;
     state.saving = true;
-    editSaveEl.disabled = true;
-    setEditMessage('Saving...', false);
+    syncEditActionAvailability(state.editing);
+    setEditMessage('Saving...', 'muted');
 
     try {
       await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}`, {
@@ -415,38 +443,40 @@
         }),
       });
 
-      setEditMessage('Saved.', false);
-      closeEditModal();
-      await loadRows();
+      await refreshEditingRow(bookingId);
+      setEditMessage('Saved.', 'ok');
     } catch (err) {
-      setEditMessage(String(err), true);
+      setEditMessage(String(err), 'err');
     } finally {
       state.saving = false;
-      editSaveEl.disabled = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
     }
   }
 
   async function openManageBooking() {
     if (!state.editing || state.saving) return;
     state.saving = true;
-    setEditMessage('Generating manage link...', false);
+    syncEditActionAvailability(state.editing);
+    setEditMessage('Generating manage link...', 'muted');
     try {
       const data = await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}/manage-link`, {
         method: 'POST',
       });
       if (data && data.url) window.open(data.url, '_blank', 'noopener,noreferrer');
-      setEditMessage('Manage link opened in new tab.', false);
+      setEditMessage('Manage link opened in new tab.', 'ok');
     } catch (err) {
-      setEditMessage(String(err), true);
+      setEditMessage(String(err), 'err');
     } finally {
       state.saving = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
     }
   }
 
   async function copyClientManageLink() {
     if (!state.editing || state.saving) return;
     state.saving = true;
-    setEditMessage('Generating client manage link...', false);
+    syncEditActionAvailability(state.editing);
+    setEditMessage('Generating client manage link...', 'muted');
     try {
       const data = await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}/client-manage-link`, {
         method: 'POST',
@@ -454,18 +484,21 @@
       const url = data && data.url ? String(data.url) : '';
       if (!url) throw new Error('No URL returned');
       await navigator.clipboard.writeText(url);
-      setEditMessage('Client manage link copied to clipboard.', false);
+      setEditMessage('Client manage link copied to clipboard.', 'ok');
     } catch (err) {
-      setEditMessage(String(err), true);
+      setEditMessage(String(err), 'err');
     } finally {
       state.saving = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
     }
   }
 
   async function setCashOk() {
     if (!state.editing || state.saving) return;
+    const bookingId = state.editing.booking_id;
     state.saving = true;
-    setEditMessage('Approving manual arrangement...', false);
+    syncEditActionAvailability(state.editing);
+    setEditMessage('Approving manual arrangement...', 'muted');
     try {
       await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}`, {
         method: 'POST',
@@ -475,20 +508,22 @@
           },
         }),
       });
-      setEditMessage('Manual arrangement approved.', false);
-      closeEditModal();
-      await loadRows();
+      await refreshEditingRow(bookingId, { preserveSettlementNote: true });
+      setEditMessage('Manual arrangement approved.', 'ok');
     } catch (err) {
-      setEditMessage(String(err), true);
+      setEditMessage(String(err), 'err');
     } finally {
       state.saving = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
     }
   }
 
   async function settlePayment() {
     if (!state.editing || state.saving) return;
+    const bookingId = state.editing.booking_id;
     state.saving = true;
-    setEditMessage('Settling payment...', false);
+    syncEditActionAvailability(state.editing);
+    setEditMessage('Settling payment...', 'muted');
     try {
       await api(`/admin/bookings/${encodeURIComponent(state.editing.booking_id)}/payment-settled`, {
         method: 'POST',
@@ -497,13 +532,13 @@
           invoice_url: state.editing.payment_invoice_url || null,
         }),
       });
-      setEditMessage('Payment settled.', false);
-      closeEditModal();
-      await loadRows();
+      await refreshEditingRow(bookingId, { preserveSettlementNote: true });
+      setEditMessage('Payment settled.', 'ok');
     } catch (err) {
-      setEditMessage(String(err), true);
+      setEditMessage(String(err), 'err');
     } finally {
       state.saving = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
     }
   }
 

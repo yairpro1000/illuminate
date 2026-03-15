@@ -205,6 +205,9 @@ test.describe('P4 manage and admin interactions', () => {
     await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
     await adminPage.fill('#editNotes', noteText);
     await adminPage.click('#editSave');
+    await expect(adminPage.locator('#editOverlay')).not.toHaveClass(/hidden/);
+    await expect(adminPage.locator('#editMsg')).toHaveClass(/ok/);
+    await expect(adminPage.locator('#editMsg')).toContainText('Saved.');
     await expect(adminPage.locator('#rowsBody tr', { hasText: noteText }).first()).toBeVisible();
     await runtime.assertNoNewIssues(checkpoint, 'admin-edit-booking-notes', testInfo);
 

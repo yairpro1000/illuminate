@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
 export const SITE_BASE_URL = process.env.E2E_SITE_BASE_URL || 'https://letsilluminate.co';
@@ -66,6 +67,64 @@ export interface CapturedEmailSummary {
   has_html: boolean;
   preview_url: string;
   preview_html_url: string;
+}
+
+export interface SupabasePaymentRow {
+  id: string;
+  booking_id: string;
+  status: string;
+  provider: string;
+  provider_payment_id: string | null;
+  invoice_url: string | null;
+  checkout_url: string | null;
+  paid_at: string | null;
+  amount: number | null;
+  currency: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+let cachedSupabaseEnv: { url: string; secretKey: string } | null = null;
+
+function stripOptionalQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseRepoEnvFile(): Record<string, string> {
+  const envUrl = new URL('../../../../.env', import.meta.url);
+  if (!existsSync(envUrl)) return {};
+
+  const parsed: Record<string, string> = {};
+  const text = readFileSync(envUrl, 'utf8');
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/^(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (!match) continue;
+    parsed[match[1]] = stripOptionalQuotes(match[2]);
+  }
+  return parsed;
+}
+
+function getSupabaseEnv(): { url: string; secretKey: string } {
+  if (cachedSupabaseEnv) return cachedSupabaseEnv;
+
+  const fileEnv = parseRepoEnvFile();
+  const url = process.env.SUPABASE_URL || fileEnv.SUPABASE_URL || '';
+  const secretKey = process.env.SUPABASE_SECRET_KEY || fileEnv.SUPABASE_SECRET_KEY || '';
+  if (!url || !secretKey) {
+    throw new Error('Supabase credentials are required for direct payment-table verification.');
+  }
+
+  cachedSupabaseEnv = { url, secretKey };
+  return cachedSupabaseEnv;
 }
 
 export function makeScenarioEmail(prefix: string): string {
@@ -301,6 +360,48 @@ export async function waitForBookingArtifacts(email: string): Promise<BookingArt
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Could not resolve booking artifacts');
+}
+
+export async function getSupabasePaymentRowByBookingId(bookingId: string): Promise<SupabasePaymentRow | null> {
+  const { url, secretKey } = getSupabaseEnv();
+  const params = new URLSearchParams({
+    select: 'id,booking_id,status,provider,provider_payment_id,invoice_url,checkout_url,paid_at,amount,currency,created_at,updated_at',
+    booking_id: `eq.${bookingId}`,
+    order: 'created_at.desc',
+    limit: '1',
+  });
+
+  const response = await fetch(`${url}/rest/v1/payments?${params.toString()}`, {
+    headers: {
+      apikey: secretKey,
+      Authorization: `Bearer ${secretKey}`,
+    },
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`GET payments by booking_id -> ${response.status}: ${body}`);
+  }
+
+  const rows = JSON.parse(body) as SupabasePaymentRow[];
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+export async function waitForSupabasePaymentStatus(
+  bookingId: string,
+  expectedStatuses: string | string[],
+  timeoutMs = 20_000,
+): Promise<SupabasePaymentRow> {
+  const expected = Array.isArray(expectedStatuses) ? expectedStatuses : [expectedStatuses];
+  const deadline = Date.now() + timeoutMs;
+  let lastRow: SupabasePaymentRow | null = null;
+
+  while (Date.now() < deadline) {
+    lastRow = await getSupabasePaymentRowByBookingId(bookingId);
+    if (lastRow && expected.includes(lastRow.status)) return lastRow;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Timed out waiting for Supabase payment status ${expected.join(', ')} for booking ${bookingId}. Last row: ${JSON.stringify(lastRow)}`);
 }
 
 export async function mutateTestBooking(input: {
