@@ -18,9 +18,14 @@ import type {
 } from '../types.js';
 
 export interface SentEmail {
+  id: string;
+  from: string;
   to: string;
   subject: string;
   kind: string;
+  replyTo: string;
+  text: string;
+  html?: string;
   body: string;
   sentAt: string;
 }

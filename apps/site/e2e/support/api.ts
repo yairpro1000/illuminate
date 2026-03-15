@@ -57,6 +57,17 @@ export interface PublicSlot {
   end: string;
 }
 
+export interface CapturedEmailSummary {
+  id: string;
+  to: string;
+  subject: string;
+  kind: string;
+  sentAt: string;
+  has_html: boolean;
+  preview_url: string;
+  preview_html_url: string;
+}
+
 export function makeScenarioEmail(prefix: string): string {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   return `${prefix}-${suffix}@example.test`;
@@ -257,6 +268,26 @@ export async function ensureAdminServiceMode(key: ServiceKey, mode: string): Pro
 
 export async function ensureEmailMock(): Promise<void> {
   await ensureAdminServiceMode('email', 'mock');
+}
+
+export async function ensureAntiBotMock(): Promise<void> {
+  await ensureAdminServiceMode('antibot', 'mock');
+}
+
+export async function listCapturedEmails(): Promise<CapturedEmailSummary[]> {
+  const data = await apiJson<{ emails: CapturedEmailSummary[] }>('/api/__dev/emails');
+  return Array.isArray(data.emails) ? data.emails : [];
+}
+
+export async function waitForCapturedEmail(to: string, kind?: string): Promise<CapturedEmailSummary> {
+  let lastEmails: CapturedEmailSummary[] = [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    lastEmails = await listCapturedEmails();
+    const match = lastEmails.find((email) => email.to === to && (!kind || email.kind === kind));
+    if (match) return match;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`Could not find captured email for ${to}${kind ? ` (${kind})` : ''}. Last seen: ${JSON.stringify(lastEmails)}`);
 }
 
 export async function waitForBookingArtifacts(email: string): Promise<BookingArtifacts> {

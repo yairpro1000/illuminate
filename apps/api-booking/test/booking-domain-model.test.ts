@@ -559,6 +559,9 @@ describe('booking domain model', () => {
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'VERIFY_STRIPE_PAYMENT',
     );
     expect(verifyEffect).toBeTruthy();
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(payment).toBeTruthy();
+    await ctx.providers.repository.updatePayment(payment!.id, { status: 'FAILED' });
     verifyEffect!.expires_at = '2000-01-01T00:00:00.000Z';
 
     await runSideEffectsOutbox({ ...ctx, triggerSource: 'manual' } as any);
@@ -570,11 +573,12 @@ describe('booking domain model', () => {
     );
     expect(expiryEmail).toBeTruthy();
     expect(expiryEmail?.subject).toBe('Your booking expired');
-    expect(expiryEmail?.body).toContain('expired because it was not completed in time');
-    expect(expiryEmail?.body).toContain('The slot has been released.');
-    expect(expiryEmail?.body).toContain("It's ok, you can:");
-    expect(expiryEmail?.body).toContain('Book again: https://example.com/sessions.html');
-    expect(expiryEmail?.body).not.toMatch(/cancelled/i);
+    expect(expiryEmail?.text).toContain('expired because it was not completed in time');
+    expect(expiryEmail?.text).toContain('The slot has been released.');
+    expect(expiryEmail?.text).toContain('Book again: https://example.com/sessions.html');
+    expect(expiryEmail?.html).toContain("It's ok, you can:");
+    expect(expiryEmail?.html).toContain('Book again');
+    expect(expiryEmail?.text).not.toMatch(/cancelled/i);
 
     const rescheduleAttempt = await rescheduleBooking(expired!, {
       newStart: '2026-03-24T10:00:00.000Z',

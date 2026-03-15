@@ -3,8 +3,22 @@ import { EmailProviderError, type ConfirmationEmailOptions } from './interface.j
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
 
-const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
-const EMAIL_REPLY_TO = 'hello@yairb.ch';
+export interface EmailTransportPayload {
+  from: string;
+  to: string;
+  subject: string;
+  replyTo: string;
+  text: string;
+  html?: string;
+}
+
+export interface BuiltEmailMessage {
+  kind: string;
+  payload: EmailTransportPayload;
+}
+
+export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
+export const EMAIL_REPLY_TO = 'hello@yairb.ch';
 const CONTACT_PAGE_URL = 'https://letsilluminate.co/contact.html';
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
@@ -405,6 +419,340 @@ function eventConfirmationHtml(
   return htmlLayout(body);
 }
 
+function buildEmailMessage(
+  kind: string,
+  to: string,
+  subject: string,
+  text: string,
+  options?: { replyTo?: string; html?: string },
+): BuiltEmailMessage {
+  return {
+    kind,
+    payload: {
+      from: EMAIL_FROM,
+      to,
+      subject,
+      replyTo: options?.replyTo ?? EMAIL_REPLY_TO,
+      text,
+      ...(options?.html ? { html: options.html } : {}),
+    },
+  };
+}
+
+export function buildContactMessageEmail(
+  name: string,
+  email: string,
+  message: string,
+  topic?: string | null,
+): BuiltEmailMessage {
+  const text = [
+    `Name: ${name}`,
+    `Email: ${email}`,
+    topic ? `Topic: ${topic}` : null,
+    '',
+    `Message:\n${message}`,
+  ].filter(Boolean).join('\n');
+
+  return buildEmailMessage(
+    'contact_message',
+    'hello@yairb.ch',
+    `New message from ${name}`,
+    text,
+    { replyTo: email },
+  );
+}
+
+export function buildBookingConfirmRequestEmail(
+  booking: Booking,
+  confirmUrl: string,
+  confirmationWindowMinutes: number,
+): BuiltEmailMessage {
+  const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your session booking.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+  const rows: Array<[string, string]> = [
+    ['Session', esc(sessionLabel(booking))],
+    ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+    ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+    ['Location', esc(booking.address_line ?? '')],
+  ];
+  const body = `
+    <p>Hi ${esc(clientName(booking))},</p>
+    <p>Please confirm your session booking.</p>
+    ${detailBlock(rows)}
+    <p style="font-size:14px;color:#88abb5;">The slot is kindly held for you for the next <strong style="color:#4fc3d8;">${esc(windowLabel)}</strong> before expiring.</p>
+    <p><a class="btn" href="${esc(confirmUrl)}">Confirm booking</a></p>
+  `;
+
+  return buildEmailMessage(
+    'booking_confirm_request',
+    clientEmail(booking),
+    'Please confirm your booking – ILLUMINATE',
+    text,
+    { html: htmlLayout(body) },
+  );
+}
+
+export function buildBookingPaymentDueEmail(
+  booking: Booking,
+  payUrl: string,
+  manageUrl: string,
+  paymentDueAt: string,
+): BuiltEmailMessage {
+  const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
+  const text = `Hi ${clientName(booking)},\n\nYour session booking has been received, and payment is still pending for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nPlease complete payment by ${paymentDueLabel}, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
+  const rows: Array<[string, string]> = [
+    ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+    ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+    ['Location', esc(booking.address_line ?? '')],
+    ['Payment due', esc(paymentDueLabel)],
+  ];
+  const body = `
+    <p>Hi ${esc(clientName(booking))},</p>
+    <p>Your session booking has been received, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
+    ${detailBlock(rows)}
+    <p style="font-size:14px;color:#88abb5;">Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>, which is 24 hours before your session.</p>
+    <p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>
+    <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
+  `;
+
+  return buildEmailMessage(
+    'booking_payment_due',
+    clientEmail(booking),
+    'Action needed: complete payment before your session',
+    text,
+    { html: htmlLayout(body) },
+  );
+}
+
+export function buildBookingConfirmationEmail(
+  booking: Booking,
+  manageUrl: string,
+  invoiceUrl: string | null,
+  payUrl?: string | null,
+  policyText = '',
+  options: ConfirmationEmailOptions = {},
+): BuiltEmailMessage {
+  return buildEmailMessage(
+    'booking_confirmation',
+    clientEmail(booking),
+    bookingConfirmationSubject(booking, options),
+    bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText, options),
+    { html: bookingConfirmationHtml(booking, manageUrl, invoiceUrl, payUrl, policyText, options) },
+  );
+}
+
+export function buildBookingPaymentReminderEmail(booking: Booking, payUrl: string): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nPayment reminder for your session on ${fmt(booking.starts_at)}.\n\nPay: ${payUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [['Session', esc(sessionLabel(booking))], ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))]],
+    ['Payment is due for your upcoming session.'],
+    'Pay now',
+    payUrl,
+  );
+  return buildEmailMessage(
+    'booking_payment_reminder',
+    clientEmail(booking),
+    'Reminder: payment due for your session',
+    text,
+    { html },
+  );
+}
+
+export function buildBookingReminder24hEmail(booking: Booking, manageUrl: string): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nReminder: your session is tomorrow at ${fmt(booking.starts_at)}.\n\nManage: ${manageUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [
+      ['Session', esc(sessionLabel(booking))],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ],
+    ['Your session is tomorrow.'],
+    'Manage booking',
+    manageUrl,
+  );
+  return buildEmailMessage(
+    'booking_reminder_24h',
+    clientEmail(booking),
+    'Your session is tomorrow – ILLUMINATE',
+    text,
+    { html },
+  );
+}
+
+export function buildBookingFollowupEmail(booking: Booking, confirmUrl: string): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nYour booking is still waiting for confirmation.\n\nConfirm: ${confirmUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    null,
+    ['Your booking is still waiting for your email confirmation.'],
+    'Confirm booking',
+    confirmUrl,
+  );
+  return buildEmailMessage(
+    'booking_followup',
+    clientEmail(booking),
+    'Did you mean to book a session?',
+    text,
+    { html },
+  );
+}
+
+export function buildBookingCancellationEmail(
+  booking: Booking,
+  startNewBookingUrl?: string | null,
+): BuiltEmailMessage {
+  const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
+  const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [
+      ['Session', esc(sessionLabel(booking))],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ],
+    ['Your session has been cancelled.'],
+    startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
+    startNewBookingUrl ?? 'https://yairb.ch',
+  );
+  return buildEmailMessage(
+    'booking_cancellation',
+    clientEmail(booking),
+    'Your booking has been cancelled',
+    text,
+    { html },
+  );
+}
+
+export function buildBookingExpiredEmail(
+  booking: Booking,
+  startNewBookingUrl?: string | null,
+): BuiltEmailMessage {
+  const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
+  const text = `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [
+      ['Session', esc(sessionLabel(booking))],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ],
+    [
+      'Your booking request expired because it was not confirmed or paid in time.',
+      'The slot has been released.',
+    ],
+    startNewBookingUrl ? 'Book again' : 'Back to homepage',
+    startNewBookingUrl ?? 'https://yairb.ch',
+    [],
+    startNewBookingUrl ? 'It\'s ok, you can:' : undefined,
+  );
+  return buildEmailMessage(
+    'booking_expired',
+    clientEmail(booking),
+    'Your booking expired',
+    text,
+    { html },
+  );
+}
+
+export function buildEventConfirmRequestEmail(
+  booking: Booking,
+  event: Event,
+  confirmUrl: string,
+): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+    ['Please confirm your spot.'],
+    'Confirm my spot',
+    confirmUrl,
+  );
+  return buildEmailMessage(
+    'event_confirm_request',
+    clientEmail(booking),
+    `Please confirm your spot – ${event.title}`,
+    text,
+    { html },
+  );
+}
+
+export function buildEventConfirmationEmail(
+  booking: Booking,
+  event: Event,
+  manageUrl: string,
+  invoiceUrl: string | null,
+  payUrl?: string | null,
+  policyText = '',
+  options: ConfirmationEmailOptions = {},
+): BuiltEmailMessage {
+  const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+  const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
+  const paymentDueLabel = options.paymentDueAt
+    ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
+    : null;
+  const text = paymentSettled
+    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
+    : options.paymentSettled === false
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
+      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
+  return buildEmailMessage(
+    'event_confirmation',
+    clientEmail(booking),
+    paymentSettled ? `You're confirmed and paid – ${event.title}` : `You're confirmed – ${event.title}`,
+    text,
+    { html: eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options) },
+  );
+}
+
+export function buildEventReminder24hEmail(
+  booking: Booking,
+  event: Event,
+  manageUrl: string,
+): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.\n\nManage: ${manageUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+    ['Your event is tomorrow.'],
+    'Manage booking',
+    manageUrl,
+  );
+  return buildEmailMessage(
+    'event_reminder_24h',
+    clientEmail(booking),
+    `Tomorrow: ${event.title} – ILLUMINATE`,
+    text,
+    { html },
+  );
+}
+
+export function buildEventFollowupEmail(
+  booking: Booking,
+  event: Event,
+  actionUrl: string,
+): BuiltEmailMessage {
+  const text = `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is still pending.\n\nContinue: ${actionUrl}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))]],
+    ['Your booking is still pending.'],
+    'Continue',
+    actionUrl,
+  );
+  return buildEmailMessage(
+    'event_followup',
+    clientEmail(booking),
+    `Still interested in ${event.title}?`,
+    text,
+    { html },
+  );
+}
+
 export class ResendEmailProvider implements IEmailProvider {
   private readonly resend: Resend;
 
@@ -415,23 +763,10 @@ export class ResendEmailProvider implements IEmailProvider {
     this.resend = new Resend(apiKey);
   }
 
-  private async sendEmail(
-    to: string,
-    kind: string,
-    subject: string,
-    text: string,
-    replyTo?: string,
-    html?: string,
-  ): Promise<SendResult> {
+  private async sendEmail(message: BuiltEmailMessage): Promise<SendResult> {
+    const { kind, payload } = message;
+    const { to, subject, text, html, replyTo } = payload;
     try {
-      const payload: Record<string, unknown> = {
-        from: EMAIL_FROM,
-        to,
-        subject,
-        replyTo: replyTo ?? EMAIL_REPLY_TO,
-        text,
-        ...(html ? { html } : {}),
-      };
       console.info('[email:resend] send_attempt', JSON.stringify({
         provider: 'resend',
         kind,
@@ -496,34 +831,11 @@ export class ResendEmailProvider implements IEmailProvider {
   }
 
   async sendContactMessage(name: string, email: string, message: string, topic?: string | null): Promise<SendResult> {
-    const body = [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      topic ? `Topic: ${topic}` : null,
-      '',
-      `Message:\n${message}`,
-    ].filter(Boolean).join('\n');
-
-    return this.sendEmail('hello@yairb.ch', 'contact_message', `New message from ${name}`, body, email);
+    return this.sendEmail(buildContactMessageEmail(name, email, message, topic));
   }
 
   async sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult> {
-    const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
-    const text = `Hi ${clientName(booking)},\n\nPlease confirm your session booking.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
-    const rows: Array<[string, string]> = [
-      ['Session', esc(sessionLabel(booking))],
-      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
-      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
-      ['Location', esc(booking.address_line ?? '')],
-    ];
-    const body = `
-      <p>Hi ${esc(clientName(booking))},</p>
-      <p>Please confirm your session booking.</p>
-      ${detailBlock(rows)}
-      <p style="font-size:14px;color:#88abb5;">The slot is kindly held for you for the next <strong style="color:#4fc3d8;">${esc(windowLabel)}</strong> before expiring.</p>
-      <p><a class="btn" href="${esc(confirmUrl)}">Confirm booking</a></p>
-    `;
-    return this.sendEmail(clientEmail(booking), 'booking_confirm_request', 'Please confirm your booking – ILLUMINATE', text, undefined, htmlLayout(body));
+    return this.sendEmail(buildBookingConfirmRequestEmail(booking, confirmUrl, confirmationWindowMinutes));
   }
 
   async sendBookingPaymentDue(
@@ -532,23 +844,7 @@ export class ResendEmailProvider implements IEmailProvider {
     manageUrl: string,
     paymentDueAt: string,
   ): Promise<SendResult> {
-    const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
-    const text = `Hi ${clientName(booking)},\n\nYour session booking has been received, and payment is still pending for ${sessionLabel(booking)}.\n\nSession: ${sessionLabel(booking)}\nDate: ${fmtBodyDate(booking.starts_at, booking.timezone)}\nTime: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}\nLocation: ${booking.address_line}\n\nPlease complete payment by ${paymentDueLabel}, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`;
-    const rows: Array<[string, string]> = [
-      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
-      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
-      ['Location', esc(booking.address_line ?? '')],
-      ['Payment due', esc(paymentDueLabel)],
-    ];
-    const body = `
-      <p>Hi ${esc(clientName(booking))},</p>
-      <p>Your session booking has been received, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
-      ${detailBlock(rows)}
-      <p style="font-size:14px;color:#88abb5;">Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>, which is 24 hours before your session.</p>
-      <p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>
-      <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
-    `;
-    return this.sendEmail(clientEmail(booking), 'booking_payment_due', 'Action needed: complete payment before your session', text, undefined, htmlLayout(body));
+    return this.sendEmail(buildBookingPaymentDueEmail(booking, payUrl, manageUrl, paymentDueAt));
   }
 
   async sendBookingConfirmation(
@@ -559,108 +855,31 @@ export class ResendEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    return this.sendEmail(
-      clientEmail(booking),
-      'booking_confirmation',
-      bookingConfirmationSubject(booking, options),
-      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText, options),
-      undefined,
-      bookingConfirmationHtml(booking, manageUrl, invoiceUrl, payUrl, policyText, options),
-    );
+    return this.sendEmail(buildBookingConfirmationEmail(booking, manageUrl, invoiceUrl, payUrl, policyText, options));
   }
 
   async sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nPayment reminder for your session on ${fmt(booking.starts_at)}.\n\nPay: ${payUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Session', esc(sessionLabel(booking))], ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))]],
-      ['Payment is due for your upcoming session.'],
-      'Pay now',
-      payUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_payment_reminder', 'Reminder: payment due for your session', text, undefined, html);
+    return this.sendEmail(buildBookingPaymentReminderEmail(booking, payUrl));
   }
 
   async sendBookingReminder24h(booking: Booking, manageUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nReminder: your session is tomorrow at ${fmt(booking.starts_at)}.\n\nManage: ${manageUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [
-        ['Session', esc(sessionLabel(booking))],
-        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
-        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
-        ['Location', esc(booking.address_line ?? '')],
-      ],
-      ['Your session is tomorrow.'],
-      'Manage booking',
-      manageUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_reminder_24h', 'Your session is tomorrow – ILLUMINATE', text, undefined, html);
+    return this.sendEmail(buildBookingReminder24hEmail(booking, manageUrl));
   }
 
   async sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYour booking is still waiting for confirmation.\n\nConfirm: ${confirmUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      null,
-      ['Your booking is still waiting for your email confirmation.'],
-      'Confirm booking',
-      confirmUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_followup', 'Did you mean to book a session?', text, undefined, html);
+    return this.sendEmail(buildBookingFollowupEmail(booking, confirmUrl));
   }
 
   async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
-    const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [
-        ['Session', esc(sessionLabel(booking))],
-        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
-        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
-        ['Location', esc(booking.address_line ?? '')],
-      ],
-      ['Your session has been cancelled.'],
-      startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
-      startNewBookingUrl ?? 'https://yairb.ch',
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_cancellation', 'Your booking has been cancelled', text, undefined, html);
+    return this.sendEmail(buildBookingCancellationEmail(booking, startNewBookingUrl));
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
-    const text = `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [
-        ['Session', esc(sessionLabel(booking))],
-        ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
-        ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
-        ['Location', esc(booking.address_line ?? '')],
-      ],
-      [
-        'Your booking request expired because it was not confirmed or paid in time.',
-        'The slot has been released.',
-      ],
-      startNewBookingUrl ? 'Book again' : 'Back to homepage',
-      startNewBookingUrl ?? 'https://yairb.ch',
-      [],
-      startNewBookingUrl ? 'It\'s ok, you can:' : undefined,
-    );
-    return this.sendEmail(clientEmail(booking), 'booking_expired', 'Your booking expired', text, undefined, html);
+    return this.sendEmail(buildBookingExpiredEmail(booking, startNewBookingUrl));
   }
 
   async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
-      ['Please confirm your spot.'],
-      'Confirm my spot',
-      confirmUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'event_confirm_request', `Please confirm your spot – ${event.title}`, text, undefined, html);
+    return this.sendEmail(buildEventConfirmRequestEmail(booking, event, confirmUrl));
   }
 
   async sendEventConfirmation(
@@ -672,48 +891,14 @@ export class ResendEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
-    const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
-    const paymentDueLabel = options.paymentDueAt
-      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
-      : null;
-    const text = paymentSettled
-      ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
-      : options.paymentSettled === false
-        ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
-        : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
-    const html = eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options);
-    return this.sendEmail(
-      clientEmail(booking),
-      'event_confirmation',
-      paymentSettled ? `You're confirmed and paid – ${event.title}` : `You're confirmed – ${event.title}`,
-      text,
-      undefined,
-      html,
-    );
+    return this.sendEmail(buildEventConfirmationEmail(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options));
   }
 
   async sendEventReminder24h(booking: Booking, event: Event, manageUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.\n\nManage: ${manageUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
-      ['Your event is tomorrow.'],
-      'Manage booking',
-      manageUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'event_reminder_24h', `Tomorrow: ${event.title} – ILLUMINATE`, text, undefined, html);
+    return this.sendEmail(buildEventReminder24hEmail(booking, event, manageUrl));
   }
 
   async sendEventFollowup(booking: Booking, event: Event, actionUrl: string): Promise<SendResult> {
-    const text = `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is still pending.\n\nContinue: ${actionUrl}`;
-    const html = simpleHtml(
-      `Hi ${clientName(booking)}`,
-      [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))]],
-      ['Your booking is still pending.'],
-      'Continue',
-      actionUrl,
-    );
-    return this.sendEmail(clientEmail(booking), 'event_followup', `Still interested in ${event.title}?`, text, undefined, html);
+    return this.sendEmail(buildEventFollowupEmail(booking, event, actionUrl));
   }
 }

@@ -45,6 +45,8 @@ import {
 import {
   handleSimulatePayment,
   handleDevEmails,
+  handleDevEmailDetail,
+  handleDevEmailHtml,
   handleDevFailures,
   handleDevBookings,
   handleTestBookingArtifacts,
@@ -148,6 +150,8 @@ const ROUTES: Route[] = [
 
   route('POST', '/api/__dev/simulate-payment', handleSimulatePayment),
   route('GET', '/api/__dev/emails', handleDevEmails),
+  route('GET', '/api/__dev/emails/:emailId', handleDevEmailDetail),
+  route('GET', '/api/__dev/emails/:emailId/html', handleDevEmailHtml),
   route('GET', '/api/__dev/failures', handleDevFailures),
   route('GET', '/api/__dev/bookings', handleDevBookings),
   route('GET', '/api/__test/booking-artifacts', handleTestBookingArtifacts),

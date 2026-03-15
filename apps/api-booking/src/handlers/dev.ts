@@ -22,10 +22,29 @@ function guardMockPayments(ctx: AppContext): void {
   }
 }
 
-function guardMockEmail(ctx: AppContext): void {
-  if (ctx.env.EMAIL_MODE !== 'mock') {
-    throw badRequest('This dev endpoint is only available when email is mocked');
+function guardCapturedEmailPreview(ctx: AppContext): void {
+  if (ctx.env.EMAIL_MODE === 'resend') {
+    throw badRequest('This dev endpoint is only available when email delivery is captured instead of sent to Resend');
   }
+}
+
+function getCapturedEmailOrThrow(emailId: string, ctx: AppContext) {
+  const email = mockState.sentEmails.find((entry) => entry.id === emailId);
+  if (!email) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'dev_email_preview_request_rejected',
+      message: 'Rejected dev email preview request because the captured email was not found',
+      context: {
+        email_id: emailId,
+        email_mode: ctx.env.EMAIL_MODE,
+        branch_taken: 'deny_missing_captured_email',
+        deny_reason: 'captured_email_not_found',
+      },
+    });
+    throw notFound('Captured email not found');
+  }
+  return email;
 }
 
 function normalizeExampleTestEmail(raw: string | null): string | null {
@@ -185,16 +204,128 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
 }
 
 // GET /api/__dev/emails
-export async function handleDevEmails(_request: Request, ctx: AppContext): Promise<Response> {
+export async function handleDevEmails(request: Request, ctx: AppContext): Promise<Response> {
   try {
-    guardMockEmail(ctx);
+    const requestOrigin = new URL(request.url).origin;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_emails_list_started',
+      message: 'Started listing captured emails for the dev preview surface',
+      context: {
+        email_mode: ctx.env.EMAIL_MODE,
+        branch_taken: 'list_captured_emails',
+      },
+    });
+    guardCapturedEmailPreview(ctx);
     const emails = mockState.sentEmails.slice(-50).reverse().map((email) => ({
+      id: email.id,
       to: email.to,
       subject: email.subject,
       kind: email.kind,
       sentAt: email.sentAt,
+      has_html: Boolean(email.html),
+      preview_url: `${ctx.env.SITE_URL}/dev-emails.html?email_id=${encodeURIComponent(email.id)}`,
+      preview_html_url: `${requestOrigin}/api/__dev/emails/${encodeURIComponent(email.id)}/html`,
     }));
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_emails_list_completed',
+      message: 'Completed listing captured emails for the dev preview surface',
+      context: {
+        email_mode: ctx.env.EMAIL_MODE,
+        email_count: emails.length,
+        branch_taken: 'return_captured_emails',
+      },
+    });
     return ok({ emails });
+  } catch (err) {
+    throw err;
+  }
+}
+
+// GET /api/__dev/emails/:emailId
+export async function handleDevEmailDetail(request: Request, ctx: AppContext, params: Record<string, string>): Promise<Response> {
+  try {
+    const requestOrigin = new URL(request.url).origin;
+    const emailId = params.emailId ?? '';
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_email_detail_started',
+      message: 'Started loading a captured email payload for dev and test inspection',
+      context: {
+        email_id: emailId,
+        email_mode: ctx.env.EMAIL_MODE,
+        branch_taken: 'load_captured_email_detail',
+      },
+    });
+    guardCapturedEmailPreview(ctx);
+    const email = getCapturedEmailOrThrow(emailId, ctx);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_email_detail_completed',
+      message: 'Completed loading a captured email payload for dev and test inspection',
+      context: {
+        email_id: emailId,
+        email_mode: ctx.env.EMAIL_MODE,
+        has_html: Boolean(email.html),
+        branch_taken: 'return_captured_email_detail',
+      },
+    });
+    return ok({
+      email: {
+        id: email.id,
+        from: email.from,
+        to: email.to,
+        subject: email.subject,
+        kind: email.kind,
+        replyTo: email.replyTo,
+        text: email.text,
+        html: email.html ?? null,
+        sentAt: email.sentAt,
+        preview_html_url: `${requestOrigin}/api/__dev/emails/${encodeURIComponent(email.id)}/html`,
+      },
+    });
+  } catch (err) {
+    throw err;
+  }
+}
+
+// GET /api/__dev/emails/:emailId/html
+export async function handleDevEmailHtml(_request: Request, ctx: AppContext, params: Record<string, string>): Promise<Response> {
+  try {
+    const emailId = params.emailId ?? '';
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_email_html_started',
+      message: 'Started rendering a captured email payload for browser preview',
+      context: {
+        email_id: emailId,
+        email_mode: ctx.env.EMAIL_MODE,
+        branch_taken: 'render_captured_email_html',
+      },
+    });
+    guardCapturedEmailPreview(ctx);
+    const email = getCapturedEmailOrThrow(emailId, ctx);
+    const body = email.html ?? email.text;
+    const contentType = email.html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'dev_email_html_completed',
+      message: 'Completed rendering a captured email payload for browser preview',
+      context: {
+        email_id: emailId,
+        email_mode: ctx.env.EMAIL_MODE,
+        content_type: contentType,
+        has_html: Boolean(email.html),
+        branch_taken: email.html ? 'return_captured_email_html' : 'return_captured_email_text_fallback',
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': contentType,
+      },
+    });
   } catch (err) {
     throw err;
   }

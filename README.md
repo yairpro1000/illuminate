@@ -1,62 +1,30 @@
-# Monorepo Structure
+# ILLUMINATE
 
-This repo now uses explicit business-domain app names:
+This repository contains the ILLUMINATE public website, the organizer/admin frontend, the shared booking backend, and adjacent apps that remain in the monorepo.
 
-- `apps/site`: public booking frontend at `letsilluminate.co`
+The current canonical documentation set in this pass is scoped to the website, booking system, and admin only.
+
+## Main Apps
+
+- `apps/site`: public site at `letsilluminate.co`
 - `apps/admin`: organizer/admin frontend at `admin.letsilluminate.co`
-- `apps/pa`: PA frontend at `pa.letsilluminate.co`
-- `apps/api-booking`: shared booking + organizer/admin API worker
-- `apps/api-pa`: PA-only API worker
-- `apps/shared`: shared cross-app code such as observability helpers
+- `apps/api-booking`: shared booking and admin Cloudflare Worker
 
-## API Ownership
+PA apps still exist in the repo, but they are intentionally out of scope for the current docs refresh.
 
-`apps/api-booking` owns:
+## Canonical Docs
 
-- `letsilluminate.co/api/*`
-- `admin.letsilluminate.co/api/*`
+- requirements: [docs/requirements.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/requirements.md)
+- technical companion: [docs/technical_companion.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/technical_companion.md)
+- frozen user scenarios: [docs/expected_user_scenarios_freeze_illuminate_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/expected_user_scenarios_freeze_illuminate_2026-03-15.md)
+- pay-later refinement: [docs/pay_later_refined_flow_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/pay_later_refined_flow_2026-03-15.md)
+- live schema snapshot: [docs/public_schema_snapshot_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-15.sql)
+- editor-ready DDL: [docs/public_schema_editor_ddl_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-15.sql)
+- manual testing companion: [docs/test-plans/manual_testing_companion.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/manual_testing_companion.md)
+- E2E UI matrix: [docs/test-plans/e2e_ui_test_matrix.xlsx](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/e2e_ui_test_matrix.xlsx)
 
-Its surface includes:
+## Notes
 
-- public booking/session/event/contact routes
-- organizer/admin booking routes
-- Stripe webhook
-- cron/manual booking jobs
-- explicit dev-only mock endpoints under `/api/__dev/*`
-
-`apps/api-pa` owns:
-
-- `pa.letsilluminate.co/api/*`
-
-Its surface is PA-only:
-
-- list management
-- parse/translate/commit/undo flows
-- PA email/speech helpers
-- PA observability ingestion
-
-There is intentionally no second backend serving the public booking or organizer/admin API.
-
-## Dev Stage
-
-The current repo target is coherence and testability, not production hardening.
-
-- Booking persistence is live against Supabase by default in `apps/api-booking`.
-- Payments are mock-first.
-- Anti-bot is mock-first.
-- Local booking-worker dev keeps email/calendar/payments/antibot mocked unless you explicitly override them.
-- Real email/calendar integrations may still exist behind explicit provider switches, but they are not the default architecture for this stage.
-
-## Local Dev Ports
-
-- `apps/api-booking`: `8787`
-- `apps/api-pa`: `8788`
-- `apps/pa`: `5173`
-
-## Migrations and Docs
-
-- Booking/admin schema migrations: `apps/api-booking/migrations/`
-- PA-specific migrations: `apps/api-pa/migrations/`
-- Public and admin API contract: `docs/api_contracts.md`
-- Deployment ownership: `docs/deployment.md`
-- Shared observability schema: `docs/shared_schema.md`
+- The full schema snapshot is the literal current Supabase `public` dump.
+- The shorter DDL companion is the authored editor reference and normalizes value sets to `text` plus `CHECK` constraints.
+- Superseded documentation is archived under `docs/old/`.

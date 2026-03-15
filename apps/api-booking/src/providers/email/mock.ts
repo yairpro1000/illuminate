@@ -1,178 +1,70 @@
 import { mockState } from '../mock-state.js';
 import type { ConfirmationEmailOptions, IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
-
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleString('en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
-  });
-}
-
-function clientName(booking: Booking): string {
-  return [booking.client_first_name ?? '', booking.client_last_name ?? ''].join(' ').trim() || 'there';
-}
-
-function clientEmail(booking: Booking): string {
-  return booking.client_email ?? 'unknown@example.com';
-}
-
-function fmtSubjectDate(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    timeZone: timezone,
-  }).format(new Date(iso));
-}
-
-function fmtBodyDate(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: timezone,
-  }).format(new Date(iso));
-}
-
-function fmtBodyTimeRange(startIso: string, endIso: string, timezone: string): string {
-  const timeFmt = new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timezone,
-  });
-  const start = timeFmt.format(new Date(startIso));
-  const end = timeFmt.format(new Date(endIso));
-  return `${start}–${end} (${timezone})`;
-}
-
-function fmtBodyDateTime(iso: string, timezone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timezone,
-  }).format(new Date(iso));
-}
-
-function sessionLabel(booking: Booking): string {
-  return booking.session_type_title?.trim() || '1:1 Session';
-}
-
-function bookingConfirmationSubject(
-  booking: Booking,
-  options: ConfirmationEmailOptions = {},
-): string {
-  return options.paymentSettled === false
-    ? `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`
-    : `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
-}
-
-function bookingConfirmationBody(
-  booking: Booking,
-  manageUrl: string,
-  invoiceUrl: string | null,
-  payUrl: string | null | undefined,
-  policyText: string,
-  options: ConfirmationEmailOptions = {},
-): string {
-  const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
-  if (isPendingPayment) {
-    const paymentDueLabel = options.paymentDueAt
-      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
-      : null;
-    const lines = [
-      `Hi ${clientName(booking)},`,
-      '',
-      `Your session booking has been received, and payment is still pending for ${sessionLabel(booking)}.`,
-      '',
-      `Session: ${sessionLabel(booking)}`,
-      `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
-      `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
-      `Location: ${booking.address_line}`,
-      paymentDueLabel ? `Payment due: ${paymentDueLabel}` : null,
-      invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
-      '',
-      paymentDueLabel
-        ? `Please complete payment by ${paymentDueLabel}, which is 24 hours before your session.`
-        : 'Please complete payment before your session.',
-      '',
-      payUrl ? `Complete payment: ${payUrl}` : null,
-      `Manage booking: ${manageUrl}`,
-    ];
-    return lines.filter((line): line is string => line !== null).join('\n');
-  }
-
-  const lines = [
-    `Hi ${clientName(booking)},`,
-    '',
-    options.paymentSettled === false
-      ? 'Your session is confirmed.'
-      : 'Your session is confirmed and payment has been settled.',
-    '',
-    `Session: ${sessionLabel(booking)}`,
-    `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
-    `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
-    `Location: ${booking.address_line}`,
-    booking.maps_url ? `Map: ${booking.maps_url}` : null,
-    booking.meeting_link ? `Join Google Meet: ${booking.meeting_link}` : null,
-    '',
-    'A calendar invitation has been sent to you.',
-    "If you don't see it, please check your spam folder.",
-    '',
-    'Need to reschedule or cancel?',
-    `Manage booking: ${manageUrl}`,
-    payUrl ? `Complete payment: ${payUrl}` : null,
-    invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
-    '',
-    policyText,
-    '',
-    'Looking forward to meeting you,',
-    'Yair',
-  ];
-
-  return lines.filter((line): line is string => line !== null).join('\n');
-}
+import {
+  buildBookingCancellationEmail,
+  buildBookingConfirmationEmail,
+  buildBookingConfirmRequestEmail,
+  buildBookingExpiredEmail,
+  buildBookingFollowupEmail,
+  buildBookingPaymentDueEmail,
+  buildBookingPaymentReminderEmail,
+  buildBookingReminder24hEmail,
+  buildContactMessageEmail,
+  buildEventConfirmationEmail,
+  buildEventConfirmRequestEmail,
+  buildEventFollowupEmail,
+  buildEventReminder24hEmail,
+  type BuiltEmailMessage,
+} from './resend.js';
 
 export class MockEmailProvider implements IEmailProvider {
-  private send(to: string, kind: string, subject: string, body: string): SendResult {
+  private send(message: BuiltEmailMessage): SendResult {
     const messageId = `mock_msg_${crypto.randomUUID()}`;
-    mockState.sentEmails.push({ to, subject, kind, body, sentAt: new Date().toISOString() });
-    console.log(`[email:mock] → ${to} | ${kind} | ${subject}`);
+    const { kind, payload } = message;
+    const sentAt = new Date().toISOString();
+
+    mockState.sentEmails.push({
+      id: messageId,
+      from: payload.from,
+      to: payload.to,
+      subject: payload.subject,
+      kind,
+      replyTo: payload.replyTo,
+      text: payload.text,
+      html: payload.html,
+      body: payload.text,
+      sentAt,
+    });
+
+    console.info('[email:mock] capture', JSON.stringify({
+      provider: 'mock',
+      kind,
+      to: payload.to,
+      subject: payload.subject,
+      has_html: Boolean(payload.html),
+      text_length: payload.text.length,
+      html_length: payload.html ? payload.html.length : 0,
+      branch_taken: 'capture_exact_provider_payload',
+      deny_reason: null,
+    }));
+
     return {
       messageId,
       debug: {
         provider: 'mock',
         kind,
-        preview: 'omitted',
+        preview: 'captured_exact_provider_payload',
       },
     };
   }
 
   async sendContactMessage(name: string, email: string, message: string, topic?: string | null): Promise<SendResult> {
-    const body = [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      topic ? `Topic: ${topic}` : null,
-      '',
-      `Message:\n${message}`,
-    ].filter(Boolean).join('\n');
-    return this.send('hello@yairb.ch', 'contact_message', `New message from ${name}`, body);
+    return this.send(buildContactMessageEmail(name, email, message, topic));
   }
 
   async sendBookingConfirmRequest(booking: Booking, confirmUrl: string, confirmationWindowMinutes: number): Promise<SendResult> {
-    const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
-    return this.send(
-      clientEmail(booking),
-      'booking_confirm_request',
-      'Please confirm your booking – ILLUMINATE',
-      `Hi ${clientName(booking)},\n\nPlease confirm your session booking.\n\nSession: ${booking.session_type_title ?? '1:1 Session'}\nDate & time: ${fmt(booking.starts_at)}\nAddress: ${booking.address_line}\n\nThe slot is kindly held for you for the next ${windowLabel} before expiring.\n\nConfirm:\n${confirmUrl}`,
-    );
+    return this.send(buildBookingConfirmRequestEmail(booking, confirmUrl, confirmationWindowMinutes));
   }
 
   async sendBookingPaymentDue(
@@ -181,13 +73,7 @@ export class MockEmailProvider implements IEmailProvider {
     manageUrl: string,
     paymentDueAt: string,
   ): Promise<SendResult> {
-    const paymentDueLabel = fmtBodyDateTime(paymentDueAt, booking.timezone);
-    return this.send(
-      clientEmail(booking),
-      'booking_payment_due',
-      'Action needed: complete payment before your session',
-      `Hi ${clientName(booking)},\n\nYour session booking has been received, and payment is still pending.\n\nDate & time: ${fmt(booking.starts_at)}\nPayment due: ${paymentDueLabel}\nPlease complete payment by then, which is 24 hours before your session.\n\nComplete payment: ${payUrl}\nManage booking: ${manageUrl}`,
-    );
+    return this.send(buildBookingPaymentDueEmail(booking, payUrl, manageUrl, paymentDueAt));
   }
 
   async sendBookingConfirmation(
@@ -198,68 +84,31 @@ export class MockEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'booking_confirmation',
-      bookingConfirmationSubject(booking, options),
-      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText, options),
-    );
+    return this.send(buildBookingConfirmationEmail(booking, manageUrl, invoiceUrl, payUrl, policyText, options));
   }
 
   async sendBookingPaymentReminder(booking: Booking, payUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'booking_payment_reminder',
-      'Reminder: payment due for your session',
-      `Hi ${clientName(booking)},\n\nPayment reminder for your session on ${fmt(booking.starts_at)}.\n\nPay: ${payUrl}`,
-    );
+    return this.send(buildBookingPaymentReminderEmail(booking, payUrl));
   }
 
   async sendBookingReminder24h(booking: Booking, manageUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'booking_reminder_24h',
-      'Your session is tomorrow – ILLUMINATE',
-      `Hi ${clientName(booking)},\n\nReminder: your session is tomorrow at ${fmt(booking.starts_at)}.\n\nManage: ${manageUrl}`,
-    );
+    return this.send(buildBookingReminder24hEmail(booking, manageUrl));
   }
 
   async sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'booking_followup',
-      'Did you mean to book a session?',
-      `Hi ${clientName(booking)},\n\nYour booking is still waiting for confirmation.\n\nConfirm: ${confirmUrl}`,
-    );
+    return this.send(buildBookingFollowupEmail(booking, confirmUrl));
   }
 
   async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
-    return this.send(
-      clientEmail(booking),
-      'booking_cancellation',
-      'Your booking has been cancelled',
-      `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`,
-    );
+    return this.send(buildBookingCancellationEmail(booking, startNewBookingUrl));
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    const restartLine = startNewBookingUrl ? `\nIt's ok, you can:\nBook again: ${startNewBookingUrl}` : '';
-    return this.send(
-      clientEmail(booking),
-      'booking_expired',
-      'Your booking expired',
-      `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`,
-    );
+    return this.send(buildBookingExpiredEmail(booking, startNewBookingUrl));
   }
 
   async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'event_confirm_request',
-      `Please confirm your spot – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`,
-    );
+    return this.send(buildEventConfirmRequestEmail(booking, event, confirmUrl));
   }
 
   async sendEventConfirmation(
@@ -271,40 +120,14 @@ export class MockEmailProvider implements IEmailProvider {
     policyText = '',
     options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
-    const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
-    const paymentDueLabel = options.paymentDueAt
-      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
-      : null;
-    return this.send(
-      clientEmail(booking),
-      'event_confirmation',
-      paymentSettled ? `You're confirmed and paid – ${event.title}` : `You're confirmed – ${event.title}`,
-      paymentSettled
-        ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
-        : options.paymentSettled === false
-          ? `${isPendingPayment
-            ? `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is confirmed, and payment is still pending.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
-            : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`}`
-          : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
-    );
+    return this.send(buildEventConfirmationEmail(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options));
   }
 
   async sendEventReminder24h(booking: Booking, event: Event, manageUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'event_reminder_24h',
-      `Tomorrow: ${event.title} – ILLUMINATE`,
-      `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.\n\nManage: ${manageUrl}`,
-    );
+    return this.send(buildEventReminder24hEmail(booking, event, manageUrl));
   }
 
   async sendEventFollowup(booking: Booking, event: Event, actionUrl: string): Promise<SendResult> {
-    return this.send(
-      clientEmail(booking),
-      'event_followup',
-      `Still interested in ${event.title}?`,
-      `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is still pending.\n\nContinue: ${actionUrl}`,
-    );
+    return this.send(buildEventFollowupEmail(booking, event, actionUrl));
   }
 }

@@ -12,6 +12,10 @@ export function isPaymentDueTrackedStatus(status: PaymentStatus | null | undefin
   return status === 'PENDING' || status === 'INVOICE_SENT';
 }
 
+export function isPaymentExpiryTrackedStatus(status: PaymentStatus | null | undefined): boolean {
+  return status === 'PENDING' || status === 'INVOICE_SENT' || status === 'FAILED';
+}
+
 export function isPaymentContinuableOnline(status: PaymentStatus | null | undefined): boolean {
   return status === 'PENDING'
     || status === 'INVOICE_SENT'

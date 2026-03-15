@@ -240,6 +240,49 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).not.toHaveBeenCalled();
   });
 
+  it('discards payment reminders once payment has failed but still lets expiry logic own the booking', async () => {
+    const effect = {
+      id: 'se-reminder-failed-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'SEND_PAYMENT_REMINDER',
+      entity: 'EMAIL',
+      status: 'PENDING',
+      expires_at: '2026-03-01T00:00:00.000Z',
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getPaymentByBookingId: vi.fn().mockResolvedValue({
+            id: 'p1',
+            booking_id: 'b1',
+            provider: 'stripe',
+            provider_payment_id: 'pi_failed_123',
+            amount: 150,
+            currency: 'CHF',
+            status: 'FAILED',
+            checkout_url: 'https://checkout.local',
+            invoice_url: null,
+            raw_payload: null,
+            paid_at: null,
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+          }),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendBookingPaymentReminder).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.deleteBookingSideEffect).toHaveBeenCalledWith('se-reminder-failed-1');
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).not.toHaveBeenCalled();
+  });
+
   it('dispatches stale recovered booking confirmation effects', async () => {
     const effect = {
       id: 'se-confirm-1',
@@ -294,7 +337,7 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendBookingExpired).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'b1' }),
-      'https://example.com/book.html',
+      'https://example.com/sessions.html',
     );
     expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
@@ -302,7 +345,7 @@ describe('jobs and side-effect dispatcher', () => {
     );
   });
 
-  it('keeps booking confirmation retryable when session invite is still missing', async () => {
+  it('sends pay-later confirmation even when the calendar invite is still missing', async () => {
     const effect = {
       id: 'se-confirm-missing-cal-1',
       booking_id: 'b1',
@@ -347,12 +390,11 @@ describe('jobs and side-effect dispatcher', () => {
 
     await runSideEffectsOutbox(ctx);
 
-    expect(ctx.providers.email.sendBookingConfirmation).not.toHaveBeenCalled();
+    expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_side_effect_id: 'se-confirm-missing-cal-1',
-        status: 'FAILED',
-        error_message: expect.stringContaining('session_calendar_invite_missing_before_confirmation_email'),
+        status: 'SUCCESS',
       }),
     );
   });

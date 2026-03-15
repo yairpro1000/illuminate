@@ -58,8 +58,78 @@
     }
 
     .email-list { display: flex; flex-direction: column; gap: 1rem; }
+    .email-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+    .email-sidebar { min-width: 0; }
+    .email-preview-shell {
+      background: #fff;
+      border-radius: .75rem;
+      border: 1px solid #e8e0d8;
+      overflow: hidden;
+      min-height: 70dvh;
+    }
+    .email-preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .85rem 1rem;
+      background: #faf7f4;
+      border-bottom: 1px solid #e8e0d8;
+    }
+    .email-preview-meta { min-width: 0; }
+    .email-preview-title {
+      margin: 0;
+      font-size: .95rem;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .email-preview-to {
+      margin: .2rem 0 0;
+      color: #888;
+      font-size: .82rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .email-preview-link {
+      color: oklch(35% 0.12 250);
+      font-size: .8rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .email-preview-frame {
+      display: block;
+      width: 100%;
+      min-height: calc(70dvh - 58px);
+      border: 0;
+      background: #d7dfe4;
+    }
+    .email-card {
+      cursor: pointer;
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    }
+    .email-card:hover {
+      border-color: #d3c7bc;
+      box-shadow: 0 8px 24px rgba(34, 34, 34, 0.06);
+      transform: translateY(-1px);
+    }
+    .email-card.is-active {
+      border-color: oklch(68% 0.10 250);
+      box-shadow: 0 0 0 2px rgba(81, 110, 224, 0.14);
+    }
 
     .email-card {
+      appearance: none;
+      width: 100%;
+      padding: 0;
+      text-align: left;
       background: #fff;
       border-radius: .75rem;
       border: 1px solid #e8e0d8;
@@ -116,6 +186,11 @@
     .email-body a {
       color: oklch(45% 0.14 250);
       word-break: break-all;
+    }
+    @media (max-width: 960px) {
+      .email-layout { grid-template-columns: 1fr; }
+      .email-preview-shell { min-height: 60dvh; }
+      .email-preview-frame { min-height: calc(60dvh - 58px); }
     }
   </style>
 </head>

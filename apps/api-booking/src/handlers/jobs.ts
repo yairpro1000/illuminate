@@ -26,6 +26,7 @@ import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import {
   isPaymentContinuableOnline,
   isPaymentDueTrackedStatus,
+  isPaymentExpiryTrackedStatus,
   isPaymentManualArrangementStatus,
   isPaymentSettledStatus,
 } from '../domain/payment-status.js';
@@ -671,19 +672,19 @@ async function evaluateSideEffectRelevance(
       };
     }
     case 'SEND_PAYMENT_REMINDER':
-    case 'VERIFY_STRIPE_PAYMENT': {
+    {
       const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
       const paymentStatus = payment?.status ?? null;
       const dueTracked = isPaymentDueTrackedStatus(paymentStatus);
       return {
         shouldProcess: dueTracked,
         branchTaken: dueTracked
-          ? 'allow_due_tracked_payment_followup_effect'
+          ? 'allow_due_tracked_payment_reminder_effect'
           : isPaymentManualArrangementStatus(paymentStatus)
-            ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_manual_arrangement`
+            ? 'deny_irrelevant_send_payment_reminder_manual_arrangement'
             : isPaymentSettledStatus(paymentStatus)
-              ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_already_settled`
-              : `deny_irrelevant_${effect.effect_intent.toLowerCase()}_status_not_due_tracked`,
+              ? 'deny_irrelevant_send_payment_reminder_already_settled'
+              : 'deny_irrelevant_send_payment_reminder_status_not_due_tracked',
         denyReason: dueTracked
           ? null
           : isPaymentManualArrangementStatus(paymentStatus)
@@ -691,6 +692,31 @@ async function evaluateSideEffectRelevance(
             : isPaymentSettledStatus(paymentStatus)
               ? 'payment_already_settled'
               : 'payment_status_not_due_tracked',
+        context: {
+          payment_status: paymentStatus,
+        },
+      };
+    }
+    case 'VERIFY_STRIPE_PAYMENT': {
+      const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
+      const paymentStatus = payment?.status ?? null;
+      const expiryTracked = isPaymentExpiryTrackedStatus(paymentStatus);
+      return {
+        shouldProcess: expiryTracked,
+        branchTaken: expiryTracked
+          ? 'allow_expiry_tracked_payment_verification_effect'
+          : isPaymentManualArrangementStatus(paymentStatus)
+            ? 'deny_irrelevant_verify_stripe_payment_manual_arrangement'
+            : isPaymentSettledStatus(paymentStatus)
+              ? 'deny_irrelevant_verify_stripe_payment_already_settled'
+              : 'deny_irrelevant_verify_stripe_payment_status_not_expiry_tracked',
+        denyReason: expiryTracked
+          ? null
+          : isPaymentManualArrangementStatus(paymentStatus)
+            ? 'manual_payment_arrangement_active'
+            : isPaymentSettledStatus(paymentStatus)
+              ? 'payment_already_settled'
+              : 'payment_status_not_expiry_tracked',
         context: {
           payment_status: paymentStatus,
         },
@@ -903,7 +929,7 @@ async function executeSideEffect(
         );
         return;
       }
-      if (isPaymentDueTrackedStatus(payment?.status ?? null)) {
+      if (isPaymentExpiryTrackedStatus(payment?.status ?? null)) {
         await expireBooking(booking, bookingCtx);
       }
       return;
