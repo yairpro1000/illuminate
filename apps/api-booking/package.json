@@ -8,6 +8,7 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "cancel:client-prefix": "node ./scripts/cancel-bookings-by-client-prefix.mjs",
     "delete:client-prefix": "node ./scripts/delete-client-prefix.mjs"
   },
   "devDependencies": {

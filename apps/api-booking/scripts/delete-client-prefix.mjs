@@ -2,10 +2,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import {
-  createConsoleLogger,
   parseDeleteClientPrefixArgs,
   purgeClientDataByEmailPrefix,
 } from './lib/delete-client-prefix.mjs';
+import { createConsoleLogger } from './lib/maintenance-logger.mjs';
 
 const logger = createConsoleLogger();
 

@@ -1,20 +1,7 @@
 import { chunkValues, escapeLikePrefix, normalizeLowercasePrefix } from '../../src/lib/prefix-utils.js';
+import { createConsoleLogger } from './maintenance-logger.mjs';
 
 const DEFAULT_DELETE_BATCH_SIZE = 100;
-
-export function createConsoleLogger() {
-  return {
-    info(entry) {
-      console.log(JSON.stringify({ level: 'info', ...entry }));
-    },
-    warn(entry) {
-      console.warn(JSON.stringify({ level: 'warn', ...entry }));
-    },
-    error(entry) {
-      console.error(JSON.stringify({ level: 'error', ...entry }));
-    },
-  };
-}
 
 export function parseDeleteClientPrefixArgs(argv) {
   let emailPrefix = null;

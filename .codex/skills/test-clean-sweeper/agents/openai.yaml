@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Clean Sweeper"
+  short_description: "Two-step test data cleanup flow"
+  default_prompt: "Use $test-clean-sweeper to inspect, confirm, cancel, and then delete test client data by prefix."
