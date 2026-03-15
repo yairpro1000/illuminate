@@ -39,10 +39,27 @@ async function extractReviewCouponAmounts(page: Page): Promise<{ baseChf: number
 
 async function completePayNowFromReview(page: Page): Promise<void> {
   await page.locator('button[data-submit]').click();
-  await page.waitForURL(/\/dev-pay\?session_id=/);
+  const outcome = await waitForPayNowSubmitOutcome(page);
+  if (outcome === 'slot-lost') {
+    throw new Error('slot_lost_before_checkout');
+  }
   await page.locator('#btn-success').click();
   await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
   await expect(page.locator('.result-title')).toContainText(/Payment confirmed!|Payment received/);
+}
+
+async function waitForPayNowSubmitOutcome(page: Page): Promise<'checkout' | 'slot-lost'> {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    if (/\/dev-pay\?session_id=/.test(page.url())) return 'checkout';
+    const recovery = page.locator('.booking-recovery__title').first();
+    if (await recovery.count()) {
+      const text = (await recovery.textContent()) || '';
+      if (text.includes('That time was just taken')) return 'slot-lost';
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error('Timed out waiting for pay-now checkout or slot-loss recovery');
 }
 
 async function verifyDiscountedPayNowArtifacts(
@@ -86,33 +103,46 @@ test.describe('Israel coupon discounted booking flows', () => {
     email: string,
     testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2],
   ) {
-    const runtime = attachRuntimeMonitor(page);
-    await prepareIsraelCouponVisitor(page);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const runtime = attachRuntimeMonitor(page);
+      await prepareIsraelCouponVisitor(page);
 
-    let checkpoint = runtime.checkpoint();
-    await page.goto(`${SITE_BASE_URL}/sessions.html`);
-    await applyIsraelCouponFromSessionsBanner(page);
-    await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
-    await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
-    await page.waitForSelector('.cal-day--available:not([disabled])');
-    const day = page.locator('.cal-day--available:not([disabled])').first();
-    await day.click();
-    const slot = page.locator('.time-slot').first();
-    await slot.click();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await fillContactDetails(page, {
-      firstName: 'P4',
-      lastName: 'Coupon',
-      email,
-      phone: '+41790000000',
-    });
-    await page.locator('[data-payment="pay-now"]').click();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    const amounts = await extractReviewCouponAmounts(page);
-    await completePayNowFromReview(page);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-banner-pay-now-session', testInfo);
+      let checkpoint = runtime.checkpoint();
+      await page.goto(`${SITE_BASE_URL}/sessions.html`);
+      await applyIsraelCouponFromSessionsBanner(page);
+      await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
+      await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
+      await page.waitForSelector('.cal-day--available:not([disabled])');
+      const day = page.locator('.cal-day--available:not([disabled])').first();
+      await day.click();
+      const slot = page.locator('.time-slot').first();
+      await slot.click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await fillContactDetails(page, {
+        firstName: 'P4',
+        lastName: 'Coupon',
+        email,
+        phone: '+41790000000',
+      });
+      await page.locator('[data-payment="pay-now"]').click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      const amounts = await extractReviewCouponAmounts(page);
 
-    await verifyDiscountedPayNowArtifacts(browserPageFactory, email, amounts.finalChf);
+      try {
+        await completePayNowFromReview(page);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'slot_lost_before_checkout' && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+
+      await runtime.assertNoNewIssues(checkpoint, 'coupon-banner-pay-now-session', testInfo);
+      await verifyDiscountedPayNowArtifacts(browserPageFactory, email, amounts.finalChf);
+      return;
+    }
+
+    throw new Error('Unable to complete banner-applied pay-now coupon flow after repeated slot contention');
   }
 
   async function runReviewAppliedPayNowCase(
@@ -121,35 +151,48 @@ test.describe('Israel coupon discounted booking flows', () => {
     email: string,
     testInfo: Parameters<ReturnType<typeof attachRuntimeMonitor>['assertNoNewIssues']>[2],
   ) {
-    const runtime = attachRuntimeMonitor(page);
-    await prepareIsraelCouponVisitor(page);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const runtime = attachRuntimeMonitor(page);
+      await prepareIsraelCouponVisitor(page);
 
-    let checkpoint = runtime.checkpoint();
-    await page.goto(`${SITE_BASE_URL}/sessions.html`);
-    await applyIsraelCouponFromSessionsBanner(page);
-    await removeIsraelCouponFromIndicator(page);
-    await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
-    await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
-    await page.waitForSelector('.cal-day--available:not([disabled])');
-    const day = page.locator('.cal-day--available:not([disabled])').first();
-    await day.click();
-    const slot = page.locator('.time-slot').first();
-    await slot.click();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await fillContactDetails(page, {
-      firstName: 'P4',
-      lastName: 'CouponManual',
-      email,
-      phone: '+41790000000',
-    });
-    await page.locator('[data-payment="pay-now"]').click();
-    await page.getByRole('button', { name: 'Continue' }).click();
-    await applyIsraelCouponOnReview(page);
-    const amounts = await extractReviewCouponAmounts(page);
-    await completePayNowFromReview(page);
-    await runtime.assertNoNewIssues(checkpoint, 'coupon-review-pay-now-session', testInfo);
+      let checkpoint = runtime.checkpoint();
+      await page.goto(`${SITE_BASE_URL}/sessions.html`);
+      await applyIsraelCouponFromSessionsBanner(page);
+      await removeIsraelCouponFromIndicator(page);
+      await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
+      await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
+      await page.waitForSelector('.cal-day--available:not([disabled])');
+      const day = page.locator('.cal-day--available:not([disabled])').first();
+      await day.click();
+      const slot = page.locator('.time-slot').first();
+      await slot.click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await fillContactDetails(page, {
+        firstName: 'P4',
+        lastName: 'CouponManual',
+        email,
+        phone: '+41790000000',
+      });
+      await page.locator('[data-payment="pay-now"]').click();
+      await page.getByRole('button', { name: 'Continue' }).click();
+      await applyIsraelCouponOnReview(page);
+      const amounts = await extractReviewCouponAmounts(page);
 
-    await verifyDiscountedPayNowArtifacts(browserPageFactory, email, amounts.finalChf);
+      try {
+        await completePayNowFromReview(page);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'slot_lost_before_checkout' && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+
+      await runtime.assertNoNewIssues(checkpoint, 'coupon-review-pay-now-session', testInfo);
+      await verifyDiscountedPayNowArtifacts(browserPageFactory, email, amounts.finalChf);
+      return;
+    }
+
+    throw new Error('Unable to complete review-applied pay-now coupon flow after repeated slot contention');
   }
 
   test('pay-now session booking keeps Israel discount when applied from sessions banner', async ({ browser, page }, testInfo) => {

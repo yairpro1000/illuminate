@@ -1,7 +1,8 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 export async function clearAppliedCouponState(page: Page): Promise<void> {
-  await page.goto('about:blank');
+  const siteBaseUrl = process.env.E2E_SITE_BASE_URL || 'https://letsilluminate.co';
+  await page.goto(siteBaseUrl);
   await page.evaluate(() => {
     try {
       window.localStorage.removeItem('couponCode');

@@ -89,7 +89,6 @@ export interface SupabaseBookingRow {
   price: number | null;
   currency: string | null;
   coupon_code: string | null;
-  status: string;
   created_at: string;
   updated_at: string;
 }
@@ -409,7 +408,7 @@ export async function getSupabasePaymentRowByBookingId(bookingId: string): Promi
 export async function getSupabaseBookingRowById(bookingId: string): Promise<SupabaseBookingRow | null> {
   const { url, secretKey } = getSupabaseEnv();
   const params = new URLSearchParams({
-    select: 'id,price,currency,coupon_code,status,created_at,updated_at',
+    select: 'id,price,currency,coupon_code,created_at,updated_at',
     id: `eq.${bookingId}`,
     limit: '1',
   });
