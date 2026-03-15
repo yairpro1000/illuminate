@@ -301,8 +301,8 @@
   },
   "desktop_israel": {
     "E01": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Israel banner appeared on home and sessions, stayed sticky on the home scroll path, and did not appear on evenings. Sessions required scrolling #session-types into view."
     },
     "E02": {
       "latest_run_status": "",
@@ -333,12 +333,12 @@
       "latest_run_comments": ""
     },
     "E09": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Both discounted pay-now session variants passed: banner-applied and remove-then-manual-review apply. DB, payment, and admin all showed the discounted amount with coupon code ISRAEL."
     },
     "E10": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Both discounted pay-later session variants passed: banner-applied and remove-then-manual-review apply. After confirmation, DB, pending payment, and admin all showed the discounted amount with coupon code ISRAEL."
     },
     "E11": {
       "latest_run_status": "",
@@ -451,8 +451,8 @@
   },
   "mobile_israel": {
     "E01": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Israel banner appeared on home and sessions in headed mobile Chromium, and evenings intentionally showed no coupon banner."
     },
     "E02": {
       "latest_run_status": "",
@@ -483,12 +483,12 @@
       "latest_run_comments": ""
     },
     "E09": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Both discounted mobile pay-now session variants passed after fixing origin-scoped coupon clearing and slot-contention retry. DB, payment, and admin all showed the discounted amount with coupon code ISRAEL."
     },
     "E10": {
-      "latest_run_status": "",
-      "latest_run_comments": ""
+      "latest_run_status": "PASS",
+      "latest_run_comments": "Both discounted mobile pay-later session variants passed. After confirmation, DB, pending payment, and admin all showed the discounted amount with coupon code ISRAEL."
     },
     "E11": {
       "latest_run_status": "",

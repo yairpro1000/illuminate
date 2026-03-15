@@ -12,17 +12,27 @@ function makeLogger() {
 function makeDeletingDbFixture({
   clients = [],
   bookings = [],
+  bookingEvents = [],
+  bookingSideEffects = [],
+  bookingSideEffectAttempts = [],
   payments = [],
   contactMessages = [],
   reminderSubscriptions = [],
+  apiLogs = [],
+  exceptionLogs = [],
 } = {}) {
   const deleteOrder: string[] = [];
   const rowsByTable = {
     clients,
     bookings,
+    booking_events: bookingEvents,
+    booking_side_effects: bookingSideEffects,
+    booking_side_effect_attempts: bookingSideEffectAttempts,
     payments,
     contact_messages: contactMessages,
     event_reminder_subscriptions: reminderSubscriptions,
+    api_logs: apiLogs,
+    exception_logs: exceptionLogs,
   } as Record<string, Array<Record<string, unknown>>>;
 
   return {
@@ -32,6 +42,29 @@ function makeDeletingDbFixture({
         const state = {
           mode: 'select',
           ids: [] as string[],
+          orClause: null as string | null,
+        };
+
+        const getKeyCandidates = (row: Record<string, unknown>) => [
+          row.id,
+          row.client_id,
+          row.booking_id,
+          row.booking_event_id,
+          row.booking_side_effect_id,
+          row.side_effect_id,
+          row.side_effect_attempt_id,
+        ].filter((value): value is string => typeof value === 'string');
+
+        const matchesOrClause = (row: Record<string, unknown>) => {
+          if (!state.orClause) return true;
+          const clauses = state.orClause.split(',').filter(Boolean);
+          return clauses.some((clause) => {
+            const match = clause.match(/^([a-z_]+)\.in\.\((.*)\)$/);
+            if (!match) return false;
+            const [, column, rawValues] = match;
+            const values = rawValues.split(',').filter(Boolean);
+            return values.includes(String(row[column]));
+          });
         };
 
         return {
@@ -54,6 +87,10 @@ function makeDeletingDbFixture({
             state.ids = ids;
             return this;
           },
+          or(clause: string) {
+            state.orClause = clause;
+            return this;
+          },
           delete() {
             state.mode = 'delete';
             return this;
@@ -61,8 +98,8 @@ function makeDeletingDbFixture({
           async then(resolve: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown) {
             const data = state.ids.length > 0
               ? (rowsByTable[table] ?? []).filter((row) =>
-                state.ids.includes(String(row.client_id ?? row.booking_id ?? row.id)))
-              : (rowsByTable[table] ?? []);
+                getKeyCandidates(row).some((key) => state.ids.includes(String(key))))
+              : (rowsByTable[table] ?? []).filter((row) => matchesOrClause(row));
             return resolve({ data, error: null });
           },
         };
@@ -81,6 +118,15 @@ describe('delete client prefix maintenance script', () => {
       bookings: [
         { id: 'b1', client_id: 'c1', current_status: 'PENDING', starts_at: '2026-03-30T10:00:00.000Z', ends_at: '2026-03-30T10:30:00.000Z' },
       ],
+      bookingEvents: [
+        { id: 'be1', booking_id: 'b1', event_type: 'BOOKING_FORM_SUBMITTED', created_at: '2026-03-01T10:00:00.000Z' },
+      ],
+      bookingSideEffects: [
+        { id: 'se1', booking_event_id: 'be1', effect_intent: 'SEND_BOOKING_CONFIRMATION_REQUEST', status: 'SUCCESS' },
+      ],
+      bookingSideEffectAttempts: [
+        { id: 'sea1', booking_side_effect_id: 'se1', status: 'SUCCESS' },
+      ],
       payments: [
         { id: 'p1', booking_id: 'b1', status: 'PENDING' },
       ],
@@ -89,6 +135,12 @@ describe('delete client prefix maintenance script', () => {
       ],
       reminderSubscriptions: [
         { id: 'r1', email: 'p4-clean-a@example.test', event_family: 'illuminate_evenings' },
+      ],
+      apiLogs: [
+        { id: 'al1', booking_id: 'b1', booking_event_id: 'be1', side_effect_id: 'se1', side_effect_attempt_id: 'sea1' },
+      ],
+      exceptionLogs: [
+        { id: 'el1', booking_id: 'b1', booking_event_id: 'be1', side_effect_id: 'se1', side_effect_attempt_id: 'sea1' },
       ],
     });
 
@@ -102,12 +154,22 @@ describe('delete client prefix maintenance script', () => {
     expect(summary.email_prefix).toBe('p4-clean');
     expect(summary.matched_client_count).toBe(1);
     expect(summary.matched_booking_count).toBe(1);
+    expect(summary.matched_booking_event_count).toBe(1);
+    expect(summary.matched_booking_side_effect_count).toBe(1);
+    expect(summary.matched_booking_side_effect_attempt_count).toBe(1);
     expect(summary.matched_payment_count).toBe(1);
     expect(summary.matched_contact_message_count).toBe(1);
     expect(summary.matched_event_reminder_subscription_count).toBe(1);
+    expect(summary.matched_api_log_count).toBe(1);
+    expect(summary.matched_exception_log_count).toBe(1);
     expect(summary.deleted_counts).toEqual({
       contact_messages: 0,
       event_reminder_subscriptions: 0,
+      api_logs: 0,
+      exception_logs: 0,
+      booking_side_effect_attempts: 0,
+      booking_side_effects: 0,
+      booking_events: 0,
       payments: 0,
       bookings: 0,
       clients: 0,
@@ -131,6 +193,15 @@ describe('delete client prefix maintenance script', () => {
       bookings: [
         { id: 'b1', client_id: 'c1', current_status: 'PENDING', starts_at: '2026-03-30T10:00:00.000Z', ends_at: '2026-03-30T10:30:00.000Z' },
       ],
+      bookingEvents: [
+        { id: 'be1', booking_id: 'b1', event_type: 'BOOKING_FORM_SUBMITTED', created_at: '2026-03-01T10:00:00.000Z' },
+      ],
+      bookingSideEffects: [
+        { id: 'se1', booking_event_id: 'be1', effect_intent: 'SEND_BOOKING_CONFIRMATION_REQUEST', status: 'SUCCESS' },
+      ],
+      bookingSideEffectAttempts: [
+        { id: 'sea1', booking_side_effect_id: 'se1', status: 'SUCCESS' },
+      ],
       payments: [
         { id: 'p1', booking_id: 'b1', status: 'PENDING' },
       ],
@@ -139,6 +210,12 @@ describe('delete client prefix maintenance script', () => {
       ],
       reminderSubscriptions: [
         { id: 'r1', email: 'p4-clean-a@example.test', event_family: 'illuminate_evenings' },
+      ],
+      apiLogs: [
+        { id: 'al1', booking_id: 'b1', booking_event_id: 'be1', side_effect_id: 'se1', side_effect_attempt_id: 'sea1' },
+      ],
+      exceptionLogs: [
+        { id: 'el1', booking_id: 'b1', booking_event_id: 'be1', side_effect_id: 'se1', side_effect_attempt_id: 'sea1' },
       ],
     });
 
@@ -152,6 +229,11 @@ describe('delete client prefix maintenance script', () => {
     expect(fixture.deleteOrder).toEqual([
       'contact_messages',
       'event_reminder_subscriptions',
+      'api_logs',
+      'exception_logs',
+      'booking_side_effect_attempts',
+      'booking_side_effects',
+      'booking_events',
       'payments',
       'bookings',
       'clients',
@@ -159,6 +241,11 @@ describe('delete client prefix maintenance script', () => {
     expect(summary.deleted_counts).toEqual({
       contact_messages: 1,
       event_reminder_subscriptions: 1,
+      api_logs: 1,
+      exception_logs: 1,
+      booking_side_effect_attempts: 1,
+      booking_side_effects: 1,
+      booking_events: 1,
       payments: 1,
       bookings: 1,
       clients: 1,
@@ -168,6 +255,11 @@ describe('delete client prefix maintenance script', () => {
       context: expect.objectContaining({
         deleted_contact_message_count: 1,
         deleted_event_reminder_subscription_count: 1,
+        deleted_api_log_count: 1,
+        deleted_exception_log_count: 1,
+        deleted_booking_side_effect_attempt_count: 1,
+        deleted_booking_side_effect_count: 1,
+        deleted_booking_event_count: 1,
         deleted_payment_count: 1,
         deleted_booking_count: 1,
         deleted_client_count: 1,

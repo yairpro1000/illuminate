@@ -99,6 +99,31 @@ async function deleteRowsByIds({
   return deletedCount;
 }
 
+async function loadRowsByAnyForeignKey({
+  db,
+  table,
+  select,
+  queries,
+  failureMessage,
+}) {
+  const rowsById = new Map();
+  for (const query of queries) {
+    if (query.ids.length === 0) continue;
+    const rows = await requireRows(
+      db.from(table)
+        .select(select)
+        .in(query.column, query.ids),
+      failureMessage,
+    );
+    for (const row of rows) {
+      if (typeof row.id === 'string' && !rowsById.has(row.id)) {
+        rowsById.set(row.id, row);
+      }
+    }
+  }
+  return Array.from(rowsById.values());
+}
+
 export async function purgeClientDataByEmailPrefix({
   db,
   emailPrefix,
@@ -160,6 +185,65 @@ export async function purgeClientDataByEmailPrefix({
     branch_taken: bookings.length > 0 ? 'return_matching_bookings' : 'return_no_matching_bookings',
     deny_reason: bookings.length > 0 ? null : 'no_matching_bookings',
   });
+  const bookingEvents = bookingIds.length === 0
+    ? []
+    : await requireRows(
+      db.from('booking_events')
+        .select('id, booking_id, event_type, created_at')
+        .in('booking_id', bookingIds)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking events by booking ids',
+    );
+  const bookingEventIds = bookingEvents.map((bookingEvent) => bookingEvent.id);
+
+  info(logger, 'client_prefix_booking_events_resolved', 'Resolved booking events for client prefix', {
+    email_prefix: normalizedPrefix,
+    matched_booking_count: bookings.length,
+    matched_booking_event_count: bookingEvents.length,
+    booking_event_ids: bookingEventIds,
+    branch_taken: bookingEvents.length > 0 ? 'return_matching_booking_events' : 'return_no_matching_booking_events',
+    deny_reason: bookingEvents.length > 0 ? null : 'no_matching_booking_events',
+  });
+
+  const bookingSideEffects = bookingEventIds.length === 0
+    ? []
+    : await requireRows(
+      db.from('booking_side_effects')
+        .select('id, booking_event_id, effect_intent, status')
+        .in('booking_event_id', bookingEventIds)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking side effects by booking event ids',
+    );
+  const bookingSideEffectIds = bookingSideEffects.map((sideEffect) => sideEffect.id);
+
+  info(logger, 'client_prefix_booking_side_effects_resolved', 'Resolved booking side effects for client prefix', {
+    email_prefix: normalizedPrefix,
+    matched_booking_event_count: bookingEvents.length,
+    matched_booking_side_effect_count: bookingSideEffects.length,
+    booking_side_effect_ids: bookingSideEffectIds,
+    branch_taken: bookingSideEffects.length > 0 ? 'return_matching_booking_side_effects' : 'return_no_matching_booking_side_effects',
+    deny_reason: bookingSideEffects.length > 0 ? null : 'no_matching_booking_side_effects',
+  });
+
+  const bookingSideEffectAttempts = bookingSideEffectIds.length === 0
+    ? []
+    : await requireRows(
+      db.from('booking_side_effect_attempts')
+        .select('id, booking_side_effect_id, status')
+        .in('booking_side_effect_id', bookingSideEffectIds)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking side effect attempts by side effect ids',
+    );
+  const bookingSideEffectAttemptIds = bookingSideEffectAttempts.map((attempt) => attempt.id);
+
+  info(logger, 'client_prefix_booking_side_effect_attempts_resolved', 'Resolved booking side effect attempts for client prefix', {
+    email_prefix: normalizedPrefix,
+    matched_booking_side_effect_count: bookingSideEffects.length,
+    matched_booking_side_effect_attempt_count: bookingSideEffectAttempts.length,
+    booking_side_effect_attempt_ids: bookingSideEffectAttemptIds,
+    branch_taken: bookingSideEffectAttempts.length > 0 ? 'return_matching_booking_side_effect_attempts' : 'return_no_matching_booking_side_effect_attempts',
+    deny_reason: bookingSideEffectAttempts.length > 0 ? null : 'no_matching_booking_side_effect_attempts',
+  });
 
   const payments = bookingIds.length === 0
     ? []
@@ -186,23 +270,77 @@ export async function purgeClientDataByEmailPrefix({
       .order('email', { ascending: true }),
     'Failed to load event reminder subscriptions by email prefix',
   );
+  const apiLogs = await loadRowsByAnyForeignKey({
+    db,
+    table: 'api_logs',
+    select: 'id, booking_id, booking_event_id, side_effect_id, side_effect_attempt_id',
+    queries: [
+      { column: 'booking_id', ids: bookingIds },
+      { column: 'booking_event_id', ids: bookingEventIds },
+      { column: 'side_effect_id', ids: bookingSideEffectIds },
+      { column: 'side_effect_attempt_id', ids: bookingSideEffectAttemptIds },
+    ],
+    failureMessage: 'Failed to load api logs by booking dependency ids',
+  });
+  const apiLogIds = apiLogs.map((apiLog) => apiLog.id);
+
+  const exceptionLogs = await loadRowsByAnyForeignKey({
+    db,
+    table: 'exception_logs',
+    select: 'id, booking_id, booking_event_id, side_effect_id, side_effect_attempt_id',
+    queries: [
+      { column: 'booking_id', ids: bookingIds },
+      { column: 'booking_event_id', ids: bookingEventIds },
+      { column: 'side_effect_id', ids: bookingSideEffectIds },
+      { column: 'side_effect_attempt_id', ids: bookingSideEffectAttemptIds },
+    ],
+    failureMessage: 'Failed to load exception logs by booking dependency ids',
+  });
+  const exceptionLogIds = exceptionLogs.map((exceptionLog) => exceptionLog.id);
+
+  info(logger, 'client_prefix_observability_rows_resolved', 'Resolved observability rows for client prefix', {
+    email_prefix: normalizedPrefix,
+    matched_api_log_count: apiLogs.length,
+    matched_exception_log_count: exceptionLogs.length,
+    api_log_ids: apiLogIds,
+    exception_log_ids: exceptionLogIds,
+    branch_taken: (apiLogs.length > 0 || exceptionLogs.length > 0)
+      ? 'return_matching_observability_rows'
+      : 'return_no_matching_observability_rows',
+    deny_reason: (apiLogs.length > 0 || exceptionLogs.length > 0) ? null : 'no_matching_observability_rows',
+  });
 
   const summary = {
     email_prefix: normalizedPrefix,
     execute,
     matched_client_count: clients.length,
     matched_booking_count: bookings.length,
+    matched_booking_event_count: bookingEvents.length,
+    matched_booking_side_effect_count: bookingSideEffects.length,
+    matched_booking_side_effect_attempt_count: bookingSideEffectAttempts.length,
     matched_payment_count: payments.length,
     matched_contact_message_count: contactMessages.length,
     matched_event_reminder_subscription_count: reminderSubscriptions.length,
+    matched_api_log_count: apiLogs.length,
+    matched_exception_log_count: exceptionLogs.length,
     clients,
     bookings,
+    booking_events: bookingEvents,
+    booking_side_effects: bookingSideEffects,
+    booking_side_effect_attempts: bookingSideEffectAttempts,
     payments,
     contact_messages: contactMessages,
     event_reminder_subscriptions: reminderSubscriptions,
+    api_logs: apiLogs,
+    exception_logs: exceptionLogs,
     deleted_counts: {
       contact_messages: 0,
       event_reminder_subscriptions: 0,
+      api_logs: 0,
+      exception_logs: 0,
+      booking_side_effect_attempts: 0,
+      booking_side_effects: 0,
+      booking_events: 0,
       payments: 0,
       bookings: 0,
       clients: 0,
@@ -213,9 +351,14 @@ export async function purgeClientDataByEmailPrefix({
     email_prefix: normalizedPrefix,
     matched_client_count: clients.length,
     matched_booking_count: bookings.length,
+    matched_booking_event_count: bookingEvents.length,
+    matched_booking_side_effect_count: bookingSideEffects.length,
+    matched_booking_side_effect_attempt_count: bookingSideEffectAttempts.length,
     matched_payment_count: payments.length,
     matched_contact_message_count: contactMessages.length,
     matched_event_reminder_subscription_count: reminderSubscriptions.length,
+    matched_api_log_count: apiLogs.length,
+    matched_exception_log_count: exceptionLogs.length,
     branch_taken: execute ? 'execute_client_prefix_purge' : 'return_dry_run_plan',
     deny_reason: execute ? null : 'dry_run_only',
   });
@@ -236,6 +379,46 @@ export async function purgeClientDataByEmailPrefix({
     db,
     table: 'event_reminder_subscriptions',
     ids: reminderSubscriptions.map((row) => row.id),
+    logger,
+    emailPrefix: normalizedPrefix,
+    deleteBatchSize,
+  });
+  summary.deleted_counts.api_logs = await deleteRowsByIds({
+    db,
+    table: 'api_logs',
+    ids: apiLogIds,
+    logger,
+    emailPrefix: normalizedPrefix,
+    deleteBatchSize,
+  });
+  summary.deleted_counts.exception_logs = await deleteRowsByIds({
+    db,
+    table: 'exception_logs',
+    ids: exceptionLogIds,
+    logger,
+    emailPrefix: normalizedPrefix,
+    deleteBatchSize,
+  });
+  summary.deleted_counts.booking_side_effect_attempts = await deleteRowsByIds({
+    db,
+    table: 'booking_side_effect_attempts',
+    ids: bookingSideEffectAttemptIds,
+    logger,
+    emailPrefix: normalizedPrefix,
+    deleteBatchSize,
+  });
+  summary.deleted_counts.booking_side_effects = await deleteRowsByIds({
+    db,
+    table: 'booking_side_effects',
+    ids: bookingSideEffectIds,
+    logger,
+    emailPrefix: normalizedPrefix,
+    deleteBatchSize,
+  });
+  summary.deleted_counts.booking_events = await deleteRowsByIds({
+    db,
+    table: 'booking_events',
+    ids: bookingEventIds,
     logger,
     emailPrefix: normalizedPrefix,
     deleteBatchSize,
@@ -269,6 +452,11 @@ export async function purgeClientDataByEmailPrefix({
     email_prefix: normalizedPrefix,
     deleted_contact_message_count: summary.deleted_counts.contact_messages,
     deleted_event_reminder_subscription_count: summary.deleted_counts.event_reminder_subscriptions,
+    deleted_api_log_count: summary.deleted_counts.api_logs,
+    deleted_exception_log_count: summary.deleted_counts.exception_logs,
+    deleted_booking_side_effect_attempt_count: summary.deleted_counts.booking_side_effect_attempts,
+    deleted_booking_side_effect_count: summary.deleted_counts.booking_side_effects,
+    deleted_booking_event_count: summary.deleted_counts.booking_events,
     deleted_payment_count: summary.deleted_counts.payments,
     deleted_booking_count: summary.deleted_counts.bookings,
     deleted_client_count: summary.deleted_counts.clients,

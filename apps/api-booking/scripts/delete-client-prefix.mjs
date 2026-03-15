@@ -16,7 +16,8 @@ function printUsage() {
 Behavior:
   Without --execute, the script runs in dry-run mode and prints the rows it would delete.
   With --execute, the script deletes contact messages, event reminder subscriptions,
-  payments, bookings, and finally clients for emails matching the prefix.
+  booking-linked observability and side-effect rows, payments, bookings, and finally
+  clients for emails matching the prefix.
 
 Required environment:
   SUPABASE_URL
