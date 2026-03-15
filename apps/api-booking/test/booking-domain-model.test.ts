@@ -247,6 +247,50 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain(String(confirmed.meeting_link));
   });
 
+  it('keeps free 1:1 confirmation successful when calendar sync is pending retry', async () => {
+    const calendar = new MockCalendarProvider();
+    calendar.createEvent = vi.fn().mockRejectedValue(new Error('calendar create failed')) as any;
+    const ctx = makeCtx({ calendar });
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-19T16:00:00.000Z',
+      slotEnd: '2026-03-19T16:30:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Retry Intro',
+      clientEmail: 'retry-intro@example.com',
+      clientPhone: '+41000000015',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'retry-intro@example.com',
+    );
+
+    expect(confirmed.current_status).toBe('CONFIRMED');
+    expect(confirmed.google_event_id).toBeNull();
+    expect(confirmed.meeting_link).toBeNull();
+    expect(confirmationEmail).toBeTruthy();
+    expect(confirmationEmail?.body).not.toContain('Join Google Meet:');
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirmation_email_dispatch_degraded',
+      context: expect.objectContaining({
+        booking_id: confirmed.id,
+        branch_taken: 'send_confirmation_without_calendar_invite',
+        deny_reason: 'calendar_sync_pending_retry',
+      }),
+    }));
+  });
+
   it('keeps pay-later bookings pending after submission and sends a confirmation request', async () => {
     const ctx = makeCtx();
 

@@ -128,7 +128,17 @@ function getSupabaseEnv(): { url: string; secretKey: string } {
 }
 
 export function makeScenarioEmail(prefix: string): string {
+  const forcedEmail = process.env.E2E_CUSTOMER_EMAIL?.trim();
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (forcedEmail) {
+    const atIndex = forcedEmail.indexOf('@');
+    if (atIndex > 0) {
+      const local = forcedEmail.slice(0, atIndex).replace(/\+.*/, '');
+      const domain = forcedEmail.slice(atIndex + 1);
+      return `${local}+${prefix}-${suffix}@${domain}`;
+    }
+    return forcedEmail;
+  }
   return `${prefix}-${suffix}@example.test`;
 }
 

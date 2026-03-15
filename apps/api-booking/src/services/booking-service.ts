@@ -1248,23 +1248,40 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       has_manage_url: Boolean(manageUrl),
       has_invoice_url: Boolean(invoiceUrl),
       has_pay_url: Boolean(payUrl),
+      calendar_sync_pending_retry: !booking.event_id && !booking.google_event_id,
       email_variant: isPayLaterPendingConfirmation ? 'confirmed_payment_pending' : 'confirmed_paid_or_free',
       branch_taken: isPayLaterPendingConfirmation
         ? 'allow_pay_later_confirmation_email'
         : !booking.event_id && !booking.google_event_id
-        ? 'deny_session_confirmation_until_calendar_synced'
+        ? 'allow_session_confirmation_email_while_calendar_sync_pending_retry'
         : 'allow_confirmation_email_dispatch',
       deny_reason: isPayLaterPendingConfirmation
         ? null
         : !booking.event_id && !booking.google_event_id
-        ? 'session_calendar_invite_missing_before_confirmation_email'
+        ? 'session_calendar_invite_missing_but_confirmation_still_allowed'
         : null,
     },
   });
 
   if (!booking.event_id) {
     if (!isPayLaterPendingConfirmation && !booking.google_event_id) {
-      throw new Error('session_calendar_invite_missing_before_confirmation_email');
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'booking_confirmation_email_dispatch_degraded',
+        message: 'Sending session confirmation email while calendar sync remains pending retry',
+        context: {
+          booking_id: booking.id,
+          booking_kind: bookingKind,
+          booking_status: booking.current_status,
+          payment_mode: paymentMode,
+          payment_status: payment?.status ?? null,
+          has_google_event_id: false,
+          has_meeting_link: Boolean(booking.meeting_link),
+          has_manage_url: Boolean(manageUrl),
+          branch_taken: 'send_confirmation_without_calendar_invite',
+          deny_reason: 'calendar_sync_pending_retry',
+        },
+      });
     }
     await ctx.providers.email.sendBookingConfirmation(
       booking,

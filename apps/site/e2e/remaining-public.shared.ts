@@ -47,6 +47,20 @@ async function submitReminderOnCard(page: Page, eventSlug: string, email: string
   await card.locator('button[type="submit"]').click();
 }
 
+async function revealEventCard(page: Page, event: Record<string, any>) {
+  const card = page.locator(`#${event.slug}`);
+  if (await card.isVisible()) return card;
+
+  if (event.render?.is_past) {
+    await page.locator('#btn-past').click();
+  } else {
+    await page.locator('#btn-upcoming').click();
+  }
+
+  await expect(card).toBeVisible();
+  return card;
+}
+
 export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
   return [
     {
@@ -136,6 +150,7 @@ export function getRemainingPublicCases(prefix = ''): RemainingPublicCase[] {
         const email = makeScenarioEmail('p4-reminder');
         const checkpoint = runtime.checkpoint();
         await page.goto(`${SITE_BASE_URL}/evenings.html`);
+        await revealEventCard(page, unavailableEvent);
         await submitReminderOnCard(page, unavailableEvent.slug, email);
         await expect(page.locator(`#${unavailableEvent.slug} [data-reminder-msg="${unavailableEvent.id}"]`)).toContainText('You are on the reminders list.');
         await runtime.assertNoNewIssues(checkpoint, 'reminder-signup-unavailable-evening', testInfo);

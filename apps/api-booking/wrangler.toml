@@ -13,10 +13,10 @@ routes = [
 # Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
 # unless intentionally overridden for a focused integration test.
 REPOSITORY_MODE = "supabase"
-EMAIL_MODE      = "resend"
+EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
-ANTIBOT_MODE    = "turnstile"
+ANTIBOT_MODE    = "mock"
 TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL = "2x0000000000000000000000000000000AB"
 TURNSTILE_TEST_SECRET_KEY_PASS = "1x0000000000000000000000000000000AA"
 TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL = "2x00000000000000000000AB"

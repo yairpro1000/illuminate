@@ -4,6 +4,8 @@ import { createConsoleLogger } from './maintenance-logger.mjs';
 const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8787';
 const DEFAULT_CLEANUP_LIMIT = 10;
 const MAX_CLEANUP_LIMIT = 10;
+const SEQUENTIAL_REQUEST_LIMIT = 1;
+const TERMINAL_BOOKING_STATUSES = new Set(['CANCELED', 'EXPIRED', 'COMPLETED', 'NO_SHOW']);
 
 function info(logger, eventType, message, context) {
   logger.info({ source: 'maintenance', eventType, message, context });
@@ -115,6 +117,40 @@ async function fetchJsonOrThrow({ url, init, failureMessage, logger, eventType, 
   return payload;
 }
 
+function isTerminalBookingStatus(status) {
+  return TERMINAL_BOOKING_STATUSES.has(String(status ?? '').toUpperCase());
+}
+
+function summarizeInspectionBookings(bookings) {
+  const rows = Array.isArray(bookings) ? bookings : [];
+  const active = [];
+  const terminal = [];
+
+  for (const row of rows) {
+    if (isTerminalBookingStatus(row.status)) {
+      terminal.push(row);
+      continue;
+    }
+    active.push(row);
+  }
+
+  return {
+    matchedCount: rows.length,
+    activeBookings: active,
+    terminalBookings: terminal,
+  };
+}
+
+function pushUniqueRows(target, rows, keyField = 'booking_id') {
+  const seen = new Set(target.map((row) => row?.[keyField]).filter(Boolean));
+  for (const row of rows) {
+    const key = row?.[keyField];
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    target.push(row);
+  }
+}
+
 export async function inspectBookingsByClientPrefix({
   apiBaseUrl,
   emailPrefix,
@@ -191,25 +227,110 @@ export async function cancelBookingsByClientPrefix({
   }
 
   const normalizedBaseUrl = normalizeApiBaseUrl(apiBaseUrl);
-  const url = new URL('/api/__test/bookings/cleanup', normalizedBaseUrl);
-  return fetchJsonOrThrow({
-    url: url.toString(),
-    init: {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email_prefix: normalizedPrefix,
-        limit: normalizedLimit,
-      }),
-    },
-    failureMessage: 'Failed to cancel bookings by client prefix',
+  const inspection = await inspectBookingsByClientPrefix({
+    apiBaseUrl: normalizedBaseUrl,
+    emailPrefix: normalizedPrefix,
     logger,
-    eventType: 'cancel_client_prefix_cleanup_request',
-    context: {
-      api_base_url: normalizedBaseUrl,
-      email_prefix: normalizedPrefix,
-      batch_limit: normalizedLimit,
-    },
     fetchImpl,
   });
+
+  const inspectionSummary = summarizeInspectionBookings(inspection?.bookings);
+  const targetProcessCount = Math.min(inspectionSummary.activeBookings.length, normalizedLimit);
+  const cleanupUrl = new URL('/api/__test/bookings/cleanup', normalizedBaseUrl);
+  const aggregate = {
+    email_prefix: normalizedPrefix,
+    matched_count: inspectionSummary.matchedCount,
+    active_matched_count: inspectionSummary.activeBookings.length,
+    processed_count: 0,
+    remaining_active_count: inspectionSummary.activeBookings.length,
+    batch_limit: normalizedLimit,
+    per_request_limit: SEQUENTIAL_REQUEST_LIMIT,
+    canceled_count: 0,
+    skipped_count: inspectionSummary.terminalBookings.length,
+    failed_count: 0,
+    canceled: [],
+    skipped: inspectionSummary.terminalBookings.map((row) => ({
+      booking_id: row.booking_id,
+      status: row.status,
+      reason: 'already_terminal',
+    })),
+    failed: [],
+  };
+
+  info(logger, 'cancel_client_prefix_cleanup_plan_ready', 'Prepared sequential booking cleanup plan by client prefix', {
+    api_base_url: normalizedBaseUrl,
+    email_prefix: normalizedPrefix,
+    matched_count: aggregate.matched_count,
+    active_matched_count: aggregate.active_matched_count,
+    requested_cleanup_limit: normalizedLimit,
+    per_request_limit: SEQUENTIAL_REQUEST_LIMIT,
+    branch_taken: targetProcessCount > 0 ? 'execute_sequential_cleanup_iterations' : 'return_no_active_bookings',
+    deny_reason: targetProcessCount > 0 ? null : 'no_active_bookings',
+  });
+
+  for (let iterationIndex = 0; iterationIndex < targetProcessCount; iterationIndex += 1) {
+    info(logger, 'cancel_client_prefix_cleanup_iteration_started', 'Started sequential booking cleanup iteration', {
+      api_base_url: normalizedBaseUrl,
+      email_prefix: normalizedPrefix,
+      iteration_index: iterationIndex + 1,
+      iteration_target_count: targetProcessCount,
+      processed_count_so_far: aggregate.processed_count,
+      branch_taken: 'execute_single_cleanup_request',
+    });
+
+    const iterationSummary = await fetchJsonOrThrow({
+      url: cleanupUrl.toString(),
+      init: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email_prefix: normalizedPrefix,
+          limit: SEQUENTIAL_REQUEST_LIMIT,
+        }),
+      },
+      failureMessage: 'Failed to cancel bookings by client prefix',
+      logger,
+      eventType: 'cancel_client_prefix_cleanup_request',
+      context: {
+        api_base_url: normalizedBaseUrl,
+        email_prefix: normalizedPrefix,
+        batch_limit: normalizedLimit,
+        per_request_limit: SEQUENTIAL_REQUEST_LIMIT,
+        iteration_index: iterationIndex + 1,
+      },
+      fetchImpl,
+    });
+
+    aggregate.processed_count += Number(iterationSummary?.processed_count ?? 0);
+    aggregate.remaining_active_count = Number(iterationSummary?.remaining_active_count ?? aggregate.remaining_active_count);
+    pushUniqueRows(aggregate.canceled, iterationSummary?.canceled ?? []);
+    pushUniqueRows(aggregate.skipped, iterationSummary?.skipped ?? []);
+    pushUniqueRows(aggregate.failed, iterationSummary?.failed ?? []);
+    aggregate.canceled_count = aggregate.canceled.length;
+    aggregate.skipped_count = aggregate.skipped.length;
+    aggregate.failed_count = aggregate.failed.length;
+
+    const branchTaken = aggregate.failed_count > 0
+      ? 'stop_after_iteration_failure'
+      : (aggregate.remaining_active_count > 0 ? 'continue_next_iteration' : 'cleanup_completed_no_remaining_active_bookings');
+
+    info(logger, 'cancel_client_prefix_cleanup_iteration_completed', 'Completed sequential booking cleanup iteration', {
+      api_base_url: normalizedBaseUrl,
+      email_prefix: normalizedPrefix,
+      iteration_index: iterationIndex + 1,
+      iteration_target_count: targetProcessCount,
+      processed_count: aggregate.processed_count,
+      remaining_active_count: aggregate.remaining_active_count,
+      canceled_count: aggregate.canceled_count,
+      failed_count: aggregate.failed_count,
+      branch_taken: branchTaken,
+      deny_reason: aggregate.failed_count > 0 ? 'iteration_reported_failed_bookings' : null,
+    });
+
+    if (aggregate.failed_count > 0 || aggregate.remaining_active_count <= 0) {
+      break;
+    }
+  }
+
+  return aggregate;
 }

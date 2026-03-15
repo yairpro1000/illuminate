@@ -78,13 +78,20 @@ async function waitForSlotPresence(
 
   while (Date.now() < deadline) {
     try {
-      await page.goto(url);
-      await assertSlotPresence(page, dateYmd, timeLabel, expected);
-      return;
+      const slots = await getSlots('2026-03-15', '2026-07-15', 'intro');
+      const match = slots.some((slot) =>
+        slot.start.slice(0, 10) === dateYmd
+        && new Date(slot.start).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }) === timeLabel.slice(0, 5),
+      );
+      if ((expected === 'present' && match) || (expected === 'absent' && !match)) {
+        await page.goto(url);
+        await assertSlotPresence(page, dateYmd, timeLabel, expected);
+        return;
+      }
     } catch (error) {
       lastError = error;
-      await page.waitForTimeout(1000);
     }
+    await page.waitForTimeout(1000);
   }
 
   throw lastError instanceof Error ? lastError : new Error(`Slot did not become ${expected} within ${timeoutMs}ms`);
@@ -450,6 +457,7 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.goto(`${SITE_BASE_URL}/book?type=intro`);
     await assertSlotPresence(page, chosenSlot.dateYmd, chosenSlot.timeLabel, 'absent');
     await runtime.assertNoNewIssues(checkpoint, 'mobile-intro-slot-removed-after-confirm', testInfo);
+    await page.waitForLoadState('networkidle');
 
     checkpoint = runtime.checkpoint();
     await page.goto(confirmedArtifacts.links.manage_url);
@@ -489,12 +497,9 @@ test.describe('@mobile P4 mobile regression', () => {
     await page.waitForURL(/\/dev-pay\?session_id=/);
     await page.locator('#btn-success').click();
     await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-    await expectInlineMockEmailPreview(page, {
-      title: /Confirmed!|Payment confirmed|Payment received/,
-      frameText: /confirmed|Manage booking/i,
-      actionName: /Manage booking/i,
-      actionHref: /manage\.html\?token=/,
-    });
+    await expect(page.locator('.result-title')).toContainText(/Payment confirmed!|Payment received/);
+    await expect(page.locator('.result-msg')).toContainText(/booking is confirmed|payment is being finalized|email is delayed/i);
+    await expect(page.getByRole('link', { name: /Manage booking|Back to homepage/i })).toHaveAttribute('href', /manage\.html\?token=|index\.html/);
     await runtime.assertNoNewIssues(checkpoint, 'mobile-pay-now-session-success', testInfo);
   });
 

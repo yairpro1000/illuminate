@@ -73,28 +73,62 @@ describe('cancel client prefix maintenance script', () => {
 
   it('executes cleanup through the cleanup endpoint', async () => {
     const logger = makeLogger();
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
-      email_prefix: 'p4-clean',
-      matched_count: 3,
-      active_matched_count: 2,
-      processed_count: 2,
-      remaining_active_count: 0,
-      batch_limit: 2,
-      canceled_count: 2,
-      skipped_count: 1,
-      failed_count: 0,
-      canceled: [
-        { booking_id: 'b1', status: 'CANCELED' },
-        { booking_id: 'b2', status: 'CANCELED' },
-      ],
-      skipped: [
-        { booking_id: 'b3', status: 'CANCELED', reason: 'already_terminal' },
-      ],
-      failed: [],
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    }));
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        email_prefix: 'p4-clean',
+        count: 3,
+        bookings: [
+          { booking_id: 'b1', status: 'PENDING', client_email: 'p4-clean-a@example.test' },
+          { booking_id: 'b2', status: 'CONFIRMED', client_email: 'p4-clean-b@example.test' },
+          { booking_id: 'b3', status: 'CANCELED', client_email: 'p4-clean-c@example.test' },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        email_prefix: 'p4-clean',
+        matched_count: 3,
+        active_matched_count: 2,
+        processed_count: 1,
+        remaining_active_count: 1,
+        batch_limit: 1,
+        canceled_count: 1,
+        skipped_count: 1,
+        failed_count: 0,
+        canceled: [
+          { booking_id: 'b1', status: 'CANCELED' },
+        ],
+        skipped: [
+          { booking_id: 'b3', status: 'CANCELED', reason: 'already_terminal' },
+        ],
+        failed: [],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        email_prefix: 'p4-clean',
+        matched_count: 3,
+        active_matched_count: 1,
+        processed_count: 1,
+        remaining_active_count: 0,
+        batch_limit: 1,
+        canceled_count: 1,
+        skipped_count: 2,
+        failed_count: 0,
+        canceled: [
+          { booking_id: 'b2', status: 'CANCELED' },
+        ],
+        skipped: [
+          { booking_id: 'b1', status: 'CANCELED', reason: 'already_terminal' },
+          { booking_id: 'b3', status: 'CANCELED', reason: 'already_terminal' },
+        ],
+        failed: [],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
 
     const summary = await cancelBookingsByClientPrefix({
       apiBaseUrl: 'https://api.example.com',
@@ -106,24 +140,90 @@ describe('cancel client prefix maintenance script', () => {
     });
 
     expect(fetchImpl).toHaveBeenCalledWith(
+      'https://api.example.com/api/__test/bookings?email_prefix=p4-clean',
+      { method: 'GET' },
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
       'https://api.example.com/api/__test/bookings/cleanup',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email_prefix: 'p4-clean',
-          limit: 2,
+          limit: 1,
         }),
       },
     );
     expect(summary.canceled_count).toBe(2);
-    expect(summary.skipped_count).toBe(1);
+    expect(summary.processed_count).toBe(2);
+    expect(summary.remaining_active_count).toBe(0);
+    expect(summary.skipped_count).toBe(2);
+    expect(summary.per_request_limit).toBe(1);
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'cancel_client_prefix_cleanup_request_completed',
+      eventType: 'cancel_client_prefix_cleanup_iteration_completed',
       context: expect.objectContaining({
         email_prefix: 'p4-clean',
-        batch_limit: 2,
-        branch_taken: 'return_cancel_client_prefix_cleanup_request',
+        remaining_active_count: 0,
+        branch_taken: 'cleanup_completed_no_remaining_active_bookings',
+      }),
+    }));
+  });
+
+  it('stops after the first failed sequential cleanup iteration', async () => {
+    const logger = makeLogger();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        email_prefix: 'p4-clean',
+        count: 2,
+        bookings: [
+          { booking_id: 'b1', status: 'CONFIRMED', client_email: 'p4-clean-a@example.test' },
+          { booking_id: 'b2', status: 'CONFIRMED', client_email: 'p4-clean-b@example.test' },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        email_prefix: 'p4-clean',
+        matched_count: 2,
+        active_matched_count: 2,
+        processed_count: 1,
+        remaining_active_count: 2,
+        batch_limit: 1,
+        canceled_count: 0,
+        skipped_count: 0,
+        failed_count: 1,
+        canceled: [],
+        skipped: [],
+        failed: [
+          { booking_id: 'b1', status: 'CONFIRMED', reason: 'subrequest_limit' },
+        ],
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const summary = await cancelBookingsByClientPrefix({
+      apiBaseUrl: 'https://api.example.com',
+      emailPrefix: 'p4-clean',
+      limit: 2,
+      execute: true,
+      logger,
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(summary.processed_count).toBe(1);
+    expect(summary.failed_count).toBe(1);
+    expect(summary.remaining_active_count).toBe(2);
+    expect(summary.failed).toEqual([
+      { booking_id: 'b1', status: 'CONFIRMED', reason: 'subrequest_limit' },
+    ]);
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cancel_client_prefix_cleanup_iteration_completed',
+      context: expect.objectContaining({
+        failed_count: 1,
+        branch_taken: 'stop_after_iteration_failure',
       }),
     }));
   });
