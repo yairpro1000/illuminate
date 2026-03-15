@@ -46,7 +46,7 @@ export type BookingEffectIntent =
 // ── Other domain enums ──────────────────────────────────────────────────────
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
-export type PaymentStatus = 'PENDING' | 'CASH_OK' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+export type PaymentStatus = 'PENDING' | 'INVOICE_SENT' | 'CASH_OK' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
 export type PaymentProvider = 'stripe' | 'mock';
 export type SystemSettingValueType = 'integer' | 'float' | 'boolean' | 'text' | 'json';
 

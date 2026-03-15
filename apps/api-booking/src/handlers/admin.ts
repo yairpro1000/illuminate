@@ -735,7 +735,9 @@ export async function handleAdminSettleBookingPayment(
     });
 
     if (booking.booking_type === 'FREE') throw conflict('Free bookings do not support payment settlement');
-    if (booking.current_status !== 'PENDING') throw conflict('Only pending bookings can be settled manually');
+    if (!['PENDING', 'CONFIRMED'].includes(booking.current_status)) {
+      throw conflict('Only pending or confirmed bookings can be settled manually');
+    }
     if (denyReason) throw conflict('Payment cannot be settled from its current state');
 
     await settleBookingPaymentManually(

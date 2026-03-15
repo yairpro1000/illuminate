@@ -8,7 +8,13 @@ export function isPaymentManualArrangementStatus(status: PaymentStatus | null | 
   return status === 'CASH_OK';
 }
 
-export function isPaymentContinuableOnline(status: PaymentStatus | null | undefined): boolean {
-  return status === 'PENDING' || status === 'FAILED';
+export function isPaymentDueTrackedStatus(status: PaymentStatus | null | undefined): boolean {
+  return status === 'PENDING' || status === 'INVOICE_SENT';
 }
 
+export function isPaymentContinuableOnline(status: PaymentStatus | null | undefined): boolean {
+  return status === 'PENDING'
+    || status === 'INVOICE_SENT'
+    || status === 'FAILED'
+    || status === 'CASH_OK';
+}

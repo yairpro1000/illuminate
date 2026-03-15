@@ -25,6 +25,7 @@ import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } fro
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import {
   isPaymentContinuableOnline,
+  isPaymentDueTrackedStatus,
   isPaymentManualArrangementStatus,
   isPaymentSettledStatus,
 } from '../domain/payment-status.js';
@@ -673,13 +674,23 @@ async function evaluateSideEffectRelevance(
     case 'VERIFY_STRIPE_PAYMENT': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(effect.booking_id);
       const paymentStatus = payment?.status ?? null;
-      const manualArrangement = isPaymentManualArrangementStatus(paymentStatus);
+      const dueTracked = isPaymentDueTrackedStatus(paymentStatus);
       return {
-        shouldProcess: !manualArrangement,
-        branchTaken: manualArrangement
-          ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_manual_arrangement`
-          : 'allow_payment_followup_effect',
-        denyReason: manualArrangement ? 'manual_payment_arrangement_active' : null,
+        shouldProcess: dueTracked,
+        branchTaken: dueTracked
+          ? 'allow_due_tracked_payment_followup_effect'
+          : isPaymentManualArrangementStatus(paymentStatus)
+            ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_manual_arrangement`
+            : isPaymentSettledStatus(paymentStatus)
+              ? `deny_irrelevant_${effect.effect_intent.toLowerCase()}_already_settled`
+              : `deny_irrelevant_${effect.effect_intent.toLowerCase()}_status_not_due_tracked`,
+        denyReason: dueTracked
+          ? null
+          : isPaymentManualArrangementStatus(paymentStatus)
+            ? 'manual_payment_arrangement_active'
+            : isPaymentSettledStatus(paymentStatus)
+              ? 'payment_already_settled'
+              : 'payment_status_not_due_tracked',
         context: {
           payment_status: paymentStatus,
         },
@@ -892,7 +903,7 @@ async function executeSideEffect(
         );
         return;
       }
-      if (booking.current_status === 'PENDING') {
+      if (isPaymentDueTrackedStatus(payment?.status ?? null)) {
         await expireBooking(booking, bookingCtx);
       }
       return;

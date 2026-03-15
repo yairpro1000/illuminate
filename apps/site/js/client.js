@@ -289,7 +289,7 @@
         style.textContent =
           '@keyframes site-spin{to{transform:rotate(360deg)}}' +
           '.site-spinner-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;' +
-          'justify-content:center;background:rgba(0,0,0,0.35);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}' +
+          'justify-content:center;background:rgba(0,0,0,0.35)}' +
           '.site-spinner-ring{width:52px;height:52px;border-radius:50%;' +
           'border:4px solid var(--color-lake-mist,rgba(255,255,255,0.12));' +
           'border-top-color:var(--color-lake,#7aa2ff);animation:site-spin 0.7s linear infinite}';

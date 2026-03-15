@@ -1,5 +1,5 @@
 import { mockState } from '../mock-state.js';
-import type { IEmailProvider, SendResult } from './interface.js';
+import type { ConfirmationEmailOptions, IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
 
 function fmt(iso: string): string {
@@ -64,8 +64,13 @@ function sessionLabel(booking: Booking): string {
   return booking.session_type_title?.trim() || '1:1 Session';
 }
 
-function bookingConfirmationSubject(booking: Booking): string {
-  return `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
+function bookingConfirmationSubject(
+  booking: Booking,
+  options: ConfirmationEmailOptions = {},
+): string {
+  return options.paymentSettled === false
+    ? `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`
+    : `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
 }
 
 function bookingConfirmationBody(
@@ -74,11 +79,41 @@ function bookingConfirmationBody(
   invoiceUrl: string | null,
   payUrl: string | null | undefined,
   policyText: string,
+  options: ConfirmationEmailOptions = {},
 ): string {
+  const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+  if (isPendingPayment) {
+    const paymentDueLabel = options.paymentDueAt
+      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
+      : null;
+    const lines = [
+      `Hi ${clientName(booking)},`,
+      '',
+      `Your session booking has been received, and payment is still pending for ${sessionLabel(booking)}.`,
+      '',
+      `Session: ${sessionLabel(booking)}`,
+      `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
+      `Time: ${fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone)}`,
+      `Location: ${booking.address_line}`,
+      paymentDueLabel ? `Payment due: ${paymentDueLabel}` : null,
+      invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
+      '',
+      paymentDueLabel
+        ? `Please complete payment by ${paymentDueLabel}, which is 24 hours before your session.`
+        : 'Please complete payment before your session.',
+      '',
+      payUrl ? `Complete payment: ${payUrl}` : null,
+      `Manage booking: ${manageUrl}`,
+    ];
+    return lines.filter((line): line is string => line !== null).join('\n');
+  }
+
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
-    'Your session is confirmed and payment has been settled.',
+    options.paymentSettled === false
+      ? 'Your session is confirmed.'
+      : 'Your session is confirmed and payment has been settled.',
     '',
     `Session: ${sessionLabel(booking)}`,
     `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
@@ -161,12 +196,13 @@ export class MockEmailProvider implements IEmailProvider {
     invoiceUrl: string | null,
     payUrl?: string | null,
     policyText = '',
+    options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
     return this.send(
       clientEmail(booking),
       'booking_confirmation',
-      bookingConfirmationSubject(booking),
-      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText),
+      bookingConfirmationSubject(booking, options),
+      bookingConfirmationBody(booking, manageUrl, invoiceUrl, payUrl, policyText, options),
     );
   }
 
@@ -231,13 +267,26 @@ export class MockEmailProvider implements IEmailProvider {
     event: Event,
     manageUrl: string,
     invoiceUrl: string | null,
+    payUrl?: string | null,
     policyText = '',
+    options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
+    const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+    const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
+    const paymentDueLabel = options.paymentDueAt
+      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
+      : null;
     return this.send(
       clientEmail(booking),
       'event_confirmation',
-      `You're confirmed and paid – ${event.title}`,
-      `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
+      paymentSettled ? `You're confirmed and paid – ${event.title}` : `You're confirmed – ${event.title}`,
+      paymentSettled
+        ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
+        : options.paymentSettled === false
+          ? `${isPendingPayment
+            ? `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is confirmed, and payment is still pending.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
+            : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`}`
+          : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`,
     );
   }
 

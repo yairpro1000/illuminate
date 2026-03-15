@@ -35,7 +35,7 @@
   try {
     const data = await siteClient.requestJson(`/api/bookings/confirm?token=${encodeURIComponent(token)}`);
     const isEvent = data.source === 'event';
-    const awaitsPayment = data.status === 'PENDING';
+    const awaitsPayment = String(data.next_action_label || '').toLowerCase() === 'complete payment';
     show(
       checkSvg,
       'Confirmed!',

@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleRequest } from '../src/router.js';
-import { createPayLaterBooking } from '../src/services/booking-service.js';
+import { confirmBookingEmail, createPayLaterBooking } from '../src/services/booking-service.js';
+import { mockState } from '../src/providers/mock-state.js';
 import { makeCtx } from './admin-helpers.js';
 
 describe('Continue payment public guard', () => {
-  it('returns checkout action only when booking and payment are both pending', async () => {
+  it('returns checkout action only after pay-later booking confirmation', async () => {
     const ctx = makeBookingCtx();
 
     const created = await createPayLaterBooking({
@@ -21,6 +22,9 @@ describe('Continue payment public guard', () => {
       remoteIp: null,
     }, ctx);
 
+    const token = getConfirmToken(created.bookingId);
+    await confirmBookingEmail(token, ctx);
+
     const res = await handleRequest(
       new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
       ctx,
@@ -29,8 +33,8 @@ describe('Continue payment public guard', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
-      status: 'PENDING',
-      payment_status: 'PENDING',
+      status: 'CONFIRMED',
+      payment_status: 'INVOICE_SENT',
       action: 'checkout',
       action_url: expect.stringContaining('/mock-invoice/'),
     }));
@@ -44,7 +48,7 @@ describe('Continue payment public guard', () => {
     }));
   });
 
-  it('still returns checkout action when payment previously failed but booking remains pending', async () => {
+  it('still returns checkout action when payment previously failed but booking remains confirmed', async () => {
     const ctx = makeBookingCtx();
 
     const created = await createPayLaterBooking({
@@ -60,6 +64,9 @@ describe('Continue payment public guard', () => {
       turnstileToken: 'ok',
       remoteIp: null,
     }, ctx);
+
+    const token = getConfirmToken(created.bookingId);
+    await confirmBookingEmail(token, ctx);
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     await ctx.providers.repository.updatePayment(payment!.id, { status: 'FAILED' });
@@ -86,7 +93,7 @@ describe('Continue payment public guard', () => {
     }));
   });
 
-  it('denies online continuation once manual payment arrangement is approved', async () => {
+  it('still allows online continuation once manual payment arrangement is approved', async () => {
     const ctx = makeBookingCtx();
 
     const created = await createPayLaterBooking({
@@ -103,6 +110,9 @@ describe('Continue payment public guard', () => {
       remoteIp: null,
     }, ctx);
 
+    const token = getConfirmToken(created.bookingId);
+    await confirmBookingEmail(token, ctx);
+
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     await ctx.providers.repository.updatePayment(payment!.id, { status: 'CASH_OK' });
 
@@ -115,20 +125,70 @@ describe('Continue payment public guard', () => {
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       booking_id: created.bookingId,
       payment_status: 'CASH_OK',
-      action: 'manage',
-      action_url: expect.stringContaining('/manage.html?token='),
-      checkout_url: null,
+      action: 'checkout',
+      action_url: expect.stringContaining('/mock-invoice/'),
     }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'deny_continue_payment_manual_arrangement',
-        deny_reason: 'manual_payment_arrangement_active',
+        branch_taken: 'allow_continue_payment_redirect',
+        deny_reason: null,
+      }),
+    }));
+  });
+
+  it('bootstraps a checkout session when confirmation created a payment row but no invoice URL', async () => {
+    const ctx = makeBookingCtx();
+    ctx.providers.payments.createInvoice = vi.fn().mockRejectedValue(new Error('stripe_invoice_failed'));
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-22T10:00:00.000Z',
+      slotEnd: '2026-03-22T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Fallback Checkout',
+      clientEmail: 'fallback-checkout@example.com',
+      clientPhone: '+41000000024',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const token = getConfirmToken(created.bookingId);
+    await confirmBookingEmail(token, ctx);
+
+    const res = await handleRequest(
+      new Request(`https://api.local/api/bookings/continue-payment?token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      booking_id: created.bookingId,
+      status: 'CONFIRMED',
+      payment_status: 'PENDING',
+      action: 'checkout',
+      action_url: expect.stringContaining('/dev-pay?session_id=mock_cs_'),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'continue_payment_request_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'allow_continue_payment_redirect_after_bootstrap',
+        deny_reason: null,
       }),
     }));
   });
 });
+
+function getConfirmToken(bookingId: string): string {
+  const submission = mockState.bookingEvents
+    .filter((event) => event.booking_id === bookingId)
+    .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+  return String(submission?.payload?.confirm_token ?? '');
+}
 
 function makeBookingCtx() {
   let checkoutCounter = 0;
@@ -139,6 +199,13 @@ function makeBookingCtx() {
       },
       calendar: {
         getBusyTimes: vi.fn().mockResolvedValue([]),
+        createEvent: vi.fn().mockResolvedValue({
+          eventId: 'g-confirmed',
+          meetingProvider: 'google_meet',
+          meetingLink: 'https://meet.google.com/test-confirmed',
+        }),
+        updateEvent: vi.fn().mockResolvedValue(undefined),
+        deleteEvent: vi.fn().mockResolvedValue(undefined),
       },
       payments: {
         createCheckoutSession: vi.fn().mockImplementation(async ({ bookingId }) => {
@@ -162,6 +229,7 @@ function makeBookingCtx() {
       },
       email: {
         sendBookingConfirmRequest: vi.fn().mockResolvedValue({ messageId: 'msg-confirm' }),
+        sendBookingConfirmation: vi.fn().mockResolvedValue({ messageId: 'msg-booking-confirmed' }),
         sendBookingPaymentDue: vi.fn().mockResolvedValue({ messageId: 'msg-pay-due' }),
       },
     } as any,

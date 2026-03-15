@@ -91,7 +91,10 @@ export function getEffectsForEvent(
             make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
           ];
         case 'PAY_LATER':
-          return [];
+          return [
+            make('SEND_BOOKING_CONFIRMATION_REQUEST', null),
+            make('VERIFY_EMAIL_CONFIRMATION', inMinutes(policy.nonPaidConfirmationWindowMinutes)),
+          ];
         case 'PAY_NOW':
           return [
             make('CREATE_STRIPE_CHECKOUT', null),
@@ -116,11 +119,14 @@ export function getEffectsForEvent(
         make('CANCEL_CALENDAR_SLOT', null),
         make('SEND_BOOKING_EXPIRATION_NOTIFICATION', null),
       ];
-    case 'PAYMENT_SETTLED':
-      return [
-        make('RESERVE_CALENDAR_SLOT', null),
-        make('SEND_BOOKING_CONFIRMATION', null),
-      ];
+    case 'PAYMENT_SETTLED': {
+      const effects: BookingEffectSpec[] = [];
+      if (!isReservationEntitledStatus(previousStatus) && isReservationEntitledStatus(nextStatus)) {
+        effects.push(make('RESERVE_CALENDAR_SLOT', null));
+        effects.push(make('SEND_BOOKING_CONFIRMATION', null));
+      }
+      return effects;
+    }
     case 'REFUND_COMPLETED':
       return [];
     default:

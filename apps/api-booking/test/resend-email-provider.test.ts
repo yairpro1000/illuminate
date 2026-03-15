@@ -51,4 +51,39 @@ describe('Resend payment-due email payload', () => {
       expect.stringContaining('"branch_taken":"resend_send_succeeded"'),
     );
   });
+
+  it('renders confirmed-but-unpaid confirmation content with invoice row and confirmed subject', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendBookingConfirmation({
+      id: 'bk-2',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any,
+    'https://letsilluminate.co/manage.html?token=m1.test',
+    'https://letsilluminate.co/mock-invoice/in_123',
+    'https://letsilluminate.co/continue-payment.html?token=m1.test',
+    '',
+    {
+      paymentSettled: false,
+      paymentDueAt: '2026-03-18T10:00:00.000Z',
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.subject).toBe('Your session on Mar 19 is confirmed');
+    expect(payload.text).toContain('payment is still pending');
+    expect(payload.text).toContain('Invoice: https://letsilluminate.co/mock-invoice/in_123');
+    expect(payload.html).toContain('Payment due');
+    expect(payload.html).toContain('Invoice');
+    expect(payload.html).toContain('Click here');
+    expect(payload.html).toContain('Complete payment');
+  });
 });

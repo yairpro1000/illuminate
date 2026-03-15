@@ -4,7 +4,7 @@ import { MockRepository } from '../src/providers/repository/mock.js';
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin manual payment settlement', () => {
-  it('settles a CASH_OK payment, confirms the booking, and logs the allowed branch', async () => {
+  it('settles a CASH_OK payment on an already confirmed booking and logs the allowed branch', async () => {
     const policyRepo = new MockRepository();
     const paymentUpdates = [];
     const bookingUpdates = [];
@@ -12,7 +12,7 @@ describe('Admin manual payment settlement', () => {
       id: 'b1',
       client_id: 'c1',
       booking_type: 'PAY_LATER',
-      current_status: 'PENDING',
+      current_status: 'CONFIRMED',
       event_id: null,
       session_type_id: 's1',
       starts_at: '2026-03-20T10:00:00.000Z',
@@ -58,28 +58,6 @@ describe('Admin manual payment settlement', () => {
         created_at: '2026-03-01T00:00:00.000Z',
       }),
       createBookingSideEffects: vi.fn().mockResolvedValue([
-        {
-          id: 'se0',
-          booking_event_id: 'be1',
-          entity: 'CALENDAR',
-          effect_intent: 'RESERVE_CALENDAR_SLOT',
-          status: 'PENDING',
-          expires_at: null,
-          max_attempts: 5,
-          created_at: '2026-03-01T00:00:00.000Z',
-          updated_at: '2026-03-01T00:00:00.000Z',
-        },
-        {
-          id: 'se1',
-          booking_event_id: 'be1',
-          entity: 'EMAIL',
-          effect_intent: 'SEND_BOOKING_CONFIRMATION',
-          status: 'PENDING',
-          expires_at: null,
-          max_attempts: 5,
-          created_at: '2026-03-01T00:00:00.000Z',
-          updated_at: '2026-03-01T00:00:00.000Z',
-        },
       ]),
       updateBooking: vi.fn().mockImplementation(async (_id, updates) => {
         bookingUpdates.push(updates);
@@ -119,11 +97,12 @@ describe('Admin manual payment settlement', () => {
       paid_at: expect.any(String),
       invoice_url: 'https://example.com/mock-invoice/mock_in_1',
     }));
-    expect(bookingUpdates[0]).toEqual(expect.objectContaining({ current_status: 'CONFIRMED' }));
+    expect(bookingUpdates).toEqual([]);
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_booking_payment_settlement_decision',
       context: expect.objectContaining({
         booking_id: 'b1',
+        booking_status: 'CONFIRMED',
         payment_status: 'CASH_OK',
         branch_taken: 'allow_manual_payment_settlement',
         deny_reason: null,

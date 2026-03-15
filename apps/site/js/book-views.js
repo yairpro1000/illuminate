@@ -663,13 +663,6 @@
       if (state.paymentResult === null) {
         return `
           <div class="confirmation">
-            <div class="confirmation__spinner" aria-hidden="true">
-              <svg viewBox="0 0 64 64" fill="none" class="spinner-ring">
-                <circle cx="32" cy="32" r="28" stroke="var(--color-lake-mist)" stroke-width="3"/>
-                <path d="M32 4a28 28 0 0 1 28 28" stroke="var(--color-lake)" stroke-width="3"
-                      stroke-linecap="round"/>
-              </svg>
-            </div>
             <h2 class="confirmation__title">Redirecting to payment…</h2>
             <p class="confirmation__message">
               Connecting you to Stripe to complete your payment securely.

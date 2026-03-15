@@ -21,14 +21,14 @@ describe('post-booking pages', () => {
     window.history.replaceState({}, '', '/')
   })
 
-  it('confirm page treats PENDING as awaiting payment', async () => {
+  it('confirm page treats confirmed complete-payment action as awaiting payment', async () => {
     document.body.innerHTML = '<div id="confirm-card"></div>'
     window.history.replaceState({}, '', '/confirm.html?token=tok-123')
     window.siteClient.requestJson = async () => ({
       source: 'session',
-      status: 'PENDING',
-      next_action_url: '/manage.html?token=tok-123',
-      next_action_label: 'Manage booking',
+      status: 'CONFIRMED',
+      next_action_url: '/continue-payment.html?token=tok-123',
+      next_action_label: 'Complete Payment',
     })
 
     evalCode(confirmPageCode)
@@ -36,7 +36,7 @@ describe('post-booking pages', () => {
 
     expect(document.getElementById('confirm-card').textContent).toContain('awaiting payment')
     const links = Array.from(document.querySelectorAll('#confirm-card a'))
-    expect(links[0]?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+    expect(links[0]?.getAttribute('href')).toBe('/continue-payment.html?token=tok-123')
     expect(links[1]?.getAttribute('href')).toBe('index.html')
   })
 

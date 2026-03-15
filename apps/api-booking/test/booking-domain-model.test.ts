@@ -134,8 +134,8 @@ describe('booking domain model', () => {
     const payLaterEffects = mockState.sideEffects
       .filter((effect) => effect.booking_id === payLater.bookingId)
       .map((effect) => effect.effect_intent);
-    expect(payLaterEffects).toEqual(expect.arrayContaining(['SEND_PAYMENT_REMINDER', 'VERIFY_STRIPE_PAYMENT']));
-    expect(payLaterEffects).not.toEqual(expect.arrayContaining(['SEND_BOOKING_CONFIRMATION_REQUEST', 'VERIFY_EMAIL_CONFIRMATION']));
+    expect(payLaterEffects).toEqual(expect.arrayContaining(['SEND_BOOKING_CONFIRMATION_REQUEST', 'VERIFY_EMAIL_CONFIRMATION']));
+    expect(payLaterEffects).not.toEqual(expect.arrayContaining(['SEND_PAYMENT_REMINDER', 'VERIFY_STRIPE_PAYMENT']));
   });
 
   it('applies coupon discounts to booking snapshots and downstream checkout amounts', async () => {
@@ -184,7 +184,7 @@ describe('booking domain model', () => {
     const payLaterPayment = await ctx.providers.repository.getPaymentByBookingId(payLater.bookingId);
     expect(payLaterBooking?.price).toBe(90);
     expect(payLaterBooking?.coupon_code).toBe('ISRAEL');
-    expect(payLaterPayment?.amount).toBe(90);
+    expect(payLaterPayment).toBeNull();
   });
 
   it('rejects invalid coupon codes during booking creation', async () => {
@@ -247,7 +247,7 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain(String(confirmed.meeting_link));
   });
 
-  it('keeps pay-later bookings pending after submission and sends payment link', async () => {
+  it('keeps pay-later bookings pending after submission and sends a confirmation request', async () => {
     const ctx = makeCtx();
 
     const created = await createPayLaterBooking({
@@ -269,23 +269,67 @@ describe('booking domain model', () => {
     expect(pending?.google_event_id).toBeNull();
 
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    expect(payment?.invoice_url).toBeTruthy();
+    expect(payment).toBeNull();
 
     const confirmRequestEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_confirm_request' && email.to === 'maya@example.com',
     );
-    expect(confirmRequestEmail).toBeFalsy();
+    expect(confirmRequestEmail).toBeTruthy();
+    expect(confirmRequestEmail?.body).toContain('Please confirm your session booking.');
 
     const followupEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_payment_due' && email.to === 'maya@example.com',
     );
-    expect(followupEmail).toBeTruthy();
-    expect(followupEmail?.subject).toBe('Action needed: complete payment before your session');
-    expect(followupEmail?.body).toContain('Please complete payment by');
-    expect(followupEmail?.body).toContain('24 hours before your session');
-    expect(followupEmail?.body).toContain('/continue-payment.html?token=');
-    expect(followupEmail?.body).not.toContain('expire in 1 minute');
-    expect(followupEmail?.body).not.toContain('Please confirm your session booking');
+    expect(followupEmail).toBeFalsy();
+
+    const confirmEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_BOOKING_CONFIRMATION_REQUEST',
+    );
+    const verifyEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION',
+    );
+    expect(confirmEffect).toBeTruthy();
+    expect(verifyEffect?.expires_at).toBeTruthy();
+  });
+
+  it('confirms pay-later bookings, creates the payment row, and sends a confirmed-but-unpaid email', async () => {
+    const ctx = makeCtx();
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-19T10:00:00.000Z',
+      slotEnd: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Maya Doe',
+      clientEmail: 'maya@example.com',
+      clientPhone: '+41000000004',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'maya@example.com',
+    );
+
+    expect(confirmed.current_status).toBe('CONFIRMED');
+    expect(confirmed.google_event_id).toBeTruthy();
+    expect(payment?.status).toBe('INVOICE_SENT');
+    expect(payment?.invoice_url).toContain('/mock-invoice/');
+    expect(confirmationEmail?.subject).toBe('Your session on Mar 19 is confirmed');
+    expect(confirmationEmail?.body).toContain('payment is still pending for');
+    expect(confirmationEmail?.body).toContain('Payment due:');
+    expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(confirmationEmail?.body).not.toContain('confirmed and paid');
 
     const reminderEffect = mockState.sideEffects.find(
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_PAYMENT_REMINDER',
@@ -295,18 +339,49 @@ describe('booking domain model', () => {
     );
     expect(reminderEffect?.expires_at).toBeTruthy();
     expect(verifyEffect?.expires_at).toBeTruthy();
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'pay_later_submission_email_dispatch_decision',
+  });
+
+  it('keeps pay-later confirmation successful when invoice bootstrap fails and omits the invoice line', async () => {
+    const ctx = makeCtx();
+    ctx.providers.payments.createInvoice = vi.fn().mockRejectedValue(new Error('stripe_invoice_failed'));
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-22T10:00:00.000Z',
+      slotEnd: '2026-03-22T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Fallback Doe',
+      clientEmail: 'fallback@example.com',
+      clientPhone: '+41000000024',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'fallback@example.com',
+    );
+
+    expect(confirmed.current_status).toBe('CONFIRMED');
+    expect(payment?.status).toBe('PENDING');
+    expect(payment?.invoice_url).toBeNull();
+    expect(confirmationEmail?.subject).toBe('Your session on Mar 22 is confirmed');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(confirmationEmail?.body).not.toContain('Invoice:');
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pay_later_invoice_failed',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'send_pay_later_submission_email',
-      }),
-    }));
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'pay_later_submission_email_dispatch_completed',
-      context: expect.objectContaining({
-        booking_id: created.bookingId,
-        branch_taken: 'pay_later_submission_email_sent',
+        branch_taken: 'keep_pending_payment_without_invoice',
+        deny_reason: 'invoice_bootstrap_failed',
       }),
     }));
   });
@@ -473,6 +548,12 @@ describe('booking domain model', () => {
       turnstileToken: 'ok',
       remoteIp: null,
     }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    await confirmBookingEmail(token, ctx);
 
     const verifyEffect = mockState.sideEffects.find(
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'VERIFY_STRIPE_PAYMENT',

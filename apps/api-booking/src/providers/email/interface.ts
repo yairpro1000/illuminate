@@ -15,6 +15,11 @@ export class EmailProviderError extends Error {
   }
 }
 
+export interface ConfirmationEmailOptions {
+  paymentSettled?: boolean;
+  paymentDueAt?: string | null;
+}
+
 export interface IEmailProvider {
   /** Generic website contact message. */
   sendContactMessage(name: string, email: string, message: string, topic?: string | null): Promise<SendResult>;
@@ -37,6 +42,7 @@ export interface IEmailProvider {
     invoiceUrl: string | null,
     payUrl?: string | null,
     policyText?: string,
+    options?: ConfirmationEmailOptions,
   ): Promise<SendResult>;
 
   /** Session reminder before pay-later due threshold. */
@@ -63,7 +69,9 @@ export interface IEmailProvider {
     event: Event,
     manageUrl: string,
     invoiceUrl: string | null,
+    payUrl?: string | null,
     policyText?: string,
+    options?: ConfirmationEmailOptions,
   ): Promise<SendResult>;
 
   /** Event reminder 24h before event. */

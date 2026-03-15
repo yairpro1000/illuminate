@@ -854,24 +854,6 @@
   margin-top: 0.75rem;
 }
 
-/* ── Payment simulation spinner ─────────────────────────── */
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.confirmation__spinner {
-  width: 4rem;
-  height: 4rem;
-  margin-bottom: 0.5rem;
-  animation: spin 1.1s linear infinite;
-}
-
-.confirmation__spinner svg {
-  width: 100%;
-  height: 100%;
-}
-
 /* ── Confirmation screen ─────────────────────────────────── */
 
 .confirmation {

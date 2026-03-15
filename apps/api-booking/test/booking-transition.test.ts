@@ -36,7 +36,7 @@ describe('booking effect policy', () => {
     );
   });
 
-  it('maps pay-later submission to no immediate policy side effects', async () => {
+  it('maps pay-later submission to confirmation request and email verification', async () => {
     const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
@@ -50,7 +50,10 @@ describe('booking effect policy', () => {
       eventAtIso: '2026-03-10T10:00:00.000Z',
     }, policy);
 
-    expect(effects).toEqual([]);
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'SEND_BOOKING_CONFIRMATION_REQUEST',
+      'VERIFY_EMAIL_CONFIRMATION',
+    ]);
   });
 
   it('maps payment settled to confirmed booking state and downstream work', async () => {
@@ -74,6 +77,24 @@ describe('booking effect policy', () => {
       'RESERVE_CALENDAR_SLOT',
       'SEND_BOOKING_CONFIRMATION',
     ]);
+  });
+
+  it('does not re-confirm an already confirmed pay-later booking on later payment settlement', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b4',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'CONFIRMED',
+        booking_type: 'PAY_LATER',
+      },
+      eventType: 'PAYMENT_SETTLED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentStatus: 'SUCCEEDED',
+    }, policy);
+
+    expect(effects).toEqual([]);
   });
 
   it('reserves only on finalizing transitions for 1:1 bookings', () => {
