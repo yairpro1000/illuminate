@@ -174,7 +174,7 @@ test.describe('P0 turnstile UI integration', () => {
         mock_email_preview: {
           email_id: emailId,
           to: 'turnstile@example.test',
-          subject: 'Please confirm your booking - ILLUMINATE',
+          subject: 'Please confirm your booking for Mar 31 - ILLUMINATE',
           html_url: `${SITE_BASE_URL}/api/__dev/emails/${emailId}/html`,
           email_kind: 'booking_confirm_request',
         },

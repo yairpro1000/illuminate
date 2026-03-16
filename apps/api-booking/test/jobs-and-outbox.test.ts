@@ -436,7 +436,7 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.email.sendEventCancellation).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'b1', event_id: 'evt-1' }),
       expect.objectContaining({ id: 'evt-1', title: 'Listening to the Body' }),
-      null,
+      'https://example.com/evenings.html',
     );
     expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({

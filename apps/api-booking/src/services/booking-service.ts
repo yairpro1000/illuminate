@@ -1258,7 +1258,7 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
   });
 
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingCancellation(booking, null);
+    await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'booking_cancellation_email_dispatch_completed',
@@ -1292,7 +1292,7 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     throw new Error('event_not_found_for_cancellation_email');
   }
 
-  await ctx.providers.email.sendEventCancellation(booking, event, null);
+  await ctx.providers.email.sendEventCancellation(booking, event, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_cancellation_email_dispatch_completed',

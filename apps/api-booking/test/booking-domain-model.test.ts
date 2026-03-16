@@ -628,7 +628,7 @@ describe('booking domain model', () => {
       (email) => email.kind === 'booking_expired' && email.to === 'nora@example.com',
     );
     expect(expiryEmail).toBeTruthy();
-    expect(expiryEmail?.subject).toBe('Your booking expired');
+    expect(expiryEmail?.subject).toBe('Your booking on Mar 23 expired');
     expect(expiryEmail?.text).toContain('expired because it was not completed in time');
     expect(expiryEmail?.text).toContain('The slot has been released.');
     expect(expiryEmail?.text).toContain('Book again: https://example.com/sessions.html');
@@ -710,10 +710,17 @@ describe('booking domain model', () => {
     );
     expect(pending?.event_id).toBeTruthy();
     expect(cancellationEmail).toBeTruthy();
-    expect(cancellationEmail?.subject).toBe('Your event booking has been cancelled');
+    expect(cancellationEmail?.subject).toBe(`Your booking for ${freeEvent.title} has been cancelled`);
+    expect(cancellationEmail?.text).toContain('We are sorry to see you go.');
     expect(cancellationEmail?.text).toContain('Your event booking for');
+    expect(cancellationEmail?.text).toContain('You can always book again: https://example.com/evenings.html');
+    expect(cancellationEmail?.text).toContain('Contact Yair: https://letsilluminate.co/contact.html');
     expect(cancellationEmail?.text).not.toContain('Your session on');
+    expect(cancellationEmail?.html).toContain('We are sorry to see you go.');
+    expect(cancellationEmail?.html).toContain('You can always');
     expect(cancellationEmail?.html).toContain('Your event booking has been cancelled.');
+    expect(cancellationEmail?.html).toContain('Book again');
+    expect(cancellationEmail?.html).toContain('Contact Yair');
     expect(cancellationEmail?.html).toContain('Event');
   });
 });

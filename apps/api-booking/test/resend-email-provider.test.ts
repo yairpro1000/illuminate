@@ -114,6 +114,34 @@ describe('Resend payment-due email payload', () => {
     expect(payload.html).toContain('Your spot is kindly held for the next 15 minutes before expiring.');
   });
 
+  it('uses the updated session cancellation copy and rebooking links', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendBookingCancellation({
+      id: 'bk-3b',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, 'https://letsilluminate.co/sessions.html');
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.subject).toBe('Your session on Mar 19 has been cancelled');
+    expect(payload.text).toContain('We are sorry to see you go.');
+    expect(payload.text).toContain('You can always book again: https://letsilluminate.co/sessions.html');
+    expect(payload.text).toContain('Contact Yair: https://letsilluminate.co/contact.html');
+    expect(payload.html).toContain('We are sorry to see you go.');
+    expect(payload.html).toContain('You can always');
+    expect(payload.html).toContain('Book again');
+    expect(payload.html).toContain('Contact Yair');
+  });
+
   it('uses event-specific cancellation copy for canceled event bookings', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
@@ -137,10 +165,16 @@ describe('Resend payment-due email payload', () => {
 
     expect(sendMock).toHaveBeenCalledTimes(1);
     const payload = sendMock.mock.calls[0][0] as Record<string, string>;
-    expect(payload.subject).toBe('Your event booking has been cancelled');
+    expect(payload.subject).toBe('Your booking for ILLUMINATE Evening has been cancelled');
+    expect(payload.text).toContain('We are sorry to see you go.');
     expect(payload.text).toContain('Your event booking for ILLUMINATE Evening on');
+    expect(payload.text).toContain('You can always book again: https://letsilluminate.co/evenings.html');
+    expect(payload.text).toContain('Contact Yair: https://letsilluminate.co/contact.html');
     expect(payload.text).not.toContain('Your session on');
+    expect(payload.html).toContain('We are sorry to see you go.');
+    expect(payload.html).toContain('You can always');
     expect(payload.html).toContain('Your event booking has been cancelled.');
-    expect(payload.html).toContain('Book another event');
+    expect(payload.html).toContain('Book again');
+    expect(payload.html).toContain('Contact Yair');
   });
 });

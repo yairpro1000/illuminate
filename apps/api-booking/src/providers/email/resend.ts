@@ -20,6 +20,8 @@ export interface BuiltEmailMessage {
 export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 export const EMAIL_REPLY_TO = 'hello@yairb.ch';
 const CONTACT_PAGE_URL = 'https://letsilluminate.co/contact.html';
+const SESSIONS_PAGE_URL = 'https://letsilluminate.co/sessions.html';
+const EVENTS_PAGE_URL = 'https://letsilluminate.co/evenings.html';
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -80,6 +82,22 @@ function fmtBodyDateTime(iso: string, timezone: string): string {
 
 function sessionLabel(booking: Booking): string {
   return booking.session_type_title?.trim() || '1:1 Session';
+}
+
+function sessionSubjectDate(booking: Booking): string {
+  return fmtSubjectDate(booking.starts_at, booking.timezone);
+}
+
+function eventSubjectTitle(event: Event): string {
+  return event.title.trim();
+}
+
+function bookingSubjectContext(booking: Booking): string {
+  return `on ${sessionSubjectDate(booking)}`;
+}
+
+function eventBookingUrl(eventId: string | null | undefined): string {
+  return eventId ? EVENTS_PAGE_URL : SESSIONS_PAGE_URL;
 }
 
 function bookingConfirmationSubject(
@@ -509,7 +527,7 @@ export function buildBookingConfirmRequestEmail(
   return buildEmailMessage(
     'booking_confirm_request',
     clientEmail(booking),
-    'Please confirm your booking – ILLUMINATE',
+    `Please confirm your booking for ${sessionSubjectDate(booking)} – ILLUMINATE`,
     text,
     { html: htmlLayout(body) },
   );
@@ -541,7 +559,7 @@ export function buildBookingPaymentDueEmail(
   return buildEmailMessage(
     'booking_payment_due',
     clientEmail(booking),
-    'Action needed: complete payment before your session',
+    `Action needed: complete payment for your ${sessionSubjectDate(booking)} session`,
     text,
     { html: htmlLayout(body) },
   );
@@ -576,7 +594,7 @@ export function buildBookingPaymentReminderEmail(booking: Booking, payUrl: strin
   return buildEmailMessage(
     'booking_payment_reminder',
     clientEmail(booking),
-    'Reminder: payment due for your session',
+    `Reminder: payment due for your ${sessionSubjectDate(booking)} session`,
     text,
     { html },
   );
@@ -599,7 +617,7 @@ export function buildBookingReminder24hEmail(booking: Booking, manageUrl: string
   return buildEmailMessage(
     'booking_reminder_24h',
     clientEmail(booking),
-    'Your session is tomorrow – ILLUMINATE',
+    `Your session on ${sessionSubjectDate(booking)} is tomorrow – ILLUMINATE`,
     text,
     { html },
   );
@@ -617,7 +635,7 @@ export function buildBookingFollowupEmail(booking: Booking, confirmUrl: string):
   return buildEmailMessage(
     'booking_followup',
     clientEmail(booking),
-    'Did you mean to book a session?',
+    `Did you mean to book your ${sessionSubjectDate(booking)} session?`,
     text,
     { html },
   );
@@ -627,8 +645,8 @@ export function buildBookingCancellationEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
-  const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
-  const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
+  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(booking.event_id);
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${CONTACT_PAGE_URL}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -637,14 +655,16 @@ export function buildBookingCancellationEmail(
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
     ],
-    ['Your session has been cancelled.'],
-    startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
-    startNewBookingUrl ?? 'https://yairb.ch',
+    ['We are sorry to see you go.', 'Your session has been cancelled.'],
+    'Book again',
+    bookingUrl,
+    [`<a href="${esc(CONTACT_PAGE_URL)}">Contact Yair &rarr;</a>`],
+    'You can always',
   );
   return buildEmailMessage(
     'booking_cancellation',
     clientEmail(booking),
-    'Your booking has been cancelled',
+    `Your session ${bookingSubjectContext(booking)} has been cancelled`,
     text,
     { html },
   );
@@ -655,8 +675,8 @@ export function buildEventCancellationEmail(
   event: Event,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
-  const restartLine = startNewBookingUrl ? `\nBook another event: ${startNewBookingUrl}` : '';
-  const text = `Hi ${clientName(booking)},\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
+  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(event.id);
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${CONTACT_PAGE_URL}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -665,14 +685,16 @@ export function buildEventCancellationEmail(
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
     ],
-    [`Your event booking has been cancelled.`],
-    startNewBookingUrl ? 'Book another event' : 'Back to homepage',
-    startNewBookingUrl ?? 'https://yairb.ch',
+    ['We are sorry to see you go.', 'Your event booking has been cancelled.'],
+    'Book again',
+    bookingUrl,
+    [`<a href="${esc(CONTACT_PAGE_URL)}">Contact Yair &rarr;</a>`],
+    'You can always',
   );
   return buildEmailMessage(
     'event_cancellation',
     clientEmail(booking),
-    'Your event booking has been cancelled',
+    `Your booking for ${eventSubjectTitle(event)} has been cancelled`,
     text,
     { html },
   );
@@ -704,7 +726,7 @@ export function buildBookingExpiredEmail(
   return buildEmailMessage(
     'booking_expired',
     clientEmail(booking),
-    'Your booking expired',
+    `Your booking ${bookingSubjectContext(booking)} expired`,
     text,
     { html },
   );
@@ -757,7 +779,7 @@ export function buildEventConfirmationEmail(
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),
-    paymentSettled ? `You're confirmed and paid – ${event.title}` : `You're confirmed – ${event.title}`,
+    paymentSettled ? `You're confirmed and paid – ${eventSubjectTitle(event)}` : `You're confirmed – ${eventSubjectTitle(event)}`,
     text,
     { html: eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options) },
   );
