@@ -612,7 +612,7 @@ export function buildBookingCancellationEmail(
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
-      [isEventBooking ? 'Event' : 'Session', esc(sessionLabel(booking))],
+      [isEventBooking ? 'Event' : 'Session', esc(isEventBooking ? (booking.event_title?.trim() || 'Event') : sessionLabel(booking))],
       ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],

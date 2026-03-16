@@ -46,10 +46,10 @@ export function attachRuntimeMonitor(page: Page) {
   }
 
   page.on('console', (msg) => {
-    if (msg.type() !== 'error') return;
+    if (msg.type() !== 'error' && msg.type() !== 'warning') return;
     issues.push({
       kind: 'console',
-      message: msg.text(),
+      message: `[${msg.type()}] ${msg.text()}`,
       url: msg.location().url || page.url(),
     });
   });
