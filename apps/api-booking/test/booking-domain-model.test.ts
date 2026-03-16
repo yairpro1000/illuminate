@@ -669,14 +669,14 @@ describe('booking domain model', () => {
     expect(canceled.ok).toBe(true);
 
     const cancellationEmail = mockState.sentEmails.find(
-      (email) => email.kind === 'booking_cancellation' && email.to === 'cancel-event@example.com',
+      (email) => email.kind === 'event_cancellation' && email.to === 'cancel-event@example.com',
     );
     expect(pending?.event_id).toBeTruthy();
     expect(cancellationEmail).toBeTruthy();
     expect(cancellationEmail?.subject).toBe('Your event booking has been cancelled');
-    expect(cancellationEmail?.text).toContain('Your event on');
+    expect(cancellationEmail?.text).toContain('Your event booking for');
     expect(cancellationEmail?.text).not.toContain('Your session on');
-    expect(cancellationEmail?.html).toContain('Your event has been cancelled.');
+    expect(cancellationEmail?.html).toContain('Your event booking has been cancelled.');
     expect(cancellationEmail?.html).toContain('Event');
   });
 });

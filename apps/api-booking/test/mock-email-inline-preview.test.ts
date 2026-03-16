@@ -350,4 +350,31 @@ describe('mock email inline preview contract', () => {
       }),
     }));
   });
+
+  it('includes event title in cancellation email for event bookings', async () => {
+    const ctx = makeCtx();
+    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid);
+    expect(freeEvent).toBeTruthy();
+
+    const bookResponse = await handleRequest(jsonRequest(`/api/events/${encodeURIComponent(String(freeEvent!.slug))}/book`, {
+      first_name: 'Cancel',
+      last_name: 'EventTest',
+      email: 'cancel-event@example.test',
+      phone: '+41790000011',
+      turnstile_token: 'ok',
+    }, { uiTestMode: null }), ctx);
+    expect(bookResponse.status).toBe(200);
+    const bookData = await bookResponse.json() as { booking_id: string };
+    const manageToken = `m1.${bookData.booking_id}`;
+
+    const cancelResponse = await handleRequest(jsonRequest('/api/bookings/cancel', {
+      token: manageToken,
+    }), ctx);
+    expect(cancelResponse.status).toBe(200);
+    const cancelData = await cancelResponse.json() as Record<string, any>;
+    expect(cancelData.mock_email_preview).toEqual(expect.objectContaining({
+      email_id: bookingEmailId(bookData.booking_id, 'event_cancellation'),
+      html_content: expect.stringContaining(freeEvent!.title),
+    }));
+  });
 });

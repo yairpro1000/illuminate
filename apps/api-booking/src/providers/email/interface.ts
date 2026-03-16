@@ -57,6 +57,9 @@ export interface IEmailProvider {
   /** Session cancellation. Optionally include a start-new-booking URL. */
   sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
 
+  /** Event cancellation. Optionally include a start-new-booking URL. */
+  sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult>;
+
   /** Session expired because it was not confirmed/paid in time. Optionally include a start-new-booking URL. */
   sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
 

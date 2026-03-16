@@ -2229,7 +2229,13 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'SEND_BOOKING_CANCELLATION_CONFIRMATION': {
-      await ctx.providers.email.sendBookingCancellation(booking, null);
+      if (booking.event_id) {
+        const event = await ctx.providers.repository.getEventById(booking.event_id);
+        if (!event) throw new Error(`event_not_found:${booking.event_id}`);
+        await ctx.providers.email.sendEventCancellation(booking, event, null);
+      } else {
+        await ctx.providers.email.sendBookingCancellation(booking, null);
+      }
       return booking;
     }
 

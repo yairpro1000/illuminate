@@ -11,6 +11,7 @@ import {
   buildBookingPaymentReminderEmail,
   buildBookingReminder24hEmail,
   buildContactMessageEmail,
+  buildEventCancellationEmail,
   buildEventConfirmationEmail,
   buildEventConfirmRequestEmail,
   buildEventFollowupEmail,
@@ -126,6 +127,13 @@ export class MockEmailProvider implements IEmailProvider {
     return this.send(buildBookingFollowupEmail(booking, confirmUrl), {
       bookingId: booking.id,
       eventId: booking.event_id ?? null,
+    });
+  }
+
+  async sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult> {
+    return this.send(buildEventCancellationEmail(booking, event, startNewBookingUrl), {
+      bookingId: booking.id,
+      eventId: event.id,
     });
   }
 

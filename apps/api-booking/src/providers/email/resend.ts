@@ -632,6 +632,34 @@ export function buildBookingCancellationEmail(
   );
 }
 
+export function buildEventCancellationEmail(
+  booking: Booking,
+  event: Event,
+  startNewBookingUrl?: string | null,
+): BuiltEmailMessage {
+  const restartLine = startNewBookingUrl ? `\nBook another event: ${startNewBookingUrl}` : '';
+  const text = `Hi ${clientName(booking)},\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    [
+      ['Event', esc(event.title)],
+      ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
+      ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
+      ['Location', esc(booking.address_line ?? '')],
+    ],
+    [`Your event booking has been cancelled.`],
+    startNewBookingUrl ? 'Book another event' : 'Back to homepage',
+    startNewBookingUrl ?? 'https://yairb.ch',
+  );
+  return buildEmailMessage(
+    'event_cancellation',
+    clientEmail(booking),
+    'Your event booking has been cancelled',
+    text,
+    { html },
+  );
+}
+
 export function buildBookingExpiredEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
@@ -879,6 +907,10 @@ export class ResendEmailProvider implements IEmailProvider {
 
   async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
     return this.sendEmail(buildBookingCancellationEmail(booking, startNewBookingUrl));
+  }
+
+  async sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult> {
+    return this.sendEmail(buildEventCancellationEmail(booking, event, startNewBookingUrl));
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
