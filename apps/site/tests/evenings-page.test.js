@@ -137,7 +137,7 @@ describe('evenings page', () => {
     expect(text).toContain('3,000 ₪')
   })
 
-  it('renders the event image from the slug-based evenings asset path', async () => {
+  it('renders the event image from the R2 bucket using image_key', async () => {
     window.siteClient.requestJson.mockResolvedValue({
       events: [
         {
@@ -152,6 +152,7 @@ describe('evenings page', () => {
           price_per_person: 0,
           currency: 'CHF',
           capacity: 10,
+          image_key: 'events/abc123-body.jpg',
           render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
           stats: { active_bookings: 1, capacity: 10 },
         },
@@ -163,7 +164,7 @@ describe('evenings page', () => {
 
     const image = document.querySelector('.event-card__img')
     expect(image).not.toBeNull()
-    expect(image.getAttribute('src')).toBe('img/evenings/ev-01-body.png')
+    expect(image.getAttribute('src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
     expect(image.getAttribute('alt')).toBe('Body Evening')
   })
 })
