@@ -296,6 +296,11 @@ describe('booking domain model', () => {
         deny_reason: 'calendar_sync_pending_retry',
       }),
     }));
+    const retryEffect = mockState.sideEffects.find(
+      (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'RESERVE_CALENDAR_SLOT',
+    );
+    expect(retryEffect).toBeTruthy();
+    expect(retryEffect?.status).toBe('PENDING');
   });
 
   it('keeps pay-later bookings pending after submission and sends a confirmation request', async () => {
@@ -640,6 +645,38 @@ describe('booking domain model', () => {
 
     const cancelAttempt = await cancelBooking(expired!, ctx);
     expect(cancelAttempt.ok).toBe(false);
+  });
+
+  it('sends event confirmation email with Add to Google Calendar link', async () => {
+    const ctx = makeCtx();
+    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
+
+    const created = await createEventBooking({
+      event: freeEvent,
+      firstName: 'Cal',
+      lastName: 'User',
+      email: 'cal-user@example.com',
+      phone: '+41000000018',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    await confirmBookingEmail(token, ctx);
+
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'event_confirmation' && email.to === 'cal-user@example.com',
+    );
+    expect(confirmationEmail).toBeTruthy();
+    expect(confirmationEmail?.html).toContain('calendar.google.com');
+    expect(confirmationEmail?.html).toContain('Add to Google Calendar');
+    expect(confirmationEmail?.body).toContain('Add to calendar:');
+    expect(confirmationEmail?.body).toContain('calendar.google.com');
   });
 
   it('sends event-specific cancellation copy for canceled event bookings', async () => {
