@@ -44,8 +44,11 @@
     };
   }
 
+  const R2_BASE = 'https://images.letsilluminate.co';
+
   function eventImageUrl(event) {
-    return `img/evenings/${event.slug}.png`;
+    if (event.image_key) return `${R2_BASE}/${event.image_key}`;
+    return '';
   }
 
   function formatPrice(event) {
