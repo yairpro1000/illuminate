@@ -155,7 +155,7 @@ body.theme-light .evenings-hero::after {
 /* ── Image / placeholder ────────────────────────────────────── */
 .event-card__image {
   position: relative;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   background: var(--color-bg-alt);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
