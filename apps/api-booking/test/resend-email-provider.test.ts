@@ -118,25 +118,29 @@ describe('Resend payment-due email payload', () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
 
-    await provider.sendBookingCancellation({
+    await provider.sendEventCancellation({
       id: 'bk-4',
       event_id: 'evt-2',
       client_first_name: 'Maya',
       client_last_name: 'Doe',
       client_email: 'maya@example.com',
-      event_title: 'ILLUMINATE Evening',
       starts_at: '2026-03-19T10:00:00.000Z',
       ends_at: '2026-03-19T11:00:00.000Z',
       timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, {
+      id: 'evt-2',
+      title: 'ILLUMINATE Evening',
+      starts_at: '2026-03-19T10:00:00.000Z',
       address_line: 'Via Example 1, Lugano',
     } as any, 'https://letsilluminate.co/evenings.html');
 
     expect(sendMock).toHaveBeenCalledTimes(1);
     const payload = sendMock.mock.calls[0][0] as Record<string, string>;
     expect(payload.subject).toBe('Your event booking has been cancelled');
-    expect(payload.text).toContain('Your event on');
+    expect(payload.text).toContain('Your event booking for ILLUMINATE Evening on');
     expect(payload.text).not.toContain('Your session on');
-    expect(payload.html).toContain('Your event has been cancelled.');
+    expect(payload.html).toContain('Your event booking has been cancelled.');
     expect(payload.html).toContain('Book another event');
   });
 });

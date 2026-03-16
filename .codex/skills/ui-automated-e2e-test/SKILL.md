@@ -30,6 +30,7 @@ After all approved UI tests pass:
 ## Operating Rules
 
 - Prefer a tiny P0/P1 smoke suite over broad ceremonial coverage.
+- Before the first E2E run in a session, run the relevant non-UI automated tests for the discussed scope first. Do not begin the browser suite until that non-UI baseline has been executed or the user explicitly tells you to skip it.
 - Start with a navigation smoke pass before deeper scenario automation.
 - Prefer strong assertions about business outcomes over page mechanics.
 - Prefer deterministic setup, teardown, and data control.
@@ -46,6 +47,12 @@ The tested domains should be clean by the end of the suite run:
 - No unexplained failed network requests in the exercised flows.
 - No tolerance for "the flow passed but the console was noisy".
 - No broken primary navigation path left undiscovered at the start of the run.
+
+Session-level regression rule:
+
+- Treat the first non-UI run of the session as the baseline before any E2E execution.
+- If all E2E tests in the discussed scope pass by the end of the session, ask the user whether to run one final regression pass consisting of the full relevant non-UI suite and the UI scope again.
+- Frame that final ask as a regression confirmation step to catch cross-layer regressions and identify tests that now need updating because session decisions intentionally changed behavior.
 
 ## Default Technical Decisions
 
@@ -199,6 +206,7 @@ Run the approved scope against the agreed environment.
 
 During execution:
 
+- if this is the first E2E execution in the session, run the non-UI automated tests for the discussed scope first and record the result before opening the browser suite
 - run the navigation smoke phase first so obvious broken routes or runtime issues are caught before deeper business scenarios
 - for each smoke-tested page, wait for the page and its relevant API requests to settle before evaluating cleanliness
 - collect screenshots at key checkpoints
@@ -253,6 +261,7 @@ Before implementation, provide a compact approval block with:
 
 At the end, provide:
 
+- whether the pre-E2E non-UI baseline run was executed in this session and its result
 - whether the navigation smoke pass is clean
 - what was automated
 - what passed
@@ -260,6 +269,7 @@ At the end, provide:
 - what was skipped or blocked and why
 - whether provider modes were switched to `mock`, whether the user confirmed that change, and whether provider-mode reversion is waiting on user confirmation
 - whether cleanup is waiting on user confirmation to run the existing `__test` booking-cancel and `client_id` deletion utilities
+- if all E2E tests in scope passed, ask the user whether to run one final regression pass with the full relevant non-UI suite and the UI scope again to catch regressions or confirm which tests should now change because of session decisions
 
 ### Review Table
 

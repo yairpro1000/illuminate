@@ -124,6 +124,7 @@ function makeCtx(overrides: any = {}) {
       email: {
         sendBookingPaymentReminder: vi.fn().mockResolvedValue(undefined),
         sendBookingCancellation: vi.fn().mockResolvedValue(undefined),
+        sendEventCancellation: vi.fn().mockResolvedValue(undefined),
         sendBookingExpired: vi.fn().mockResolvedValue(undefined),
         sendBookingConfirmRequest: vi.fn().mockResolvedValue(undefined),
         sendEventConfirmRequest: vi.fn().mockResolvedValue(undefined),
@@ -397,5 +398,101 @@ describe('jobs and side-effect dispatcher', () => {
         status: 'SUCCESS',
       }),
     );
+  });
+
+  it('dispatches event cancellation through the shared event path with the loaded event title', async () => {
+    const effect = {
+      id: 'se-cancel-event-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'SEND_BOOKING_CANCELLATION_CONFIRMATION',
+      entity: 'EMAIL',
+      status: 'PENDING',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getBookingById: vi.fn().mockResolvedValue({
+            id: 'b1',
+            event_id: 'evt-1',
+            current_status: 'CANCELLED',
+            client_email: 'maya@example.com',
+          }),
+          getEventById: vi.fn().mockResolvedValue({
+            id: 'evt-1',
+            title: 'Listening to the Body',
+          }),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendEventCancellation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'b1', event_id: 'evt-1' }),
+      expect.objectContaining({ id: 'evt-1', title: 'Listening to the Body' }),
+      null,
+    );
+    expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_cancellation_email_dispatch_completed',
+      context: expect.objectContaining({
+        branch_taken: 'event_cancellation_email_sent',
+        event_id: 'evt-1',
+      }),
+    }));
+  });
+
+  it('logs and records a failed attempt when an event cancellation cannot load its event', async () => {
+    const effect = {
+      id: 'se-cancel-event-missing-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'SEND_BOOKING_CANCELLATION_CONFIRMATION',
+      entity: 'EMAIL',
+      status: 'PENDING',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getBookingById: vi.fn().mockResolvedValue({
+            id: 'b1',
+            event_id: 'evt-missing',
+            current_status: 'CANCELLED',
+            client_email: 'maya@example.com',
+          }),
+          getEventById: vi.fn().mockResolvedValue(null),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendEventCancellation).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        booking_side_effect_id: 'se-cancel-event-missing-1',
+        status: 'FAILED',
+        error_message: 'Error: event_not_found_for_cancellation_email',
+      }),
+    );
+    expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_cancellation_email_dispatch_failed',
+      context: expect.objectContaining({
+        branch_taken: 'deny_event_cancellation_event_missing',
+        deny_reason: 'event_not_found_for_cancellation_email',
+        event_id: 'evt-missing',
+      }),
+    }));
   });
 });

@@ -1,4 +1,4 @@
 interface:
   display_name: "Reuse"
   short_description: "Centralize shared logic first"
-  default_prompt: "Use $reuse to design the most reusable implementation before writing code."
+  default_prompt: "Use $reuse with $readability to design the most reusable implementation before writing code."

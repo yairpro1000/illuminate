@@ -17,6 +17,7 @@ import {
   expireBooking,
   retryCalendarSyncForBooking,
   send24hBookingReminder,
+  sendBookingCancellationConfirmation,
   sendBookingFinalConfirmation,
 } from '../services/booking-service.js';
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
@@ -880,13 +881,7 @@ async function executeSideEffect(
     }
 
     case 'SEND_BOOKING_CANCELLATION_CONFIRMATION': {
-      if (booking.event_id) {
-        const event = await ctx.providers.repository.getEventById(booking.event_id);
-        if (!event) throw new Error(`event_not_found:${booking.event_id}`);
-        await ctx.providers.email.sendEventCancellation(booking, event, null);
-      } else {
-        await ctx.providers.email.sendBookingCancellation(booking, null);
-      }
+      await sendBookingCancellationConfirmation(booking, bookingCtx);
       return;
     }
 

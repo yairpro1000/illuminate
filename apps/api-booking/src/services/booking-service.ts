@@ -1218,6 +1218,76 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
 
 }
 
+export async function sendBookingCancellationConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
+  const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_cancellation_email_dispatch_decision',
+    message: 'Evaluated booking cancellation email dispatch',
+    context: {
+      booking_id: booking.id,
+      booking_kind: bookingKind,
+      booking_status: booking.current_status,
+      event_id: booking.event_id ?? null,
+      branch_taken: booking.event_id
+        ? 'load_event_and_send_event_cancellation_email'
+        : 'send_session_cancellation_email',
+      deny_reason: null,
+    },
+  });
+
+  if (!booking.event_id) {
+    await ctx.providers.email.sendBookingCancellation(booking, null);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'booking_cancellation_email_dispatch_completed',
+      message: 'Session cancellation email sent',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        branch_taken: 'session_cancellation_email_sent',
+        deny_reason: null,
+      },
+    });
+    return;
+  }
+
+  const event = await ctx.providers.repository.getEventById(booking.event_id);
+  if (!event) {
+    ctx.logger.logError?.({
+      source: 'backend',
+      eventType: 'booking_cancellation_email_dispatch_failed',
+      message: 'Event cancellation email denied because event record is missing',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        event_id: booking.event_id,
+        branch_taken: 'deny_event_cancellation_event_missing',
+        deny_reason: 'event_not_found_for_cancellation_email',
+      },
+    });
+    throw new Error('event_not_found_for_cancellation_email');
+  }
+
+  await ctx.providers.email.sendEventCancellation(booking, event, null);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_cancellation_email_dispatch_completed',
+    message: 'Event cancellation email sent',
+    context: {
+      booking_id: booking.id,
+      booking_kind: bookingKind,
+      booking_status: booking.current_status,
+      event_id: event.id,
+      branch_taken: 'event_cancellation_email_sent',
+      deny_reason: null,
+    },
+  });
+}
+
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
   const policy = await loadBookingPolicy(ctx);
   const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
@@ -2229,13 +2299,7 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'SEND_BOOKING_CANCELLATION_CONFIRMATION': {
-      if (booking.event_id) {
-        const event = await ctx.providers.repository.getEventById(booking.event_id);
-        if (!event) throw new Error(`event_not_found:${booking.event_id}`);
-        await ctx.providers.email.sendEventCancellation(booking, event, null);
-      } else {
-        await ctx.providers.email.sendBookingCancellation(booking, null);
-      }
+      await sendBookingCancellationConfirmation(booking, ctx);
       return booking;
     }
 

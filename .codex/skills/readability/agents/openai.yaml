@@ -1,0 +1,4 @@
+interface:
+  display_name: "Readability"
+  short_description: "Keep code clear and coherent"
+  default_prompt: "Use $readability with $reuse to keep the implementation clear, consistent, and easy to read."
