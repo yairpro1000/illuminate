@@ -352,6 +352,28 @@ function simpleHtml(
   return htmlLayout(body);
 }
 
+function buildGoogleCalendarUrl(event: Event): string {
+  function calStr(iso: string): string {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: event.timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date(iso));
+    const m: Record<string, string> = {};
+    for (const p of parts) m[p.type] = p.value;
+    return `${m.year}${m.month}${m.day}T${m.hour}${m.minute}${m.second}`;
+  }
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.title,
+    dates: `${calStr(event.starts_at)}/${calStr(event.ends_at)}`,
+    ctz: event.timezone,
+    location: event.address_line ?? '',
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 function eventConfirmationHtml(
   booking: Booking,
   event: Event,
@@ -402,6 +424,7 @@ function eventConfirmationHtml(
   if (booking.meeting_link) {
     rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
   }
+  rows.push(['Calendar', `<a href="${esc(buildGoogleCalendarUrl(event))}">Add to Google Calendar</a>`]);
 
   const invoiceLine = invoiceUrl
     ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
@@ -725,11 +748,12 @@ export function buildEventConfirmationEmail(
   const paymentDueLabel = options.paymentDueAt
     ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
     : null;
+  const calUrl = buildGoogleCalendarUrl(event);
   const text = paymentSettled
-    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
+    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\nAdd to calendar: ${calUrl}\n\nManage: ${manageUrl}\n\n${policyText}`
     : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
-      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`;
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${!isPendingPayment ? `\nAdd to calendar: ${calUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
+      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\nAdd to calendar: ${calUrl}\n\nManage: ${manageUrl}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),

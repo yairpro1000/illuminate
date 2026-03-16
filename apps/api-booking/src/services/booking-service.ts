@@ -665,6 +665,16 @@ export async function confirmBookingEmail(
     if (!finalizedBooking.event_id) {
       const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
       finalizedBooking = syncResult.booking;
+      if (!syncResult.calendarSynced && submissionWithToken) {
+        await bookingCtx.providers.repository.createBookingSideEffects([{
+          booking_event_id: submissionWithToken.id,
+          entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
+          effect_intent: 'RESERVE_CALENDAR_SLOT',
+          status: 'PENDING',
+          expires_at: null,
+          max_attempts: policy.processingMaxAttempts,
+        }]);
+      }
     }
     await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
   } else {
@@ -678,6 +688,16 @@ export async function confirmBookingEmail(
     if (!finalizedBooking.event_id) {
       const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
       finalizedBooking = syncResult.booking;
+      if (!syncResult.calendarSynced && submissionWithToken) {
+        await bookingCtx.providers.repository.createBookingSideEffects([{
+          booking_event_id: submissionWithToken.id,
+          entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
+          effect_intent: 'RESERVE_CALENDAR_SLOT',
+          status: 'PENDING',
+          expires_at: null,
+          max_attempts: policy.processingMaxAttempts,
+        }]);
+      }
     }
 
     if (submissionWithToken) {
