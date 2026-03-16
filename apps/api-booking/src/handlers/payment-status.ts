@@ -57,6 +57,8 @@ export async function handlePaymentStatus(request: Request, ctx: AppContext): Pr
     manage_url: actionInfo.manageUrl,
     next_action_url: actionInfo.nextActionUrl,
     next_action_label: actionInfo.nextActionLabel,
+    calendar_event: actionInfo.calendarEvent,
+    calendar_sync_pending_retry: actionInfo.calendarSyncPendingRetry,
     ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
   });
 }

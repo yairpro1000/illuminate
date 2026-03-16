@@ -23,6 +23,25 @@ export interface CalendarEventUpsertResult {
   meetingLink: string | null;
 }
 
+export class RetryableCalendarWriteError extends Error {
+  readonly statusCode: number | null;
+  readonly reason: string | null;
+
+  constructor(
+    message: string,
+    input: { statusCode: number | null; reason: string | null },
+  ) {
+    super(message);
+    this.name = 'RetryableCalendarWriteError';
+    this.statusCode = input.statusCode;
+    this.reason = input.reason;
+  }
+}
+
+export function isRetryableCalendarWriteError(error: unknown): error is RetryableCalendarWriteError {
+  return error instanceof RetryableCalendarWriteError;
+}
+
 export interface ICalendarProvider {
   /**
    * Returns periods when the calendar is busy between `from` and `to` (ISO 8601 dates).

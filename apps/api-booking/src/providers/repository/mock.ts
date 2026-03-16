@@ -277,12 +277,13 @@ export class MockRepository implements IRepository {
 
   async updateBookingSideEffect(
     id: string,
-    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at' | 'expires_at'>>,
   ): Promise<BookingSideEffect> {
     const row = mockState.sideEffects.find((effect) => effect.id === id);
     if (!row) throw new Error(`Side effect ${id} not found`);
 
     row.status = updates.status ?? row.status;
+    row.expires_at = updates.expires_at ?? row.expires_at;
     row.updated_at = updates.updated_at ?? now();
     return stripBookingId(row);
   }

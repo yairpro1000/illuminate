@@ -4,6 +4,7 @@ import type {
   CalendarEventUpsertResult,
   CreateCalendarEventOptions,
 } from './interface.js';
+import { RetryableCalendarWriteError as RetryableCalendarWriteErrorClass } from './interface.js';
 import type { TimeSlot } from '../../types.js';
 import type { Logger } from '../../lib/logger.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
@@ -33,6 +34,7 @@ interface ParsedGoogleApiError {
 
 interface GoogleCalendarEventResponse {
   id: string;
+  status?: string | null;
   hangoutLink?: string | null;
   conferenceData?: {
     entryPoints?: Array<{
@@ -42,10 +44,16 @@ interface GoogleCalendarEventResponse {
   } | null;
 }
 
+interface GoogleCalendarListResponse {
+  items?: GoogleCalendarEventResponse[] | null;
+}
+
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
 const freeBusyCache = new Map<string, { data: TimeSlot[]; expires: number }>();
 const MAX_FREEBUSY_CHUNK_DAYS = 90;
+const GOOGLE_CALENDAR_BURST_THROTTLE_MS = { min: 200, max: 800 } as const;
+const RETRYABLE_WRITE_REASONS = new Set(['quotaExceeded', 'rateLimitExceeded', 'userRateLimitExceeded']);
 
 function normalizeCalendarId(raw: string | null | undefined): { value: string; wasTrimmed: boolean } {
   const original = String(raw ?? '');
@@ -109,6 +117,19 @@ function stringifyUnknownPayload(payload: unknown): string {
   } catch {
     return String(payload);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function randomInteger(min: number, max: number): number {
+  return Math.round(min + Math.random() * (max - min));
+}
+
+function isRetryableWriteFailure(status: number, parsedError: ParsedGoogleApiError): boolean {
+  return (status === 403 || status === 429)
+    && Boolean(parsedError.reason && RETRYABLE_WRITE_REASONS.has(parsedError.reason));
 }
 
 function b64url(str: string): string {
@@ -433,12 +454,115 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     return data.calendars[this.calendarId]?.busy ?? [];
   }
 
+  private async applyBurstThrottle(bookingId: string | null | undefined, requestId: string | null | undefined): Promise<void> {
+    const delayMs = randomInteger(
+      GOOGLE_CALENDAR_BURST_THROTTLE_MS.min,
+      GOOGLE_CALENDAR_BURST_THROTTLE_MS.max,
+    );
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_insert_throttle_delay',
+      message: 'Applied pre-insert burst throttle delay before Google Calendar write',
+      context: {
+        booking_id: bookingId ?? null,
+        request_id: requestId ?? null,
+        delay_ms: delayMs,
+        branch_taken: 'apply_pre_insert_burst_throttle_delay',
+        deny_reason: null,
+      },
+    });
+    await sleep(delayMs);
+  }
+
+  private async findExistingEventByBookingId(
+    token: string,
+    bookingId: string,
+    requestId: string | null | undefined,
+  ): Promise<CalendarEventUpsertResult | null> {
+    const calId = encodeURIComponent(this.calendarId);
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${calId}/events`);
+    url.searchParams.set('privateExtendedProperty', `booking_id=${bookingId}`);
+    url.searchParams.set('maxResults', '1');
+    url.searchParams.set('showDeleted', 'false');
+
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_existing_event_lookup_started',
+      message: 'Looking up existing Google Calendar event by booking id metadata',
+      context: {
+        booking_id: bookingId,
+        request_id: requestId ?? null,
+        branch_taken: 'lookup_existing_event_by_booking_id',
+        deny_reason: null,
+      },
+    });
+
+    const res = this.logger
+      ? await instrumentFetch(this.logger, {
+          provider: 'google_calendar',
+          operation: 'lookup_event_by_booking_id',
+          method: 'GET',
+          url: url.toString(),
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+      : await fetch(url.toString(), {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      const parsedError = parseGoogleApiError(errorBody);
+      this.logger?.logWarn?.({
+        source: 'backend',
+        eventType: 'google_calendar_existing_event_lookup_failed',
+        message: 'Existing Google Calendar event lookup failed; proceeding to insert path',
+        context: {
+          booking_id: bookingId,
+          request_id: requestId ?? null,
+          google_http_status: res.status,
+          google_error_reason: parsedError.reason,
+          google_error_message: parsedError.message,
+          branch_taken: 'proceed_without_existing_event_lookup_result',
+          deny_reason: parsedError.reason ?? parsedError.message ?? `google_events_lookup_http_${res.status}`,
+        },
+      });
+      return null;
+    }
+
+    const data = await res.json() as GoogleCalendarListResponse;
+    const existing = (data.items ?? []).find((item) => item.id && item.status !== 'cancelled');
+
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_existing_event_lookup_completed',
+      message: 'Completed Google Calendar existing-event lookup',
+      context: {
+        booking_id: bookingId,
+        request_id: requestId ?? null,
+        has_existing_google_event: Boolean(existing),
+        existing_google_event_id: existing?.id ?? null,
+        branch_taken: existing
+          ? 'existing_event_found_by_booking_id'
+          : 'no_existing_event_found_by_booking_id',
+        deny_reason: existing ? null : 'existing_event_not_found',
+      },
+    });
+
+    return existing ? toCalendarUpsertResult(existing) : null;
+  }
+
   async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
 
     const diagnostics = toGoogleDiagnosticsContext(event);
+    const bookingId = diagnostics.bookingId ?? event.privateMetadata?.['booking_id'] ?? null;
 
     this.logger?.logInfo?.({
       source: 'backend',
@@ -450,6 +574,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
         calendar_id_present: this.calendarId.length > 0,
         calendar_id_was_trimmed: this.calendarIdWasTrimmed,
         calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
+        has_booking_id_metadata: Boolean(bookingId),
         has_event_id_hint: Boolean(options?.eventIdHint),
         branch_taken: 'call_google_events_insert',
         deny_reason: null,
@@ -461,6 +586,27 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       bookingId: diagnostics.bookingId,
       requestId: diagnostics.requestId,
     });
+    await this.applyBurstThrottle(diagnostics.bookingId, diagnostics.requestId);
+
+    const existing = bookingId
+      ? await this.findExistingEventByBookingId(token, bookingId, diagnostics.requestId)
+      : null;
+    if (existing) {
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: 'google_calendar_insert_idempotent_hit',
+        message: 'Skipped Google Calendar insert because an event already exists for the booking id',
+        context: {
+          booking_id: diagnostics.bookingId,
+          request_id: diagnostics.requestId,
+          google_event_id: existing.eventId,
+          branch_taken: 'reuse_existing_event_by_booking_id',
+          deny_reason: null,
+        },
+      });
+      return existing;
+    }
+
     const calId = encodeURIComponent(this.calendarId);
     const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
@@ -506,8 +652,19 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       hasEventIdHint: Boolean(options?.eventIdHint),
       bookingId: diagnostics.bookingId,
       requestId: diagnostics.requestId,
-      branchTaken: 'google_events_insert_failed',
+      branchTaken: isRetryableWriteFailure(initialRes.status, initialGoogleError)
+        ? 'google_events_insert_failed_retryable_quota_limit'
+        : 'google_events_insert_failed',
     });
+    if (isRetryableWriteFailure(initialRes.status, initialGoogleError)) {
+      throw new RetryableCalendarWriteErrorClass(
+        `Google createEvent failed (${initialRes.status}): ${initialErrorBody}`,
+        {
+          statusCode: initialRes.status,
+          reason: initialGoogleError.reason,
+        },
+      );
+    }
     throw new Error(`Google createEvent failed (${initialRes.status}): ${initialErrorBody}`);
   }
 

@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runSideEffectsOutbox } from '../src/handlers/jobs.js';
 import { MockRepository } from '../src/providers/repository/mock.js';
+import { RetryableCalendarWriteError } from '../src/providers/calendar/interface.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function makeCtx(overrides: any = {}) {
   const policyRepository = new MockRepository();
@@ -313,6 +318,110 @@ describe('jobs and side-effect dispatcher', () => {
     );
   });
 
+  it('waits until a failed calendar retry reaches its scheduled expires_at', async () => {
+    const effect = {
+      id: 'se-calendar-wait-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'RESERVE_CALENDAR_SLOT',
+      entity: 'CALENDAR',
+      status: 'FAILED',
+      expires_at: '2099-03-01T00:00:00.000Z',
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.calendar.createEvent).not.toHaveBeenCalled();
+    expect(ctx.providers.repository.updateBookingSideEffect).not.toHaveBeenCalledWith(
+      'se-calendar-wait-1',
+      expect.objectContaining({ status: 'PROCESSING' }),
+    );
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).not.toHaveBeenCalled();
+  });
+
+  it('schedules retryable calendar failures with backoff and logs calendar_retry metadata', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const effect = {
+      id: 'se-calendar-retry-1',
+      booking_id: 'b1',
+      booking_event_id: 'be1',
+      effect_intent: 'RESERVE_CALENDAR_SLOT',
+      entity: 'CALENDAR',
+      status: 'FAILED',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue({ attempt_num: 1 }),
+          getBookingById: vi.fn().mockResolvedValue({
+            id: 'b1',
+            client_id: 'c1',
+            event_id: null,
+            session_type_id: 's1',
+            booking_type: 'PAY_LATER',
+            starts_at: '2026-04-10T10:00:00.000Z',
+            ends_at: '2026-04-10T11:00:00.000Z',
+            timezone: 'Europe/Zurich',
+            google_event_id: null,
+            address_line: 'Somewhere 1, Zurich',
+            maps_url: 'https://maps.example',
+            current_status: 'CONFIRMED',
+            notes: null,
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+            client_first_name: 'Test',
+            client_last_name: 'User',
+            client_email: 'test@example.com',
+            client_phone: '+41000000000',
+          }),
+        },
+        calendar: {
+          createEvent: vi.fn().mockRejectedValue(
+            new RetryableCalendarWriteError(
+              'Google createEvent failed (403): quotaExceeded',
+              { statusCode: 403, reason: 'quotaExceeded' },
+            ),
+          ),
+        },
+      },
+    });
+
+    await expect(runSideEffectsOutbox(ctx)).resolves.toBeUndefined();
+
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se-calendar-retry-1', status: 'FAILED', attempt_num: 2 }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
+      'se-calendar-retry-1',
+      expect.objectContaining({ status: 'FAILED', expires_at: expect.any(String) }),
+    );
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'calendar_retry',
+      context: expect.objectContaining({
+        booking_id: 'b1',
+        attempt: 2,
+        delay_ms: 15_000,
+        reason: 'Google createEvent failed (403): quotaExceeded',
+        request_id: 'req',
+      }),
+    }));
+  });
+
   it('dispatches booking expiry notifications through the dedicated expired email path', async () => {
     const effect = {
       id: 'se-expired-1',
@@ -483,7 +592,7 @@ describe('jobs and side-effect dispatcher', () => {
       expect.objectContaining({
         booking_side_effect_id: 'se-cancel-event-missing-1',
         status: 'FAILED',
-        error_message: 'Error: event_not_found_for_cancellation_email',
+        error_message: 'event_not_found_for_cancellation_email',
       }),
     );
     expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({

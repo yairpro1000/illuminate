@@ -5,14 +5,30 @@
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
 
-  function show(icon, title, msg, linkHref, linkText, secondaryHref, secondaryText) {
+  function renderCalendarSection(calendarEvent, syncPendingRetry) {
+    if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
+    return `
+      <div class="confirmation__calendar">
+        <p class="confirm-msg" style="margin:0 0 1rem">
+          ${syncPendingRetry
+            ? 'Google Calendar is still catching up right now. Add this booking manually below.'
+            : 'Add this booking to your calendar now.'}
+        </p>
+        ${buildAtcWidget(calendarEvent)}
+      </div>
+    `;
+  }
+
+  function show(icon, title, msg, linkHref, linkText, secondaryHref, secondaryText, extraHtml) {
     card.innerHTML = `
       <div class="confirm-icon" aria-hidden="true">${icon}</div>
       <h1 class="confirm-title">${title}</h1>
       <p class="confirm-msg">${msg}</p>
+      ${extraHtml || ''}
       ${linkHref ? `<a href="${linkHref}" class="btn btn-primary">${linkText}</a>` : ''}
       ${secondaryHref ? `<a href="${secondaryHref}" class="btn btn-ghost" style="margin-top:1rem">${secondaryText}</a>` : ''}
     `;
+    if (typeof initAddToCalendar === 'function') initAddToCalendar(card);
   }
 
   const checkSvg = `<svg viewBox="0 0 64 64" fill="none">
@@ -36,6 +52,7 @@
     const data = await siteClient.requestJson(`/api/bookings/confirm?token=${encodeURIComponent(token)}`);
     const isEvent = data.source === 'event';
     const awaitsPayment = String(data.next_action_label || '').toLowerCase() === 'complete payment';
+    const calendarHtml = renderCalendarSection(data.calendar_event, data.calendar_sync_pending_retry);
     show(
       checkSvg,
       'Confirmed!',
@@ -43,11 +60,14 @@
         ? 'Your event booking is confirmed.'
         : (awaitsPayment
           ? 'Your booking is confirmed and awaiting payment.'
-          : 'Your booking is confirmed.'),
+          : data.calendar_sync_pending_retry
+            ? 'Your booking is confirmed. Google Calendar is delayed right now, but you can add it manually below.'
+            : 'Your booking is confirmed.'),
       data.next_action_url || 'index.html',
       data.next_action_label || '← Back to homepage',
       'index.html',
       '← Back to homepage',
+      calendarHtml,
     );
   } catch (err) {
     const expired = err && err.status === 410;

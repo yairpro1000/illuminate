@@ -110,7 +110,7 @@ export interface IRepository {
 
   updateBookingSideEffect(
     id: string,
-    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at' | 'expires_at'>>,
   ): Promise<BookingSideEffect>;
 
   markStaleProcessingSideEffectsAsPending(nowIso: string): Promise<number>;

@@ -399,7 +399,7 @@ export class SupabaseRepository implements IRepository {
 
   async updateBookingSideEffect(
     id: string,
-    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+    updates: Partial<Pick<BookingSideEffect, 'status' | 'updated_at' | 'expires_at'>>,
   ): Promise<BookingSideEffect> {
     const row = await requireSingle<BookingSideEffect>(
       this.db

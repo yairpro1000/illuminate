@@ -20,8 +20,9 @@ import {
   sendBookingCancellationConfirmation,
   sendBookingFinalConfirmation,
 } from '../services/booking-service.js';
+import { recordSideEffectAttempts } from '../services/side-effect-attempts.js';
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
-import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
+import { isRetryableCalendarWriteError, RetryableCalendarWriteError } from '../providers/calendar/interface.js';
 import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import {
@@ -592,7 +593,9 @@ async function dispatchSideEffect(
     await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'SUCCESS', updated_at: new Date().toISOString() });
     return 'processed';
   } catch (error) {
-    const errorMessage = String(error);
+    const errorMessage = error instanceof Error && error.message
+      ? error.message
+      : String(error);
 
     if (
       errorMessage === 'Error: irrelevant_payment_link_already_settled'
@@ -618,23 +621,15 @@ async function dispatchSideEffect(
     }
 
     const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation) ?? apiLogId;
-    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
-      booking_side_effect_id: effect.id,
-      attempt_num: attemptNum,
-      api_log_id: providerApiLogId,
+    await recordSideEffectAttempts([effect], {
       status: 'FAILED',
-      error_message: errorMessage,
+      errorMessage,
+      apiLogId: providerApiLogId,
+      ctx,
+      bookingId: effect.booking_id,
+      logSource: jobLogSource(ctx),
+      enableCalendarBackoff: isRetryableCalendarWriteError(error),
     });
-    if (ctx.operation) {
-      extendOperationContext(ctx.operation, {
-        sideEffectId: effect.id,
-        sideEffectAttemptId: createdAttempt.id,
-      });
-    }
-    await syncApiLogOperationReferences(ctx.env, providerApiLogId, ctx.operation);
-
-    const nextStatus = sideEffectStatusAfterAttempt('FAILED', attemptNum, effect.max_attempts);
-    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus, updated_at: new Date().toISOString() });
     throw error;
   }
 }
@@ -797,6 +792,9 @@ function sideEffectTiming(
     case 'SEND_EVENT_REMINDER':
     case 'VERIFY_EMAIL_CONFIRMATION':
     case 'VERIFY_STRIPE_PAYMENT':
+    case 'RESERVE_CALENDAR_SLOT':
+    case 'UPDATE_CALENDAR_SLOT':
+    case 'CANCEL_CALENDAR_SLOT':
       return nowAfterExpiry ? 'run' : 'wait';
     default:
       return nowAfterExpiry ? 'expired' : 'run';
@@ -893,6 +891,12 @@ async function executeSideEffect(
     case 'RESERVE_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
       if (!result.calendarSynced) {
+        if (result.retryableFailure) {
+          throw new RetryableCalendarWriteError(
+            result.failureReason ?? 'calendar_sync_failed',
+            { statusCode: null, reason: result.retryableFailureReason },
+          );
+        }
         throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return;
@@ -901,6 +905,12 @@ async function executeSideEffect(
     case 'UPDATE_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
       if (!result.calendarSynced) {
+        if (result.retryableFailure) {
+          throw new RetryableCalendarWriteError(
+            result.failureReason ?? 'calendar_sync_failed',
+            { statusCode: null, reason: result.retryableFailureReason },
+          );
+        }
         throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return;
@@ -909,6 +919,12 @@ async function executeSideEffect(
     case 'CANCEL_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'delete', bookingCtx);
       if (!result.calendarSynced) {
+        if (result.retryableFailure) {
+          throw new RetryableCalendarWriteError(
+            result.failureReason ?? 'calendar_sync_failed',
+            { statusCode: null, reason: result.retryableFailureReason },
+          );
+        }
         throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return;

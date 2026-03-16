@@ -19,7 +19,7 @@ import type {
   PaymentStatus,
   SessionTypeRecord,
 } from '../types.js';
-import type { CalendarEvent } from '../providers/calendar/interface.js';
+import { RetryableCalendarWriteError, isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
 import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
 import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
@@ -28,6 +28,8 @@ import { isTerminalStatus } from '../domain/booking-domain.js';
 import {
   getBookingPolicyConfig,
   getBookingPolicyText,
+  maxAttemptsForEffectIntent,
+  isCalendarWriteEffectIntent,
   shouldReserveSlotForTransition,
 } from '../domain/booking-effect-policy.js';
 import {
@@ -38,10 +40,10 @@ import {
 } from '../domain/payment-status.js';
 import {
   inferEntityFromIntent,
-  sideEffectStatusAfterAttempt,
 } from '../providers/repository/interface.js';
 import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
 import { computePaymentDueReminderTime } from './reminder-service.js';
+import { recordSideEffectAttempts } from './side-effect-attempts.js';
 
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
@@ -218,6 +220,17 @@ export interface CalendarSyncResult {
   booking: Booking;
   calendarSynced: boolean;
   failureReason: string | null;
+  retryableFailure: boolean;
+  retryableFailureReason: string | null;
+}
+
+export interface PublicCalendarEventInfo {
+  title: string;
+  start: string;
+  end: string;
+  timezone: string;
+  location: string;
+  description: string;
 }
 
 export interface BookingPublicActionInfo {
@@ -226,6 +239,8 @@ export interface BookingPublicActionInfo {
   manageUrl: string | null;
   nextActionUrl: string | null;
   nextActionLabel: 'Complete Payment' | 'Manage Booking' | null;
+  calendarEvent: PublicCalendarEventInfo | null;
+  calendarSyncPendingRetry: boolean;
 }
 
 export interface ContinuePaymentActionInfo {
@@ -621,6 +636,7 @@ export async function confirmBookingEmail(
   const isConfirmationWindowExpired = confirmationDeadlineIso
     ? Date.now() > new Date(confirmationDeadlineIso).getTime()
     : true;
+  const calendarSyncPendingRetry = isSessionCalendarSyncPendingRetry(booking);
 
   bookingCtx.logger.logInfo?.({
     source: 'backend',
@@ -629,19 +645,24 @@ export async function confirmBookingEmail(
     context: {
       booking_id: booking.id,
       booking_status: booking.current_status,
+      has_google_event_id: Boolean(booking.google_event_id),
       has_submission_with_confirm_token: Boolean(submissionWithToken),
       confirmation_deadline: confirmationDeadlineIso,
       confirmation_window_minutes: policy.nonPaidConfirmationWindowMinutes,
       is_confirmation_window_expired: isConfirmationWindowExpired,
       branch_taken: booking.current_status !== 'PENDING'
-        ? 'booking_already_progressed_or_terminal'
+        ? booking.current_status === 'CONFIRMED'
+          ? (calendarSyncPendingRetry
+            ? 'confirmed_booking_retry_calendar_sync_if_missing'
+            : 'confirmed_booking_already_processed')
+          : 'booking_already_progressed_or_terminal'
         : submissionWithToken
           ? (isConfirmationWindowExpired ? 'deny_confirmation_window_expired' : 'accept_confirmation_within_window')
           : 'deny_missing_submission_for_token',
       deny_reason: booking.current_status !== 'PENDING'
-        ? (booking.current_status === 'CONFIRMED'
-          ? null
-          : 'booking_not_confirmable_in_current_status')
+        ? booking.current_status === 'CONFIRMED'
+          ? (calendarSyncPendingRetry ? 'calendar_sync_pending_retry' : null)
+          : 'booking_not_confirmable_in_current_status'
         : submissionWithToken
           ? (isConfirmationWindowExpired ? 'confirmation_window_expired' : null)
           : 'confirm_token_submission_not_found',
@@ -650,7 +671,7 @@ export async function confirmBookingEmail(
 
   if (booking.current_status !== 'PENDING') {
     if (booking.current_status === 'CONFIRMED') {
-      return booking;
+      return retryCalendarSyncForConfirmedBookingIfMissing(booking, bookingCtx);
     }
     throw gone('This confirmation link is no longer valid');
   }
@@ -666,14 +687,14 @@ export async function confirmBookingEmail(
       const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
       finalizedBooking = syncResult.booking;
       if (!syncResult.calendarSynced && submissionWithToken) {
-        await bookingCtx.providers.repository.createBookingSideEffects([{
-          booking_event_id: submissionWithToken.id,
-          entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
-          effect_intent: 'RESERVE_CALENDAR_SLOT',
-          status: 'PENDING',
-          expires_at: null,
-          max_attempts: policy.processingMaxAttempts,
-        }]);
+        await queueCalendarRetrySideEffectAfterConfirmationFailure(
+          submissionWithToken.id,
+          syncResult.failureReason ?? 'calendar_sync_failed',
+          syncResult.retryableFailure,
+          policy.processingMaxAttempts,
+          finalizedBooking.id,
+          bookingCtx,
+        );
       }
     }
     await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
@@ -689,14 +710,14 @@ export async function confirmBookingEmail(
       const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
       finalizedBooking = syncResult.booking;
       if (!syncResult.calendarSynced && submissionWithToken) {
-        await bookingCtx.providers.repository.createBookingSideEffects([{
-          booking_event_id: submissionWithToken.id,
-          entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
-          effect_intent: 'RESERVE_CALENDAR_SLOT',
-          status: 'PENDING',
-          expires_at: null,
-          max_attempts: policy.processingMaxAttempts,
-        }]);
+        await queueCalendarRetrySideEffectAfterConfirmationFailure(
+          submissionWithToken.id,
+          syncResult.failureReason ?? 'calendar_sync_failed',
+          syncResult.retryableFailure,
+          policy.processingMaxAttempts,
+          finalizedBooking.id,
+          bookingCtx,
+        );
       }
     }
 
@@ -1207,6 +1228,87 @@ export async function retryCalendarSyncForBooking(
   });
 }
 
+async function retryCalendarSyncForConfirmedBookingIfMissing(
+  booking: Booking,
+  ctx: BookingContext,
+): Promise<Booking> {
+  const shouldRetry = isSessionCalendarSyncPendingRetry(booking);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_repeat_sync_decision',
+    message: 'Evaluated repeat confirmation calendar recovery path',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      has_google_event_id: Boolean(booking.google_event_id),
+      should_retry_calendar_sync: shouldRetry,
+      branch_taken: shouldRetry
+        ? 'retry_confirmed_booking_calendar_sync'
+        : 'return_confirmed_booking_without_retry',
+      deny_reason: shouldRetry ? null : 'calendar_sync_not_pending_retry',
+    },
+  });
+
+  if (!shouldRetry) {
+    return booking;
+  }
+
+  const syncResult = await retryCalendarSyncForBooking(booking, 'create', ctx);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_repeat_sync_outcome',
+    message: 'Completed repeat confirmation calendar recovery attempt',
+    context: {
+      booking_id: syncResult.booking.id,
+      booking_status: syncResult.booking.current_status,
+      has_google_event_id_after_retry: Boolean(syncResult.booking.google_event_id),
+      calendar_synced: syncResult.calendarSynced,
+      branch_taken: syncResult.calendarSynced
+        ? 'repeat_confirmation_calendar_sync_succeeded'
+        : 'repeat_confirmation_calendar_sync_failed',
+      deny_reason: syncResult.calendarSynced
+        ? null
+        : (syncResult.failureReason ?? 'calendar_sync_failed'),
+    },
+  });
+
+  return syncResult.booking;
+}
+
+async function queueCalendarRetrySideEffectAfterConfirmationFailure(
+  bookingEventId: string,
+  failureReason: string,
+  retryableFailure: boolean,
+  processingMaxAttempts: number,
+  bookingId: string,
+  ctx: BookingContext,
+): Promise<void> {
+  const createdEffects = await ctx.providers.repository.createBookingSideEffects([{
+    booking_event_id: bookingEventId,
+    entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
+    effect_intent: 'RESERVE_CALENDAR_SLOT',
+    status: 'PENDING',
+    expires_at: null,
+    max_attempts: maxAttemptsForEffectIntent('RESERVE_CALENDAR_SLOT', processingMaxAttempts),
+  }]);
+  const createdEffect = createdEffects[0];
+  if (!createdEffect) {
+    throw new Error('calendar_retry_side_effect_create_failed');
+  }
+
+  await recordSideEffectAttempts([createdEffect], {
+    status: 'FAILED',
+    errorMessage: failureReason,
+    apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+    ctx,
+    bookingId,
+    logSource: 'backend',
+    enableCalendarBackoff: retryableFailure,
+  });
+}
+
 export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingContext): Promise<void> {
   if (booking.current_status !== 'PENDING') return;
 
@@ -1456,6 +1558,9 @@ export async function getBookingPublicActionInfo(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<BookingPublicActionInfo> {
+  const event = booking.event_id
+    ? await ctx.providers.repository.getEventById(booking.event_id)
+    : null;
   const manageUrl = isTerminalStatus(booking.current_status)
     ? null
     : await buildManageUrl(ctx.env.SITE_URL, booking);
@@ -1478,6 +1583,8 @@ export async function getBookingPublicActionInfo(
       manageUrl,
       nextActionUrl: checkoutUrl,
       nextActionLabel: 'Complete Payment',
+      calendarEvent: buildPublicCalendarEventInfo(booking, event),
+      calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
     };
   }
 
@@ -1487,6 +1594,8 @@ export async function getBookingPublicActionInfo(
     manageUrl,
     nextActionUrl: manageUrl,
     nextActionLabel: manageUrl ? 'Manage Booking' : null,
+    calendarEvent: buildPublicCalendarEventInfo(booking, event),
+    calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
   };
 }
 
@@ -1666,6 +1775,44 @@ export function buildConfirmUrl(siteUrl: string, rawToken: string): string {
 export async function buildManageUrl(siteUrl: string, booking: Booking): Promise<string> {
   const token = buildStableManageToken(booking.id);
   return `${siteUrl}/manage.html?token=${encodeURIComponent(token)}`;
+}
+
+export function buildPublicCalendarEventInfo(
+  booking: Pick<Booking, 'current_status' | 'event_id' | 'starts_at' | 'ends_at' | 'timezone' | 'address_line'>,
+  event: Pick<Event, 'title' | 'starts_at' | 'ends_at'> | null,
+): PublicCalendarEventInfo | null {
+  if (booking.current_status !== 'CONFIRMED' && booking.current_status !== 'COMPLETED') {
+    return null;
+  }
+
+  if (booking.event_id) {
+    const eventTitle = event?.title?.trim() || 'ILLUMINATE Evening';
+    return {
+      title: `${eventTitle} — ILLUMINATE Evening`,
+      start: event?.starts_at ?? booking.starts_at,
+      end: event?.ends_at ?? booking.ends_at,
+      timezone: booking.timezone,
+      location: booking.address_line || '',
+      description: 'ILLUMINATE Evening with Yair Benharroch.',
+    };
+  }
+
+  return {
+    title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+    start: booking.starts_at,
+    end: booking.ends_at,
+    timezone: booking.timezone,
+    location: booking.address_line || '',
+    description: '1:1 Clarity Session with Yair Benharroch.',
+  };
+}
+
+export function isSessionCalendarSyncPendingRetry(
+  booking: Pick<Booking, 'current_status' | 'event_id' | 'google_event_id'>,
+): boolean {
+  return !booking.event_id
+    && !booking.google_event_id
+    && (booking.current_status === 'CONFIRMED' || booking.current_status === 'COMPLETED');
 }
 
 export function buildContinuePaymentUrl(siteUrl: string, booking: Booking): string {
@@ -1849,7 +1996,13 @@ async function syncSessionBookingCalendar(
   const { providers, logger } = ctx;
 
   if (booking.event_id) {
-    return { booking, calendarSynced: true, failureReason: null };
+    return {
+      booking,
+      calendarSynced: true,
+      failureReason: null,
+      retryableFailure: false,
+      retryableFailureReason: null,
+    };
   }
 
   const needsEvent = shouldSessionBookingHaveCalendarEvent(booking);
@@ -1857,7 +2010,13 @@ async function syncSessionBookingCalendar(
 
   if (!needsEvent) {
     if (!booking.google_event_id) {
-      return { booking, calendarSynced: true, failureReason: null };
+      return {
+        booking,
+        calendarSynced: true,
+        failureReason: null,
+        retryableFailure: false,
+        retryableFailureReason: null,
+      };
     }
 
     try {
@@ -1867,7 +2026,13 @@ async function syncSessionBookingCalendar(
         meeting_provider: null,
         meeting_link: null,
       });
-      return { booking: updated, calendarSynced: true, failureReason: null };
+      return {
+        booking: updated,
+        calendarSynced: true,
+        failureReason: null,
+        retryableFailure: false,
+        retryableFailureReason: null,
+      };
     } catch (error) {
       if (isCalendarEventMissingError(error)) {
         logger.logWarn?.({
@@ -1889,7 +2054,13 @@ async function syncSessionBookingCalendar(
             meeting_provider: null,
             meeting_link: null,
           });
-          return { booking: updated, calendarSynced: true, failureReason: null };
+          return {
+            booking: updated,
+            calendarSynced: true,
+            failureReason: null,
+            retryableFailure: false,
+            retryableFailureReason: null,
+          };
         } catch (persistError) {
           logger.logError?.({
             source: 'backend',
@@ -1904,7 +2075,13 @@ async function syncSessionBookingCalendar(
               deny_reason: toSyncFailureReason(persistError),
             },
           });
-          return { booking, calendarSynced: false, failureReason: toSyncFailureReason(persistError) };
+          return {
+            booking,
+            calendarSynced: false,
+            failureReason: toSyncFailureReason(persistError),
+            retryableFailure: false,
+            retryableFailureReason: null,
+          };
         }
       }
       logger.error('Calendar delete failed', {
@@ -1913,23 +2090,47 @@ async function syncSessionBookingCalendar(
         googleEventId: booking.google_event_id,
         error: String(error),
       });
-      return { booking, calendarSynced: false, failureReason: toSyncFailureReason(error) };
+      return {
+        booking,
+        calendarSynced: false,
+        failureReason: toSyncFailureReason(error),
+        retryableFailure: false,
+        retryableFailureReason: null,
+      };
     }
   }
 
   if (booking.google_event_id) {
     if (!options.forceUpdate) {
-      return { booking, calendarSynced: true, failureReason: null };
+      return {
+        booking,
+        calendarSynced: true,
+        failureReason: null,
+        retryableFailure: false,
+        retryableFailureReason: null,
+      };
     }
 
     try {
       const updatedEvent = await providers.calendar.updateEvent(booking.google_event_id, payload);
       const updates = buildMeetingPersistenceUpdate(booking, updatedEvent);
       if (!updates) {
-        return { booking, calendarSynced: true, failureReason: null };
+        return {
+          booking,
+          calendarSynced: true,
+          failureReason: null,
+          retryableFailure: false,
+          retryableFailureReason: null,
+        };
       }
       const updated = await providers.repository.updateBooking(booking.id, updates);
-      return { booking: updated, calendarSynced: true, failureReason: null };
+      return {
+        booking: updated,
+        calendarSynced: true,
+        failureReason: null,
+        retryableFailure: false,
+        retryableFailureReason: null,
+      };
     } catch (error) {
       if (isCalendarEventMissingError(error)) {
         logger.logWarn?.({
@@ -1966,7 +2167,13 @@ async function syncSessionBookingCalendar(
               deny_reason: null,
             },
           });
-          return { booking: updated, calendarSynced: true, failureReason: null };
+          return {
+            booking: updated,
+            calendarSynced: true,
+            failureReason: null,
+            retryableFailure: false,
+            retryableFailureReason: null,
+          };
         } catch (recreateError) {
           logger.logError?.({
             source: 'backend',
@@ -1981,7 +2188,13 @@ async function syncSessionBookingCalendar(
               deny_reason: toSyncFailureReason(recreateError),
             },
           });
-          return { booking, calendarSynced: false, failureReason: toSyncFailureReason(recreateError) };
+          return {
+            booking,
+            calendarSynced: false,
+            failureReason: toSyncFailureReason(recreateError),
+            retryableFailure: isRetryableCalendarWriteError(recreateError),
+            retryableFailureReason: isRetryableCalendarWriteError(recreateError) ? recreateError.reason : null,
+          };
         }
       }
       logger.error('Calendar update failed', {
@@ -1990,7 +2203,13 @@ async function syncSessionBookingCalendar(
         googleEventId: booking.google_event_id,
         error: String(error),
       });
-      return { booking, calendarSynced: false, failureReason: toSyncFailureReason(error) };
+      return {
+        booking,
+        calendarSynced: false,
+        failureReason: toSyncFailureReason(error),
+        retryableFailure: isRetryableCalendarWriteError(error),
+        retryableFailureReason: isRetryableCalendarWriteError(error) ? error.reason : null,
+      };
     }
   }
 
@@ -2001,14 +2220,26 @@ async function syncSessionBookingCalendar(
       booking.id,
       buildCreateCalendarPersistenceUpdate(created),
     );
-    return { booking: updated, calendarSynced: true, failureReason: null };
+    return {
+      booking: updated,
+      calendarSynced: true,
+      failureReason: null,
+      retryableFailure: false,
+      retryableFailureReason: null,
+    };
   } catch (error) {
     logger.error('Calendar create failed', {
       bookingId: booking.id,
       operation: options.operation,
       error: String(error),
     });
-    return { booking, calendarSynced: false, failureReason: toSyncFailureReason(error) };
+    return {
+      booking,
+      calendarSynced: false,
+      failureReason: toSyncFailureReason(error),
+      retryableFailure: isRetryableCalendarWriteError(error),
+      retryableFailureReason: isRetryableCalendarWriteError(error) ? error.reason : null,
+    };
   }
 }
 
@@ -2182,13 +2413,14 @@ export async function applyImmediateNonCronSideEffectsForTransition(
     try {
       await markSideEffectsProcessing([effect], ctx);
       currentBooking = await executeImmediateTransitionSideEffect(effect, currentBooking, input, ctx);
-      await markSideEffectAttemptForEffects(
-        [effect],
-        'SUCCESS',
-        null,
-        consumeLatestProviderApiLogId(ctx.operation),
+      await recordSideEffectAttempts([effect], {
+        status: 'SUCCESS',
+        errorMessage: null,
+        apiLogId: consumeLatestProviderApiLogId(ctx.operation),
         ctx,
-      );
+        bookingId: currentBooking.id,
+        logSource: 'backend',
+      });
 
       logger.logInfo?.({
         source: 'backend',
@@ -2206,15 +2438,18 @@ export async function applyImmediateNonCronSideEffectsForTransition(
       });
     } catch (error) {
       const failureReason = toSyncFailureReason(error);
+      const enableCalendarBackoff = isRetryableCalendarWriteError(error) && isCalendarWriteEffectIntent(effect.effect_intent);
 
       try {
-        await markSideEffectAttemptForEffects(
-          [effect],
-          'FAILED',
-          failureReason,
-          consumeLatestProviderApiLogId(ctx.operation),
+        await recordSideEffectAttempts([effect], {
+          status: 'FAILED',
+          errorMessage: failureReason,
+          apiLogId: consumeLatestProviderApiLogId(ctx.operation),
           ctx,
-        );
+          bookingId: currentBooking.id,
+          logSource: 'backend',
+          enableCalendarBackoff,
+        });
       } catch (attemptError) {
         logger.logError?.({
           source: 'backend',
@@ -2300,6 +2535,12 @@ async function executeImmediateTransitionSideEffect(
     case 'UPDATE_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'update', ctx);
       if (!result.calendarSynced) {
+        if (result.retryableFailure) {
+          throw new RetryableCalendarWriteError(
+            result.failureReason ?? 'calendar_sync_failed',
+            { statusCode: null, reason: result.retryableFailureReason },
+          );
+        }
         throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return result.booking;
@@ -2308,6 +2549,12 @@ async function executeImmediateTransitionSideEffect(
     case 'CANCEL_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'delete', ctx);
       if (!result.calendarSynced) {
+        if (result.retryableFailure) {
+          throw new RetryableCalendarWriteError(
+            result.failureReason ?? 'calendar_sync_failed',
+            { statusCode: null, reason: result.retryableFailureReason },
+          );
+        }
         throw new Error(result.failureReason ?? 'calendar_sync_failed');
       }
       return result.booking;
@@ -2444,13 +2691,15 @@ async function applyImmediateReservationForTransition(
 
   if (!syncResult.calendarSynced) {
     const failureReason = syncResult.failureReason ?? 'calendar_sync_failed';
-    await markSideEffectAttemptForEffects(
-      reservationEffects,
-      'FAILED',
-      failureReason,
-      consumeLatestProviderApiLogId(ctx.operation),
+    await recordSideEffectAttempts(reservationEffects, {
+      status: 'FAILED',
+      errorMessage: failureReason,
+      apiLogId: consumeLatestProviderApiLogId(ctx.operation),
       ctx,
-    );
+      bookingId: input.bookingAfterTransition.id,
+      logSource: 'backend',
+      enableCalendarBackoff: syncResult.retryableFailure,
+    });
 
     logger.logWarn?.({
       source: 'backend',
@@ -2477,16 +2726,23 @@ async function applyImmediateReservationForTransition(
       reservationEffectIds: reservationEffects.map((effect) => effect.id),
     }, ctx);
 
-    return syncResult.booking;
+    return applyImmediateNonCronSideEffectsForTransition({
+      transitionEventType: input.transitionEventType,
+      sourceOperation: `${input.sourceOperation}:post_reservation_failure`,
+      bookingBeforeTransition: input.bookingBeforeTransition,
+      bookingAfterTransition: syncResult.booking,
+      transitionSideEffects: input.transitionSideEffects.filter((effect) => effect.effect_intent !== 'RESERVE_CALENDAR_SLOT'),
+    }, ctx);
   }
 
-  await markSideEffectAttemptForEffects(
-    reservationEffects,
-    'SUCCESS',
-    null,
-    consumeLatestProviderApiLogId(ctx.operation),
+  await recordSideEffectAttempts(reservationEffects, {
+    status: 'SUCCESS',
+    errorMessage: null,
+    apiLogId: consumeLatestProviderApiLogId(ctx.operation),
     ctx,
-  );
+    bookingId: input.bookingAfterTransition.id,
+    logSource: 'backend',
+  });
 
   const finalBooking = syncResult.booking;
 
@@ -3040,35 +3296,6 @@ async function markCheckoutSideEffectAttempt(
 
   const nextStatus = attemptNum >= checkoutEffect.max_attempts ? 'DEAD' : 'FAILED';
   await ctx.providers.repository.updateBookingSideEffect(checkoutEffect.id, { status: nextStatus });
-}
-
-async function markSideEffectAttemptForEffects(
-  effects: Array<Pick<BookingSideEffect, 'id' | 'max_attempts'>>,
-  status: 'SUCCESS' | 'FAILED',
-  errorMessage: string | null,
-  apiLogId: string | null,
-  ctx: BookingContext,
-): Promise<void> {
-  for (const effect of effects) {
-    const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
-    const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
-    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
-      booking_side_effect_id: effect.id,
-      attempt_num: attemptNum,
-      api_log_id: apiLogId,
-      status,
-      error_message: errorMessage,
-    });
-    if (ctx.operation) {
-      extendOperationContext(ctx.operation, {
-        sideEffectId: effect.id,
-        sideEffectAttemptId: createdAttempt.id,
-      });
-    }
-    await syncApiLogOperationReferences(ctx.env, apiLogId, ctx.operation);
-    const nextStatus = sideEffectStatusAfterAttempt(status, attemptNum, effect.max_attempts);
-    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: nextStatus });
-  }
 }
 
 async function markSideEffectsProcessing(

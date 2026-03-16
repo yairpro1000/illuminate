@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GoogleCalendarProvider } from '../src/providers/calendar/google.js';
+import { RetryableCalendarWriteError } from '../src/providers/calendar/interface.js';
 
 function makeCalendarEvent(overrides: Record<string, unknown> = {}) {
   return {
@@ -37,6 +38,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   it('exchanges refresh token and inserts attendee event into trimmed calendar id', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'google-event-1',
         hangoutLink: 'https://meet.google.com/abc-defg-hij',
@@ -56,12 +58,16 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     expect(tokenBody).toContain('refresh_token=oauth-refresh-token');
     expect(tokenBody).toContain('grant_type=refresh_token');
 
-    const insertUrl = String(fetchMock.mock.calls[1]?.[0] ?? '');
+    const lookupUrl = String(fetchMock.mock.calls[1]?.[0] ?? '');
+    expect(lookupUrl).toContain('/calendars/yairilluminate%40gmail.com/events?');
+    expect(lookupUrl).toContain('privateExtendedProperty=booking_id%3Db1');
+
+    const insertUrl = String(fetchMock.mock.calls[2]?.[0] ?? '');
     expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=all&conferenceDataVersion=1');
     expect(insertUrl).not.toContain('%0A');
     expect(insertUrl).not.toContain('%20');
 
-    const insertBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+    const insertBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body ?? '{}')) as Record<string, unknown>;
     expect(insertBody['attendees']).toEqual([{ email: 'test@example.com', displayName: 'Test User' }]);
     expect(insertBody['conferenceData']).toEqual({
       createRequest: {
@@ -78,6 +84,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   it('falls back to conferenceData video entry points when hangoutLink is missing', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'google-event-2',
         conferenceData: {
@@ -110,6 +117,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(failureBody), { status: 400 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -166,5 +174,60 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
         branch_taken: 'abort_calendar_write_token_exchange_failed',
       }),
     }));
+  });
+
+  it('reuses an existing event when booking_id metadata already exists on the calendar', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        items: [{
+          id: 'google-event-existing',
+          hangoutLink: 'https://meet.google.com/existing-link',
+        }],
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeProvider(logger);
+    const created = await provider.createEvent(makeCalendarEvent() as any);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(created).toEqual({
+      eventId: 'google-event-existing',
+      meetingProvider: 'google_meet',
+      meetingLink: 'https://meet.google.com/existing-link',
+    });
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_insert_idempotent_hit',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-existing',
+        branch_taken: 'reuse_existing_event_by_booking_id',
+      }),
+    }));
+  });
+
+  it('throws RetryableCalendarWriteError for retryable quotaExceeded insert failures', async () => {
+    const failureBody = {
+      error: {
+        code: 403,
+        message: 'Calendar usage limits exceeded.',
+        errors: [{ reason: 'quotaExceeded' }],
+      },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(failureBody), { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = makeProvider();
+
+    await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toBeInstanceOf(RetryableCalendarWriteError);
   });
 });

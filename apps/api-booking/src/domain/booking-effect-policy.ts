@@ -4,6 +4,7 @@ import type {
   BookingEffectIntent,
   BookingEventSource,
   BookingEventType,
+  BookingSideEffectStatus,
   BookingSideEffectEntity,
   BookingType,
   NewBookingSideEffect,
@@ -16,7 +17,7 @@ import {
   getBookingPolicyText,
   resetBookingPolicyForTests,
 } from '../config/booking-policy.js';
-import { inferEntityFromIntent } from '../providers/repository/interface.js';
+import { inferEntityFromIntent, sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 import { isPaymentSettledStatus } from './payment-status.js';
 export type { BookingPolicyConfig } from '../config/booking-policy.js';
 export { applyBookingPolicyOverridesForTests, getBookingPolicyConfig, getBookingPolicyText, resetBookingPolicyForTests } from '../config/booking-policy.js';
@@ -42,6 +43,81 @@ export interface SlotReservationTransitionInput {
   eventType: BookingEventType;
   previousStatus: BookingCurrentStatus;
   nextStatus: BookingCurrentStatus;
+}
+
+export interface SideEffectAttemptOutcome {
+  nextStatus: BookingSideEffectStatus;
+  expiresAt: string | null;
+  retryDelayMs: number | null;
+}
+
+export const CALENDAR_WRITE_MAX_ATTEMPTS = 5;
+const CALENDAR_WRITE_RETRY_BASE_DELAYS_MS = [5_000, 15_000, 45_000, 120_000] as const;
+
+export function isCalendarWriteEffectIntent(intent: BookingEffectIntent): boolean {
+  return intent === 'RESERVE_CALENDAR_SLOT'
+    || intent === 'UPDATE_CALENDAR_SLOT'
+    || intent === 'CANCEL_CALENDAR_SLOT';
+}
+
+export function maxAttemptsForEffectIntent(
+  intent: BookingEffectIntent,
+  processingMaxAttempts: number,
+): number {
+  if (!isCalendarWriteEffectIntent(intent)) return processingMaxAttempts;
+  return Math.min(processingMaxAttempts, CALENDAR_WRITE_MAX_ATTEMPTS);
+}
+
+export function resolveSideEffectAttemptOutcome(
+  effect: { effectIntent: BookingEffectIntent; maxAttempts: number },
+  input: {
+    attemptStatus: 'SUCCESS' | 'FAILED';
+    attemptNum: number;
+    enableCalendarBackoff?: boolean;
+    now?: Date;
+  },
+): SideEffectAttemptOutcome {
+  if (input.attemptStatus === 'SUCCESS') {
+    return {
+      nextStatus: 'SUCCESS',
+      expiresAt: null,
+      retryDelayMs: null,
+    };
+  }
+
+  const nextStatus = sideEffectStatusAfterAttempt('FAILED', input.attemptNum, effect.maxAttempts);
+  if (!input.enableCalendarBackoff || !isCalendarWriteEffectIntent(effect.effectIntent) || nextStatus !== 'FAILED') {
+    return {
+      nextStatus,
+      expiresAt: null,
+      retryDelayMs: null,
+    };
+  }
+
+  const cappedMaxAttempts = Math.min(effect.maxAttempts, CALENDAR_WRITE_MAX_ATTEMPTS);
+  if (input.attemptNum >= cappedMaxAttempts) {
+    return {
+      nextStatus: 'DEAD',
+      expiresAt: null,
+      retryDelayMs: null,
+    };
+  }
+
+  const baseDelayMs = CALENDAR_WRITE_RETRY_BASE_DELAYS_MS[input.attemptNum - 1];
+  if (typeof baseDelayMs !== 'number') {
+    return {
+      nextStatus: 'DEAD',
+      expiresAt: null,
+      retryDelayMs: null,
+    };
+  }
+
+  const retryDelayMs = withJitter(baseDelayMs);
+  return {
+    nextStatus: 'FAILED',
+    expiresAt: new Date((input.now ?? new Date()).getTime() + retryDelayMs).toISOString(),
+    retryDelayMs,
+  };
 }
 
 function isReservationEntitledStatus(status: BookingCurrentStatus): boolean {
@@ -83,7 +159,7 @@ export function getEffectsForEvent(
     entity: inferEntityFromIntent(intent),
     effect_intent: intent,
     expires_at: expiresAt,
-    max_attempts: policy.processingMaxAttempts,
+    max_attempts: maxAttemptsForEffectIntent(intent, policy.processingMaxAttempts),
   });
 
   const priorPaymentStatus = typeof input.eventPayload?.['prior_payment_status'] === 'string'
@@ -187,4 +263,11 @@ export function mapEffectsToRows(
     expires_at: effect.expires_at,
     max_attempts: effect.max_attempts,
   }));
+}
+
+function withJitter(baseDelayMs: number): number {
+  const jitterWindowMs = Math.round(baseDelayMs * 0.3);
+  if (jitterWindowMs <= 0) return baseDelayMs;
+  const offset = Math.round((Math.random() * 2 - 1) * jitterWindowMs);
+  return Math.max(0, baseDelayMs + offset);
 }

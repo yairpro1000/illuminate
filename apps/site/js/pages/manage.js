@@ -91,6 +91,20 @@
     `;
   }
 
+  function renderCalendarSection(calendarEvent, syncPendingRetry) {
+    if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
+    return `
+      <div class="confirmation__calendar">
+        <p class="manage-subtitle" style="margin:0 0 1rem">
+          ${syncPendingRetry
+            ? 'Google Calendar is still catching up right now. Add this booking manually below.'
+            : 'Add this booking to your calendar now.'}
+        </p>
+        ${buildAtcWidget(calendarEvent)}
+      </div>
+    `;
+  }
+
   function resolveRescheduleSlotType(payload) {
     const explicitType = String(payload?.session_type || payload?.slot_type || '').toLowerCase();
     if (explicitType === 'intro' || explicitType === 'session') {
@@ -151,6 +165,7 @@
   const policyText = data.policy?.text || '';
   const lockedMessage = data.policy?.locked_message || '';
   const showLockedMessage = Boolean(data.policy && data.policy.can_self_serve_change === false);
+  const calendarHtml = renderCalendarSection(data.calendar_event, data.calendar_sync_pending_retry);
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],
@@ -174,6 +189,7 @@
     </table>
     ${policyText ? bookingPolicyHtml(policyText) : ''}
     ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
+    ${calendarHtml}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
@@ -181,6 +197,7 @@
       <a href="index.html" class="btn btn-ghost">← Homepage</a>
     </div>
   `;
+  if (typeof initAddToCalendar === 'function') initAddToCalendar(card);
 
   if (cancellable) {
     const dialogMsg = document.getElementById('cancel-dialog-msg');

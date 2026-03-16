@@ -25,6 +25,8 @@ describe('post-booking pages', () => {
         }
       },
     }
+    window.buildAtcWidget = (event) => `<div class="atc-widget" data-atc-title="${event.title}">Add to calendar</div>`
+    window.initAddToCalendar = () => {}
     window.history.replaceState({}, '', '/')
     evalCode(mockEmailPreviewCode)
   })
@@ -37,12 +39,22 @@ describe('post-booking pages', () => {
       status: 'CONFIRMED',
       next_action_url: '/continue-payment.html?token=tok-123',
       next_action_label: 'Complete Payment',
+      calendar_event: {
+        title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+        start: '2026-03-20T10:00:00.000Z',
+        end: '2026-03-20T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        location: 'Lugano',
+        description: '1:1 Clarity Session with Yair Benharroch.',
+      },
+      calendar_sync_pending_retry: true,
     })
 
     evalCode(confirmPageCode)
     await flush()
 
     expect(document.getElementById('confirm-card').textContent).toContain('awaiting payment')
+    expect(document.querySelector('#confirm-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
     const links = Array.from(document.querySelectorAll('#confirm-card a'))
     expect(links[0]?.getAttribute('href')).toBe('/continue-payment.html?token=tok-123')
     expect(links[1]?.getAttribute('href')).toBe('index.html')
@@ -54,6 +66,15 @@ describe('post-booking pages', () => {
     window.siteClient.requestJson = async () => ({
       status: 'CONFIRMED',
       manage_url: '/manage.html?token=tok-123',
+      calendar_event: {
+        title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+        start: '2026-03-20T10:00:00.000Z',
+        end: '2026-03-20T11:00:00.000Z',
+        timezone: 'Europe/Zurich',
+        location: 'Lugano',
+        description: '1:1 Clarity Session with Yair Benharroch.',
+      },
+      calendar_sync_pending_retry: false,
     })
 
     evalCode(paymentSuccessPageCode)
@@ -61,6 +82,7 @@ describe('post-booking pages', () => {
 
     expect(document.querySelector('.result-title')?.textContent).toContain('Payment confirmed')
     expect(document.querySelector('.result-card a')?.getAttribute('href')).toBe('/manage.html?token=tok-123')
+    expect(document.querySelector('.result-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
   })
 
   it('confirm page renders the captured email iframe when mock preview metadata is present', async () => {

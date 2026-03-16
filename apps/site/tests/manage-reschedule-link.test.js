@@ -32,6 +32,8 @@ describe('manage page reschedule link type', () => {
         }
       },
     }
+    window.buildAtcWidget = (event) => `<div class="atc-widget" data-atc-title="${event.title}">Add to calendar</div>`
+    window.initAddToCalendar = () => {}
     window.history.replaceState({}, '', '/manage.html?token=tok-123')
     evalCode(mockEmailPreviewCode)
   })
@@ -123,5 +125,33 @@ describe('manage page reschedule link type', () => {
     await flush()
 
     expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('cancelled')
+  })
+
+  it('renders add-to-calendar for confirmed bookings on manage page', async () => {
+    window.siteClient.requestJson = async () => ({
+      source: 'session',
+      booking_id: 'booking-4',
+      status: 'CONFIRMED',
+      starts_at: '2026-03-20T09:00:00.000Z',
+      ends_at: '2026-03-20T10:30:00.000Z',
+      title: 'First Clarity Session',
+      client: { first_name: 'A', last_name: 'B' },
+      actions: { can_reschedule: false, can_cancel: false },
+      policy: {},
+      calendar_event: {
+        title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+        start: '2026-03-20T09:00:00.000Z',
+        end: '2026-03-20T10:30:00.000Z',
+        timezone: 'Europe/Zurich',
+        location: 'Lugano',
+        description: '1:1 Clarity Session with Yair Benharroch.',
+      },
+      calendar_sync_pending_retry: false,
+    })
+
+    evalCode(managePageCode)
+    await flush()
+
+    expect(document.querySelector('#manage-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
   })
 })
