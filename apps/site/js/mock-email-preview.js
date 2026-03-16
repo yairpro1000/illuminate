@@ -109,11 +109,11 @@
     const kind = String(preview && preview.email_kind || '').trim().toLowerCase();
     switch (kind) {
       case 'contact_message':
-        return 'UI test mode is active. This captured contact email is rendered here instead of being delivered.';
+        return 'Mock email mode is active. This captured contact email is rendered here instead of being delivered.';
       case 'booking_cancellation':
-        return 'UI test mode is active. This captured cancellation email is rendered here instead of being delivered.';
+        return 'Mock email mode is active. This captured cancellation email is rendered here instead of being delivered.';
       default:
-        return 'UI test mode is active. This captured email is rendered here instead of being delivered.';
+        return 'Mock email mode is active. This captured email is rendered here instead of being delivered.';
     }
   }
 

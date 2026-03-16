@@ -59,6 +59,48 @@ describe('book pay-later confirmation UI', () => {
     expect(html).toContain('← Back to homepage')
   })
 
+  it('renders the hold-window note on the pay-later review step before confirmation', () => {
+    const views = window.BookPageViews.createBookPageViews({
+      ctx: {
+        source: '1_on_1',
+        mode: 'new',
+        slotType: 'session',
+      },
+      state: {
+        step: 4,
+        errors: {},
+        selectedSlot: { start: '2026-03-17T10:00:00.000Z', end: '2026-03-17T11:00:00.000Z' },
+        selectedSessionType: { title: 'Cycle Session' },
+        firstName: 'Yair',
+        lastName: 'Test',
+        email: 'yair@example.com',
+        phone: '+41000000001',
+        paymentMethod: 'pay-later',
+        submitting: false,
+        submissionError: null,
+        publicConfig: { booking_policy_text: 'Booking policy\nRule 1\nRule 2\nRule 3' },
+      },
+      siteConfig: {},
+      helpers: {
+        toYMD: () => '2026-03-17',
+        formatTime: () => '10:00',
+        formatDateLong: () => 'Tuesday, 17 March 2026',
+        formatDateShort: () => 'Tue, 17 Mar',
+        escHtml: (value) => String(value),
+        buildBookingPolicyBlock: () => '<div>policy</div>',
+        getNonPaidConfirmationWindowMinutes: () => 15,
+        formatMinutesLabel: () => '15 minutes',
+      },
+      isIntroFlow: () => false,
+      isSessionPayNowFlow: () => false,
+      slotWindowMonths: 4,
+    })
+
+    const html = views.buildShell().replace(/\s+/g, ' ')
+    expect(html).toContain('Your slot is kindly held for the next 15 minutes before expiring.')
+    expect(html).toContain('Confirm Booking')
+  })
+
   it('keeps the standard confirmation copy even when preview metadata is present because rendering moved to the shared client layer', () => {
     const views = window.BookPageViews.createBookPageViews({
       ctx: {

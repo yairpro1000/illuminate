@@ -77,25 +77,18 @@ export function getMockEmailPreviewDecision(emailMode: string, request: Request)
     };
   }
 
-  if (!uiTestMode) {
-    return {
-      uiTestMode: null,
-      shouldExpose: false,
-      branchTaken: 'skip_mock_email_preview_ui_test_mode_not_enabled',
-      denyReason: 'ui_test_mode_not_enabled',
-    };
-  }
-
   return {
     uiTestMode,
     shouldExpose: true,
-    branchTaken: 'allow_mock_email_preview_ui_test_mode',
+    branchTaken: uiTestMode
+      ? 'allow_mock_email_preview_ui_test_mode'
+      : 'allow_mock_email_preview_manual_mock_mode',
     denyReason: null,
   };
 }
 
 export function shouldExposeMockEmailPreview(context: Pick<PreviewContext, 'emailMode' | 'uiTestMode'>): boolean {
-  return String(context.emailMode || '').trim().toLowerCase() === 'mock' && Boolean(context.uiTestMode);
+  return String(context.emailMode || '').trim().toLowerCase() === 'mock';
 }
 
 export function resolveEmailDispatchState(

@@ -831,12 +831,17 @@ async function executeSideEffect(
       }
 
       const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+      const policy = await getBookingPolicyConfig(ctx.providers.repository);
       if (booking.event_id) {
         const event = await ctx.providers.repository.getEventById(booking.event_id);
         if (!event) throw new Error('event_not_found');
-        await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
+        await ctx.providers.email.sendEventConfirmRequest(
+          booking,
+          event,
+          confirmUrl,
+          policy.nonPaidConfirmationWindowMinutes,
+        );
       } else {
-        const policy = await getBookingPolicyConfig(ctx.providers.repository);
         await ctx.providers.email.sendBookingConfirmRequest(
           booking,
           confirmUrl,

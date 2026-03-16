@@ -136,6 +136,13 @@ describe('booking domain model', () => {
       .map((effect) => effect.effect_intent);
     expect(payLaterEffects).toEqual(expect.arrayContaining(['SEND_BOOKING_CONFIRMATION_REQUEST', 'VERIFY_EMAIL_CONFIRMATION']));
     expect(payLaterEffects).not.toEqual(expect.arrayContaining(['SEND_PAYMENT_REMINDER', 'VERIFY_STRIPE_PAYMENT']));
+
+    const freeEventConfirmEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'event_confirm_request' && email.to === 'alice@example.com',
+    );
+    expect(freeEventConfirmEmail).toBeTruthy();
+    expect(freeEventConfirmEmail?.body).toContain('Your spot is kindly held for the next');
+    expect(freeEventConfirmEmail?.body).toContain('before expiring.');
   });
 
   it('applies coupon discounts to booking snapshots and downstream checkout amounts', async () => {
@@ -633,5 +640,43 @@ describe('booking domain model', () => {
 
     const cancelAttempt = await cancelBooking(expired!, ctx);
     expect(cancelAttempt.ok).toBe(false);
+  });
+
+  it('sends event-specific cancellation copy for canceled event bookings', async () => {
+    const ctx = makeCtx();
+    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
+
+    const created = await createEventBooking({
+      event: freeEvent,
+      firstName: 'Cancel',
+      lastName: 'Event',
+      email: 'cancel-event@example.com',
+      phone: '+41000000017',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const pending = await ctx.providers.repository.getBookingById(created.bookingId);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const canceled = await cancelBooking(confirmed, ctx);
+
+    expect(canceled.ok).toBe(true);
+
+    const cancellationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_cancellation' && email.to === 'cancel-event@example.com',
+    );
+    expect(pending?.event_id).toBeTruthy();
+    expect(cancellationEmail).toBeTruthy();
+    expect(cancellationEmail?.subject).toBe('Your event booking has been cancelled');
+    expect(cancellationEmail?.text).toContain('Your event on');
+    expect(cancellationEmail?.text).not.toContain('Your session on');
+    expect(cancellationEmail?.html).toContain('Your event has been cancelled.');
+    expect(cancellationEmail?.html).toContain('Event');
   });
 });

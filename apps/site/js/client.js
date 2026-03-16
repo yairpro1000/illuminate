@@ -261,9 +261,8 @@
   }
 
   async function maybeRenderMockEmailPreview(data) {
-    const uiTestMode = detectUiTestMode();
     const preview = data && data.mock_email_preview;
-    if (!uiTestMode || !preview) return;
+    if (!preview) return;
 
     try {
       const renderer = await ensureMockEmailPreviewRendererLoaded();

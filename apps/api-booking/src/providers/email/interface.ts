@@ -60,8 +60,13 @@ export interface IEmailProvider {
   /** Session expired because it was not confirmed/paid in time. Optionally include a start-new-booking URL. */
   sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
 
-  /** Event (free) pending-confirmation request. */
-  sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult>;
+  /** Event (free or pay-later) pending-confirmation request. */
+  sendEventConfirmRequest(
+    booking: Booking,
+    event: Event,
+    confirmUrl: string,
+    confirmationWindowMinutes: number,
+  ): Promise<SendResult>;
 
   /** Event confirmation for free-confirmed or paid-success. */
   sendEventConfirmation(

@@ -129,8 +129,7 @@
 
   async function maybeRenderMockEmailPreview(body) {
     var preview = body && body.mock_email_preview;
-    var uiTestMode = detectUiTestMode();
-    if (!uiTestMode || !preview) return;
+    if (!preview) return;
     try {
       var renderer = await ensureMockEmailPreviewRendererLoaded();
       if (renderer && typeof renderer.render === 'function') renderer.render({ preview: preview });

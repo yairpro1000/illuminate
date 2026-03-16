@@ -143,8 +143,13 @@ export class MockEmailProvider implements IEmailProvider {
     });
   }
 
-  async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
-    return this.send(buildEventConfirmRequestEmail(booking, event, confirmUrl), {
+  async sendEventConfirmRequest(
+    booking: Booking,
+    event: Event,
+    confirmUrl: string,
+    confirmationWindowMinutes: number,
+  ): Promise<SendResult> {
+    return this.send(buildEventConfirmRequestEmail(booking, event, confirmUrl, confirmationWindowMinutes), {
       bookingId: booking.id,
       eventId: event.id,
     });

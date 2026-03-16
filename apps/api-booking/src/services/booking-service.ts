@@ -1617,7 +1617,12 @@ async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: 
 
   const event = await ctx.providers.repository.getEventById(booking.event_id);
   if (!event) return;
-  await ctx.providers.email.sendEventConfirmRequest(booking, event, confirmUrl);
+  await ctx.providers.email.sendEventConfirmRequest(
+    booking,
+    event,
+    confirmUrl,
+    policy.nonPaidConfirmationWindowMinutes,
+  );
 }
 
 function getPaymentDueAtIso(startsAtIso: string, paymentDueBeforeStartHours: number): string {

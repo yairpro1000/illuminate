@@ -81,7 +81,7 @@ beforeEach(() => {
 });
 
 describe('mock email inline preview contract', () => {
-  it('includes a preview on pay-later booking submit in mock mode and omits it when email mode is resend', async () => {
+  it('includes a preview on pay-later booking submit in mock mode even without ui-test mode, and omits it when email mode is resend', async () => {
     const mockCtx = makeCtx();
     const mockResponse = await handleRequest(jsonRequest('/api/bookings/pay-later', {
       slot_start: '2026-03-20T10:00:00.000Z',
@@ -125,12 +125,18 @@ describe('mock email inline preview contract', () => {
       turnstile_token: 'ok',
     }, { uiTestMode: null }), noUiCtx);
     const noUiData = await noUiResponse.json() as Record<string, unknown>;
-    expect(noUiData).not.toHaveProperty('mock_email_preview');
+    expect(noUiData).toEqual(expect.objectContaining({
+      mock_email_preview: expect.objectContaining({
+        email_id: expect.stringMatching(/^mock_msg_/),
+        to: 'maya-no-ui@example.test',
+      }),
+    }));
     expect(noUiCtx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'booking_pay_later_mock_email_preview_decision',
       context: expect.objectContaining({
-        branch_taken: 'skip_mock_email_preview_ui_test_mode_not_enabled',
-        deny_reason: 'ui_test_mode_not_enabled',
+        branch_taken: 'include_mock_email_preview',
+        deny_reason: 'email_not_dispatched_in_request',
+        ui_test_mode: null,
       }),
     }));
 

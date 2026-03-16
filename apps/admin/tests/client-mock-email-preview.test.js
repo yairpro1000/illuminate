@@ -54,4 +54,36 @@ describe('admin client mock email preview integration', () => {
     expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Confirm booking')
     expect(document.querySelector('.mock-email-preview__title')?.textContent).toContain('Booking received')
   })
+
+  it('renders the preview overlay without ui-test mode when the API returns mock_email_preview', async () => {
+    Object.defineProperty(window.navigator, 'webdriver', {
+      configurable: true,
+      value: false,
+    })
+    global.fetch = vi.fn(async (url, init = {}) => {
+      if (String(url).includes('/observability/frontend')) {
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      expect(init.headers.has('x-illuminate-ui-test-mode')).toBe(false)
+      return new Response(JSON.stringify({
+        ok: true,
+        mock_email_preview: {
+          email_id: 'mock_msg_admin_manual',
+          to: 'admin@example.test',
+          subject: 'Booking received',
+          html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_admin_manual/html',
+          html_content: '<html><body>manual admin preview</body></html>',
+          email_kind: 'booking_confirm_request',
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+
+    await window.adminClient.requestJson('/admin/example')
+
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('manual admin preview')
+    expect(document.querySelector('.mock-email-preview__message')?.textContent).toContain('Mock email mode is active')
+  })
 })

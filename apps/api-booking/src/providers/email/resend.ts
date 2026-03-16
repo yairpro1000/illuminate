@@ -604,24 +604,29 @@ export function buildBookingCancellationEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
+  const isEventBooking = Boolean(booking.event_id);
+  const itemLabel = isEventBooking ? 'event' : 'session';
+  const bookingLabel = isEventBooking ? 'event booking' : 'booking';
   const restartLine = startNewBookingUrl ? `\nStart a new booking: ${startNewBookingUrl}` : '';
-  const text = `Hi ${clientName(booking)},\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
+  const text = `Hi ${clientName(booking)},\n\nYour ${itemLabel} on ${fmt(booking.starts_at)} has been cancelled.${restartLine}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
-      ['Session', esc(sessionLabel(booking))],
+      [isEventBooking ? 'Event' : 'Session', esc(sessionLabel(booking))],
       ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
     ],
-    ['Your session has been cancelled.'],
-    startNewBookingUrl ? 'Book a new session' : 'Back to homepage',
+    [`Your ${itemLabel} has been cancelled.`],
+    startNewBookingUrl
+      ? (isEventBooking ? 'Book another event' : 'Book a new session')
+      : 'Back to homepage',
     startNewBookingUrl ?? 'https://yairb.ch',
   );
   return buildEmailMessage(
     'booking_cancellation',
     clientEmail(booking),
-    'Your booking has been cancelled',
+    `Your ${bookingLabel} has been cancelled`,
     text,
     { html },
   );
@@ -663,12 +668,14 @@ export function buildEventConfirmRequestEmail(
   booking: Booking,
   event: Event,
   confirmUrl: string,
+  confirmationWindowMinutes: number,
 ): BuiltEmailMessage {
-  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nConfirm: ${confirmUrl}`;
+  const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
-    ['Please confirm your spot.'],
+    ['Please confirm your spot.', `Your spot is kindly held for the next ${esc(windowLabel)} before expiring.`],
     'Confirm my spot',
     confirmUrl,
   );
@@ -878,8 +885,13 @@ export class ResendEmailProvider implements IEmailProvider {
     return this.sendEmail(buildBookingExpiredEmail(booking, startNewBookingUrl));
   }
 
-  async sendEventConfirmRequest(booking: Booking, event: Event, confirmUrl: string): Promise<SendResult> {
-    return this.sendEmail(buildEventConfirmRequestEmail(booking, event, confirmUrl));
+  async sendEventConfirmRequest(
+    booking: Booking,
+    event: Event,
+    confirmUrl: string,
+    confirmationWindowMinutes: number,
+  ): Promise<SendResult> {
+    return this.sendEmail(buildEventConfirmRequestEmail(booking, event, confirmUrl, confirmationWindowMinutes));
   }
 
   async sendEventConfirmation(

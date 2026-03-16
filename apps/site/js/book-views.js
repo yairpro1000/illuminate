@@ -405,6 +405,10 @@
     }
 
     function buildBookingReview() {
+      const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes(state.publicConfig);
+      const nonPaidHoldMessage = confirmWindowMinutes
+        ? `Your slot is kindly held for the next ${formatMinutesLabel(confirmWindowMinutes)} before expiring.`
+        : 'Your slot is kindly held until you confirm your booking.';
       const slot = state.selectedSlot;
       const rows = [
         ['Date & time', slot ? formatDateLong(slot.start) + ' · ' + formatTime(slot.start) : '—'],
@@ -436,6 +440,9 @@
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
           ${buildTurnstileBlock('booking_submit')}
+          ${state.paymentMethod === 'pay-now'
+            ? ''
+            : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           ${hasSlotConflict
             ? ''
             : `<div class="step-footer">
@@ -527,6 +534,10 @@
 
     function buildEventReview() {
       const isPaid = ctx.isPaid;
+      const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes(state.publicConfig);
+      const nonPaidHoldMessage = confirmWindowMinutes
+        ? `Your spot is kindly held for the next ${formatMinutesLabel(confirmWindowMinutes)} before expiring.`
+        : 'Your spot is kindly held until you confirm your booking.';
       const rows = [
         ['Event', ctx.eventTitle],
         ctx.eventDisplay ? ['Date', ctx.eventDisplay] : null,
@@ -548,6 +559,9 @@
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
           ${buildTurnstileBlock('event_registration_submit')}
+          ${isPaid
+            ? ''
+            : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
             <button class="btn btn-primary" data-submit>
