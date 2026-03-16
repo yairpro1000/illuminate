@@ -36,6 +36,18 @@
     });
   }
 
+  function formatDateBadge(iso) {
+    const date = new Date(iso);
+    return {
+      day: date.toLocaleString('en-GB', { day: '2-digit' }),
+      month: date.toLocaleString('en-GB', { month: 'short' }).toUpperCase(),
+    };
+  }
+
+  function eventImageUrl(event) {
+    return `img/evenings/${event.slug}.png`;
+  }
+
   function formatPrice(event) {
     if (!event.is_paid) return 'Free';
     if (SITE_COUPON && typeof SITE_COUPON.buildPriceHtml === 'function') {
@@ -81,6 +93,7 @@
     const soldOut = Boolean(render.sold_out);
     const publicOpen = Boolean(render.public_registration_open);
     const showReminder = Boolean(render.show_reminder_signup_cta);
+    const dateBadge = formatDateBadge(event.starts_at);
 
     const badge = soldOut
       ? '<span class="event-tag event-tag--sold-out">Sold out</span>'
@@ -109,6 +122,20 @@
 
     return `
       <article class="event-card fade-up" id="${event.slug}">
+        <div class="event-card__image">
+          <img
+            class="event-card__img"
+            src="${eventImageUrl(event)}"
+            alt="${event.title}"
+            loading="lazy"
+            decoding="async"
+            onerror="this.parentElement.classList.add('event-card__image--placeholder'); this.removeAttribute('onerror');"
+          />
+          <div class="event-card__date-badge" aria-hidden="true">
+            <span class="event-card__day">${dateBadge.day}</span>
+            <span class="event-card__month">${dateBadge.month}</span>
+          </div>
+        </div>
         <div class="event-card__body">
           <div class="event-card__tags">${badge}</div>
           <h3 class="event-card__title">${event.title}</h3>

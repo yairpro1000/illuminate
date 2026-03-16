@@ -136,4 +136,34 @@ describe('evenings page', () => {
     expect(text).toContain('4,000 ₪')
     expect(text).toContain('3,000 ₪')
   })
+
+  it('renders the event image from the slug-based evenings asset path', async () => {
+    window.siteClient.requestJson.mockResolvedValue({
+      events: [
+        {
+          id: 'ev-01',
+          slug: 'ev-01-body',
+          title: 'Body Evening',
+          description: 'Description',
+          starts_at: '2026-06-19T17:00:00Z',
+          ends_at: '2026-06-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: false,
+          price_per_person: 0,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+      ],
+    })
+
+    evalCode(eveningsPageCode)
+    await flush()
+
+    const image = document.querySelector('.event-card__img')
+    expect(image).not.toBeNull()
+    expect(image.getAttribute('src')).toBe('img/evenings/ev-01-body.png')
+    expect(image.getAttribute('alt')).toBe('Body Evening')
+  })
 })
