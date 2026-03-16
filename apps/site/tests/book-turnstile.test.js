@@ -107,4 +107,143 @@ describe('booking turnstile integration', () => {
     expect(renderVisibleWidget.mock.calls[0][0].config.turnstileEnabled).toBe(true)
     expect(renderVisibleWidget.mock.calls[0][0].config.turnstileSiteKey).toBe('0x4AAAA-real-key')
   })
+
+  it('does not remount the widget when turnstile callbacks fire on the review step', async () => {
+    evalCode("const SITE_CLIENT = window.siteClient || null;")
+    evalCode(`
+      function getPublicConfig() {
+        return Promise.resolve({
+          config_version: 'booking_policy_v1',
+          booking_policy: { non_paid_confirmation_window_minutes: 1 },
+          booking_policy_text: 'Booking policy',
+          antibot: {
+            mode: 'turnstile',
+            turnstile: {
+              enabled: true,
+              site_key: '0x4AAAA-real-key',
+            },
+          },
+        });
+      }
+      function getSlots() {
+        return Promise.resolve({
+          ok: true,
+          timezone: 'Europe/Zurich',
+          slots: [{
+            type: 'intro',
+            start: '2026-03-16T09:00:00+01:00',
+            end: '2026-03-16T08:30:00.000Z',
+          }],
+        });
+      }
+    `)
+
+    evalCode(turnstileCode)
+    const renderVisibleWidget = vi.fn().mockResolvedValue(undefined)
+    window.SiteTurnstile.renderVisibleWidget = renderVisibleWidget
+
+    evalCode(bookSharedCode)
+    evalCode(bookEffectsCode)
+    evalCode(bookViewsCode)
+    evalCode(bookPageCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await flush()
+    await flush()
+
+    document.querySelector('.cal-day--available')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    document.querySelector('.time-slot')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    document.getElementById('f-first-name').value = 'Yair'
+    document.getElementById('f-first-name').dispatchEvent(new Event('input', { bubbles: true }))
+    document.getElementById('f-last-name').value = 'Test'
+    document.getElementById('f-last-name').dispatchEvent(new Event('input', { bubbles: true }))
+    document.getElementById('f-email').value = 'yair@example.com'
+    document.getElementById('f-email').dispatchEvent(new Event('input', { bubbles: true }))
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    await flush()
+
+    const callCountBeforeCallbacks = renderVisibleWidget.mock.calls.length
+    const options = renderVisibleWidget.mock.calls[callCountBeforeCallbacks - 1][0]
+
+    options.onError(new Error('Please complete the anti-bot check before submitting.'))
+    expect(document.querySelector('[data-turnstile-error]')?.textContent).toContain('Please complete the anti-bot check before submitting.')
+    expect(renderVisibleWidget).toHaveBeenCalledTimes(callCountBeforeCallbacks)
+
+    options.onToken('turnstile-token')
+    expect(document.querySelector('[data-turnstile-error]')).toBeNull()
+    expect(renderVisibleWidget).toHaveBeenCalledTimes(callCountBeforeCallbacks)
+  })
+
+  it('ignores stale turnstile callbacks after the widget host is gone', async () => {
+    evalCode("const SITE_CLIENT = window.siteClient || null;")
+    evalCode(`
+      function getPublicConfig() {
+        return Promise.resolve({
+          config_version: 'booking_policy_v1',
+          booking_policy: { non_paid_confirmation_window_minutes: 1 },
+          booking_policy_text: 'Booking policy',
+          antibot: {
+            mode: 'turnstile',
+            turnstile: {
+              enabled: true,
+              site_key: '0x4AAAA-real-key',
+            },
+          },
+        });
+      }
+      function getSlots() {
+        return Promise.resolve({
+          ok: true,
+          timezone: 'Europe/Zurich',
+          slots: [{
+            type: 'intro',
+            start: '2026-03-16T09:00:00+01:00',
+            end: '2026-03-16T08:30:00.000Z',
+          }],
+        });
+      }
+    `)
+
+    evalCode(turnstileCode)
+    const renderVisibleWidget = vi.fn().mockResolvedValue(undefined)
+    window.SiteTurnstile.renderVisibleWidget = renderVisibleWidget
+
+    evalCode(bookSharedCode)
+    evalCode(bookEffectsCode)
+    evalCode(bookViewsCode)
+    evalCode(bookPageCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await flush()
+    await flush()
+
+    document.querySelector('.cal-day--available')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    document.querySelector('.time-slot')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+
+    document.getElementById('f-first-name').value = 'Yair'
+    document.getElementById('f-first-name').dispatchEvent(new Event('input', { bubbles: true }))
+    document.getElementById('f-last-name').value = 'Test'
+    document.getElementById('f-last-name').dispatchEvent(new Event('input', { bubbles: true }))
+    document.getElementById('f-email').value = 'yair@example.com'
+    document.getElementById('f-email').dispatchEvent(new Event('input', { bubbles: true }))
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    await flush()
+
+    const callCountBeforeCallbacks = renderVisibleWidget.mock.calls.length
+    const options = renderVisibleWidget.mock.calls[callCountBeforeCallbacks - 1][0]
+    document.getElementById('booking-app').innerHTML = '<div>Confirmation view</div>'
+
+    options.onError(new Error('Turnstile token expired. Please complete the anti-bot check again.'))
+    expect(document.querySelector('[data-turnstile-error]')).toBeNull()
+    expect(renderVisibleWidget).toHaveBeenCalledTimes(callCountBeforeCallbacks)
+  })
 })

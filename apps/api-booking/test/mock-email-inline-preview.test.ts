@@ -191,6 +191,39 @@ describe('mock email inline preview contract', () => {
     }));
   });
 
+  it('includes a preview on free event booking submit in mock mode without ui-test mode', async () => {
+    const ctx = makeCtx();
+    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid);
+    expect(freeEvent).toBeTruthy();
+
+    const response = await handleRequest(jsonRequest(`/api/events/${encodeURIComponent(String(freeEvent!.slug))}/book`, {
+      first_name: 'Manual',
+      last_name: 'Event',
+      email: 'manual-event@example.test',
+      phone: '+41790000010',
+      turnstile_token: 'ok',
+    }, { uiTestMode: null }), ctx);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      mock_email_preview: expect.objectContaining({
+        email_id: expect.stringMatching(/^mock_msg_/),
+        to: 'manual-event@example.test',
+        html_url: expect.stringContaining('/api/__dev/emails/'),
+        html_content: expect.stringContaining('Confirm my spot'),
+        email_kind: 'event_confirm_request',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'event_booking_mock_email_preview_decision',
+      context: expect.objectContaining({
+        branch_taken: 'include_mock_email_preview',
+        ui_test_mode: null,
+        has_mock_email_preview: true,
+      }),
+    }));
+  });
+
   it('includes a preview on confirm and resolves payment-status previews by booking linkage', async () => {
     const ctx = makeCtx();
     const email = 'same-recipient@example.test';

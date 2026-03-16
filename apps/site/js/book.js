@@ -525,6 +525,7 @@ async function handleSubmit() {
 
 function clearTurnstileSubmitError() {
   delete S.errors.turnstile;
+  syncTurnstileErrorUI();
 }
 
 async function resolveBookingTurnstileToken() {
@@ -539,6 +540,32 @@ async function resolveBookingTurnstileToken() {
     formName: CTX.source === 'evening' ? 'event_registration' : 'booking',
     action: CTX.source === 'evening' ? 'event_registration_submit' : 'booking_submit',
   });
+}
+
+function getActiveTurnstileHost(widgetKey) {
+  const app = document.getElementById('booking-app');
+  if (!app || !widgetKey) return null;
+  return app.querySelector('[data-turnstile-host="' + widgetKey + '"]');
+}
+
+function syncTurnstileErrorUI(widgetKey) {
+  const host = widgetKey ? getActiveTurnstileHost(widgetKey) : document.querySelector('[data-turnstile-host]');
+  const wrapper = host ? host.closest('.turnstile-inline') : null;
+  if (!wrapper) return;
+
+  let errorEl = wrapper.querySelector('[data-turnstile-error]');
+  if (S.errors.turnstile) {
+    if (!errorEl) {
+      errorEl = document.createElement('p');
+      errorEl.className = 'form-error';
+      errorEl.setAttribute('role', 'alert');
+      errorEl.setAttribute('data-turnstile-error', 'true');
+      wrapper.appendChild(errorEl);
+    }
+    errorEl.textContent = S.errors.turnstile;
+  } else if (errorEl) {
+    errorEl.remove();
+  }
 }
 
 function mountTurnstileWidget() {
@@ -557,18 +584,39 @@ function mountTurnstileWidget() {
     formName: widgetKey === 'event_registration_submit' ? 'event_registration' : 'booking',
     action: action,
     onToken: function () {
-      if (S.errors.turnstile) {
-        delete S.errors.turnstile;
-        render();
+      const activeHost = getActiveTurnstileHost(widgetKey);
+      if (!activeHost) {
+        if (BOOK_OBS) {
+          BOOK_OBS.logMilestone('turnstile_widget_callback_ignored', {
+            widget_key: widgetKey,
+            callback: 'token',
+            branch_taken: 'ignore_stale_turnstile_token_callback',
+          });
+        }
+        return;
       }
+      delete S.errors.turnstile;
+      syncTurnstileErrorUI(widgetKey);
     },
     onError: function (error) {
+      const activeHost = getActiveTurnstileHost(widgetKey);
+      if (!activeHost) {
+        if (BOOK_OBS) {
+          BOOK_OBS.logMilestone('turnstile_widget_callback_ignored', {
+            widget_key: widgetKey,
+            callback: 'error',
+            error_code: error && error.code ? error.code : null,
+            branch_taken: 'ignore_stale_turnstile_error_callback',
+          });
+        }
+        return;
+      }
       S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
-      render();
+      syncTurnstileErrorUI(widgetKey);
     },
   }).catch(function (error) {
     S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
-    render();
+    syncTurnstileErrorUI(widgetKey);
   });
 }
 
