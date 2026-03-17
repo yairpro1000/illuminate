@@ -2184,6 +2184,15 @@ body.theme-light {
   pointer-events: none;
 }
 
+body:not(.theme-light) #bg-layer {
+  background-image:
+    linear-gradient(rgba(5, 25, 28, 0.70), rgba(5, 25, 28, 0.70)),
+    url('../img/alpine_lake_horizontal.png');
+  background-size: cover;
+  background-position: center 38%;
+  background-attachment: fixed;
+}
+
 body.theme-light #bg-layer {
   background-image: url('../img/alpine_lake_horizontal.png');
   background-size: cover;
@@ -2325,10 +2334,16 @@ body.theme-light .nav__mobile {
 
 /* ── Dark mode: make section--alt "light" sections semi-transparent
      so canvas waves breathe through them ── */
-body:not(.theme-light) #not-this.section-in-view,
-body:not(.theme-light) #investment.section-in-view,
-body:not(.theme-light) #who-is-this.section-in-view {
-  background-color: oklch(14% 0.025 208 / 0.22);
+/* ── Dark mode: lake shows only through #about and #reviews ── */
+/* All sections get the solid dark bg, covering the lake */
+body:not(.theme-light) .section {
+  background-color: var(--color-bg);
+}
+
+/* #about and #reviews: transparent so the lake breathes through */
+body:not(.theme-light) #about,
+body:not(.theme-light) #reviews {
+  background-color: transparent;
 }
 
 /* ── Light mode: hero::after provides full-width bg for hero__content
@@ -2608,17 +2623,39 @@ body.theme-light .text-lake {
   text-shadow: none;
 }
 
-/* ── Dark mode: banana-yellow CTA buttons ── */
+/* ── Dark mode: brand-glow CTA buttons (mirrors hero__brand glow) ── */
 :root .btn-primary {
-  background: linear-gradient(135deg, oklch(84.54% 0.16152 83.004), oklch(88% 0.18 95));
-  color: oklch(12% 0.020 80);
-  /* background: oklch(12% 0.020 80); */
-  /* color: oklch(97.256% 0.0511 97.665); */
-  border-color: oklch(88% 0.18 92 / 0.35);
-  box-shadow: 0 0 22px oklch(88% 0.18 92 / 0.40);
+  background: linear-gradient(135deg, oklch(86% 0.20 95), oklch(94% 0.14 95));
+  color: oklch(18% 0.030 95);
+  border-color: transparent;
+  box-shadow:
+    0 0 12px oklch(94% 0.14 95 / 0.90),
+    0 0 36px oklch(90% 0.18 95 / 0.55),
+    0 0 80px oklch(86% 0.20 95 / 0.30);
+  animation: brand-glow-btn 5s ease-in-out infinite;
 }
 :root .btn-primary:hover {
-  box-shadow: 0 0 42px oklch(88% 0.18 92 / 0.60), 0 8px 24px oklch(0% 0 0 / 0.35);
+  background: linear-gradient(135deg, oklch(86% 0.20 95), oklch(94% 0.14 95));
+  box-shadow:
+    0 0 18px oklch(96% 0.12 95 / 0.95),
+    0 0 52px oklch(92% 0.17 95 / 0.65),
+    0 0 110px oklch(88% 0.19 95 / 0.40),
+    0 8px 24px oklch(0% 0 0 / 0.35);
+}
+
+@keyframes brand-glow-btn {
+  0%, 100% {
+    box-shadow:
+      0 0 10px oklch(94% 0.14 95 / 0.80),
+      0 0 28px oklch(90% 0.18 95 / 0.45),
+      0 0 65px oklch(86% 0.20 95 / 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 18px oklch(96% 0.12 95 / 0.95),
+      0 0 52px oklch(92% 0.17 95 / 0.65),
+      0 0 110px oklch(88% 0.19 95 / 0.40);
+  }
 }
 
 :root .btn-secondary {
