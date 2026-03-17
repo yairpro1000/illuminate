@@ -80,7 +80,7 @@ function renderNav(nav) {
   nav.innerHTML = `
     <div class="nav__inner">
       <a href="${logoHref}" class="nav__logo">
-        ILLUMINATE <span>by Yair Benharroch</span>
+        <span class="nav__logo-brand">ILLUMINATE</span> <span>by Yair Benharroch</span>
       </a>
       <ul class="nav__links" role="list">
         ${desktopLinks}

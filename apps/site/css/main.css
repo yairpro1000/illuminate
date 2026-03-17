@@ -3,7 +3,93 @@
    Lake Lugano palette · OKLCH · 2026
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Nunito:wght@800&family=Poppins:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@800&display=swap');
+
+/* ── Canela Text — local self-hosted ── */
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Thin-Trial.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-ThinItalic-Trial.otf') format('opentype');
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Light-Trial.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-LightItalic-Trial.otf') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Regular-Trial.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-RegularItalic-Trial.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Medium-Trial.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-MediumItalic-Trial.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Bold-Trial.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-BoldItalic-Trial.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Black-Trial.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-BlackItalic-Trial.otf') format('opentype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
 
 /* ── Registered CSS Properties (enables animation of custom props) ── */
 @property --gradient-angle {
@@ -36,8 +122,8 @@
   --color-stone-muted:  oklch(58%  0.025 78);
 
   --color-text:         oklch(91%  0.015 200);
-  --color-text-muted:   oklch(65%  0.020 207);
-  --color-text-subtle:  oklch(48%  0.018 210);
+  --color-text-muted:   oklch(82%  0.016 203);
+  --color-text-subtle:  oklch(70%  0.014 206);
 
   --color-border:       oklch(59%  0.160 200 / 0.18);
   --color-border-hover: oklch(59%  0.160 200 / 0.42);
@@ -48,7 +134,11 @@
   --toggle-icon-color:  var(--color-lake-deep);
 
   /* Typography */
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font: 'Canela', Georgia, serif;
+
+  /* Banana-yellow word-highlight (dark mode) — matches ILLUMINATE glow hue */
+  --color-word-highlight:      oklch(91.219% 0.14051 95.201);
+  --color-word-highlight-glow: oklch(90%  0.18  92 / 0.55);
 
   /* Spacing */
   --section-py: clamp(5rem, 10vw, 8rem);
@@ -486,6 +576,10 @@ body.theme-light .coupon-price__suffix {
   margin-inline: auto;
 }
 
+.nav__logo span:not(.nav__logo-brand) {
+  color: var(--color-lake-light);
+}
+
 .nav__logo {
   font-size: 1.0625rem;
   font-weight: 600;
@@ -493,8 +587,22 @@ body.theme-light .coupon-price__suffix {
   color: var(--color-text);
 }
 
-.nav__logo span {
-  color: var(--color-lake-light);
+
+
+.nav__logo-brand {
+  font-family: 'Nunito', var(--font);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow:
+    0 0 8px  oklch(94% 0.14 95 / 0.80),
+    0 0 22px oklch(90% 0.18 95 / 0.45);
+}
+
+body.theme-light .nav__logo-brand {
+  color: var(--color-text);
+  text-shadow:
+    0 0 8px  color-mix(in oklab, var(--color-lake) 65%, transparent),
+    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
 }
 
 .nav__links {
@@ -689,7 +797,7 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
 
 .hero__brand {
   display: block;
-  font-family: 'Nunito', var(--font);   /* round letterforms */
+  font-family: 'Nunito', var(--font);
   font-size: clamp(2.6rem, 9vw, 6.5rem);
   font-weight: 800;
   letter-spacing: 0.22em;
@@ -880,9 +988,17 @@ body.theme-light .hero__brand {
 }
 
 .who__check {
-  color: var(--color-lake-light);
+  color: var(--color-word-highlight);
   flex-shrink: 0;
   margin-top: 0.3rem;
+  filter:
+    drop-shadow(0 0 4px oklch(94% 0.14 95 / 0.80))
+    drop-shadow(0 0 12px oklch(90% 0.18 92 / 0.50));
+}
+
+body.theme-light .who__check {
+  color: var(--color-lake-light);
+  filter: none;
 }
 
 .who__card-content {
@@ -898,7 +1014,7 @@ body.theme-light .hero__brand {
 }
 
 .who__lead strong {
-  color: var(--color-lake-light);
+  /* color: var(--color-lake-light); */
   font-weight: 600;
 }
 
@@ -933,7 +1049,7 @@ body.theme-light .hero__brand {
   font-size: clamp(1.125rem, 2vw, 1.375rem);
   font-weight: 500;
   font-style: italic;
-  color: var(--color-lake-light);
+  color: var(--color-white);
   line-height: 1.65;
 }
 
@@ -1301,7 +1417,7 @@ body.theme-light .hero__brand {
   font-size: 5rem;
   line-height: 1;
   color: var(--color-lake-mist);
-  font-family: Georgia, serif;
+  font-family: 'Canela', Georgia, serif;
 }
 
 .calm-mirror__text {
@@ -1380,7 +1496,7 @@ body.theme-light .hero__brand {
   font-size: 5rem;
   line-height: 1;
   color: var(--color-lake-mist);
-  font-family: Georgia, serif;
+  font-family: 'Canela', Georgia, serif;
 }
 
 .regret__text {
@@ -1554,13 +1670,17 @@ body.theme-light .final__step {
 
 .about-accent {
   font-weight: 700;
-  color: var(--color-lake-light);
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.14  95 / 0.75),
+    0 0 18px oklch(90%  0.18  92 / 0.45),
+    0 0 40px oklch(86%  0.20  90 / 0.22);
 }
 
 .about-strip__text {
   font-size: 1.0625rem;
   line-height: 1.75;
-  color: var(--color-text-muted);
+  /* color: var(--color-text-muted); */
   margin-bottom: 1.75rem;
   /* text-align: justify; */
 }
@@ -1845,7 +1965,13 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
    ============================================================ */
 .text-center  { text-align: center; }
 .text-muted   { color: var(--color-text-muted); }
-.text-lake    { color: var(--color-lake-light); }
+.text-lake {
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.14  95 / 0.75),
+    0 0 18px oklch(90%  0.18  92 / 0.45),
+    0 0 40px oklch(86%  0.20  90 / 0.22);
+}
 .mt-sm        { margin-top: 1rem; }
 .mt-md        { margin-top: 1.75rem; }
 .mt-lg        { margin-top: 2.5rem; }
@@ -2332,6 +2458,11 @@ body.theme-light #not-this .manifesto__selflove-line {
   margin-top: 0.75rem;
 }
 
+.manifesto__selflove {
+    font-weight: 700;
+  font-size: 1.35em;
+}
+
 body.theme-light #not-this .manifesto__selflove {
   font-weight: 700;
   font-size: 1.35em;
@@ -2343,7 +2474,7 @@ body.theme-light #not-this .manifesto__selflove {
 
 /* ── "Clarity / Harmony is possible." — ILLUMINATE glow (dark mode) ── */
 .final__body p {
-  font-family: 'Poppins', var(--font);
+  font-family: 'Canela', var(--font);
   font-weight: 400;
   font-size: clamp(3.4rem, 4vw, 3.4rem);
   /* font-style: italic; */
@@ -2468,4 +2599,108 @@ body.theme-light .final__body p {
   font-size: 0.9375rem;
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+/* Light mode: revert word highlights to teal (no glow) */
+body.theme-light .about-accent,
+body.theme-light .text-lake {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+
+/* ── Dark mode: banana-yellow CTA buttons ── */
+:root .btn-primary {
+  background: linear-gradient(135deg, oklch(84.54% 0.16152 83.004), oklch(88% 0.18 95));
+  color: oklch(12% 0.020 80);
+  /* background: oklch(12% 0.020 80); */
+  /* color: oklch(97.256% 0.0511 97.665); */
+  border-color: oklch(88% 0.18 92 / 0.35);
+  box-shadow: 0 0 22px oklch(88% 0.18 92 / 0.40);
+}
+:root .btn-primary:hover {
+  box-shadow: 0 0 42px oklch(88% 0.18 92 / 0.60), 0 8px 24px oklch(0% 0 0 / 0.35);
+}
+
+:root .btn-secondary {
+  color: var(--color-word-highlight);
+  border-color: oklch(88% 0.18 92 / 0.35);
+}
+:root .btn-secondary:hover {
+  border-color: oklch(88% 0.18 92 / 0.65);
+  background: oklch(88% 0.18 92 / 0.08);
+}
+
+/* ── Dark mode: banana-yellow btn-arrow links ── */
+:root .btn-arrow {
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  4px oklch(94% 0.14 95 / 0.55),
+    0 0 14px oklch(90% 0.18 92 / 0.30);
+}
+:root .btn-arrow:hover {
+  color: oklch(96% 0.14 88);
+}
+
+/* ── Dark mode: regret__glow — banana yellow glow ── */
+:root .regret__glow {
+  text-shadow:
+    0 0 12px oklch(94% 0.14 95 / 0.90),
+    0 0 36px oklch(90% 0.18 95 / 0.55),
+    0 0 80px oklch(86% 0.20 95 / 0.30);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+/* ── Dark mode: calm-mirror question ── */
+:root .calm-mirror__question.about-accent {
+  text-shadow:
+    0 0  6px oklch(94% 0.14 95 / 0.75),
+    0 0 18px oklch(90% 0.18 92 / 0.45),
+    0 0 40px oklch(86% 0.20 90 / 0.22);
+}
+
+/* ── Dark mode: Israel discount banner button stays neutral ── */
+:root .coupon-banner .btn-secondary {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+:root .coupon-banner .btn-secondary:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+}
+
+/* ── Light mode: revert CTAs and arrows to teal ── */
+body.theme-light .btn-primary {
+  background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
+  color: var(--color-white);
+  box-shadow: 0 0 20px var(--color-lake-glow);
+}
+body.theme-light .btn-primary:hover {
+  box-shadow: 0 0 38px var(--color-lake-glow), 0 8px 24px oklch(0% 0 0 / 0.35);
+}
+body.theme-light .btn-secondary {
+  color: var(--color-lake-light);
+  border-color: var(--color-border);
+}
+body.theme-light .btn-secondary:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+}
+body.theme-light .btn-arrow {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+body.theme-light .btn-arrow:hover {
+  color: var(--color-lake);
+}
+body.theme-light .regret__glow {
+  text-shadow:
+    0 0 12px oklch(42% 0.160 200 / 0.90),
+    0 0 36px oklch(42% 0.160 200 / 0.55),
+    0 0 80px oklch(42% 0.160 200 / 0.30);
+  animation: none;
+}
+body.theme-light .calm-mirror__question.about-accent {
+  color: var(--color-lake-light);
+  text-shadow: none;
 }
