@@ -601,7 +601,7 @@ body.theme-light .coupon-price__suffix {
 }
 
 .nav.scrolled {
-  background: oklch(10% 0.026 230 / 0.85);
+  background: oklch(20% 0.034 222 / 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 0.875rem 0;

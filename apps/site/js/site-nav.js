@@ -134,7 +134,7 @@ function renderFooter(footer) {
 
   footer.innerHTML = `
     <div class="footer__inner">
-      <span class="footer__logo">ILLUMINATE <span>by Yair Benharroch</span></span>
+      <span class="footer__logo">ILLUMINATE</span>
       <nav class="footer__links" aria-label="Footer navigation">
         ${links}
       </nav>
