@@ -184,28 +184,28 @@ function wrapEmber(e) {
 const divineWaveConfig = [
   {
     y: 0.62,
-    speed: 0.0013,
+    speed: 0.0026,
     r: 60, g: 200, b: 190,   // valley teal
     opacity: 0.22,
     components: [{ amplitude: 55, frequency: 0.00110 }, { amplitude: 18, frequency: 0.00300 }],
   },
   {
     y: 0.70,
-    speed: -0.0018,
+    speed: -0.0036,
     r: 100, g: 175, b: 255,  // electric blue (sword)
     opacity: 0.18,
     components: [{ amplitude: 75, frequency: 0.00085 }, { amplitude: 28, frequency: 0.00200 }],
   },
   {
     y: 0.78,
-    speed: 0.0022,
+    speed: 0.0044,
     r: 255, g: 210, b: 100,  // divine gold (halo)
     opacity: 0.14,
     components: [{ amplitude: 95, frequency: 0.00065 }, { amplitude: 38, frequency: 0.00145 }],
   },
   {
     y: 0.85,
-    speed: -0.0010,
+    speed: -0.0020,
     r: 35, g: 175, b: 168,   // deeper teal
     opacity: 0.12,
     components: [{ amplitude: 60, frequency: 0.00095 }, { amplitude: 22, frequency: 0.00250 }],
