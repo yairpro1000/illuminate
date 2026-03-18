@@ -36,6 +36,13 @@
     });
   }
 
+  function formatTimeLabel(iso) {
+    return new Date(iso).toLocaleString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
   function formatDateBadge(iso) {
     const date = new Date(iso);
     return {
@@ -46,9 +53,66 @@
 
   const R2_BASE = 'https://images.letsilluminate.co';
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
+
   function eventImageUrl(event) {
     if (event.image_key) return `${R2_BASE}/${event.image_key}`;
     return '';
+  }
+
+  function formatDurationLabel(startIso, endIso) {
+    const durationMinutes = Math.max(0, Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000));
+    if (!durationMinutes) return '';
+    const hours = Math.floor(durationMinutes / 60);
+    const minutes = durationMinutes % 60;
+    if (!hours) return `${minutes} min`;
+    if (!minutes) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  }
+
+  function normalizeMarketingList(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+  }
+
+  function getEventMarketingContent(event) {
+    const marketing = event && typeof event.marketing_content === 'object' && event.marketing_content !== null
+      ? event.marketing_content
+      : {};
+    const subtitle = String(marketing.subtitle || '').trim();
+    const intro = String(marketing.intro || '').trim() || String(event.description || '').trim();
+    const whatToExpect = normalizeMarketingList(marketing.what_to_expect);
+    const takeaways = normalizeMarketingList(marketing.takeaways);
+
+    return {
+      subtitle,
+      intro,
+      whatToExpect,
+      takeaways,
+    };
+  }
+
+  function buildCalendarDescription(event, content) {
+    const lines = [];
+    if (content.subtitle) lines.push(content.subtitle);
+    if (content.intro) lines.push(content.intro);
+    if (content.whatToExpect.length) lines.push(`What to expect: ${content.whatToExpect.join('; ')}`);
+    if (content.takeaways.length) lines.push(`You may leave with: ${content.takeaways.join('; ')}`);
+    if (!lines.length && event.description) lines.push(String(event.description).trim());
+    return lines.join('\n\n');
   }
 
   function formatPrice(event) {
@@ -80,14 +144,35 @@
 
   function reminderForm(eventId) {
     return `
-      <form class="event-reminder-form" data-reminder-form="${eventId}" hidden>
-        <label class="visually-hidden" for="reminder-email-${eventId}">Email</label>
-        <input id="reminder-email-${eventId}" type="email" name="email" placeholder="your@email.com" required />
+      <form class="event-reminder-form" data-reminder-form="${escapeAttr(eventId)}" hidden>
+        <label class="visually-hidden" for="reminder-email-${escapeAttr(eventId)}">Email</label>
+        <input id="reminder-email-${escapeAttr(eventId)}" type="email" name="email" placeholder="your@email.com" required />
         <input type="text" name="first_name" placeholder="First name (optional)" />
         <input type="text" name="last_name" placeholder="Last name (optional)" />
         <button type="submit" class="btn btn-primary">Join reminders</button>
-        <p class="event-reminder-msg" data-reminder-msg="${eventId}" aria-live="polite"></p>
+        <p class="event-reminder-msg" data-reminder-msg="${escapeAttr(eventId)}" aria-live="polite"></p>
       </form>
+    `;
+  }
+
+  function renderFact(label, value, modifier) {
+    return `
+      <div class="event-card__fact${modifier ? ` event-card__fact--${modifier}` : ''}">
+        <span class="event-card__fact-label">${label}</span>
+        <span class="event-card__fact-value">${value}</span>
+      </div>
+    `;
+  }
+
+  function renderInfoList(title, items) {
+    if (!items.length) return '';
+    return `
+      <section class="event-card__section" aria-label="${escapeAttr(title)}">
+        <p class="event-card__section-label">${escapeHtml(title)}</p>
+        <ul class="event-card__list">
+          ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
+        </ul>
+      </section>
     `;
   }
 
@@ -97,6 +182,14 @@
     const publicOpen = Boolean(render.public_registration_open);
     const showReminder = Boolean(render.show_reminder_signup_cta);
     const dateBadge = formatDateBadge(event.starts_at);
+    const content = getEventMarketingContent(event);
+    const durationLabel = formatDurationLabel(event.starts_at, event.ends_at);
+    const seatsLeft = (() => {
+      const cap = Number(event.stats?.capacity ?? event.capacity ?? 0);
+      const booked = Number(event.stats?.active_bookings ?? 0);
+      const left = cap - booked;
+      return left > 0 && left <= 5 ? left : null;
+    })();
 
     const badge = soldOut
       ? '<span class="event-tag event-tag--sold-out">Sold out</span>'
@@ -106,9 +199,9 @@
 
     let actionHtml = '';
     if (publicOpen) {
-      actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary">Book your spot</a>`;
+      actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary event-card__cta-primary">Book your spot</a>`;
     } else if (showReminder) {
-      actionHtml = `<button class="btn btn-secondary" data-open-reminder="${event.id}">Join reminders list</button>`;
+      actionHtml = `<button class="btn btn-secondary" data-open-reminder="${escapeAttr(event.id)}">Join reminders list</button>`;
     } else {
       actionHtml = '<span class="btn btn-ghost" aria-disabled="true">Registration closed</span>';
     }
@@ -119,17 +212,17 @@
           start: event.starts_at,
           end: event.ends_at,
           location: event.address_line,
-          description: event.description,
+          description: buildCalendarDescription(event, content),
         })
       : '';
 
     return `
-      <article class="event-card fade-up" id="${event.slug}">
+      <article class="event-card fade-up" id="${escapeAttr(event.slug)}">
         <div class="event-card__image">
           <img
             class="event-card__img"
-            src="${eventImageUrl(event)}"
-            alt="${event.title}"
+            src="${escapeAttr(eventImageUrl(event))}"
+            alt="${escapeAttr(event.title)}"
             loading="lazy"
             decoding="async"
             onerror="this.parentElement.classList.add('event-card__image--placeholder'); this.removeAttribute('onerror');"
@@ -141,15 +234,22 @@
         </div>
         <div class="event-card__body">
           <div class="event-card__tags">${badge}</div>
-          <h3 class="event-card__title">${event.title}</h3>
-          <p class="event-card__teaser">${event.description}</p>
+          <header class="event-card__header">
+            <h3 class="event-card__title">${escapeHtml(event.title)}</h3>
+            ${content.subtitle ? `<p class="event-card__subtitle">${escapeHtml(content.subtitle)}</p>` : ''}
+          </header>
 
-          <dl class="event-card__meta">
-            <div class="event-card__meta-row"><dt>When</dt><dd>${formatDateLabel(event.starts_at)}</dd></div>
-            <div class="event-card__meta-row"><dt>Where</dt><dd>${event.address_line}</dd></div>
-            <div class="event-card__meta-row"><dt>Price</dt><dd>${formatPrice(event)}</dd></div>
-            ${(() => { const cap = event.stats?.capacity ?? event.capacity; const booked = event.stats?.active_bookings ?? 0; const left = cap - booked; return left <= 5 ? `<div class="event-card__meta-row"><dt>Seats left</dt><dd>${left}</dd></div>` : ''; })()}
-          </dl>
+          <div class="event-card__facts">
+            ${renderFact('When', `${escapeHtml(formatDateLabel(event.starts_at))}`, 'wide')}
+            ${renderFact('Time', `${escapeHtml(formatTimeLabel(event.starts_at))}${durationLabel ? ` <span class="event-card__fact-meta">${escapeHtml(durationLabel)}</span>` : ''}`)}
+            ${renderFact('Where', escapeHtml(event.address_line), 'wide')}
+            ${renderFact('Price', formatPrice(event))}
+            ${seatsLeft ? renderFact('Seats left', escapeHtml(String(seatsLeft)), 'emphasis') : ''}
+          </div>
+
+          ${content.intro ? `<p class="event-card__intro">${escapeHtml(content.intro)}</p>` : ''}
+          ${renderInfoList('What to expect', content.whatToExpect)}
+          ${renderInfoList('You may leave with', content.takeaways)}
 
           <div class="event-card__actions">
             ${actionHtml}

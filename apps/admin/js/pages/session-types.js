@@ -74,6 +74,17 @@
     return allowed.includes(rawValue) ? rawValue : fallback;
   }
 
+  function parseTextareaList(value) {
+    return String(value || '')
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function joinTextareaList(items) {
+    return Array.isArray(items) ? items.join('\n') : '';
+  }
+
   const stView = document.getElementById('stView');
   const evView = document.getElementById('evView');
   const newBtn = document.getElementById('newBtn');
@@ -326,6 +337,10 @@
   const evFCurrency = document.getElementById('evFCurrency');
   const evFWhatsapp = document.getElementById('evFWhatsapp');
   const evFDesc = document.getElementById('evFDesc');
+  const evFSubtitle = document.getElementById('evFSubtitle');
+  const evFIntro = document.getElementById('evFIntro');
+  const evFWhatToExpect = document.getElementById('evFWhatToExpect');
+  const evFTakeaways = document.getElementById('evFTakeaways');
   const evFImage = document.getElementById('evFImage');
   const evFAlt = document.getElementById('evFAlt');
   const evFImageKey = document.getElementById('evFImageKey');
@@ -376,12 +391,13 @@
 
   function openEV(row) {
     state.evEditing = row ? { ...row } : {
-      title: '', slug: '', description: '', starts_at: '', ends_at: '',
+      title: '', slug: '', description: '', marketing_content: {}, starts_at: '', ends_at: '',
       timezone: 'Europe/Zurich', location_name: '', address_line: '', maps_url: '',
       is_paid: false, price_per_person: null, currency: 'CHF', capacity: 0,
       status: EVENT_STATUSES[0], image_key: null, drive_file_id: null, image_alt: null, whatsapp_group_invite_url: null,
     };
     const ev = state.evEditing;
+    const marketing = ev.marketing_content && typeof ev.marketing_content === 'object' ? ev.marketing_content : {};
     evFTitle.value = ev.title || '';
     evFSlug.value = ev.slug || '';
     evFStatus.value = pickAllowedStatus(ev.status, EVENT_STATUSES, EVENT_STATUSES[0]);
@@ -397,6 +413,10 @@
     evFCurrency.value = ev.currency || 'CHF';
     evFWhatsapp.value = ev.whatsapp_group_invite_url || '';
     evFDesc.value = ev.description || '';
+    evFSubtitle.value = marketing.subtitle || '';
+    evFIntro.value = marketing.intro || '';
+    evFWhatToExpect.value = joinTextareaList(marketing.what_to_expect);
+    evFTakeaways.value = joinTextareaList(marketing.takeaways);
     evFAlt.value = ev.image_alt || '';
     evFImageKey.value = ev.image_key || '';
     evFDriveId.value = ev.drive_file_id || '';
@@ -435,6 +455,12 @@
         title: evFTitle.value.trim(),
         slug: evFSlug.value.trim(),
         description: evFDesc.value.trim(),
+        marketing_content: {
+          subtitle: evFSubtitle.value.trim(),
+          intro: evFIntro.value.trim(),
+          what_to_expect: parseTextareaList(evFWhatToExpect.value),
+          takeaways: parseTextareaList(evFTakeaways.value),
+        },
         status: evFStatus.value,
         capacity: Number(evFCapacity.value) || 0,
         starts_at: evFStartsAt.value ? new Date(evFStartsAt.value).toISOString() : undefined,

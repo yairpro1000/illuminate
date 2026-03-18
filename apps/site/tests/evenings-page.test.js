@@ -96,10 +96,10 @@ describe('evenings page', () => {
     evalCode(eveningsPageCode)
     await flush()
 
-    const priceRows = Array.from(document.querySelectorAll('.event-card__meta-row dd')).map((node) => node.textContent)
-    expect(priceRows).toContain('CHF 100')
-    expect(priceRows).toContain('CHF 100.99')
-    expect(priceRows).not.toContain('CHF 100.00')
+    const text = document.getElementById('events-grid').textContent.replace(/\s+/g, ' ')
+    expect(text).toContain('CHF 100')
+    expect(text).toContain('CHF 100.99')
+    expect(text).not.toContain('CHF 100.00')
   })
 
   it('rerenders evenings pricing with discount markup and comma separators when a coupon is active', async () => {
@@ -166,5 +166,57 @@ describe('evenings page', () => {
     expect(image).not.toBeNull()
     expect(image.getAttribute('src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
     expect(image.getAttribute('alt')).toBe('Body Evening')
+  })
+
+  it('renders structured marketing content into subtitle and scannable lists with legacy fallback', async () => {
+    window.siteClient.requestJson.mockResolvedValue({
+      events: [
+        {
+          id: 'event-1',
+          slug: 'event-1',
+          title: 'Structured event',
+          description: 'Legacy description',
+          marketing_content: {
+            subtitle: 'A calmer way into intuition.',
+            intro: 'Slow down and listen beneath the noise.',
+            what_to_expect: ['guided meditation', 'grounded sharing'],
+            takeaways: ['more clarity', 'more self-trust'],
+          },
+          starts_at: '2026-06-19T17:00:00Z',
+          ends_at: '2026-06-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: false,
+          price_per_person: 0,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+        {
+          id: 'event-2',
+          slug: 'event-2',
+          title: 'Fallback event',
+          description: 'Fallback legacy paragraph',
+          starts_at: '2026-07-19T17:00:00Z',
+          ends_at: '2026-07-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: false,
+          price_per_person: 0,
+          currency: 'CHF',
+          capacity: 10,
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+      ],
+    })
+
+    evalCode(eveningsPageCode)
+    await flush()
+
+    const text = document.getElementById('events-grid').textContent.replace(/\s+/g, ' ')
+    expect(text).toContain('A calmer way into intuition.')
+    expect(text).toContain('guided meditation')
+    expect(text).toContain('more self-trust')
+    expect(text).toContain('Fallback legacy paragraph')
   })
 })

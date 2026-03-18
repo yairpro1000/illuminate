@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleAdminGetEvents } from '../src/handlers/admin.js';
+import { handleAdminGetEvents, handleAdminUpdateEvent } from '../src/handlers/admin.js';
 import { adminRequest, makeCtx } from './admin-helpers.js';
 
 describe('Admin events', () => {
@@ -48,6 +48,87 @@ describe('Admin events', () => {
         path: '/api/admin/events',
         admin_auth_disabled: false,
         status_code: 401,
+      }),
+    }));
+  });
+
+  it('updates event marketing content and logs the decision path', async () => {
+    const existing = {
+      id: 'e1',
+      slug: 'body',
+      title: 'Body',
+      description: 'Legacy',
+      marketing_content: null,
+    };
+    const updated = {
+      ...existing,
+      marketing_content: {
+        subtitle: 'A guided evening',
+        intro: 'Slow down and listen inward.',
+        what_to_expect: ['guided meditation', 'grounded sharing'],
+        takeaways: ['more clarity'],
+      },
+    };
+    const repo = {
+      getEventById: vi.fn().mockResolvedValue(existing),
+      updateEvent: vi.fn().mockResolvedValue(updated),
+    };
+    const ctx = makeCtx({ providers: { repository: repo } });
+    const req = adminRequest('PATCH', 'https://api.local/api/admin/events/e1', {
+      marketing_content: {
+        subtitle: '  A guided evening  ',
+        intro: 'Slow down and listen inward.',
+        what_to_expect: ['guided meditation', '  ', 'grounded sharing'],
+        takeaways: ['more clarity'],
+      },
+    });
+
+    const res = await handleAdminUpdateEvent(req, ctx, { eventId: 'e1' });
+    expect(res.status).toBe(200);
+    expect(repo.updateEvent).toHaveBeenCalledWith('e1', expect.objectContaining({
+      marketing_content: {
+        subtitle: 'A guided evening',
+        intro: 'Slow down and listen inward.',
+        what_to_expect: ['guided meditation', 'grounded sharing'],
+        takeaways: ['more clarity'],
+      },
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_event_update_patch_decision',
+      context: expect.objectContaining({
+        event_id: 'e1',
+        has_marketing_content: true,
+        marketing_has_subtitle: true,
+        marketing_what_to_expect_count: 2,
+        marketing_takeaways_count: 1,
+        branch_taken: 'apply_event_updates',
+      }),
+    }));
+  });
+
+  it('rejects invalid marketing content payloads and logs the failure reason', async () => {
+    const repo = {
+      getEventById: vi.fn().mockResolvedValue({ id: 'e1', marketing_content: null }),
+      updateEvent: vi.fn(),
+    };
+    const ctx = makeCtx({ providers: { repository: repo } });
+    const req = adminRequest('PATCH', 'https://api.local/api/admin/events/e1', {
+      marketing_content: 'invalid',
+    });
+
+    await expect(handleAdminUpdateEvent(req, ctx, { eventId: 'e1' })).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'BAD_REQUEST',
+      message: 'marketing_content must be an object',
+    });
+    expect(repo.updateEvent).not.toHaveBeenCalled();
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'admin_event_update_failed',
+      context: expect.objectContaining({
+        event_id: 'e1',
+        status_code: 400,
+        branch_taken: 'propagate_error_to_shared_wrapper',
+        deny_reason: 'marketing_content must be an object',
       }),
     }));
   });

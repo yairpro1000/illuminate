@@ -129,6 +129,7 @@ export interface Event {
   slug: string;
   title: string;
   description: string;
+  marketing_content: EventMarketingContent | null;
   starts_at: string;
   ends_at: string;
   timezone: string;
@@ -146,6 +147,13 @@ export interface Event {
   whatsapp_group_invite_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EventMarketingContent {
+  subtitle?: string;
+  intro?: string;
+  what_to_expect?: string[];
+  takeaways?: string[];
 }
 
 export interface EventLateAccessLink {
@@ -212,6 +220,7 @@ export type EventUpdate = Partial<Pick<Event,
   | 'slug'
   | 'title'
   | 'description'
+  | 'marketing_content'
   | 'starts_at'
   | 'ends_at'
   | 'timezone'

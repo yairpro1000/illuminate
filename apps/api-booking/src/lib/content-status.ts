@@ -1,4 +1,10 @@
-import type { EventStatus, EventUpdate, SessionTypeStatus, SessionTypeUpdate } from '../types.js';
+import type {
+  EventMarketingContent,
+  EventStatus,
+  EventUpdate,
+  SessionTypeStatus,
+  SessionTypeUpdate,
+} from '../types.js';
 
 function trimStatus(value: unknown): string {
   return String(value ?? '').trim();
@@ -52,6 +58,9 @@ export function normalizeEventRow<T extends { status: unknown }>(
   return {
     ...event,
     status: normalizeEventStatus(event.status),
+    ...('marketing_content' in event
+      ? { marketing_content: normalizeEventMarketingContent((event as T & { marketing_content?: unknown }).marketing_content) }
+      : {}),
   };
 }
 
@@ -93,9 +102,13 @@ export function toDbSessionTypeStatus(value: unknown): string {
 }
 
 export function normalizeEventUpdateForDb(updates: EventUpdate): Record<string, unknown> {
-  if (!('status' in updates) || updates.status == null) return { ...updates };
+  const normalizedUpdates: Record<string, unknown> = { ...updates };
+  if ('marketing_content' in updates) {
+    normalizedUpdates.marketing_content = normalizeEventMarketingContent(updates.marketing_content) ?? {};
+  }
+  if (!('status' in updates) || updates.status == null) return normalizedUpdates;
   return {
-    ...updates,
+    ...normalizedUpdates,
     status: toDbEventStatus(updates.status),
   };
 }
@@ -105,5 +118,31 @@ export function normalizeSessionTypeUpdateForDb(updates: SessionTypeUpdate): Rec
   return {
     ...updates,
     status: toDbSessionTypeStatus(updates.status),
+  };
+}
+
+function normalizeEventMarketingList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .map((item) => typeof item === 'string' ? item.trim() : '')
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
+}
+
+export function normalizeEventMarketingContent(value: unknown): EventMarketingContent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const subtitle = typeof input.subtitle === 'string' ? input.subtitle.trim() : '';
+  const intro = typeof input.intro === 'string' ? input.intro.trim() : '';
+  const whatToExpect = normalizeEventMarketingList(input.what_to_expect);
+  const takeaways = normalizeEventMarketingList(input.takeaways);
+
+  if (!subtitle && !intro && !whatToExpect && !takeaways) return null;
+
+  return {
+    ...(subtitle ? { subtitle } : {}),
+    ...(intro ? { intro } : {}),
+    ...(whatToExpect ? { what_to_expect: whatToExpect } : {}),
+    ...(takeaways ? { takeaways } : {}),
   };
 }

@@ -1,4 +1,4 @@
 interface:
   display_name: "Illuminate UI Design & CSS"
-  short_description: "Apply the Illuminate design system"
-  default_prompt: "Use $illuminate-ui-design-and-css to apply the Illuminate design system to a page or app."
+  short_description: "Apply the current Illuminate site system"
+  default_prompt: "Use $illuminate-ui-design-and-css to match the current Illuminate website styles, tokens, and component patterns."
