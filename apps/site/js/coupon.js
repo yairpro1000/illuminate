@@ -274,6 +274,8 @@
     if (page === 'home' && homeSuggestionTriggered) {
       const section = document.getElementById(HOME_SUGGESTION_SECTION_ID);
       mountSuggestionInto(section && (section.querySelector('.container') || section));
+      const investment = document.getElementById('investment');
+      mountSuggestionInto(investment && (investment.querySelector('.container') || investment));
       return;
     }
     if (page === 'sessions') {
