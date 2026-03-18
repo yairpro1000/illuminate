@@ -1,6 +1,6 @@
 /* ============================================================
    YAIR BEN-DAVID — Main Stylesheet
-   Lake Lugano palette · OKLCH · 2026
+   Divine Valley palette · OKLCH · 2026
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@800&display=swap');
@@ -107,38 +107,48 @@
    DESIGN TOKENS
    ============================================================ */
 :root {
-  /* Lake Lugano Palette — OKLCH */
-  --color-bg:           oklch(11%  0.022 210);
-  --color-bg-alt:       oklch(14%  0.025 208);
-  --color-bg-card:      oklch(17%  0.030 207);
+  /* Divine Valley Palette — OKLCH */
+  /* Cosmic sky · Living valley stream · Divine energy */
+  --color-bg:           oklch(10%  0.026 230);
+  --color-bg-alt:       oklch(13%  0.030 228);
+  --color-bg-card:      oklch(16%  0.036 226);
 
-  --color-lake-deep:    oklch(44%  0.155 204);
-  --color-lake:         oklch(59%  0.160 200);
-  --color-lake-light:   oklch(73%  0.130 195);
-  --color-lake-mist:    oklch(59%  0.160 200 / 0.14);
-  --color-lake-glow:    oklch(59%  0.160 200 / 0.35);
+  /* Valley stream — richer, more saturated teal (the living water) */
+  --color-lake-deep:    oklch(44%  0.185 196);
+  --color-lake:         oklch(60%  0.200 192);
+  --color-lake-light:   oklch(74%  0.165 188);
+  --color-lake-mist:    oklch(60%  0.200 192 / 0.13);
+  --color-lake-glow:    oklch(60%  0.200 192 / 0.38);
 
-  --color-stone:        oklch(78%  0.030 75);
-  --color-stone-muted:  oklch(58%  0.025 78);
+  /* Electric blue — sword energy / divine power accent */
+  --color-sword:        oklch(62%  0.220 240);
+  --color-sword-glow:   oklch(62%  0.220 240 / 0.40);
 
-  --color-text:         oklch(91%  0.015 200);
-  --color-text-muted:   oklch(82%  0.016 203);
-  --color-text-subtle:  oklch(70%  0.014 206);
+  /* Valley green — emerald life force */
+  --color-valley:       oklch(52%  0.160 155);
+  --color-valley-mist:  oklch(52%  0.160 155 / 0.12);
 
-  --color-border:       oklch(59%  0.160 200 / 0.18);
-  --color-border-hover: oklch(59%  0.160 200 / 0.42);
-  --color-white:        oklch(99%  0.005 200);
+  --color-stone:        oklch(80%  0.018 230);
+  --color-stone-muted:  oklch(60%  0.015 228);
 
-  /* Theme toggle: white bg + dark-teal icon (dark mode, shows sun) */
+  --color-text:         oklch(92%  0.012 220);
+  --color-text-muted:   oklch(82%  0.014 222);
+  --color-text-subtle:  oklch(70%  0.012 224);
+
+  --color-border:       oklch(60%  0.200 192 / 0.18);
+  --color-border-hover: oklch(60%  0.200 192 / 0.42);
+  --color-white:        oklch(99%  0.004 220);
+
+  /* Theme toggle: white bg + deep-teal icon (dark mode, shows sun) */
   --toggle-bg:          var(--color-white);
   --toggle-icon-color:  var(--color-lake-deep);
 
   /* Typography */
   --font: 'Canela', Georgia, serif;
 
-  /* Banana-yellow word-highlight (dark mode) — matches ILLUMINATE glow hue */
-  --color-word-highlight:      oklch(91.219% 0.14051 95.201);
-  --color-word-highlight-glow: oklch(90%  0.18  92 / 0.55);
+  /* Divine gold word-highlight (dark mode) — the halo */
+  --color-word-highlight:      oklch(87%  0.175 85);
+  --color-word-highlight-glow: oklch(84%  0.200 82 / 0.60);
 
   /* Spacing */
   --section-py: clamp(5rem, 10vw, 8rem);
@@ -157,7 +167,7 @@
 
   /* Shadows */
   --shadow-glow: 0 0 25px var(--color-lake-glow);
-  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.4);
+  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.45);
 }
 
 /* ============================================================
@@ -323,7 +333,7 @@ ul, ol { list-style: none; }
   padding: 1rem 1.125rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, oklch(20% 0.04 205 / 0.95), oklch(18% 0.03 210 / 0.92));
+  background: linear-gradient(135deg, oklch(18% 0.042 228 / 0.95), oklch(16% 0.034 230 / 0.92));
   box-shadow: var(--shadow-card);
 }
 
@@ -356,7 +366,7 @@ ul, ol { list-style: none; }
   padding: 0.7rem 0.95rem;
   border-radius: 999px;
   border: 1px solid var(--color-border-hover);
-  background: oklch(16% 0.03 206 / 0.94);
+  background: oklch(15% 0.034 226 / 0.94);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(12px);
 }
@@ -385,7 +395,7 @@ body.theme-light .coupon-banner__eyebrow {
 }
 
 body.theme-light .coupon-banner__text {
-  color: oklch(18% 0.024 210);
+  color: oklch(16% 0.028 228);
 }
 
 body.theme-light .coupon-indicator {
@@ -395,7 +405,7 @@ body.theme-light .coupon-indicator {
 }
 
 body.theme-light .coupon-indicator__label {
-  color: oklch(18% 0.024 210);
+  color: oklch(16% 0.028 228);
 }
 
 body.theme-light .coupon-indicator__remove {
@@ -403,12 +413,12 @@ body.theme-light .coupon-indicator__remove {
 }
 
 body.theme-light .coupon-price__old {
-  color: oklch(42% 0.02 210);
+  color: oklch(42% 0.022 228);
 }
 
 body.theme-light .coupon-price__note,
 body.theme-light .coupon-price__suffix {
-  color: oklch(44% 0.018 210);
+  color: oklch(44% 0.020 228);
 }
 
 @media (max-width: 48rem) {
@@ -429,9 +439,17 @@ body.theme-light .coupon-price__suffix {
   gap: 0.2rem;
 }
 
+/* Inside the pill badge, price + suffix must stay on one row */
+.step__amount .coupon-price {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .coupon-price--standard,
 .coupon-price--free,
 .coupon-price__new {
+  white-space: nowrap;
   color: var(--color-text);
 }
 
@@ -489,9 +507,14 @@ body.theme-light .coupon-price__suffix {
   cursor: pointer;
   border: none;
   transition:
-    transform 0.3s var(--ease),
-    box-shadow 0.3s var(--ease),
+    transform 1s var(--ease),
+    box-shadow 1s var(--ease),
     background 0.3s var(--ease);
+}
+
+.btn-primary.btn--focal {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 0 48px var(--color-lake-glow), 0 12px 32px oklch(0% 0 0 / 0.40);
 }
 
 .btn-primary {
@@ -532,14 +555,19 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: 0.9375rem;
+  font-size: 1.125rem;
   font-weight: 500;
-  transition: gap 0.25s var(--ease), color 0.2s;
+  font-style: italic;
+  transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
 }
 
 .btn-arrow:hover {
   gap: 0.85rem;
   color: var(--color-lake);
+}
+
+.btn-arrow.btn--focal {
+  transform: scale(1.08);
 }
 
 .btn-arrow::after {
@@ -561,7 +589,7 @@ body.theme-light .coupon-price__suffix {
 }
 
 .nav.scrolled {
-  background: oklch(11% 0.022 210 / 0.85);
+  background: oklch(10% 0.026 230 / 0.85);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 0.875rem 0;
@@ -594,8 +622,8 @@ body.theme-light .coupon-price__suffix {
   font-weight: 800;
   color: #ffffff;
   text-shadow:
-    0 0 8px  oklch(94% 0.14 95 / 0.80),
-    0 0 22px oklch(90% 0.18 95 / 0.45);
+    0 0 8px  oklch(94% 0.16 85 / 0.80),
+    0 0 22px oklch(88% 0.20 82 / 0.45);
 }
 
 body.theme-light .nav__logo-brand {
@@ -666,7 +694,7 @@ body.theme-light .nav__logo-brand {
   display: flex;          /* always flex — hidden via max-height, not display:none */
   flex-direction: column;
   gap: 0;
-  background: oklch(13% 0.025 209 / 0.97);
+  background: oklch(13% 0.030 228 / 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: none;
@@ -804,26 +832,26 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   padding-right: 0.22em;               /* prevent last char clipping from trailing letter-spacing */
   /* pure white — glow animation provides all the iridescence */
   color: #ffffff;
-  /* glow layers: sun-yellow (hue ~95), not orange */
+  /* glow layers: divine gold (hue ~85), the halo */
   text-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow 5s ease-in-out infinite;
 }
 
 @keyframes brand-glow {
   0%, 100% {
     text-shadow:
-      0 0 10px oklch(94% 0.14 95 / 0.80),
-      0 0 28px oklch(90% 0.18 95 / 0.45),
-      0 0 65px oklch(86% 0.20 95 / 0.22);
+      0 0 10px oklch(94% 0.16 85 / 0.80),
+      0 0 28px oklch(88% 0.20 82 / 0.45),
+      0 0 65px oklch(84% 0.22 80 / 0.22);
   }
   50% {
     text-shadow:
-      0 0 18px oklch(96% 0.12 95 / 0.95),
-      0 0 52px oklch(92% 0.17 95 / 0.65),
-      0 0 110px oklch(88% 0.19 95 / 0.40);
+      0 0 18px oklch(96% 0.14 87 / 0.95),
+      0 0 52px oklch(90% 0.19 83 / 0.65),
+      0 0 110px oklch(86% 0.21 80 / 0.40);
   }
 }
 
@@ -962,13 +990,13 @@ body.theme-light .hero__brand {
   text-align: left;
   gap: 1.25rem;
   padding: 1.625rem 1.875rem;
-  background: oklch(17% 0.030 207 / 0.55);
+  background: oklch(16% 0.036 226 / 0.55);
   border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-lake-light);
+  border-left: 3px solid var(--color-word-highlight);
   border-radius: var(--radius-lg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: transform 0.18s var(--ease), box-shadow 0.18s, border-left-color 0.18s, background 0.18s;
+  transition: transform 1s var(--ease), box-shadow 1s, border-left-color 1s, background-color 1s;
 }
 
 /* Re-establish 3D base after .fade-up.is-visible resets transform to none.
@@ -978,10 +1006,11 @@ body.theme-light .hero__brand {
   transition-delay: 0s;
 }
 
-.who__card.is-visible:hover {
+.who__card.is-visible:hover,
+.who__card.is-visible.who__card--focal {
   transform: perspective(800px) translateZ(28px) translateY(-4px);
-  background: oklch(22% 0.072 200 / 0.78);
-  border-left-color: oklch(80% 0.125 193);
+  background-color: oklch(20% 0.080 220 / 0.78);
+  border-left-color: oklch(92% 0.175 87);
   box-shadow:
     0 24px 64px oklch(0% 0 0 / 0.50),
     0 6px 20px oklch(59% 0.160 200 / 0.22);
@@ -992,8 +1021,8 @@ body.theme-light .hero__brand {
   flex-shrink: 0;
   margin-top: 0.3rem;
   filter:
-    drop-shadow(0 0 4px oklch(94% 0.14 95 / 0.80))
-    drop-shadow(0 0 12px oklch(90% 0.18 92 / 0.50));
+    drop-shadow(0 0 4px oklch(94% 0.16 85 / 0.80))
+    drop-shadow(0 0 12px oklch(88% 0.20 82 / 0.50));
 }
 
 body.theme-light .who__check {
@@ -1057,7 +1086,7 @@ body.theme-light .who__check {
    GLASS CARD
    ============================================================ */
 .glass-card {
-  background: oklch(17% 0.030 207 / 0.7);
+  background: oklch(16% 0.036 226 / 0.7);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: 2.25rem;
@@ -1220,6 +1249,7 @@ body.theme-light .who__check {
 
 .step__amount {
   display: inline-block;
+  white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1279,7 +1309,7 @@ body.theme-light .who__check {
   padding: 2.5rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.6);
+  background: oklch(16% 0.036 226 / 0.6);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition: border-color 0.3s, transform 0.35s var(--ease), box-shadow 0.35s;
@@ -1363,10 +1393,19 @@ body.theme-light .who__check {
 
 .pricing-card__feature {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
+  justify-content: flex-start;
   gap: 0.75rem;
   font-size: 0.9375rem;
   color: var(--color-text-muted);
+}
+
+.pricing-card__feature span {
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.875rem;
 }
 
 .pricing-card__feature::before {
@@ -1379,7 +1418,7 @@ body.theme-light .who__check {
 
 .pricing-card--featured {
   border-color: var(--color-border-hover);
-  background: oklch(20% 0.035 207 / 0.75);
+  background: oklch(19% 0.040 225 / 0.75);
 }
 
 .pricing-card--featured:hover {
@@ -1403,7 +1442,7 @@ body.theme-light .who__check {
   padding: 3rem 3rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.5);
+  background: oklch(16% 0.036 226 / 0.5);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   margin-bottom: 2.5rem;
@@ -1482,7 +1521,7 @@ body.theme-light .who__check {
   padding: 2rem 1.5rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.20);
+  background: oklch(16% 0.036 226 / 0.20);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   margin-bottom: 2.5rem;
@@ -1589,7 +1628,7 @@ body.theme-light .who__check {
 }
 
 body.theme-light .final__step {
-  color: oklch(38% 0.148 200);
+  color: oklch(38% 0.175 188);
 }
 
 .final__actions {
@@ -1672,9 +1711,9 @@ body.theme-light .final__step {
   font-weight: 700;
   color: var(--color-word-highlight);
   text-shadow:
-    0 0  6px oklch(94%  0.14  95 / 0.75),
-    0 0 18px oklch(90%  0.18  92 / 0.45),
-    0 0 40px oklch(86%  0.20  90 / 0.22);
+    0 0  6px oklch(94%  0.16  85 / 0.75),
+    0 0 18px oklch(88%  0.20  82 / 0.45),
+    0 0 40px oklch(84%  0.22  80 / 0.22);
 }
 
 .about-strip__text {
@@ -1712,8 +1751,8 @@ body.theme-light .final__step {
 }
 
 .bubble-msg {
-  background: oklch(20% 0.030 210);
-  border: 1px solid oklch(59% 0.160 200 / 0.22);
+  background: oklch(18% 0.034 228);
+  border: 1px solid oklch(60% 0.200 192 / 0.22);
   border-radius: 1.25rem;
   padding: 0.8125rem 1.125rem;
   font-size: 1rem;
@@ -1736,39 +1775,39 @@ body.theme-light .final__step {
   left: -9px;
   width: 0;
   height: 0;
-  border-right: 10px solid oklch(20% 0.030 210);
+  border-right: 10px solid oklch(18% 0.034 228);
   border-top: 12px solid transparent;
 }
 
 /* Light mode bubbles */
 body.theme-light .bubble-msg {
-  background: oklch(99% 0.006 200);
-  color: oklch(14% 0.025 210);
+  background: oklch(99% 0.006 190);
+  color: oklch(13% 0.028 228);
   border-color: oklch(44% 0.152 200 / 0.18);
   box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
 }
 
 body.theme-light .bubble-card .bubble-msg:last-child::after {
-  border-right-color: oklch(99% 0.006 200);
+  border-right-color: oklch(99% 0.006 190);
 }
 
 /* Alternating bubble colour */
 .bubble-card:nth-child(even) .bubble-msg {
-  background: oklch(19% 0.055 200);
-  border-color: oklch(59% 0.160 200 / 0.32);
+  background: oklch(17% 0.060 215);
+  border-color: oklch(60% 0.200 192 / 0.32);
 }
 
 .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-  border-right-color: oklch(19% 0.055 200);
+  border-right-color: oklch(17% 0.060 215);
 }
 
 body.theme-light .bubble-card:nth-child(even) .bubble-msg {
-  background: oklch(95% 0.022 200);
+  background: oklch(95% 0.022 190);
   border-color: oklch(44% 0.152 200 / 0.22);
 }
 
 body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-  border-right-color: oklch(95% 0.022 200);
+  border-right-color: oklch(95% 0.022 190);
 }
 
 /* Keeps the later review-close section image styling unchanged. */
@@ -1890,42 +1929,42 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 @media (min-width: 32.0625rem) and (max-width: 47.9375rem) {
   /* Reset cards that were B globally but should be A in 2-col (cards 4, 8…) */
   .bubble-card:nth-child(even) .bubble-msg {
-    background: oklch(20% 0.030 210);
-    border-color: oklch(59% 0.160 200 / 0.22);
+    background: oklch(18% 0.034 228);
+    border-color: oklch(60% 0.200 192 / 0.22);
     box-shadow: 0 2px 14px oklch(0% 0 0 / 0.20);
   }
   .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-    border-right-color: oklch(20% 0.030 210);
+    border-right-color: oklch(18% 0.034 228);
   }
 
   /* Apply B to 2-col checkerboard positions (cards 2, 3, 6, 7…) */
   .bubble-card:nth-child(4n+2) .bubble-msg,
   .bubble-card:nth-child(4n+3) .bubble-msg {
-    background: oklch(19% 0.055 200);
-    border-color: oklch(59% 0.160 200 / 0.32);
+    background: oklch(17% 0.060 215);
+    border-color: oklch(60% 0.200 192 / 0.32);
   }
   .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
   .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
-    border-right-color: oklch(19% 0.055 200);
+    border-right-color: oklch(17% 0.060 215);
   }
 
   /* Light mode */
   body.theme-light .bubble-card:nth-child(even) .bubble-msg {
-    background: oklch(99% 0.006 200);
+    background: oklch(99% 0.006 190);
     border-color: oklch(44% 0.152 200 / 0.18);
     box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
   }
   body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-    border-right-color: oklch(99% 0.006 200);
+    border-right-color: oklch(99% 0.006 190);
   }
   body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg,
   body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg {
-    background: oklch(95% 0.022 200);
+    background: oklch(95% 0.022 190);
     border-color: oklch(44% 0.152 200 / 0.22);
   }
   body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
   body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
-    border-right-color: oklch(95% 0.022 200);
+    border-right-color: oklch(95% 0.022 190);
   }
 }
 
@@ -1968,9 +2007,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 .text-lake {
   color: var(--color-word-highlight);
   text-shadow:
-    0 0  6px oklch(94%  0.14  95 / 0.75),
-    0 0 18px oklch(90%  0.18  92 / 0.45),
-    0 0 40px oklch(86%  0.20  90 / 0.22);
+    0 0  6px oklch(94%  0.16  85 / 0.75),
+    0 0 18px oklch(88%  0.20  82 / 0.45),
+    0 0 40px oklch(84%  0.22  80 / 0.22);
 }
 .mt-sm        { margin-top: 1rem; }
 .mt-md        { margin-top: 1.75rem; }
@@ -2139,30 +2178,30 @@ body.theme-light .theme-toggle .icon-sun {
    All components inherit from these via CSS custom properties
    ============================================================ */
 body.theme-light {
-  /* Backgrounds */
-  --color-bg:           oklch(96.5% 0.007 195);
-  --color-bg-alt:       oklch(93%   0.010 193);
-  --color-bg-card:      oklch(99%   0.005 195);
+  /* Backgrounds — warm pearl with a hint of valley green */
+  --color-bg:           oklch(96.5% 0.008 185);
+  --color-bg-alt:       oklch(93%   0.011 183);
+  --color-bg-card:      oklch(99%   0.005 190);
 
-  /* Lake — darker for readability on light bg */
-  --color-lake-deep:    oklch(36%   0.160 204);
-  --color-lake:         oklch(44%   0.152 200);
-  --color-lake-light:   oklch(38%   0.148 200);
-  --color-lake-mist:    oklch(44%   0.152 200 / 0.09);
-  --color-lake-glow:    oklch(44%   0.152 200 / 0.22);
+  /* Valley stream — darker for readability on light bg */
+  --color-lake-deep:    oklch(36%   0.185 196);
+  --color-lake:         oklch(44%   0.190 192);
+  --color-lake-light:   oklch(38%   0.175 188);
+  --color-lake-mist:    oklch(44%   0.190 192 / 0.09);
+  --color-lake-glow:    oklch(44%   0.190 192 / 0.22);
 
   /* Text — dark on light */
-  --color-text:         oklch(14%   0.025 210);
-  --color-text-muted:   oklch(36%   0.022 208);
-  --color-text-subtle:  oklch(55%   0.018 210);
+  --color-text:         oklch(13%   0.028 228);
+  --color-text-muted:   oklch(35%   0.022 226);
+  --color-text-subtle:  oklch(55%   0.018 224);
 
   /* Borders */
-  --color-border:       oklch(44%   0.152 200 / 0.14);
-  --color-border-hover: oklch(44%   0.152 200 / 0.34);
+  --color-border:       oklch(44%   0.190 192 / 0.14);
+  --color-border-hover: oklch(44%   0.190 192 / 0.34);
 
   /* Shadows */
-  --shadow-glow: 0 0 22px oklch(44% 0.152 200 / 0.18);
-  --shadow-card: 0 4px 24px oklch(14% 0.025 210 / 0.08), 0 1px 4px oklch(14% 0.025 210 / 0.06);
+  --shadow-glow: 0 0 22px oklch(44% 0.190 192 / 0.18);
+  --shadow-card: 0 4px 24px oklch(13% 0.028 228 / 0.08), 0 1px 4px oklch(13% 0.028 228 / 0.06);
 
   /* Theme toggle: dark-teal bg + white icon (light mode, shows moon) */
   --toggle-bg:          oklch(from var(--color-lake-deep) l c h / 0.7);
@@ -2172,7 +2211,7 @@ body.theme-light {
 /* ── Light body background: raw alpine lake image —
      each section controls its own overlay via background-color ── */
 body.theme-light {
-  background-color: oklch(96.5% 0.007 195);
+  background-color: oklch(96.5% 0.008 185);
 }
 
 /* Background image lives on its own fixed layer so we can
@@ -2185,12 +2224,26 @@ body.theme-light {
 }
 
 body:not(.theme-light) #bg-layer {
+  /* Solid navy — image hidden behind canvas animation on all pages */
+  background-color: oklch(10% 0.026 230);
+  background-image: none;
+}
+
+/* ── Dark mode: lake image only in #about and #reviews ── */
+/* Painted as a ::before so it sits within the section stacking context,
+   above the fixed canvas (z-index -10) but behind section content. */
+body:not(.theme-light) #about::before,
+body:not(.theme-light) #reviews::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   background-image:
-    linear-gradient(rgba(5, 25, 28, 0.70), rgba(5, 25, 28, 0.70)),
+    linear-gradient(rgba(4, 12, 30, 0.65), rgba(6, 18, 40, 0.60)),
     url('../img/alpine_lake_horizontal.png');
   background-size: cover;
   background-position: center 38%;
-  background-attachment: fixed;
+  z-index: -1;
+  pointer-events: none;
 }
 
 body.theme-light #bg-layer {
@@ -2208,13 +2261,13 @@ body.theme-light #bg-layer.bg-grayscale {
 
 /* ── Light: Nav scrolled ── */
 body.theme-light .nav.scrolled {
-  background: oklch(96.5% 0.007 195 / 0.88);
+  background: oklch(96.5% 0.008 185 / 0.88);
   border-bottom-color: var(--color-border);
 }
 
 /* ── Light: Glass cards ── */
 body.theme-light .glass-card {
-  background: oklch(99% 0.005 195 / 0.72);
+  background: oklch(99% 0.005 190 / 0.72);
   box-shadow: 0 4px 20px oklch(14% 0.025 210 / 0.06);
 }
 
@@ -2224,18 +2277,19 @@ body.theme-light .glass-card:hover {
 
 /* ── Light: Who Is This For? cards — frosted glass, dark text ── */
 body.theme-light .who__card {
-  background: oklch(99% 0.008 195 / 0.58);
-  border-left-color: oklch(38% 0.148 200);
+  background: oklch(99% 0.008 190 / 0.58);
+  border-left-color: oklch(60% 0.175 80);
   box-shadow: 0 2px 14px oklch(14% 0.025 210 / 0.06);
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-lake-light:  oklch(38%  0.148 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-lake-light:  oklch(38%  0.175 188);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
-body.theme-light .who__card.is-visible:hover {
-  background: oklch(97% 0.014 195 / 0.76);
-  border-left-color: oklch(38% 0.160 200);
+body.theme-light .who__card.is-visible:hover,
+body.theme-light .who__card.is-visible.who__card--focal {
+  background-color: oklch(97% 0.014 195 / 0.76);
+  border-left-color: oklch(62% 0.175 80);
   box-shadow:
     0 24px 64px oklch(14% 0.025 210 / 0.20),
     0 6px 20px oklch(38% 0.148 200 / 0.20);
@@ -2257,10 +2311,10 @@ body.theme-light .pricing-card:hover {
 
 /* ── Light: Regret quote ── */
 body.theme-light .regret__quote {
-  background: oklch(99% 0.005 195 / 0.45);
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-lake-light:  oklch(38%  0.148 200);
+  background: oklch(99% 0.005 190 / 0.45);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-lake-light:  oklch(38%  0.175 188);
 }
 
 body.theme-light .regret__quote::before {
@@ -2323,7 +2377,7 @@ body.theme-light .footer {
 }
 
 body.theme-light .nav__mobile {
-  background: oklch(96.5% 0.007 195 / 0.95);
+  background: oklch(96.5% 0.008 185 / 0.95);
 }
 
 /* ============================================================
@@ -2334,15 +2388,10 @@ body.theme-light .nav__mobile {
 
 /* ── Dark mode: make section--alt "light" sections semi-transparent
      so canvas waves breathe through them ── */
-/* ── Dark mode: lake shows only through #about and #reviews ── */
-/* All sections get the solid dark bg, covering the lake */
-body:not(.theme-light) .section {
-  background-color: var(--color-bg);
-}
-
-/* #about and #reviews: transparent so the lake breathes through */
-body:not(.theme-light) #about,
-body:not(.theme-light) #reviews {
+/* ── Dark mode: all sections transparent — divine rays visible everywhere ── */
+/* bg-layer is solid navy (no image); rays float above it through transparent sections */
+body:not(.theme-light) .section,
+body:not(.theme-light) .section--alt.section-in-view {
   background-color: transparent;
 }
 
@@ -2368,7 +2417,7 @@ body.theme-light #how-we-work.section-in-view {
 /* ── Light mode: calm mirror + review close — fully opaque, no lake showing through ── */
 body.theme-light #calm-mirror.section-in-view,
 body.theme-light #review-close.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 1.0);
+  background-color: oklch(96.5% 0.008 185 / 1.0);
 }
 
 /* review-close appears instantly — no fade, so #final's reveal is the dramatic moment ── */
@@ -2384,11 +2433,11 @@ body.theme-light #who-is-this.section-in-view,
 body.theme-light #regret.section-in-view,
 body.theme-light #about.section-in-view,
 body.theme-light #reviews.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0.35);
+  background-color: oklch(96.5% 0.008 185 / 0.35);
   /* Override text tokens so everything in these sections reads white on the lake */
-  --color-text:        oklch(97%  0.008 200);
-  --color-text-muted:  oklch(90%  0.012 200);
-  --color-text-subtle: oklch(80%  0.010 200);
+  --color-text:        oklch(97%  0.008 220);
+  --color-text-muted:  oklch(90%  0.012 220);
+  --color-text-subtle: oklch(80%  0.010 220);
   --color-border:      oklch(100% 0    0   / 0.20);
   /* --color-lake-light / --color-lake: intentionally NOT overridden here —
      they inherit from body.theme-light (dark navy = same as "Clarity. Courage." gradient) */
@@ -2396,37 +2445,37 @@ body.theme-light #reviews.section-in-view {
 
 /* ── About: fully transparent — lake shines through completely ── */
 body.theme-light #about.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0);
+  background-color: oklch(96.5% 0.008 185 / 0);
 }
 
 /* ── Regret: near-opaque — building toward the final reveal ── */
 body.theme-light #regret.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0.90);
+  background-color: oklch(96.5% 0.008 185 / 0.90);
 }
 
 /* Restore normal light-mode dark colors inside pricing cards
    (they have their own opaque background so dark text stays readable) */
 body.theme-light #investment .pricing-card {
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
 /* ── Light mode: final section — opaque overlay fades out on scroll ── */
 body.theme-light .final::before {
-  background: oklch(96.5% 0.007 195 / 1.0);
+  background: oklch(96.5% 0.008 185 / 1.0);
 }
 
 body.theme-light .final {
-  background-color: oklch(96.5% 0.007 195 / 0);
+  background-color: oklch(96.5% 0.008 185 / 0);
   --color-text:        oklch(100% 0     0  );
-  --color-text-muted:  oklch(93%  0.008 200);
-  --color-text-subtle: oklch(88%  0.008 200);
+  --color-text-muted:  oklch(93%  0.008 220);
+  --color-text-subtle: oklch(88%  0.008 220);
   --color-lake-light:  oklch(100% 0     0  );
-  --color-lake:        oklch(96%  0.010 200);
+  --color-lake:        oklch(96%  0.010 220);
 }
 
 /* ── Light mode: about + reviews glass box — same pattern as manifesto__box ── */
@@ -2435,11 +2484,11 @@ body.theme-light #reviews .container {
   background: oklch(97% 0.012 200 / 0.65);
   border-radius: 1.5rem;
   padding: 3.5rem 2.5rem;
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
@@ -2448,22 +2497,22 @@ body.theme-light #not-this .manifesto__box {
   background: oklch(97% 0.012 200 / 0.45);
   border-radius: 1.5rem;
   padding: 3.5rem 2.5rem;
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
 /* ── Light mode: regret — fix unreadable teal/green accents + strengthen body text ── */
 body.theme-light #regret {
   --color-lake-light: oklch(100% 0 0);
-  --color-lake:       oklch(95%  0.010 200);
+  --color-lake:       oklch(95%  0.010 220);
 }
 
 body.theme-light #regret .regret__right .btn-arrow {
-  color: oklch(38% 0.148 200);
+  color: oklch(38% 0.175 188);
 }
 
 
@@ -2496,9 +2545,9 @@ body.theme-light #not-this .manifesto__selflove {
   letter-spacing: 0.04em;
   color: oklch(100% 0 0);
   text-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow 5s ease-in-out infinite;
 }
 
@@ -2625,65 +2674,65 @@ body.theme-light .text-lake {
 
 /* ── Dark mode: brand-glow CTA buttons (mirrors hero__brand glow) ── */
 :root .btn-primary {
-  background: linear-gradient(135deg, oklch(86% 0.20 95), oklch(94% 0.14 95));
-  color: oklch(18% 0.030 95);
+  background: linear-gradient(135deg, oklch(84% 0.20 83), oklch(92% 0.16 87));
+  color: oklch(16% 0.030 85);
   border-color: transparent;
   box-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow-btn 5s ease-in-out infinite;
 }
 :root .btn-primary:hover {
-  background: linear-gradient(135deg, oklch(86% 0.20 95), oklch(94% 0.14 95));
+  background: linear-gradient(135deg, oklch(86% 0.20 84), oklch(94% 0.16 88));
   box-shadow:
-    0 0 18px oklch(96% 0.12 95 / 0.95),
-    0 0 52px oklch(92% 0.17 95 / 0.65),
-    0 0 110px oklch(88% 0.19 95 / 0.40),
+    0 0 18px oklch(96% 0.14 87 / 0.95),
+    0 0 52px oklch(90% 0.19 83 / 0.65),
+    0 0 110px oklch(86% 0.21 80 / 0.40),
     0 8px 24px oklch(0% 0 0 / 0.35);
 }
 
 @keyframes brand-glow-btn {
   0%, 100% {
     box-shadow:
-      0 0 10px oklch(94% 0.14 95 / 0.80),
-      0 0 28px oklch(90% 0.18 95 / 0.45),
-      0 0 65px oklch(86% 0.20 95 / 0.22);
+      0 0 10px oklch(94% 0.16 85 / 0.80),
+      0 0 28px oklch(88% 0.20 82 / 0.45),
+      0 0 65px oklch(84% 0.22 80 / 0.22);
   }
   50% {
     box-shadow:
-      0 0 18px oklch(96% 0.12 95 / 0.95),
-      0 0 52px oklch(92% 0.17 95 / 0.65),
-      0 0 110px oklch(88% 0.19 95 / 0.40);
+      0 0 18px oklch(96% 0.14 87 / 0.95),
+      0 0 52px oklch(90% 0.19 83 / 0.65),
+      0 0 110px oklch(86% 0.21 80 / 0.40);
   }
 }
 
 :root .btn-secondary {
   color: var(--color-word-highlight);
-  border-color: oklch(88% 0.18 92 / 0.35);
+  border-color: oklch(87% 0.175 85 / 0.35);
 }
 :root .btn-secondary:hover {
-  border-color: oklch(88% 0.18 92 / 0.65);
-  background: oklch(88% 0.18 92 / 0.08);
+  border-color: oklch(87% 0.175 85 / 0.65);
+  background: oklch(87% 0.175 85 / 0.08);
 }
 
-/* ── Dark mode: banana-yellow btn-arrow links ── */
+/* ── Dark mode: divine-gold btn-arrow links ── */
 :root .btn-arrow {
   color: var(--color-word-highlight);
   text-shadow:
-    0 0  4px oklch(94% 0.14 95 / 0.55),
-    0 0 14px oklch(90% 0.18 92 / 0.30);
+    0 0  4px oklch(94% 0.16 85 / 0.55),
+    0 0 14px oklch(88% 0.20 82 / 0.30);
 }
 :root .btn-arrow:hover {
-  color: oklch(96% 0.14 88);
+  color: oklch(96% 0.14 87);
 }
 
 /* ── Dark mode: regret__glow — banana yellow glow ── */
 :root .regret__glow {
   text-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow 5s ease-in-out infinite;
 }
 

@@ -50,46 +50,173 @@ if (moodTriggers.length) {
   
 }
 
-/* ── 1. DARK THEME — Wave animation ────────────────────────── */
-// Additive sine-wave synthesis. One counter-direction wave for depth.
-const waveConfig = [
+/* ── 1. DARK THEME — Divine Light Rays + Valley Embers ─────── */
+// Three colour families: valley teal (stream), electric blue (sword), divine gold (halo)
+// Layer A: 8 near-vertical light shafts that breathe/pulse slowly
+// Layer B: ~55 tiny luminous embers drifting upward (valley fireflies / celestial motes)
+
+const DIVINE_PALETTES = [
+  { r:  60, g: 200, b: 190, blur: 18 }, // valley teal
+  { r:  35, g: 175, b: 168, blur: 22 }, // deeper teal
+  { r: 100, g: 175, b: 255, blur: 16 }, // electric blue (sword)
+  { r:  70, g: 150, b: 255, blur: 20 }, // deeper electric blue
+  { r: 255, g: 210, b: 100, blur: 14 }, // divine gold (halo)
+  { r: 220, g: 240, b: 255, blur: 12 }, // silver-white radiance
+];
+
+let rays = [];
+let embers = [];
+
+function initRays() {
+  if (!canvas) return;
+  rays = [];
+  const count = 9;
+  for (let i = 0; i < count; i++) {
+    const palIdx = Math.floor(Math.random() * DIVINE_PALETTES.length);
+    rays.push({
+      x:           0.04 + (i / (count - 1)) * 0.92 + (Math.random() - 0.5) * 0.05,
+      width:       30 + Math.random() * 90,
+      tilt:        (Math.random() - 0.5) * 0.06,
+      phase:       Math.random() * Math.PI * 2,
+      speed:       0.004 + Math.random() * 0.006,   // ~30-42s cycle — slow divine breathing
+      baseOpacity: 0.10 + Math.random() * 0.14,     // much more visible
+      topFade:     0.0 + Math.random() * 0.15,       // start closer to top
+      palette:     DIVINE_PALETTES[palIdx],
+    });
+  }
+}
+
+function drawDivineRays() {
+  const t = time;
+  rays.forEach((ray) => {
+    const pulse   = (Math.sin(t * ray.speed + ray.phase) + 1) / 2;
+    const opacity = ray.baseOpacity * (0.15 + pulse * 0.85);  // breathes from ~15% to 100%
+    if (opacity < 0.008) return;
+
+    const cx      = ray.x * canvas.width;
+    const tilt    = ray.tilt;
+    const topY    = canvas.height * ray.topFade;
+    const botY    = canvas.height;
+    const topX    = cx + tilt * topY;
+    const botX    = cx + tilt * botY;
+    const halfW   = ray.width / 2;
+    const { r, g, b, blur } = ray.palette;
+
+    const grad = ctx.createLinearGradient(cx, topY, cx + tilt * canvas.height, botY);
+    grad.addColorStop(0,    `rgba(${r},${g},${b},0)`);
+    grad.addColorStop(0.22, `rgba(${r},${g},${b},${opacity * 0.55})`);
+    grad.addColorStop(0.55, `rgba(${r},${g},${b},${opacity})`);
+    grad.addColorStop(0.82, `rgba(${r},${g},${b},${opacity * 0.65})`);
+    grad.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(topX - halfW, topY);
+    ctx.lineTo(topX + halfW, topY);
+    ctx.lineTo(botX + halfW, botY);
+    ctx.lineTo(botX - halfW, botY);
+    ctx.closePath();
+    ctx.shadowBlur  = blur + pulse * 40;
+    ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(opacity * 1.2, 1)})`;
+    ctx.fillStyle   = grad;
+    ctx.fill();
+    ctx.restore();
+    ctx.shadowBlur  = 0;
+    ctx.shadowColor = 'transparent';
+  });
+}
+
+function initEmbers() {
+  if (!canvas) return;
+  embers = [];
+  for (let i = 0; i < 55; i++) {
+    const palIdx = Math.floor(Math.random() * DIVINE_PALETTES.length);
+    embers.push({
+      x:          Math.random() * (canvas.width  || 1200),
+      y:          Math.random() * (canvas.height || 800),
+      size:       0.8 + Math.random() * 2.6,
+      phase:      Math.random() * Math.PI * 2,
+      freq:       0.016 + Math.random() * 0.026,
+      maxOpacity: 0.25 + Math.random() * 0.45,
+      driftX:     (Math.random() - 0.5) * 0.10,
+      driftY:     +(0.07 + Math.random() * 0.16),   // always downward
+      palette:    DIVINE_PALETTES[palIdx],
+    });
+  }
+}
+
+function drawEmbers() {
+  const t = time;
+  embers.forEach((e) => {
+    const tNorm  = (Math.sin(t * e.freq + e.phase) + 1) / 2;
+    const opacity = tNorm * e.maxOpacity;
+    if (opacity < 0.008) {
+      e.x += e.driftX;
+      e.y += e.driftY;
+      wrapEmber(e);
+      return;
+    }
+    const sz = e.size * (0.3 + tNorm * 0.7);
+    const { r, g, b, blur } = e.palette;
+    ctx.shadowBlur  = blur + sz * 4;
+    ctx.shadowColor = `rgba(${r},${g},${b},${Math.min(opacity * 1.4, 1)})`;
+    ctx.fillStyle   = `rgba(${r},${g},${b},${opacity})`;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, sz, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur  = 0;
+    ctx.shadowColor = 'transparent';
+    e.x += e.driftX;
+    e.y += e.driftY;
+    wrapEmber(e);
+  });
+}
+
+function wrapEmber(e) {
+  const m = 20;
+  if (e.x < -m)                e.x = canvas.width + m;
+  if (e.x > canvas.width + m)  e.x = -m;
+  if (e.y > canvas.height + m) e.y = -m;   // drifted off bottom → respawn at top
+  if (e.y < -m)                e.y = canvas.height + m;
+}
+
+/* ── Divine waves — sine synthesis in the bottom half, divine palette colors ── */
+const divineWaveConfig = [
   {
-    y: 0.52,
-    speed: 0.006,
-    color: 'rgba(40, 175, 200, 0.18)',
-    components: [
-      { amplitude: 65,  frequency: 0.00110 },
-      { amplitude: 22,  frequency: 0.00320 },
-    ],
+    y: 0.62,
+    speed: 0.0013,
+    r: 60, g: 200, b: 190,   // valley teal
+    opacity: 0.22,
+    components: [{ amplitude: 55, frequency: 0.00110 }, { amplitude: 18, frequency: 0.00300 }],
   },
   {
-    y: 0.58,
-    speed: -0.008,
-    color: 'rgba(25, 150, 185, 0.16)',
-    components: [
-      { amplitude: 88,  frequency: 0.00085 },
-      { amplitude: 32,  frequency: 0.00210 },
-    ],
+    y: 0.70,
+    speed: -0.0018,
+    r: 100, g: 175, b: 255,  // electric blue (sword)
+    opacity: 0.18,
+    components: [{ amplitude: 75, frequency: 0.00085 }, { amplitude: 28, frequency: 0.00200 }],
   },
   {
-    y: 0.64,
-    speed: 0.010,
-    color: 'rgba(18, 120, 160, 0.14)',
-    components: [
-      { amplitude: 108, frequency: 0.00065 },
-      { amplitude: 42,  frequency: 0.00155 },
-    ],
+    y: 0.78,
+    speed: 0.0022,
+    r: 255, g: 210, b: 100,  // divine gold (halo)
+    opacity: 0.14,
+    components: [{ amplitude: 95, frequency: 0.00065 }, { amplitude: 38, frequency: 0.00145 }],
+  },
+  {
+    y: 0.85,
+    speed: -0.0010,
+    r: 35, g: 175, b: 168,   // deeper teal
+    opacity: 0.12,
+    components: [{ amplitude: 60, frequency: 0.00095 }, { amplitude: 22, frequency: 0.00250 }],
   },
 ];
 
-function drawWaves() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+function drawDivineWaves() {
   const t = time;
-
-  waveConfig.forEach((wave) => {
+  divineWaveConfig.forEach((wave) => {
     ctx.beginPath();
     ctx.moveTo(0, canvas.height);
-
     for (let x = 0; x < canvas.width; x++) {
       let y = 0;
       wave.components.forEach((c) => {
@@ -97,18 +224,24 @@ function drawWaves() {
       });
       ctx.lineTo(x, y + canvas.height * wave.y);
     }
-
     ctx.lineTo(canvas.width, canvas.height);
     ctx.closePath();
-    ctx.fillStyle = wave.color;
+    ctx.fillStyle = `rgba(${wave.r},${wave.g},${wave.b},${wave.opacity})`;
     ctx.fill();
   });
 }
 
-function runWaves() {
-  drawWaves();
+function drawDivine() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // drawDivineRays();
+  drawDivineWaves();
+  // drawEmbers();
+}
+
+function runDivine() {
+  drawDivine();
   time += 1;
-  rafId = requestAnimationFrame(runWaves);
+  rafId = requestAnimationFrame(runDivine);
 }
 
 /* ── 2. LIGHT THEME — Sparkle animation ────────────────────── */
@@ -121,10 +254,10 @@ function runWaves() {
 // Size scales WITH opacity so each glint "flashes" rather than fading flat.
 
 const SPARK_PALETTES = [
-  { fill: [255, 255, 255], shadow: [228, 244, 255], blur: 7  }, // pure white / ice
-  { fill: [255, 253, 248], shadow: [255, 248, 232], blur: 9  }, // warm white
-  { fill: [238, 248, 255], shadow: [212, 234, 255], blur: 8  }, // cool silver-white
-  { fill: [255, 251, 242], shadow: [255, 244, 218], blur: 10 }, // very pale cream
+  { fill: [255, 248, 210], shadow: [255, 215,  80], blur: 8  }, // divine gold — warm shimmer
+  { fill: [210, 235, 255], shadow: [150, 200, 255], blur: 9  }, // celestial silver-blue
+  { fill: [255, 252, 230], shadow: [255, 235, 160], blur: 7  }, // pale gold-cream
+  { fill: [235, 248, 255], shadow: [180, 220, 255], blur: 10 }, // cool silver-white
 ];
 
 const randP = () => SPARK_PALETTES[Math.floor(Math.random() * SPARK_PALETTES.length)];
@@ -290,8 +423,10 @@ function resizeCanvas() {
   if (!canvas) return;
   canvas.width  = window.innerWidth;
   canvas.height = window.innerHeight;
-  // Re-scatter orbs after resize so they fill the new dimensions
-  if (orbs.length) createOrbs();
+  // Re-scatter particles after resize so they fill the new dimensions
+  if (orbs.length)   createOrbs();
+  if (rays.length)   initRays();
+  if (embers.length) initEmbers();
 }
 
 window.addEventListener('resize', resizeCanvas, { passive: true });
@@ -308,7 +443,9 @@ function startAnimation(theme) {
     if (!orbs.length) createOrbs();
     runOrbs();
   } else {
-    runWaves();
+    if (!rays.length)   initRays();
+    if (!embers.length) initEmbers();
+    runDivine();
   }
 }
 
@@ -436,6 +573,94 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (s.id === 'about') earlyObserver.observe(s);
     else observer.observe(s);
   });
+})();
+
+/* ── Who cards: focal-zone highlight ───────────────────────── */
+// On every scroll frame, find the single card whose vertical centre sits
+// closest to the focal point (40% from top — where eyes tend to rest on
+// mobile and desktop alike). Only that one card gets the elevated state.
+// Hover/touch still works independently via CSS :hover.
+(function initWhoCardFocus() {
+  const cards = Array.from(document.querySelectorAll('.who__card'));
+  if (!cards.length) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let currentFocal = null;
+
+  function updateFocal() {
+    const vh          = window.innerHeight;
+    const focalY      = vh * 0.35;   // focal point: 35% from top
+    const maxDist     = vh * 0.32;   // card must be within 32% of focal point
+
+    let best     = null;
+    let bestDist = Infinity;
+
+    cards.forEach((card) => {
+      const rect       = card.getBoundingClientRect();
+      const cardCenter = rect.top + rect.height / 2;
+      const dist       = Math.abs(cardCenter - focalY);
+
+      // Card must be on-screen and closer than any previous candidate
+      if (rect.bottom > 0 && rect.top < vh && dist < bestDist) {
+        bestDist = dist;
+        best     = card;
+      }
+    });
+
+    // Deactivate if the closest card is still too far from focal point
+    if (bestDist > maxDist) best = null;
+
+    if (best !== currentFocal) {
+      if (currentFocal) currentFocal.classList.remove('who__card--focal');
+      currentFocal = best;
+      if (currentFocal) currentFocal.classList.add('who__card--focal');
+    }
+  }
+
+  window.addEventListener('scroll', updateFocal, { passive: true });
+  window.addEventListener('resize', updateFocal, { passive: true });
+  updateFocal();
+})();
+
+/* ── CTA buttons: focal-zone highlight ─────────────────────── */
+(function initBtnFocus() {
+  const btns = Array.from(document.querySelectorAll('.btn-primary, .btn-arrow'));
+  if (!btns.length) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let currentFocal = null;
+
+  function updateFocal() {
+    const vh      = window.innerHeight;
+    const focalY  = vh * 0.35;
+    const maxDist = vh * 0.32;
+
+    let best     = null;
+    let bestDist = Infinity;
+
+    btns.forEach((btn) => {
+      const rect       = btn.getBoundingClientRect();
+      const btnCenter  = rect.top + rect.height / 2;
+      const dist       = Math.abs(btnCenter - focalY);
+
+      if (rect.bottom > 0 && rect.top < vh && dist < bestDist) {
+        bestDist = dist;
+        best     = btn;
+      }
+    });
+
+    if (bestDist > maxDist) best = null;
+
+    if (best !== currentFocal) {
+      if (currentFocal) currentFocal.classList.remove('btn--focal');
+      currentFocal = best;
+      if (currentFocal) currentFocal.classList.add('btn--focal');
+    }
+  }
+
+  window.addEventListener('scroll', updateFocal, { passive: true });
+  window.addEventListener('resize', updateFocal, { passive: true });
+  updateFocal();
 })();
 
 /* ── 8. Scroll Reveal (IntersectionObserver) ───────────────── */

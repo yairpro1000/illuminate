@@ -190,8 +190,8 @@ body.theme-light .evenings-hero::after {
     -45deg,
     var(--color-bg-alt),
     var(--color-bg-alt) 12px,
-    oklch(17% 0.028 207) 12px,
-    oklch(17% 0.028 207) 24px
+    oklch(16% 0.034 226) 12px,
+    oklch(16% 0.034 226) 24px
   );
 }
 
@@ -205,7 +205,7 @@ body.theme-light .evenings-hero::after {
   position: absolute;
   top: 0.875rem;
   right: 0.875rem;
-  background: oklch(11% 0.022 210 / 0.82);
+  background: oklch(10% 0.026 230 / 0.82);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--color-border);

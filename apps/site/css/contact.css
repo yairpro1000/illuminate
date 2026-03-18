@@ -199,7 +199,7 @@ body.theme-light .contact-select {
 }
 
 body.theme-light .contact-email-alt {
-  border-top-color: oklch(59% 0.160 200 / 0.15);
+  border-top-color: oklch(60% 0.200 192 / 0.15);
 }
 
 /* Glass panel for legibility over the background image */

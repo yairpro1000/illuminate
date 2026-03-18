@@ -187,7 +187,6 @@
       <span class="coupon-price coupon-price--discounted">
         <span class="coupon-price__old"><s>${formatChf(preview.baseChf, currency)} (${formatIls(preview.baseChf)})${suffix}</s></span>
         <strong class="coupon-price__new">${formatChf(preview.finalChf, currency)} (${formatIls(preview.finalChf)})${suffix}</strong>
-        <span class="coupon-price__note">Charged in CHF</span>
       </span>
     `;
   }
