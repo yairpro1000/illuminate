@@ -514,7 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Read saved preference (set in <head> inline script to avoid FOUC,
   // but also initialise here in case script order differs)
-  const saved = localStorage.getItem('yb-theme') || 'light';
+  const saved = localStorage.getItem('yb-theme') || 'dark';
   setTheme(saved, false);
 
   // First-visit: pulse + tooltip
