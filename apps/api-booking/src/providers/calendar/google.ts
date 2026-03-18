@@ -568,7 +568,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     }
 
     const calId = encodeURIComponent(this.calendarId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all&conferenceDataVersion=1`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=none&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: options?.eventIdHint ?? null,
@@ -655,7 +655,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all&conferenceDataVersion=1`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=none&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: null,
@@ -730,7 +730,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=none`;
     const res = this.logger
       ? await instrumentFetch(this.logger, {
           provider: 'google_calendar',

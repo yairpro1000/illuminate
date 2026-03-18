@@ -50,7 +50,7 @@ afterEach(() => {
 });
 
 describe('GoogleCalendarProvider service-account diagnostics', () => {
-  it('exchanges a service-account token and inserts attendee event into trimmed calendar id', async () => {
+  it('exchanges a service-account token and inserts a no-notification event into the trimmed calendar id', async () => {
     stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
@@ -78,7 +78,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     expect(lookupUrl).toContain('privateExtendedProperty=booking_id%3Db1');
 
     const insertUrl = String(fetchMock.mock.calls[2]?.[0] ?? '');
-    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=all&conferenceDataVersion=1');
+    expect(insertUrl).toContain('/calendars/yairilluminate%40gmail.com/events?sendUpdates=none&conferenceDataVersion=1');
     expect(insertUrl).not.toContain('%0A');
     expect(insertUrl).not.toContain('%20');
 
@@ -308,7 +308,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
 
     const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
     expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
-    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-3?sendUpdates=all&conferenceDataVersion=1');
+    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-3?sendUpdates=none&conferenceDataVersion=1');
     const updateBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
     expect(updateBody).not.toHaveProperty('attendees');
     expect(updateBody['conferenceData']).toEqual({
@@ -349,7 +349,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
 
     const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
     expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
-    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-4?sendUpdates=all');
+    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-4?sendUpdates=none');
     expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'google_calendar_delete_completed',
       context: expect.objectContaining({
