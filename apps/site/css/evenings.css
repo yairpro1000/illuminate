@@ -353,7 +353,8 @@ body.theme-light .evenings-intro__brand {
 .event-card__subtitle {
   font-size: 0.98rem;
   line-height: 1.55;
-  color: var(--color-lake-light);
+  color: var(--color-word-highlight);
+  text-shadow: 0 0 6px oklch(94% 0.14 95 / 0.6), 0 0 18px oklch(94% 0.14 95 / 0.35);
   font-style: italic;
 }
 
@@ -403,8 +404,8 @@ body.theme-light .evenings-intro__brand {
 .event-card__intro {
   font-size: 0.96rem;
   line-height: 1.7;
-  color: var(--color-word-highlight);
-  text-shadow: 0 0 6px oklch(94% 0.14 95 / 0.6), 0 0 18px oklch(94% 0.14 95 / 0.35);
+  color: var(--color-lake-light);
+  font-style: italic;
 }
 
 .event-card__section {
