@@ -1661,6 +1661,9 @@ body.theme-light .evenings-intro__brand {
   max-width: 100rem;
   margin-inline: auto;
   margin-bottom: 3rem;
+  margin-top: 3rem;
+  line-height: 1 ;
+
 }
 
 .final__body p {
