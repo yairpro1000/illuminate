@@ -1743,15 +1743,20 @@ body.theme-light .final__step {
 }
 
 .reviews-bubbles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: clamp(1rem, 2vw, 1.5rem);
   align-items: start;
 }
 
 .bubble-card {
-  margin-bottom: 0;
+  --bubble-max-w: 420px;
+  flex: 1 1 28%;
+  min-width: 220px;
+  max-width: var(--bubble-max-w);
 }
+
 
 .chat-messages {
   display: flex;
@@ -1797,6 +1802,26 @@ body.theme-light .final__step {
   border-top: 12px solid transparent;
 }
 
+/* Image-as-bubble: image sits inside the bubble with padding showing around it */
+.bubble-msg--media {
+  border-bottom-left-radius: 0.25rem;
+}
+
+.bubble-msg--media::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -9px;
+  width: 0;
+  height: 0;
+  border-right: 10px solid oklch(18% 0.034 228);
+  border-top: 12px solid transparent;
+}
+
+body.theme-light .bubble-msg--media::after {
+  border-right-color: oklch(99% 0.006 190);
+}
+
 /* Light mode bubbles */
 body.theme-light .bubble-msg {
   background: oklch(99% 0.006 190);
@@ -1828,10 +1853,12 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   border-right-color: oklch(95% 0.022 190);
 }
 
-/* Keeps the later review-close section image styling unchanged. */
 .reviews__wrap {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: calc(var(--bubble-max-w, 420px) * 1.3);
+  margin: 2rem auto 0;
 }
 
 .reviews__img {
@@ -1841,8 +1868,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   display: block;
 }
 
-.reviews__img--single {
-  max-width: clamp(20rem, 55vw, 36rem);
+/* Image fills the bubble container; the wrap itself is capped at 1.3× bubble width */
+.reviews__wrap .reviews__img--single {
+  max-width: 100%;
 }
 
 /* ============================================================
@@ -1937,8 +1965,8 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   .calm-mirror__quote { padding: 2.25rem 1.75rem; }
   .calm-mirror__quote::before { left: 1.25rem; }
 
-  .reviews-bubbles {
-    grid-template-columns: repeat(2, 1fr);
+  .reviews-bubbles .bubble-card {
+    flex: 1 1 44%;
   }
 }
 
@@ -1987,8 +2015,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 
 @media (max-width: 32rem) {
   .pricing-card { padding: 1.875rem 1.5rem; }
-  .reviews-bubbles {
-    grid-template-columns: 1fr;
+  .reviews-bubbles .bubble-card {
+    flex: 1 1 100%;
+    max-width: 100%;
   }
 }
 
@@ -2431,14 +2460,12 @@ body.theme-light #how-we-work.section-in-view {
   background-color: oklch(96.5% 0.007 195 / 0.82);
 }
 
-/* ── Light mode: calm mirror + review close — fully opaque, no lake showing through ── */
-body.theme-light #calm-mirror.section-in-view,
-body.theme-light #review-close.section-in-view {
+/* ── Light mode: calm mirror — fully opaque, no lake showing through ── */
+body.theme-light #calm-mirror.section-in-view {
   background-color: oklch(96.5% 0.008 185 / 1.0);
 }
 
-/* review-close appears instantly — no fade, so #final's reveal is the dramatic moment ── */
-#review-close,
+/* about appears instantly — no fade, so #final's reveal is the dramatic moment ── */
 #about {
   transition: none;
 }
