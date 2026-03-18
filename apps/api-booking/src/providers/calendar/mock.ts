@@ -49,6 +49,7 @@ export class MockCalendarProvider implements ICalendarProvider {
     });
     return {
       eventId,
+      htmlLink: `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`,
       meetingProvider: 'google_meet',
       meetingLink: `https://meet.google.com/${eventId.slice(-3)}-${eventId.slice(-6, -3)}-${eventId.slice(-9, -6)}`,
     };
@@ -62,6 +63,7 @@ export class MockCalendarProvider implements ICalendarProvider {
     });
     return {
       eventId,
+      htmlLink: `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`,
       meetingProvider: 'google_meet',
       meetingLink: `https://meet.google.com/${eventId.slice(-3)}-${eventId.slice(-6, -3)}-${eventId.slice(-9, -6)}`,
     };

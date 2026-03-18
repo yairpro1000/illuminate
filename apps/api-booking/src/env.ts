@@ -25,12 +25,9 @@ export interface Env {
   // Used by both calendar paths (availability reads and booking writes).
   GOOGLE_CALENDAR_ID: string;
 
-  // Service account credentials.
-  // Used by calendar availability reads and booking writes.
-  // Also reused by optional Google Drive backup code.
-  GOOGLE_CLIENT_EMAIL: string;
-  GOOGLE_PRIVATE_KEY: string;
-  GOOGLE_TOKEN_URI: string;
+  // Google Calendar and optional Google Drive service-account JSON.
+  // Calendar integration reads only this combined secret.
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
 
   TIMEZONE: string; // e.g. 'Europe/Zurich'
 
@@ -52,7 +49,6 @@ export interface Env {
   IMAGES_BUCKET: R2Bucket;
   IMAGE_BASE_URL?: string; // e.g. https://assets.example.com
 
-  // Google Drive backup (service account)
+  // Google Drive backup destination
   GOOGLE_DRIVE_FOLDER_ID?: string;
-  GOOGLE_SERVICE_ACCOUNT_JSON?: string; // optional; overrides GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY
 }

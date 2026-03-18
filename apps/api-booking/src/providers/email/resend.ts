@@ -145,6 +145,17 @@ function bookingConfirmationBody(
     return lines.filter((line): line is string => line !== null).join('\n');
   }
 
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: sessionLabel(booking),
+    startsAt: booking.starts_at,
+    endsAt: booking.ends_at,
+    timezone: booking.timezone,
+    location: booking.address_line ?? '',
+    description: [
+      `${sessionLabel(booking)} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
@@ -158,9 +169,7 @@ function bookingConfirmationBody(
     `Location: ${booking.address_line}`,
     booking.maps_url ? `Map: ${booking.maps_url}` : null,
     booking.meeting_link ? `Join Google Meet: ${booking.meeting_link}` : null,
-    '',
-    'A calendar invitation has been sent to you.',
-    "If you don't see it, please check your spam folder.",
+    `Add to calendar: ${calendarUrl}`,
     '',
     'Need to reschedule or cancel?',
     `Manage booking: ${manageUrl}`,
@@ -262,6 +271,17 @@ function eventDetailRows(
     includeCalendar?: boolean;
   } = {},
 ): Array<[string, string]> {
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? booking.address_line ?? '',
+    description: [
+      `${event.title} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const rows: Array<[string, string]> = [
     ['Event', `<strong>${esc(event.title)}</strong>`],
     ['Date', esc(fmtBodyDate(event.starts_at, event.timezone))],
@@ -276,7 +296,7 @@ function eventDetailRows(
     rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
   }
   if (options.includeCalendar) {
-    rows.push(['Calendar', `<a href="${esc(buildGoogleCalendarUrl(event))}">Add to Google Calendar</a>`]);
+    rows.push(['Calendar', `<a href="${esc(calendarUrl)}">Add to Google Calendar</a>`]);
   }
 
   return rows;
@@ -291,6 +311,17 @@ function eventDetailTextLines(
     includeCalendar?: boolean;
   } = {},
 ): string[] {
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? booking.address_line ?? '',
+    description: [
+      `${event.title} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const lines = [
     `Date: ${fmtBodyDate(event.starts_at, event.timezone)}`,
     `Time: ${fmtBodyTimeRange(event.starts_at, event.ends_at, event.timezone)}`,
@@ -304,7 +335,7 @@ function eventDetailTextLines(
     lines.push(`Join Google Meet: ${booking.meeting_link}`);
   }
   if (options.includeCalendar) {
-    lines.push(`Add to calendar: ${buildGoogleCalendarUrl(event)}`);
+    lines.push(`Add to calendar: ${calendarUrl}`);
   }
 
   return lines;
@@ -371,6 +402,17 @@ function bookingConfirmationHtml(
     return htmlLayout(body);
   }
 
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: sessionLabel(booking),
+    startsAt: booking.starts_at,
+    endsAt: booking.ends_at,
+    timezone: booking.timezone,
+    location: booking.address_line ?? '',
+    description: [
+      `${sessionLabel(booking)} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const rows: Array<[string, string]> = [
     ['Session', esc(sessionLabel(booking))],
     ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
@@ -383,8 +425,10 @@ function bookingConfirmationHtml(
   if (booking.meeting_link) {
     rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
   }
+  rows.push(['Calendar', `<a href="${esc(calendarUrl)}">Add to Google Calendar</a>`]);
 
   const extraLinks = [
+    `<p class="secondary-link"><a href="${esc(calendarUrl)}">Add to Google Calendar &rarr;</a></p>`,
     payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
     invoiceUrl ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>` : '',
   ].join('');
@@ -393,7 +437,6 @@ function bookingConfirmationHtml(
     <p>Hi ${esc(clientName(booking))},</p>
     <p>${options.paymentSettled === false ? 'Your session is confirmed.' : 'Your session is confirmed and payment has been settled.'}</p>
     ${detailBlock(rows)}
-    <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
     ${bookingPolicyHtml(policyText)}
@@ -428,9 +471,27 @@ function simpleHtml(
 }
 
 function buildGoogleCalendarUrl(event: Event): string {
+  return buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? '',
+    description: '',
+  });
+}
+
+function buildGoogleCalendarTemplateUrl(input: {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  location: string;
+  description: string;
+}): string {
   function calStr(iso: string): string {
     const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: event.timezone,
+      timeZone: input.timezone,
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false,
@@ -441,10 +502,11 @@ function buildGoogleCalendarUrl(event: Event): string {
   }
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: event.title,
-    dates: `${calStr(event.starts_at)}/${calStr(event.ends_at)}`,
-    ctz: event.timezone,
-    location: event.address_line ?? '',
+    text: input.title,
+    dates: `${calStr(input.startsAt)}/${calStr(input.endsAt)}`,
+    ctz: input.timezone,
+    details: input.description,
+    location: input.location,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }

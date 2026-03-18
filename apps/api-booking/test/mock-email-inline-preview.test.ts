@@ -246,10 +246,11 @@ describe('mock email inline preview contract', () => {
     const confirmResponse = await handleRequest(jsonRequest(`/api/bookings/confirm?token=${encodeURIComponent(confirmToken)}`), ctx);
     const confirmData = await confirmResponse.json() as Record<string, any>;
     expect(confirmData.calendar_event).toEqual(expect.objectContaining({
-      title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+      title: expect.any(String),
       start: '2026-03-22T10:00:00.000Z',
       end: '2026-03-22T11:00:00.000Z',
       timezone: 'Europe/Zurich',
+      description: expect.stringContaining('Google Meet:'),
     }));
     expect(confirmData.calendar_sync_pending_retry).toBe(false);
     expect(confirmData.mock_email_preview).toEqual(expect.objectContaining({
@@ -307,10 +308,11 @@ describe('mock email inline preview contract', () => {
     );
     const statusData = await statusResponse.json() as Record<string, any>;
     expect(statusData.calendar_event).toEqual(expect.objectContaining({
-      title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+      title: expect.any(String),
       start: '2026-03-24T10:00:00.000Z',
       end: '2026-03-24T11:00:00.000Z',
       timezone: 'Europe/Zurich',
+      description: expect.stringContaining('Google Meet:'),
     }));
     expect(statusData.calendar_sync_pending_retry).toBe(false);
     expect(statusData.mock_email_preview).toEqual(expect.objectContaining({

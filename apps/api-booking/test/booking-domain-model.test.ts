@@ -258,6 +258,7 @@ describe('booking domain model', () => {
     expect(confirmationEmail).toBeTruthy();
     expect(confirmationEmail?.body).toContain('Join Google Meet:');
     expect(confirmationEmail?.body).toContain(String(confirmed.meeting_link));
+    expect(confirmationEmail?.body).toContain('Add to calendar: https://calendar.google.com/calendar/render?');
   });
 
   it('keeps free 1:1 confirmation successful when calendar sync is pending retry', async () => {
@@ -503,6 +504,7 @@ describe('booking domain model', () => {
       .mockRejectedValueOnce(new Error('calendar create failed'))
       .mockResolvedValueOnce({
         eventId: 'g-retry-confirm',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=g-retry-confirm',
         meetingProvider: 'google_meet',
         meetingLink: 'https://meet.google.com/retry-confirm',
       }) as any;

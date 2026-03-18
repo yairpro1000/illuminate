@@ -22,9 +22,11 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
     SUPABASE_SECRET_KEY: 'x',
     RESEND_API_KEY: 'x',
     GOOGLE_CALENDAR_ID: 'x',
-    GOOGLE_CLIENT_EMAIL: 'x',
-    GOOGLE_PRIVATE_KEY: 'x',
-    GOOGLE_TOKEN_URI: 'x',
+    GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({
+      client_email: 'service-account@example.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+      token_uri: 'https://oauth2.googleapis.com/token',
+    }),
     TIMEZONE: 'Europe/Zurich',
     STRIPE_SECRET_KEY: 'x',
     STRIPE_WEBHOOK_SECRET: 'x',
@@ -39,7 +41,6 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
     IMAGES_BUCKET: { put: vi.fn().mockResolvedValue(undefined) },
     IMAGE_BASE_URL: 'https://assets.example.com',
     GOOGLE_DRIVE_FOLDER_ID: undefined,
-    GOOGLE_SERVICE_ACCOUNT_JSON: undefined,
   };
   return { ...base, ...overrides } as Env;
 }

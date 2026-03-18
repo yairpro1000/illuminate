@@ -13,10 +13,10 @@ routes = [
 # Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
 # unless intentionally overridden for a focused integration test.
 REPOSITORY_MODE = "supabase"
-EMAIL_MODE      = "resend"
+EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "google"
 PAYMENTS_MODE   = "mock"
-ANTIBOT_MODE    = "turnstile"
+ANTIBOT_MODE    = "mock"
 TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL = "2x0000000000000000000000000000000AB"
 TURNSTILE_TEST_SECRET_KEY_PASS = "1x0000000000000000000000000000000AA"
 TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL = "2x00000000000000000000AB"
@@ -26,7 +26,6 @@ SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
 SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
 API_ALLOWED_ORIGINS = "https://letsilluminate.co,https://admin.letsilluminate.co,https://yairb.ch,https://www.yairb.ch"
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
-GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
 IMAGE_BASE_URL     = "https://images.letsilluminate.co" # CDN/public origin for R2 objects
 OBSERVABILITY_SCHEMA = "public"
@@ -52,7 +51,6 @@ SESSION_ADDRESS = "Via Example 1, 6900 Lugano"
 SESSION_MAPS_URL = "https://maps.google.com/?q=Lugano+Switzerland"
 API_ALLOWED_ORIGINS = "http://localhost:8080,http://localhost:8788,http://localhost:5173"
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
-GOOGLE_TOKEN_URI   = "https://oauth2.googleapis.com/token"
 TIMEZONE           = "Europe/Zurich"
 ADMIN_DEV_EMAIL    = "dev@localhost"
 IMAGE_BASE_URL     = "http://localhost:8787/images" # dev placeholder; map via local proxy if needed
@@ -63,8 +61,7 @@ ADMIN_AUTH_DISABLED = "true"
 # SUPABASE_URL
 # SUPABASE_SECRET_KEY
 # RESEND_API_KEY
-# GOOGLE_CLIENT_EMAIL         ← service account email (calendar freeBusy + create/update/delete + Google Drive backup)
-# GOOGLE_PRIVATE_KEY          ← service account private key (calendar freeBusy + create/update/delete + Google Drive backup)
+# GOOGLE_SERVICE_ACCOUNT_JSON ← service account JSON (calendar freeBusy + create/update/delete; optional Google Drive backup)
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
 # TURNSTILE_SITE_KEY

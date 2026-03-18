@@ -19,10 +19,18 @@ function makeCalendarEvent(overrides: Record<string, unknown> = {}) {
 
 function makeProvider(logger?: any) {
   return new GoogleCalendarProvider({
-    GOOGLE_CLIENT_EMAIL: 'svc@example.iam.gserviceaccount.com',
-    GOOGLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
-    GOOGLE_TOKEN_URI: 'https://oauth2.googleapis.com/token',
+    GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({
+      client_email: 'svc@example.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+      token_uri: 'https://oauth2.googleapis.com/token',
+    }),
     GOOGLE_CALENDAR_ID: ' yairilluminate@gmail.com \n',
+  }, logger);
+}
+
+function makeInvalidProviderWithoutServiceAccountJson(logger?: any) {
+  return new GoogleCalendarProvider({
+    GOOGLE_CALENDAR_ID: 'calendar@example.com',
   }, logger);
 }
 
@@ -49,6 +57,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'google-event-1',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-1',
         hangoutLink: 'https://meet.google.com/abc-defg-hij',
       }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -74,14 +83,15 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     expect(insertUrl).not.toContain('%20');
 
     const insertBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body ?? '{}')) as Record<string, unknown>;
-    expect(insertBody['attendees']).toEqual([{ email: 'test@example.com', displayName: 'Test User' }]);
+    expect(insertBody).not.toHaveProperty('attendees');
     expect(insertBody['conferenceData']).toEqual({
       createRequest: {
-        requestId: expect.any(String),
+        requestId: 'b1',
       },
     });
     expect(created).toEqual({
       eventId: 'google-event-1',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-1',
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/abc-defg-hij',
     });
@@ -94,6 +104,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'google-event-2',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-2',
         conferenceData: {
           entryPoints: [
             { entryPointType: 'more', uri: 'https://calendar.google.com' },
@@ -108,6 +119,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
 
     expect(created).toEqual({
       eventId: 'google-event-2',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-2',
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/fallback-link',
     });
@@ -187,6 +199,34 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     }));
   });
 
+  it('fails fast when GOOGLE_SERVICE_ACCOUNT_JSON is missing for calendar writes', async () => {
+    stubServiceAccountSigning();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeInvalidProviderWithoutServiceAccountJson(logger);
+    await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toThrow(
+      'GOOGLE_SERVICE_ACCOUNT_JSON is required for Google Calendar service-account authentication',
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(logger.logError).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_service_account_config_invalid',
+      context: expect.objectContaining({
+        auth_config_source: 'service_account_json',
+        calendar_operation: 'create_event',
+        branch_taken: 'abort_calendar_operation_missing_service_account_json',
+      }),
+    }));
+  });
+
   it('reuses an existing event when booking_id metadata already exists on the calendar', async () => {
     stubServiceAccountSigning();
     const fetchMock = vi.fn()
@@ -194,6 +234,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({
         items: [{
           id: 'google-event-existing',
+          htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-existing',
           hangoutLink: 'https://meet.google.com/existing-link',
         }],
       }), { status: 200 }));
@@ -212,6 +253,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(created).toEqual({
       eventId: 'google-event-existing',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-existing',
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/existing-link',
     });
@@ -250,6 +292,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         id: 'google-event-3',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-3',
         hangoutLink: 'https://meet.google.com/updated-link',
       }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -266,8 +309,16 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
     expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
     expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-3?sendUpdates=all&conferenceDataVersion=1');
+    const updateBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+    expect(updateBody).not.toHaveProperty('attendees');
+    expect(updateBody['conferenceData']).toEqual({
+      createRequest: {
+        requestId: 'b1',
+      },
+    });
     expect(updated).toEqual({
       eventId: 'google-event-3',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-3',
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/updated-link',
     });

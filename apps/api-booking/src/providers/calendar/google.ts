@@ -7,12 +7,14 @@ import type {
 import { RetryableCalendarWriteError as RetryableCalendarWriteErrorClass } from './interface.js';
 import type { TimeSlot } from '../../types.js';
 import type { Logger } from '../../lib/logger.js';
+import {
+  resolveGoogleServiceAccountJsonConfig,
+  type GoogleServiceAccountConfig,
+} from '../../lib/google-service-account.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
 
 interface GoogleEnv {
-  GOOGLE_CLIENT_EMAIL: string;
-  GOOGLE_PRIVATE_KEY: string;
-  GOOGLE_TOKEN_URI: string;
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
   GOOGLE_CALENDAR_ID: string;
 }
 
@@ -25,6 +27,7 @@ interface ParsedGoogleApiError {
 
 interface GoogleCalendarEventResponse {
   id: string;
+  htmlLink?: string | null;
   status?: string | null;
   hangoutLink?: string | null;
   conferenceData?: {
@@ -127,19 +130,19 @@ function b64url(str: string): string {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
+async function createServiceAccountJWT(serviceAccount: GoogleServiceAccountConfig): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header64  = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload64 = b64url(JSON.stringify({
-    iss:   env.GOOGLE_CLIENT_EMAIL,
+    iss:   serviceAccount.client_email,
     scope: 'https://www.googleapis.com/auth/calendar',
-    aud:   env.GOOGLE_TOKEN_URI,
+    aud:   serviceAccount.token_uri,
     iat:   now,
     exp:   now + 3600,
   }));
   const signingInput = `${header64}.${payload64}`;
 
-  const pemBody = env.GOOGLE_PRIVATE_KEY
+  const pemBody = serviceAccount.private_key
     .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
@@ -172,6 +175,27 @@ async function getServiceAccountAccessToken(
   const bookingId = diagnostics?.bookingId ?? null;
   const requestId = diagnostics?.requestId ?? null;
   const calendarOperation = diagnostics?.calendarOperation ?? 'free_busy';
+  let serviceAccount: GoogleServiceAccountConfig;
+
+  try {
+    serviceAccount = resolveGoogleServiceAccountJsonConfig(env);
+  } catch (error) {
+    logger?.logError?.({
+      source: 'backend',
+      eventType: 'google_calendar_service_account_config_invalid',
+      message: 'Google Calendar service-account configuration is missing or invalid',
+      context: {
+        auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
+        calendar_operation: calendarOperation,
+        booking_id: bookingId,
+        request_id: requestId,
+        branch_taken: 'abort_calendar_operation_missing_service_account_json',
+        deny_reason: error instanceof Error ? error.message : 'invalid_google_service_account_json',
+      },
+    });
+    throw error;
+  }
 
   logger?.logInfo?.({
     source: 'backend',
@@ -179,6 +203,7 @@ async function getServiceAccountAccessToken(
     message: 'Starting Google service-account token exchange',
     context: {
       auth_mode: 'service_account',
+      auth_config_source: 'service_account_json',
       calendar_operation: calendarOperation,
       booking_id: bookingId,
       request_id: requestId,
@@ -187,7 +212,7 @@ async function getServiceAccountAccessToken(
     },
   });
 
-  const jwt = await createServiceAccountJWT(env);
+  const jwt = await createServiceAccountJWT(serviceAccount);
   const body = new URLSearchParams({
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion: jwt,
@@ -200,11 +225,11 @@ async function getServiceAccountAccessToken(
           provider: 'google_calendar',
           operation: 'service_account_token_exchange',
           method: 'POST',
-          url: env.GOOGLE_TOKEN_URI,
+          url: serviceAccount.token_uri,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: body.toString(),
         })
-      : await fetch(env.GOOGLE_TOKEN_URI, {
+      : await fetch(serviceAccount.token_uri, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body,
@@ -216,6 +241,7 @@ async function getServiceAccountAccessToken(
       message: 'Google service-account token exchange request failed before receiving a response',
       context: {
         auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
         calendar_operation: calendarOperation,
         booking_id: bookingId,
         request_id: requestId,
@@ -239,6 +265,7 @@ async function getServiceAccountAccessToken(
       message: 'Google service-account token exchange failed',
       context: {
         auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
         calendar_operation: calendarOperation,
         booking_id: bookingId,
         request_id: requestId,
@@ -263,6 +290,7 @@ async function getServiceAccountAccessToken(
       message: 'Google service-account token exchange response missing access_token',
       context: {
         auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
         calendar_operation: calendarOperation,
         booking_id: bookingId,
         request_id: requestId,
@@ -281,6 +309,7 @@ async function getServiceAccountAccessToken(
     message: 'Google service-account token exchange succeeded',
     context: {
       auth_mode: 'service_account',
+      auth_config_source: 'service_account_json',
       calendar_operation: calendarOperation,
       booking_id: bookingId,
       request_id: requestId,
@@ -630,7 +659,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: null,
-        createConference: false,
+        createConference: true,
       }),
     );
     const initialRes = await this.putCalendarEvent(url, token, initialBody);
@@ -851,6 +880,7 @@ function buildGoogleEventBody(
   event: CalendarEvent,
   options: { eventIdHint: string | null; createConference: boolean },
 ): Record<string, unknown> {
+  const conferenceRequestId = event.privateMetadata?.booking_id?.trim() || crypto.randomUUID();
   return {
     ...(options.eventIdHint ? { id: options.eventIdHint } : {}),
     summary: event.title,
@@ -858,12 +888,11 @@ function buildGoogleEventBody(
     location: event.location,
     start: { dateTime: event.startIso, timeZone: event.timezone },
     end: { dateTime: event.endIso, timeZone: event.timezone },
-    attendees: [{ email: event.attendeeEmail, displayName: event.attendeeName }],
     ...(options.createConference
       ? {
         conferenceData: {
           createRequest: {
-            requestId: `meet-${crypto.randomUUID()}`,
+            requestId: conferenceRequestId,
           },
         },
       }
@@ -876,20 +905,24 @@ function toCalendarUpsertResult(data: GoogleCalendarEventResponse): CalendarEven
   const meetingLink = extractGoogleMeetLink(data);
   return {
     eventId: data.id,
+    htmlLink: typeof data.htmlLink === 'string' && data.htmlLink.trim() ? data.htmlLink.trim() : null,
     meetingProvider: meetingLink ? 'google_meet' : null,
     meetingLink,
   };
 }
 
 function extractGoogleMeetLink(data: GoogleCalendarEventResponse): string | null {
-  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
-    return data.hangoutLink.trim();
-  }
-
   const videoEntryPoint = data.conferenceData?.entryPoints?.find(
     (entryPoint) => entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string' && entryPoint.uri.trim(),
   );
-  return videoEntryPoint?.uri?.trim() ?? null;
+  if (videoEntryPoint?.uri?.trim()) {
+    return videoEntryPoint.uri.trim();
+  }
+
+  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
+    return data.hangoutLink.trim();
+  }
+  return null;
 }
 
 function detectMeetingLinkSource(data: GoogleCalendarEventResponse): 'hangoutLink' | 'conferenceData.video' | 'missing' {

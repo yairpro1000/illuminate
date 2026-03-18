@@ -424,9 +424,7 @@ The table below is scoped to website + booking + admin only.
 | `OBSERVABILITY_SCHEMA` | booking worker | plain var | schema name, current default `public` | Chooses which DB schema the observability wrapper writes to. |
 | `RESEND_API_KEY` | booking worker | secret | issued by Resend | Live email provider credential. |
 | `GOOGLE_CALENDAR_ID` | booking worker | plain var | Google Calendar id | Target calendar id for both availability reads and booking writes. |
-| `GOOGLE_CLIENT_EMAIL` | booking worker | secret/plain var | Google service account email | Service account identity for availability reads, booking writes, and optional Drive backup. |
-| `GOOGLE_PRIVATE_KEY` | booking worker | secret | Google service account private key | Private key paired with the service account for JWT-based access tokens. |
-| `GOOGLE_TOKEN_URI` | booking worker | plain var | usually `https://oauth2.googleapis.com/token` | Token endpoint for Google auth exchanges. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | booking worker | secret | Google service account JSON blob | Required credential for Google Calendar service-account authentication; includes `client_email`, `private_key`, and optional `token_uri`. |
 | `TIMEZONE` | booking worker | plain var | IANA timezone, current `Europe/Zurich` | Default timezone for slot generation and date calculations. |
 | `STRIPE_SECRET_KEY` | booking worker | secret | issued by Stripe | Server-side Stripe API key. |
 | `STRIPE_WEBHOOK_SECRET` | booking worker | secret | issued by Stripe webhook endpoint config | Verifies Stripe webhook signatures. |
@@ -441,7 +439,6 @@ The table below is scoped to website + booking + admin only.
 | `ADMIN_MANAGE_TOKEN_SECRET` | booking worker | secret | project-issued secret | Signs privileged admin manage links. |
 | `IMAGE_BASE_URL` | booking worker | plain var | CDN/base URL for booking/admin images | Public base URL used to serve uploaded images. |
 | `GOOGLE_DRIVE_FOLDER_ID` | booking worker | secret/plain var | Google Drive folder id | Optional destination/reference folder for Drive-backed image backup. |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | booking worker | secret | Google service account JSON blob | Optional combined credential that can replace separate service-account fields. |
 | `IMAGES_BUCKET` | booking worker | binding | Cloudflare R2 bucket binding | Stores uploaded images for session types and events. |
 | `VITE_API_BASE` | public site | frontend env | base API host, e.g. `https://api.letsilluminate.co` | Optional runtime hint for the public site API base. |
 | `VITE_API_BASE` | admin site | frontend env | root API host, e.g. `https://api.letsilluminate.co` | Optional runtime hint for the admin site API base. |

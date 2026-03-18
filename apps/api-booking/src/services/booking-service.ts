@@ -1960,7 +1960,7 @@ export async function buildManageUrl(siteUrl: string, booking: Booking): Promise
 }
 
 export function buildPublicCalendarEventInfo(
-  booking: Pick<Booking, 'current_status' | 'event_id' | 'starts_at' | 'ends_at' | 'timezone' | 'address_line'>,
+  booking: Pick<Booking, 'current_status' | 'event_id' | 'starts_at' | 'ends_at' | 'timezone' | 'address_line' | 'meeting_link' | 'session_type_title'>,
   event: Pick<Event, 'title' | 'starts_at' | 'ends_at'> | null,
 ): PublicCalendarEventInfo | null {
   if (booking.current_status !== 'CONFIRMED' && booking.current_status !== 'COMPLETED') {
@@ -1969,23 +1969,31 @@ export function buildPublicCalendarEventInfo(
 
   if (booking.event_id) {
     const eventTitle = event?.title?.trim() || 'ILLUMINATE Evening';
+    const eventDescription = [
+      'ILLUMINATE Evening with Yair Benharroch.',
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n');
     return {
       title: `${eventTitle} — ILLUMINATE Evening`,
       start: event?.starts_at ?? booking.starts_at,
       end: event?.ends_at ?? booking.ends_at,
       timezone: booking.timezone,
       location: booking.address_line || '',
-      description: 'ILLUMINATE Evening with Yair Benharroch.',
+      description: eventDescription,
     };
   }
 
+  const sessionDescription = [
+    '1:1 Clarity Session with Yair Benharroch.',
+    booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+  ].filter((line): line is string => Boolean(line)).join('\n');
   return {
-    title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+    title: booking.session_type_title?.trim() || 'Clarity Session',
     start: booking.starts_at,
     end: booking.ends_at,
     timezone: booking.timezone,
     location: booking.address_line || '',
-    description: '1:1 Clarity Session with Yair Benharroch.',
+    description: sessionDescription,
   };
 }
 
@@ -2137,13 +2145,17 @@ function fullClientName(booking: Booking): string {
   return [booking.client_first_name ?? '', booking.client_last_name ?? ''].join(' ').trim() || 'Unknown Client';
 }
 
+function sessionCalendarTitle(booking: Pick<Booking, 'session_type_title'>): string {
+  return booking.session_type_title?.trim() || '1:1 Session';
+}
+
 function buildSessionCalendarEventPayload(booking: Booking, requestId: string): CalendarEvent {
   const durationMinutes = Math.max(1, Math.round(
     (new Date(booking.ends_at).getTime() - new Date(booking.starts_at).getTime()) / 60000,
   ));
 
   const descriptionLines = [
-    'ILLUMINATE 1:1 session',
+    sessionCalendarTitle(booking),
     `Client: ${fullClientName(booking)}`,
     `Email: ${booking.client_email ?? 'n/a'}`,
     `Phone: ${booking.client_phone ?? 'n/a'}`,
@@ -2151,11 +2163,12 @@ function buildSessionCalendarEventPayload(booking: Booking, requestId: string): 
     `Current status: ${booking.current_status}`,
     `Duration: ${durationMinutes} minutes`,
     `Timezone: ${booking.timezone}`,
+    booking.notes ? `Notes: ${booking.notes}` : null,
   ];
 
   return {
-    title: `ILLUMINATE 1:1 Session — ${fullClientName(booking)}`,
-    description: descriptionLines.join('\n'),
+    title: sessionCalendarTitle(booking),
+    description: descriptionLines.filter((line): line is string => Boolean(line)).join('\n'),
     startIso: booking.starts_at,
     endIso: booking.ends_at,
     timezone: booking.timezone,
