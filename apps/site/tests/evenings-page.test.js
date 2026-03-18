@@ -219,4 +219,60 @@ describe('evenings page', () => {
     expect(text).toContain('more self-trust')
     expect(text).toContain('Fallback legacy paragraph')
   })
+
+  it('requires first and last name on the reminder signup form and posts them when submitted', async () => {
+    window.siteClient.requestJson
+      .mockResolvedValueOnce({
+        events: [
+          {
+            id: 'event-1',
+            slug: 'event-1',
+            title: 'Sold out event',
+            description: 'Description',
+            starts_at: '2026-06-19T17:00:00Z',
+            ends_at: '2026-06-19T19:00:00Z',
+            address_line: 'Lugano',
+            is_paid: false,
+            price_per_person: 0,
+            currency: 'CHF',
+            capacity: 10,
+            render: { is_past: false, public_registration_open: false, show_reminder_signup_cta: true, sold_out: true },
+            stats: { active_bookings: 10, capacity: 10 },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ id: 'r1', email: 'user@example.com', event_family: 'illuminate_evenings' })
+
+    evalCode(eveningsPageCode)
+    await flush()
+
+    const openButton = document.querySelector('[data-open-reminder]')
+    openButton.click()
+
+    const firstName = document.querySelector('input[name="first_name"]')
+    const lastName = document.querySelector('input[name="last_name"]')
+    const email = document.querySelector('input[name="email"]')
+    const form = document.querySelector('[data-reminder-form]')
+
+    expect(firstName.required).toBe(true)
+    expect(lastName.required).toBe(true)
+    expect(firstName.getAttribute('placeholder')).toBe('First name')
+    expect(lastName.getAttribute('placeholder')).toBe('Last name')
+
+    email.value = 'user@example.com'
+    firstName.value = 'Ada'
+    lastName.value = 'Lovelace'
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    await flush()
+
+    expect(window.siteClient.requestJson).toHaveBeenLastCalledWith('/api/events/reminder-subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: 'user@example.com',
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        event_family: 'illuminate_evenings',
+      }),
+    })
+  })
 })

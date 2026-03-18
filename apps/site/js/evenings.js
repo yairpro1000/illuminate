@@ -144,13 +144,40 @@
 
   function reminderForm(eventId) {
     return `
-      <form class="event-reminder-form" data-reminder-form="${escapeAttr(eventId)}" hidden>
+      <form
+        class="event-reminder-form"
+        id="event-reminder-${escapeAttr(eventId)}"
+        data-reminder-form="${escapeAttr(eventId)}"
+        hidden
+      >
         <label class="visually-hidden" for="reminder-email-${escapeAttr(eventId)}">Email</label>
-        <input id="reminder-email-${escapeAttr(eventId)}" type="email" name="email" placeholder="your@email.com" required />
-        <input type="text" name="first_name" placeholder="First name (optional)" />
-        <input type="text" name="last_name" placeholder="Last name (optional)" />
-        <button type="submit" class="btn btn-primary">Join reminders</button>
-        <p class="event-reminder-msg" data-reminder-msg="${escapeAttr(eventId)}" aria-live="polite"></p>
+        <input
+          class="event-reminder-form__field event-reminder-form__field--email"
+          id="reminder-email-${escapeAttr(eventId)}"
+          type="email"
+          name="email"
+          placeholder="your@email.com"
+          autocomplete="email"
+          required
+        />
+        <input
+          class="event-reminder-form__field"
+          type="text"
+          name="first_name"
+          placeholder="First name"
+          autocomplete="given-name"
+          required
+        />
+        <input
+          class="event-reminder-form__field"
+          type="text"
+          name="last_name"
+          placeholder="Last name"
+          autocomplete="family-name"
+          required
+        />
+        <button type="submit" class="btn btn-primary event-reminder-form__submit">Join reminders</button>
+        <p class="event-reminder-msg event-reminder-form__msg" data-reminder-msg="${escapeAttr(eventId)}" aria-live="polite"></p>
       </form>
     `;
   }
@@ -201,7 +228,7 @@
     if (publicOpen) {
       actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary event-card__cta-primary">Book your spot</a>`;
     } else if (showReminder) {
-      actionHtml = `<button class="btn btn-secondary" data-open-reminder="${escapeAttr(event.id)}">Join reminders list</button>`;
+      actionHtml = `<button class="btn btn-secondary event-card__cta-reminder" data-open-reminder="${escapeAttr(event.id)}" aria-expanded="false" aria-controls="event-reminder-${escapeAttr(event.id)}">Join reminders list</button>`;
     } else {
       actionHtml = '<span class="btn btn-ghost" aria-disabled="true">Registration closed</span>';
     }
@@ -269,6 +296,7 @@
         const form = container.querySelector(`[data-reminder-form="${eventId}"]`);
         if (!form) return;
         form.hidden = !form.hidden;
+        btn.setAttribute('aria-expanded', String(!form.hidden));
       });
     });
 
@@ -280,8 +308,8 @@
         const fd = new FormData(form);
         const payload = {
           email: String(fd.get('email') || '').trim(),
-          first_name: String(fd.get('first_name') || '').trim() || null,
-          last_name: String(fd.get('last_name') || '').trim() || null,
+          first_name: String(fd.get('first_name') || '').trim(),
+          last_name: String(fd.get('last_name') || '').trim(),
           event_family: 'illuminate_evenings',
         };
 

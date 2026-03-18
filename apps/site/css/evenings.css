@@ -172,6 +172,18 @@ body.theme-light .evenings-hero::after {
   gap: 2rem;
 }
 
+:root {
+  --event-reminder-panel-bg:
+    linear-gradient(180deg, oklch(18% 0.038 224 / 0.96), oklch(14% 0.03 228 / 0.92));
+  --event-reminder-panel-border: oklch(60% 0.2 192 / 0.24);
+  --event-reminder-panel-shadow:
+    0 0 0 1px oklch(60% 0.2 192 / 0.08) inset,
+    0 20px 36px oklch(0% 0 0 / 0.24);
+  --event-reminder-input-bg: oklch(12% 0.022 228 / 0.78);
+  --event-reminder-input-border: oklch(60% 0.2 192 / 0.18);
+  --event-reminder-input-border-focus: oklch(60% 0.2 192 / 0.4);
+}
+
 /* ── Empty state ─────────────────────────────────────────────── */
 .events-empty {
   color: var(--color-text-subtle);
@@ -423,6 +435,90 @@ body.theme-light .evenings-hero::after {
   box-shadow: 0 0 26px var(--color-lake-glow);
 }
 
+.event-card__cta-reminder[aria-expanded="true"] {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+  color: var(--color-lake);
+}
+
+.event-reminder-form[hidden] {
+  display: none;
+}
+
+.event-reminder-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  padding: 1rem;
+  border: 1px solid var(--event-reminder-panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--event-reminder-panel-bg);
+  box-shadow: var(--event-reminder-panel-shadow);
+}
+
+.event-reminder-form__field {
+  width: 100%;
+  min-width: 0;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--event-reminder-input-border);
+  border-radius: var(--radius-md);
+  background: var(--event-reminder-input-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  transition:
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.event-reminder-form__field::placeholder {
+  color: var(--color-text-subtle);
+}
+
+.event-reminder-form__field:focus {
+  outline: none;
+  border-color: var(--event-reminder-input-border-focus);
+  box-shadow:
+    0 0 0 3px var(--color-lake-mist),
+    0 0 18px oklch(60% 0.2 192 / 0.18);
+}
+
+.event-reminder-form__field--email,
+.event-reminder-form__submit,
+.event-reminder-form__msg {
+  grid-column: 1 / -1;
+}
+
+.event-reminder-form__submit.btn-primary {
+  width: 100%;
+  margin-top: 0.1rem;
+  background: linear-gradient(135deg, oklch(88% 0.16 90), oklch(82% 0.18 78));
+  color: oklch(18% 0.03 228);
+  box-shadow:
+    0 0 28px oklch(86% 0.18 84 / 0.34),
+    0 10px 24px oklch(0% 0 0 / 0.22);
+}
+
+.event-reminder-form__submit.btn-primary:hover {
+  box-shadow:
+    0 0 42px oklch(86% 0.18 84 / 0.42),
+    0 14px 28px oklch(0% 0 0 / 0.28);
+}
+
+.event-reminder-form__msg {
+  min-height: 1.25rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--color-lake-light);
+}
+
+.event-reminder-form__msg:not(:empty) {
+  margin-top: -0.15rem;
+}
+
 /* .event-card__actions (CTA row) is now in add-to-calendar.css */
 
 /* ── Error state ─────────────────────────────────────────────── */
@@ -456,6 +552,40 @@ body.theme-light .event-card__fact {
   background: oklch(99% 0.004 200 / 0.84);
 }
 
+body.theme-light {
+  --event-reminder-panel-bg:
+    linear-gradient(180deg, oklch(99% 0.008 194 / 0.95), oklch(96% 0.014 196 / 0.92));
+  --event-reminder-panel-border: oklch(44% 0.19 192 / 0.16);
+  --event-reminder-panel-shadow:
+    0 0 0 1px oklch(44% 0.19 192 / 0.08) inset,
+    0 12px 28px oklch(14% 0.025 210 / 0.1);
+  --event-reminder-input-bg: oklch(100% 0 0 / 0.86);
+  --event-reminder-input-border: oklch(44% 0.19 192 / 0.14);
+  --event-reminder-input-border-focus: oklch(44% 0.19 192 / 0.28);
+}
+
+body.theme-light .event-card__cta-reminder[aria-expanded="true"] {
+  color: var(--color-lake-deep);
+}
+
+body.theme-light .event-reminder-form__field {
+  color: oklch(16% 0.028 228);
+}
+
+body.theme-light .event-reminder-form__submit.btn-primary {
+  background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
+  color: var(--color-white);
+  box-shadow: 0 0 24px var(--color-lake-glow);
+}
+
+body.theme-light .event-reminder-form__submit.btn-primary:hover {
+  box-shadow: 0 0 36px var(--color-lake-glow), 0 8px 24px oklch(14% 0.025 210 / 0.16);
+}
+
+body.theme-light .event-reminder-form__msg {
+  color: var(--color-lake-deep);
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 48rem) {
   .break-md {
@@ -468,5 +598,9 @@ body.theme-light .event-card__fact {
 
   .event-card__fact--wide {
     grid-column: span 1;
+  }
+
+  .event-reminder-form {
+    grid-template-columns: 1fr;
   }
 }
