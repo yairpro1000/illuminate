@@ -1661,18 +1661,14 @@ body.theme-light .evenings-intro__brand {
   max-width: 100rem;
   margin-inline: auto;
   margin-bottom: 3rem;
-  margin-top: 3rem;
-  line-height: 1 ;
-
 }
 
 .final__body p {
   font-size: clamp(1.25rem, 2.5vw, 1.75rem);
-  line-height: 1.75;
+  line-height: 1 ;
   color: var(--color-text-muted);
+  margin-top: 3rem;
 }
-
-.final__body p + p { margin-top: 0.5rem; }
 
 .final__step {
   font-size: clamp(1.125rem, 2vw, 1.375rem);
