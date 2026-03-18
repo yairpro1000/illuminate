@@ -183,6 +183,7 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 6rem;
   -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
 }
 
 section[id] {
@@ -567,7 +568,7 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: 1.6875rem;
+  font-size: clamp(1.125rem, 4.5vw, 1.6875rem);
   font-weight: 500;
   font-style: italic;
   transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
