@@ -589,7 +589,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateFocal() {
     const vh          = window.innerHeight;
-    const focalY      = vh * 0.35;   // focal point: 35% from top
+    const focalY      = vh * 0.45;   // focal point: 35% from top
     const maxDist     = vh * 0.32;   // card must be within 32% of focal point
 
     let best     = null;
