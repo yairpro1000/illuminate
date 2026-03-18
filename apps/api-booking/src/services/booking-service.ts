@@ -21,7 +21,7 @@ import type {
 } from '../types.js';
 import { RetryableCalendarWriteError, isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
 import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
-import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
+import { ApiError, badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
@@ -63,6 +63,16 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'CREATE_STRIPE_CHECKOUT',
   'CREATE_STRIPE_REFUND',
 ]);
+const MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK = 2;
+const LOCAL_WEEKDAY_INDEX: Record<string, number> = {
+  Mon: 0,
+  Tue: 1,
+  Wed: 2,
+  Thu: 3,
+  Fri: 4,
+  Sat: 5,
+  Sun: 6,
+};
 
 export interface BookingContext {
   providers: Providers;
@@ -323,6 +333,162 @@ function canContinuePayLaterPayment(
     && isPaymentContinuableOnline(paymentStatus ?? null);
 }
 
+function localDateString(iso: string, timezone: string): { date: string; weekdayIndex: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+  }).formatToParts(new Date(iso));
+
+  const year = parts.find((part) => part.type === 'year')?.value ?? '2000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Mon';
+
+  return {
+    date: `${year}-${month}-${day}`,
+    weekdayIndex: LOCAL_WEEKDAY_INDEX[weekday] ?? 0,
+  };
+}
+
+function shiftIsoDate(date: string, days: number): string {
+  const shifted = new Date(`${date}T12:00:00Z`);
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function getUtcOffsetMinutes(timezone: string, date: Date): number {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    second: 'numeric',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) => parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
+  const localHour = get('hour');
+  const localMs = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    localHour === 24 ? 0 : localHour,
+    get('minute'),
+    get('second'),
+  );
+  return (localMs - date.getTime()) / 60000;
+}
+
+function localDateTimeToIso(date: string, hour: number, minute: number, timezone: string): string {
+  const reference = new Date(`${date}T12:00:00Z`);
+  const offsetMinutes = getUtcOffsetMinutes(timezone, reference);
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absHours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const absMinutes = Math.abs(offsetMinutes) % 60;
+
+  return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${sign}${String(absHours).padStart(2, '0')}:${String(absMinutes).padStart(2, '0')}`;
+}
+
+function localWeekRangeForSlot(slotStartIso: string, timezone: string): {
+  weekStartDate: string;
+  weekEndExclusiveDate: string;
+  startInclusiveIso: string;
+  endExclusiveIso: string;
+} {
+  const local = localDateString(slotStartIso, timezone);
+  const weekStartDate = shiftIsoDate(local.date, -local.weekdayIndex);
+  const weekEndExclusiveDate = shiftIsoDate(weekStartDate, 7);
+
+  return {
+    weekStartDate,
+    weekEndExclusiveDate,
+    startInclusiveIso: localDateTimeToIso(weekStartDate, 0, 0, timezone),
+    endExclusiveIso: localDateTimeToIso(weekEndExclusiveDate, 0, 0, timezone),
+  };
+}
+
+async function assertClientWithinWeeklySessionLimit(
+  input: {
+    clientId: string;
+    slotStart: string;
+    timezone: string;
+    sessionType: 'intro' | 'session';
+    sessionTypeId: string;
+    sessionTypeSlug: string;
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  const weekRange = localWeekRangeForSlot(input.slotStart, input.timezone);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'client_weekly_session_limit_check_started',
+    message: 'Checking per-client weekly 1:1 session limit',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: input.sessionType,
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      weekly_limit: MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK,
+      week_start_date: weekRange.weekStartDate,
+      week_end_exclusive_date: weekRange.weekEndExclusiveDate,
+      week_start_inclusive_iso: weekRange.startInclusiveIso,
+      week_end_exclusive_iso: weekRange.endExclusiveIso,
+      branch_taken: 'count_client_sessions_for_local_week',
+      deny_reason: null,
+    },
+  });
+
+  const existingCount = await ctx.providers.repository.countClientActiveSessionBookingsInRange(
+    input.clientId,
+    weekRange.startInclusiveIso,
+    weekRange.endExclusiveIso,
+  );
+  const wouldExceedLimit = existingCount >= MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK;
+  const logEntry = {
+    source: 'backend' as const,
+    eventType: 'client_weekly_session_limit_check_completed',
+    message: 'Completed per-client weekly 1:1 session limit check',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: input.sessionType,
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      weekly_limit: MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK,
+      existing_active_session_count: existingCount,
+      attempted_session_count: existingCount + 1,
+      week_start_date: weekRange.weekStartDate,
+      week_end_exclusive_date: weekRange.weekEndExclusiveDate,
+      week_start_inclusive_iso: weekRange.startInclusiveIso,
+      week_end_exclusive_iso: weekRange.endExclusiveIso,
+      branch_taken: wouldExceedLimit
+        ? 'deny_client_weekly_session_limit_reached'
+        : 'allow_client_weekly_session_limit',
+      deny_reason: wouldExceedLimit ? 'max_2_sessions_per_local_week_reached' : null,
+    },
+  };
+
+  if (wouldExceedLimit) {
+    ctx.logger.logWarn?.(logEntry);
+    throw new ApiError(
+      409,
+      'CLIENT_WEEKLY_SESSION_LIMIT_REACHED',
+      'A client can have at most 2 active 1:1 sessions in the same week.',
+    );
+  }
+
+  ctx.logger.logInfo?.(logEntry);
+}
+
 // ── Session flow: Pay Now ──────────────────────────────────────────────────
 
 export async function createPayNowBooking(
@@ -345,6 +511,14 @@ export async function createPayNowBooking(
   );
 
   const sessionType = await resolveSessionTypeForKind('session', providers, input.offerSlug ?? null);
+  await assertClientWithinWeeklySessionLimit({
+    clientId: client.id,
+    slotStart: input.slotStart,
+    timezone: input.timezone,
+    sessionType: input.sessionType,
+    sessionTypeId: sessionType.id,
+    sessionTypeSlug: sessionType.slug,
+  }, ctx);
   const commercialTerms = await resolveCommercialTerms({
     basePrice: sessionType.price,
     couponCode: input.couponCode,
@@ -417,6 +591,14 @@ export async function createPayLaterBooking(
   );
 
   const sessionType = await resolveSessionTypeForKind(input.sessionType, providers, input.offerSlug ?? null);
+  await assertClientWithinWeeklySessionLimit({
+    clientId: client.id,
+    slotStart: input.slotStart,
+    timezone: input.timezone,
+    sessionType: input.sessionType,
+    sessionTypeId: sessionType.id,
+    sessionTypeSlug: sessionType.slug,
+  }, ctx);
   const commercialTerms = await resolveCommercialTerms({
     basePrice: sessionType.price,
     couponCode: input.couponCode,

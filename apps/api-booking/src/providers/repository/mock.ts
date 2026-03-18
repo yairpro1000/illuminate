@@ -160,6 +160,28 @@ export class MockRepository implements IRepository {
     return this.hydrateBooking(updated);
   }
 
+  async countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number> {
+    const startInclusiveMs = new Date(startInclusiveIso).getTime();
+    const endExclusiveMs = new Date(endExclusiveIso).getTime();
+    let count = 0;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.client_id !== clientId) continue;
+      if (!booking.session_type_id || booking.event_id) continue;
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED') continue;
+
+      const startsAtMs = new Date(booking.starts_at).getTime();
+      if (startsAtMs < startInclusiveMs || startsAtMs >= endExclusiveMs) continue;
+      count += 1;
+    }
+
+    return count;
+  }
+
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
     const fromMs = new Date(`${from}T00:00:00Z`).getTime();
     const toMs = new Date(`${to}T23:59:59Z`).getTime();

@@ -261,6 +261,27 @@ export class SupabaseRepository implements IRepository {
     return this.requireBookingById(id);
   }
 
+  async countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number> {
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      this.db
+        .from('bookings')
+        .select('id')
+        .eq('client_id', clientId)
+        .is('event_id', null)
+        .not('session_type_id', 'is', null)
+        .not('current_status', 'in', '(EXPIRED,CANCELED)')
+        .gte('starts_at', startInclusiveIso)
+        .lt('starts_at', endExclusiveIso),
+      'Failed to count client session bookings in range',
+    );
+
+    return rows.length;
+  }
+
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
     const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at'>>>(
       this.db

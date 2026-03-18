@@ -73,6 +73,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('booking domain model', () => {
@@ -314,6 +315,123 @@ describe('booking domain model', () => {
     expect(retryAttempt?.status).toBe('FAILED');
   });
 
+  it('allows a second 1:1 session in the same local week and logs the allow branch', async () => {
+    const ctx = makeCtx();
+
+    await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:30:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const second = await createPayLaterBooking({
+      slotStart: '2026-03-26T11:00:00+01:00',
+      slotEnd: '2026-03-26T12:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    expect(second.status).toBe('PENDING');
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_started',
+        context: expect.objectContaining({
+          branch_taken: 'count_client_sessions_for_local_week',
+          weekly_limit: 2,
+          week_start_date: '2026-03-23',
+          week_end_exclusive_date: '2026-03-30',
+        }),
+      }),
+    ]);
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'allow_client_weekly_session_limit',
+          existing_active_session_count: 1,
+          attempted_session_count: 2,
+          deny_reason: null,
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects a third 1:1 session in the same local week and logs the deny branch', async () => {
+    const ctx = makeCtx();
+
+    await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:30:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await createPayLaterBooking({
+      slotStart: '2026-03-26T11:00:00+01:00',
+      slotEnd: '2026-03-26T12:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-03-27T13:00:00+01:00',
+      slotEnd: '2026-03-27T14:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CLIENT_WEEKLY_SESSION_LIMIT_REACHED',
+      message: 'A client can have at most 2 active 1:1 sessions in the same week.',
+    });
+
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'deny_client_weekly_session_limit_reached',
+          existing_active_session_count: 2,
+          attempted_session_count: 3,
+          deny_reason: 'max_2_sessions_per_local_week_reached',
+        }),
+      }),
+    ]);
+  });
+
   it('schedules retryable calendar confirmation failures with backoff and logs calendar_retry', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const calendar = new MockCalendarProvider();
@@ -483,6 +601,8 @@ describe('booking domain model', () => {
   });
 
   it('confirms pay-later bookings, creates the payment row, and sends a confirmed-but-unpaid email', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T12:00:00.000Z'));
     const ctx = makeCtx();
 
     const created = await createPayLaterBooking({

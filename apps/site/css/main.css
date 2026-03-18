@@ -555,7 +555,7 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: 1.125rem;
+  font-size: 2.25rem;
   font-weight: 500;
   font-style: italic;
   transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
@@ -2726,13 +2726,13 @@ body.theme-light .text-lake {
 
 /* ── Dark mode: divine-gold btn-arrow links ── */
 :root .btn-arrow {
-  color: var(--color-word-highlight);
+  color: oklch(96% 0.14 87);
   text-shadow:
     0 0  4px oklch(94% 0.16 85 / 0.55),
     0 0 14px oklch(88% 0.20 82 / 0.30);
 }
 :root .btn-arrow:hover {
-  color: oklch(96% 0.14 87);
+  color: var(--color-word-highlight);
 }
 
 /* ── Dark mode: regret__glow — banana yellow glow ── */

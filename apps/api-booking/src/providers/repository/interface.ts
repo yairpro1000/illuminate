@@ -78,6 +78,11 @@ export interface IRepository {
   getBookingById(id: string): Promise<Booking | null>;
   getBookingByConfirmTokenHash(hash: string): Promise<Booking | null>;
   updateBooking(id: string, updates: BookingUpdate): Promise<Booking>;
+  countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number>;
 
   /** Returns start/end intervals that should currently block booking slots. */
   getHeldSlots(from: string, to: string): Promise<TimeSlot[]>;

@@ -3,6 +3,22 @@
    Extends main.css without modifying it.
    ============================================================ */
 
+/* ── Evenings hero subtext — yellow with glow, slightly larger ── */
+.evenings-hero .hero__subtext {
+  font-size: clamp(1.375rem, 2.5vw, 1.75rem);
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.14  95 / 0.75),
+    0 0 18px oklch(90%  0.18  92 / 0.45),
+    0 0 40px oklch(86%  0.20  90 / 0.22);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+body.theme-light .evenings-hero .hero__subtext {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+
 /* ── Evenings page hero: no opening screen, content starts immediately ── */
 
 /* hero__content normally has padding-block: 5rem 5rem from main.css.

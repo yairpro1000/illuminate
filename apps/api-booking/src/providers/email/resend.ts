@@ -253,6 +253,35 @@ function detailBlock(rows: Array<[string, string]>): string {
   return `<div class="detail-block"><table>${trs}</table></div>`;
 }
 
+function eventDetailRows(
+  booking: Booking,
+  event: Event,
+  options: {
+    includeMap?: boolean;
+    includeMeetingLink?: boolean;
+    includeCalendar?: boolean;
+  } = {},
+): Array<[string, string]> {
+  const rows: Array<[string, string]> = [
+    ['Event', `<strong>${esc(event.title)}</strong>`],
+    ['Date', esc(fmtBodyDate(event.starts_at, event.timezone))],
+    ['Time', esc(fmtBodyTimeRange(event.starts_at, event.ends_at, event.timezone))],
+    ['Location', esc(event.address_line ?? booking.address_line ?? '')],
+  ];
+
+  if (options.includeMap && event.maps_url) {
+    rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
+  }
+  if (options.includeMeetingLink && booking.meeting_link) {
+    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
+  }
+  if (options.includeCalendar) {
+    rows.push(['Calendar', `<a href="${esc(buildGoogleCalendarUrl(event))}">Add to Google Calendar</a>`]);
+  }
+
+  return rows;
+}
+
 function bookingPolicyHtml(policyText: string): string {
   const lines = policyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const [title, firstRule, secondRule, thirdRule] = lines;
@@ -406,11 +435,7 @@ function eventConfirmationHtml(
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
       : null;
-    const rows: Array<[string, string]> = [
-      ['Event', `<strong>${esc(event.title)}</strong>`],
-      ['Date &amp; time', esc(fmt(event.starts_at))],
-      ['Location', esc(event.address_line ?? '')],
-    ];
+    const rows = eventDetailRows(booking, event);
     if (paymentDueLabel) {
       rows.push(['Payment due', esc(paymentDueLabel)]);
     }
@@ -431,18 +456,11 @@ function eventConfirmationHtml(
     return htmlLayout(body);
   }
 
-  const rows: Array<[string, string]> = [
-    ['Event', `<strong>${esc(event.title)}</strong>`],
-    ['Date &amp; time', esc(fmt(event.starts_at))],
-    ['Location', esc(event.address_line ?? '')],
-  ];
-  if (event.maps_url) {
-    rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
-  }
-  if (booking.meeting_link) {
-    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
-  }
-  rows.push(['Calendar', `<a href="${esc(buildGoogleCalendarUrl(event))}">Add to Google Calendar</a>`]);
+  const rows = eventDetailRows(booking, event, {
+    includeMap: true,
+    includeMeetingLink: true,
+    includeCalendar: true,
+  });
 
   const invoiceLine = invoiceUrl
     ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
