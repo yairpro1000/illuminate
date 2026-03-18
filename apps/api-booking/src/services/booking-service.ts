@@ -862,50 +862,18 @@ export async function confirmBookingEmail(
     throw gone('This confirmation link is no longer valid');
   }
 
-  let finalizedBooking = booking;
-  if (booking.booking_type === 'FREE') {
-    finalizedBooking = await bookingCtx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
-    if (!finalizedBooking.event_id) {
-      const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
-      finalizedBooking = syncResult.booking;
-      if (!syncResult.calendarSynced && submissionWithToken) {
-        await queueCalendarRetrySideEffectAfterConfirmationFailure(
-          submissionWithToken.id,
-          syncResult.failureReason ?? 'calendar_sync_failed',
-          syncResult.retryableFailure,
-          policy.processingMaxAttempts,
-          finalizedBooking.id,
-          bookingCtx,
-        );
-      }
-    }
-    await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
-  } else {
-    finalizedBooking = await bookingCtx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
-
+  const verificationOutcome = await completePendingEmailVerificationEffects(submissionWithToken.id, booking, bookingCtx);
+  let finalizedBooking = verificationOutcome.bookingAfterVerification;
+  if (booking.booking_type !== 'FREE') {
     const bootstrappedPayment = await ensurePayLaterInvoiceForBooking(finalizedBooking, bookingCtx, {
       bootstrapSource: 'booking_email_confirmation',
       allowProviderFailure: true,
     });
+    finalizedBooking = bootstrappedPayment
+      ? await bookingCtx.providers.repository.getBookingById(finalizedBooking.id) ?? finalizedBooking
+      : finalizedBooking;
 
-    if (!finalizedBooking.event_id) {
-      const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
-      finalizedBooking = syncResult.booking;
-      if (!syncResult.calendarSynced && submissionWithToken) {
-        await queueCalendarRetrySideEffectAfterConfirmationFailure(
-          submissionWithToken.id,
-          syncResult.failureReason ?? 'calendar_sync_failed',
-          syncResult.retryableFailure,
-          policy.processingMaxAttempts,
-          finalizedBooking.id,
-          bookingCtx,
-        );
-      }
-    }
-
-    if (submissionWithToken) {
-      await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
-    }
+    await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
 
     bookingCtx.logger.logInfo?.({
       source: 'backend',
@@ -924,9 +892,15 @@ export async function confirmBookingEmail(
         deny_reason: bootstrappedPayment?.invoice_url ? null : 'invoice_bootstrap_failed_or_not_available',
       },
     });
-
-    await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
   }
+
+  finalizedBooking = await applyImmediateReservationForTransition({
+    transitionEventType: 'BOOKING_FORM_SUBMITTED',
+    sourceOperation: 'confirm_booking_email_verification',
+    bookingBeforeTransition: booking,
+    bookingAfterTransition: finalizedBooking,
+    transitionSideEffects: verificationOutcome.downstreamSideEffects,
+  }, bookingCtx);
 
   bookingCtx.logger.logInfo?.({
     source: 'backend',
@@ -1459,36 +1433,100 @@ async function retryCalendarSyncForConfirmedBookingIfMissing(
   return syncResult.booking;
 }
 
-async function queueCalendarRetrySideEffectAfterConfirmationFailure(
+async function completePendingEmailVerificationEffects(
   bookingEventId: string,
-  failureReason: string,
-  retryableFailure: boolean,
-  processingMaxAttempts: number,
-  bookingId: string,
+  booking: Booking,
   ctx: BookingContext,
-): Promise<void> {
-  const createdEffects = await ctx.providers.repository.createBookingSideEffects([{
-    booking_event_id: bookingEventId,
-    entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
-    effect_intent: 'RESERVE_CALENDAR_SLOT',
-    status: 'PENDING',
-    expires_at: null,
-    max_attempts: maxAttemptsForEffectIntent('RESERVE_CALENDAR_SLOT', processingMaxAttempts),
-  }]);
-  const createdEffect = createdEffects[0];
-  if (!createdEffect) {
-    throw new Error('calendar_retry_side_effect_create_failed');
+): Promise<{
+  bookingAfterVerification: Booking;
+  downstreamSideEffects: BookingSideEffect[];
+}> {
+  const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(bookingEventId);
+  const pendingVerificationEffects = sideEffects.filter((effect) =>
+    effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION' && effect.status !== 'SUCCESS',
+  );
+  const existingDownstreamSideEffects = sideEffects.filter((effect) =>
+    effect.effect_intent === 'RESERVE_CALENDAR_SLOT' || effect.effect_intent === 'SEND_BOOKING_CONFIRMATION',
+  );
+  const desiredDownstreamIntents: BookingEffectIntent[] = booking.event_id
+    ? ['SEND_BOOKING_CONFIRMATION']
+    : ['RESERVE_CALENDAR_SLOT', 'SEND_BOOKING_CONFIRMATION'];
+  const policy = await loadBookingPolicy(ctx);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_verification_effects_decision',
+    message: 'Evaluated pending email-verification side effects during confirmation',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      verification_side_effect_ids: pendingVerificationEffects.map((effect) => effect.id),
+      verification_side_effect_statuses_before: pendingVerificationEffects.map((effect) => effect.status),
+      existing_downstream_side_effect_ids: existingDownstreamSideEffects.map((effect) => effect.id),
+      existing_downstream_side_effect_intents: existingDownstreamSideEffects.map((effect) => effect.effect_intent),
+      desired_downstream_side_effect_intents: desiredDownstreamIntents,
+      should_mark_verification_effects_success: pendingVerificationEffects.length > 0,
+      branch_taken: pendingVerificationEffects.length > 0
+        ? 'mark_pending_email_verification_effects_success'
+        : 'no_pending_email_verification_effects_to_complete',
+      deny_reason: pendingVerificationEffects.length > 0 ? null : 'email_verification_effect_already_completed_or_missing',
+    },
+  });
+
+  let bookingAfterVerification = booking;
+  if (booking.current_status === 'PENDING') {
+    bookingAfterVerification = await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
   }
 
-  await recordSideEffectAttempts([createdEffect], {
-    status: 'FAILED',
-    errorMessage: failureReason,
-    apiLogId: consumeLatestProviderApiLogId(ctx.operation),
-    ctx,
-    bookingId,
-    logSource: 'backend',
-    enableCalendarBackoff: retryableFailure,
+  if (pendingVerificationEffects.length > 0) {
+    await recordSideEffectAttempts(pendingVerificationEffects, {
+      status: 'SUCCESS',
+      errorMessage: null,
+      apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+      ctx,
+      bookingId: booking.id,
+      logSource: 'backend',
+    });
+  }
+
+  const existingIntentSet = new Set(existingDownstreamSideEffects.map((effect) => effect.effect_intent));
+  const missingDownstreamIntents = desiredDownstreamIntents.filter((intent) => !existingIntentSet.has(intent));
+  const createdDownstreamSideEffects = missingDownstreamIntents.length > 0
+    ? await ctx.providers.repository.createBookingSideEffects(
+      missingDownstreamIntents.map((intent) => ({
+        booking_event_id: bookingEventId,
+        entity: inferEntityFromIntent(intent),
+        effect_intent: intent,
+        status: 'PENDING',
+        expires_at: null,
+        max_attempts: maxAttemptsForEffectIntent(intent, policy.processingMaxAttempts),
+      })),
+    )
+    : [];
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_downstream_side_effects_decision',
+    message: 'Evaluated downstream side effects after successful email confirmation verification',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      booking_status_after_verification: bookingAfterVerification.current_status,
+      created_downstream_side_effect_ids: createdDownstreamSideEffects.map((effect) => effect.id),
+      created_downstream_side_effect_intents: createdDownstreamSideEffects.map((effect) => effect.effect_intent),
+      reused_downstream_side_effect_ids: existingDownstreamSideEffects.map((effect) => effect.id),
+      reused_downstream_side_effect_intents: existingDownstreamSideEffects.map((effect) => effect.effect_intent),
+      branch_taken: createdDownstreamSideEffects.length > 0
+        ? 'create_missing_downstream_side_effects_after_verification'
+        : 'reuse_existing_downstream_side_effects_after_verification',
+      deny_reason: createdDownstreamSideEffects.length > 0 ? null : 'downstream_side_effects_already_exist',
+    },
   });
+
+  return {
+    bookingAfterVerification,
+    downstreamSideEffects: [...existingDownstreamSideEffects, ...createdDownstreamSideEffects],
+  };
 }
 
 export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingContext): Promise<void> {

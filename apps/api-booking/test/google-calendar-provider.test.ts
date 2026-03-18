@@ -86,7 +86,10 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     expect(insertBody).not.toHaveProperty('attendees');
     expect(insertBody['conferenceData']).toEqual({
       createRequest: {
-        requestId: 'b1',
+        requestId: 'uuid-123',
+        conferenceSolutionKey: {
+          type: 'hangoutsMeet',
+        },
       },
     });
     expect(created).toEqual({
@@ -122,6 +125,45 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-2',
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/fallback-link',
+    });
+  });
+
+  it('hydrates the event after insert when the initial response is missing meet data', async () => {
+    stubServiceAccountSigning();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-hydrate',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-hydrate',
+        conferenceData: {
+          createRequest: {
+            status: {
+              statusCode: 'pending',
+            },
+          },
+        },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-hydrate',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-hydrate',
+        conferenceData: {
+          entryPoints: [
+            { entryPointType: 'video', uri: 'https://meet.google.com/hydrated-link' },
+          ],
+        },
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = makeProvider();
+    const created = await provider.createEvent(makeCalendarEvent() as any);
+
+    expect(String(fetchMock.mock.calls[3]?.[0] ?? '')).toContain('/events/google-event-hydrate?conferenceDataVersion=1');
+    expect(created).toEqual({
+      eventId: 'google-event-hydrate',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-hydrate',
+      meetingProvider: 'google_meet',
+      meetingLink: 'https://meet.google.com/hydrated-link',
     });
   });
 
@@ -313,7 +355,10 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     expect(updateBody).not.toHaveProperty('attendees');
     expect(updateBody['conferenceData']).toEqual({
       createRequest: {
-        requestId: 'b1',
+        requestId: 'uuid-123',
+        conferenceSolutionKey: {
+          type: 'hangoutsMeet',
+        },
       },
     });
     expect(updated).toEqual({

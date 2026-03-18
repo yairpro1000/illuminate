@@ -252,6 +252,32 @@ describe('booking domain model', () => {
     expect(confirmed.meeting_provider).toBe('google_meet');
     expect(confirmed.meeting_link).toContain('https://meet.google.com/');
 
+    const verificationEffect = submission
+      ? mockState.sideEffects.find(
+        (effect) => effect.booking_event_id === submission.id && effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION',
+      )
+      : null;
+    const verificationAttempt = verificationEffect
+      ? mockState.sideEffectAttempts.find((attempt) => attempt.booking_side_effect_id === verificationEffect.id)
+      : null;
+    expect(verificationEffect?.status).toBe('SUCCESS');
+    expect(verificationAttempt?.status).toBe('SUCCESS');
+
+    const confirmationEffects = submission
+      ? mockState.sideEffects.filter(
+        (effect) => effect.booking_event_id === submission.id
+          && (effect.effect_intent === 'RESERVE_CALENDAR_SLOT' || effect.effect_intent === 'SEND_BOOKING_CONFIRMATION'),
+      )
+      : [];
+    expect(confirmationEffects.map((effect) => effect.effect_intent)).toEqual([
+      'RESERVE_CALENDAR_SLOT',
+      'SEND_BOOKING_CONFIRMATION',
+    ]);
+    const confirmationAttempts = confirmationEffects.map((effect) =>
+      mockState.sideEffectAttempts.find((attempt) => attempt.booking_side_effect_id === effect.id),
+    );
+    expect(confirmationAttempts.every((attempt) => attempt?.status === 'SUCCESS')).toBe(true);
+
     const confirmationEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_confirmation' && email.to === 'intro@example.com',
     );

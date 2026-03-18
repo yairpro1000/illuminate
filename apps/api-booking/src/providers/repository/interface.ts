@@ -106,6 +106,7 @@ export interface IRepository {
   createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]>;
 
   getBookingSideEffectById(id: string): Promise<BookingSideEffect | null>;
+  listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]>;
 
   getPendingBookingSideEffects(
     limit: number,

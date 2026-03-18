@@ -384,6 +384,17 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]> {
+    return requireData<BookingSideEffect[]>(
+      this.db
+        .from('booking_side_effects')
+        .select('*')
+        .eq('booking_event_id', eventId)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking side effects for event',
+    );
+  }
+
   async getPendingBookingSideEffects(
     limit: number,
     _nowIso: string,

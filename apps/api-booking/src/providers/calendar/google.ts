@@ -31,6 +31,11 @@ interface GoogleCalendarEventResponse {
   status?: string | null;
   hangoutLink?: string | null;
   conferenceData?: {
+    createRequest?: {
+      status?: {
+        statusCode?: string | null;
+      } | null;
+    } | null;
     entryPoints?: Array<{
       uri?: string | null;
       entryPointType?: string | null;
@@ -41,6 +46,8 @@ interface GoogleCalendarEventResponse {
 interface GoogleCalendarListResponse {
   items?: GoogleCalendarEventResponse[] | null;
 }
+
+const GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS = [500, 1500, 3000] as const;
 
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
@@ -516,6 +523,138 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     return existing ? toCalendarUpsertResult(existing) : null;
   }
 
+  private async hydrateConferenceDataIfMissing(
+    token: string,
+    data: GoogleCalendarEventResponse,
+    input: {
+      bookingId: string | null;
+      requestId: string | null;
+      operation: 'create_event' | 'update_event';
+    },
+  ): Promise<GoogleCalendarEventResponse> {
+    if (extractGoogleMeetLink(data)) {
+      return data;
+    }
+
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_meet_hydration_started',
+      message: 'Google Calendar write response had no Meet link; fetching event to hydrate conference data',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: data.id,
+        calendar_operation: input.operation,
+        conference_create_status: readConferenceCreateStatus(data),
+        branch_taken: 'refetch_google_event_for_meet_link_hydration',
+        deny_reason: 'google_meet_link_missing_in_initial_write_response',
+      },
+    });
+
+    let hydrated = data;
+    for (let attemptIndex = 0; attemptIndex <= GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS.length; attemptIndex += 1) {
+      if (attemptIndex > 0) {
+        await sleep(GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS[attemptIndex - 1] ?? 0);
+      }
+
+      const fetched = await this.fetchCalendarEventById(token, data.id, input);
+      if (!fetched) {
+        break;
+      }
+
+      hydrated = fetched;
+      if (extractGoogleMeetLink(hydrated)) {
+        this.logger?.logInfo?.({
+          source: 'backend',
+          eventType: 'google_calendar_meet_hydration_completed',
+          message: 'Fetched Google Calendar event now contains Meet link data',
+          context: {
+            booking_id: input.bookingId,
+            request_id: input.requestId,
+            google_event_id: hydrated.id,
+            calendar_operation: input.operation,
+            hydration_attempt: attemptIndex + 1,
+            conference_create_status: readConferenceCreateStatus(hydrated),
+            branch_taken: 'google_event_hydrated_with_meet_link',
+            deny_reason: null,
+          },
+        });
+        return hydrated;
+      }
+    }
+
+    this.logger?.logWarn?.({
+      source: 'backend',
+      eventType: 'google_calendar_meet_hydration_completed',
+      message: 'Fetched Google Calendar event still has no Meet link data after hydration attempts',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: hydrated.id,
+        calendar_operation: input.operation,
+        conference_create_status: readConferenceCreateStatus(hydrated),
+        branch_taken: 'google_event_hydration_completed_without_meet_link',
+        deny_reason: 'google_meet_link_missing_after_hydration_attempts',
+      },
+    });
+    return hydrated;
+  }
+
+  private async fetchCalendarEventById(
+    token: string,
+    eventId: string,
+    input: {
+      bookingId: string | null;
+      requestId: string | null;
+      operation: 'create_event' | 'update_event';
+    },
+  ): Promise<GoogleCalendarEventResponse | null> {
+    const calId = encodeURIComponent(this.calendarId);
+    const evId = encodeURIComponent(eventId);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?conferenceDataVersion=1`;
+
+    const res = this.logger
+      ? await instrumentFetch(this.logger, {
+          provider: 'google_calendar',
+          operation: 'hydrate_meet_link',
+          method: 'GET',
+          url,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+      : await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      const parsedError = parseGoogleApiError(errorBody);
+      this.logger?.logWarn?.({
+        source: 'backend',
+        eventType: 'google_calendar_meet_hydration_fetch_failed',
+        message: 'Failed to fetch Google Calendar event while hydrating Meet link data',
+        context: {
+          booking_id: input.bookingId,
+          request_id: input.requestId,
+          google_event_id: eventId,
+          calendar_operation: input.operation,
+          google_http_status: res.status,
+          google_error_reason: parsedError.reason,
+          google_error_message: parsedError.message,
+          branch_taken: 'google_event_hydration_fetch_failed',
+          deny_reason: parsedError.reason ?? parsedError.message ?? `google_event_get_http_${res.status}`,
+        },
+      });
+      return null;
+    }
+
+    return await res.json() as GoogleCalendarEventResponse;
+  }
+
   async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
@@ -578,7 +717,12 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const initialRes = await this.postCalendarEvent(url, token, initialBody);
 
     if (initialRes.ok) {
-      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const initialData = await initialRes.json() as GoogleCalendarEventResponse;
+      const data = await this.hydrateConferenceDataIfMissing(token, initialData, {
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        operation: 'create_event',
+      });
       const result = toCalendarUpsertResult(data);
       this.logger?.logInfo?.({
         source: 'backend',
@@ -664,7 +808,12 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     );
     const initialRes = await this.putCalendarEvent(url, token, initialBody);
     if (initialRes.ok) {
-      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const initialData = await initialRes.json() as GoogleCalendarEventResponse;
+      const data = await this.hydrateConferenceDataIfMissing(token, initialData, {
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        operation: 'update_event',
+      });
       const result = toCalendarUpsertResult(data);
       this.logger?.logInfo?.({
         source: 'backend',
@@ -880,7 +1029,7 @@ function buildGoogleEventBody(
   event: CalendarEvent,
   options: { eventIdHint: string | null; createConference: boolean },
 ): Record<string, unknown> {
-  const conferenceRequestId = event.privateMetadata?.booking_id?.trim() || crypto.randomUUID();
+  const conferenceRequestId = crypto.randomUUID();
   return {
     ...(options.eventIdHint ? { id: options.eventIdHint } : {}),
     summary: event.title,
@@ -893,6 +1042,9 @@ function buildGoogleEventBody(
         conferenceData: {
           createRequest: {
             requestId: conferenceRequestId,
+            conferenceSolutionKey: {
+              type: 'hangoutsMeet',
+            },
           },
         },
       }
@@ -934,6 +1086,11 @@ function detectMeetingLinkSource(data: GoogleCalendarEventResponse): 'hangoutLin
   )
     ? 'conferenceData.video'
     : 'missing';
+}
+
+function readConferenceCreateStatus(data: GoogleCalendarEventResponse): string | null {
+  const statusCode = data.conferenceData?.createRequest?.status?.statusCode;
+  return typeof statusCode === 'string' && statusCode.trim() ? statusCode.trim() : null;
 }
 
 function toGoogleDiagnosticsContext(event: CalendarEvent): { bookingId: string | null; requestId: string | null } {

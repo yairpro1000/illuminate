@@ -281,6 +281,12 @@ export class MockRepository implements IRepository {
     return row ? stripBookingId(row) : null;
   }
 
+  async listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]> {
+    return mockState.sideEffects
+      .filter((effect) => effect.booking_event_id === eventId)
+      .map((effect) => stripBookingId(effect));
+  }
+
   async getPendingBookingSideEffects(
     limit: number,
     _nowIso: string,
