@@ -25,14 +25,8 @@ export interface Env {
   // Used by both calendar paths (availability reads and booking writes).
   GOOGLE_CALENDAR_ID: string;
 
-  // Google Calendar OAuth refresh-token credentials.
-  // Used only by calendar write operations: createEvent/updateEvent/deleteEvent.
-  GOOGLE_CLIENT_CALENDAR: string;
-  GOOGLE_CLIENT_SECRET_CALENDAR: string;
-  GOOGLE_REFRESH_TOKEN_CALENDAR: string;
-
   // Service account credentials.
-  // Used by calendar availability reads: getBusyTimes/freeBusy.
+  // Used by calendar availability reads and booking writes.
   // Also reused by optional Google Drive backup code.
   GOOGLE_CLIENT_EMAIL: string;
   GOOGLE_PRIVATE_KEY: string;

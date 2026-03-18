@@ -327,10 +327,10 @@ Modes:
 - `mock`
 - `google`
 
-Important split-auth rule:
+Important auth rule:
 
 - availability reads use service-account credentials
-- booking writes use OAuth refresh-token credentials
+- booking writes use the same service-account credentials
 
 ### 7.5 Turnstile
 
@@ -424,10 +424,7 @@ The table below is scoped to website + booking + admin only.
 | `OBSERVABILITY_SCHEMA` | booking worker | plain var | schema name, current default `public` | Chooses which DB schema the observability wrapper writes to. |
 | `RESEND_API_KEY` | booking worker | secret | issued by Resend | Live email provider credential. |
 | `GOOGLE_CALENDAR_ID` | booking worker | plain var | Google Calendar id | Target calendar id for both availability reads and booking writes. |
-| `GOOGLE_CLIENT_CALENDAR` | booking worker | secret | issued by Google Cloud OAuth client | OAuth client id used for booking write operations. |
-| `GOOGLE_CLIENT_SECRET_CALENDAR` | booking worker | secret | issued by Google Cloud OAuth client | OAuth client secret used for booking write operations. |
-| `GOOGLE_REFRESH_TOKEN_CALENDAR` | booking worker | secret | issued from Google OAuth consent flow | Refresh token used to mint write-capable Google access tokens. |
-| `GOOGLE_CLIENT_EMAIL` | booking worker | secret/plain var | Google service account email | Service account identity for availability reads and optional Drive backup. |
+| `GOOGLE_CLIENT_EMAIL` | booking worker | secret/plain var | Google service account email | Service account identity for availability reads, booking writes, and optional Drive backup. |
 | `GOOGLE_PRIVATE_KEY` | booking worker | secret | Google service account private key | Private key paired with the service account for JWT-based access tokens. |
 | `GOOGLE_TOKEN_URI` | booking worker | plain var | usually `https://oauth2.googleapis.com/token` | Token endpoint for Google auth exchanges. |
 | `TIMEZONE` | booking worker | plain var | IANA timezone, current `Europe/Zurich` | Default timezone for slot generation and date calculations. |

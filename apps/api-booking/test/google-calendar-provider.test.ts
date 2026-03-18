@@ -19,9 +19,6 @@ function makeCalendarEvent(overrides: Record<string, unknown> = {}) {
 
 function makeProvider(logger?: any) {
   return new GoogleCalendarProvider({
-    GOOGLE_CLIENT_CALENDAR: 'oauth-client-id',
-    GOOGLE_CLIENT_SECRET_CALENDAR: 'oauth-client-secret',
-    GOOGLE_REFRESH_TOKEN_CALENDAR: 'oauth-refresh-token',
     GOOGLE_CLIENT_EMAIL: 'svc@example.iam.gserviceaccount.com',
     GOOGLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
     GOOGLE_TOKEN_URI: 'https://oauth2.googleapis.com/token',
@@ -29,13 +26,24 @@ function makeProvider(logger?: any) {
   }, logger);
 }
 
+function stubServiceAccountSigning() {
+  vi.stubGlobal('crypto', {
+    randomUUID: vi.fn().mockReturnValue('uuid-123'),
+    subtle: {
+      importKey: vi.fn().mockResolvedValue('private-key'),
+      sign: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer),
+    },
+  } as unknown as Crypto);
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe('GoogleCalendarProvider OAuth diagnostics', () => {
-  it('exchanges refresh token and inserts attendee event into trimmed calendar id', async () => {
+describe('GoogleCalendarProvider service-account diagnostics', () => {
+  it('exchanges a service-account token and inserts attendee event into trimmed calendar id', async () => {
+    stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
@@ -53,10 +61,8 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     const tokenBody = String(tokenRequest?.body ?? '');
     expect(tokenUrl).toBe('https://oauth2.googleapis.com/token');
     expect(tokenRequest?.headers).toEqual({ 'Content-Type': 'application/x-www-form-urlencoded' });
-    expect(tokenBody).toContain('client_id=oauth-client-id');
-    expect(tokenBody).toContain('client_secret=oauth-client-secret');
-    expect(tokenBody).toContain('refresh_token=oauth-refresh-token');
-    expect(tokenBody).toContain('grant_type=refresh_token');
+    expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
+    expect(tokenBody).toContain('assertion=');
 
     const lookupUrl = String(fetchMock.mock.calls[1]?.[0] ?? '');
     expect(lookupUrl).toContain('/calendars/yairilluminate%40gmail.com/events?');
@@ -82,6 +88,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   });
 
   it('falls back to conferenceData video entry points when hangoutLink is missing', async () => {
+    stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
@@ -107,6 +114,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   });
 
   it('logs booking_id, request_id, and google response body when events.insert fails', async () => {
+    stubServiceAccountSigning();
     const failureBody = {
       error: {
         code: 400,
@@ -144,9 +152,10 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   });
 
   it('aborts createEvent and logs clearly when token exchange fails', async () => {
+    stubServiceAccountSigning();
     const tokenFailureBody = {
       error: 'invalid_grant',
-      error_description: 'Bad refresh token.',
+      error_description: 'Service account is not authorized for this calendar.',
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(tokenFailureBody), { status: 400 }));
@@ -160,23 +169,26 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
 
     const provider = makeProvider(logger);
 
-    await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toThrow('Google token exchange failed (400)');
+    await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toThrow('Google service-account token exchange failed (400)');
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     expect(logger.logError).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_token_exchange_failed',
+      eventType: 'google_calendar_service_account_token_exchange_failed',
       context: expect.objectContaining({
+        auth_mode: 'service_account',
+        calendar_operation: 'create_event',
         booking_id: 'b1',
         request_id: 'req-1',
         google_http_status: 400,
         google_error_reason: 'invalid_grant',
         google_response_body: expect.stringContaining('invalid_grant'),
-        branch_taken: 'abort_calendar_write_token_exchange_failed',
+        branch_taken: 'abort_calendar_operation_service_account_token_exchange_failed',
       }),
     }));
   });
 
   it('reuses an existing event when booking_id metadata already exists on the calendar', async () => {
+    stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -213,6 +225,7 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
   });
 
   it('throws RetryableCalendarWriteError for retryable quotaExceeded insert failures', async () => {
+    stubServiceAccountSigning();
     const failureBody = {
       error: {
         code: 403,
@@ -229,5 +242,70 @@ describe('GoogleCalendarProvider OAuth diagnostics', () => {
     const provider = makeProvider();
 
     await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toBeInstanceOf(RetryableCalendarWriteError);
+  });
+
+  it('uses the service-account token path for updateEvent and logs the request', async () => {
+    stubServiceAccountSigning();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-3',
+        hangoutLink: 'https://meet.google.com/updated-link',
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeProvider(logger);
+    const updated = await provider.updateEvent('google-event-3', makeCalendarEvent() as any);
+
+    const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
+    expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
+    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-3?sendUpdates=all&conferenceDataVersion=1');
+    expect(updated).toEqual({
+      eventId: 'google-event-3',
+      meetingProvider: 'google_meet',
+      meetingLink: 'https://meet.google.com/updated-link',
+    });
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_update_request',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-3',
+        branch_taken: 'call_google_events_update',
+      }),
+    }));
+  });
+
+  it('uses the service-account token path for deleteEvent and treats 404 as success', async () => {
+    stubServiceAccountSigning();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeProvider(logger);
+    await expect(provider.deleteEvent('google-event-4')).resolves.toBeUndefined();
+
+    const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
+    expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
+    expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-4?sendUpdates=all');
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_delete_completed',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-4',
+        google_http_status: 404,
+        branch_taken: 'google_event_already_absent_treated_as_success',
+      }),
+    }));
   });
 });
