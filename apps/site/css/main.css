@@ -568,7 +568,7 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: clamp(1.125rem, 4.5vw, 1.6875rem);
+  font-size: clamp(1rem, 4.5vw, 1.6875rem);
   font-weight: 500;
   font-style: italic;
   transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
@@ -1315,6 +1315,48 @@ body.theme-light .who__check {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: 1.5rem;
   max-width: 50rem;
+}
+
+.investment__evenings-nudge {
+  margin-top: 2.5rem;
+  color: var(--color-text);
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.investment__evenings-nudge .btn-arrow {
+  color: var(--color-text) !important;
+  text-shadow: none !important;
+}
+
+.investment__evenings-nudge .btn-arrow:hover {
+  color: var(--color-text) !important;
+}
+
+/* ILLUMINATE Evenings inline brand style — shared across pages */
+.evenings-intro__brand {
+  font-family: 'Nunito', var(--font);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow:
+    0 0 8px oklch(94% 0.16 85 / 0.80),
+    0 0 22px oklch(88% 0.20 82 / 0.45);
+}
+
+.evenings-intro__name {
+  color: var(--color-lake-light);
+  font-weight: 600;
+  letter-spacing: 0.015em;
+}
+
+body.theme-light .evenings-intro__brand {
+  color: var(--color-text);
+  text-shadow:
+    0 0 8px color-mix(in oklab, var(--color-lake) 65%, transparent),
+    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
 }
 
 .pricing-card {
