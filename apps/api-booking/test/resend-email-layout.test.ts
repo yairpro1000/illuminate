@@ -10,7 +10,7 @@ vi.mock('resend', () => ({
   })),
 }));
 
-import { ResendEmailProvider } from '../src/providers/email/resend.js';
+import { ResendEmailProvider, buildEventConfirmationEmail } from '../src/providers/email/resend.js';
 import type { Booking, Event } from '../src/types.js';
 
 function makeBooking(): Booking {
@@ -109,5 +109,23 @@ describe('Resend booking expiry email layout', () => {
     expect(html).toContain('19:00\u201321:00 (Europe/Zurich)');
     expect(html).not.toContain('Date &amp; time');
     expect(html).not.toContain('UTC');
+  });
+
+  it('builds event confirmation payloads without the legacy UTC datetime string', () => {
+    const message = buildEventConfirmationEmail(
+      makeBooking(),
+      makeEvent(),
+      'https://example.com/manage.html?token=tok-1',
+      null,
+      null,
+      'Booking policy\nRule one\nRule two\nContact',
+      { paymentSettled: true },
+    );
+
+    expect(message.payload.html).toContain('19:00\u201321:00 (Europe/Zurich)');
+    expect(message.payload.html).not.toContain('Date &amp; time');
+    expect(message.payload.html).not.toContain('UTC');
+    expect(message.payload.text).toContain('Time: 19:00\u201321:00 (Europe/Zurich)');
+    expect(message.payload.text).not.toContain('Date & time:');
   });
 });
