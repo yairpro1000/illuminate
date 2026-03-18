@@ -567,7 +567,7 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: 2.25rem;
+  font-size: 1.6875rem;
   font-weight: 500;
   font-style: italic;
   transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
@@ -803,7 +803,7 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: calc(50svh - 0.75rem);
+  padding-top: calc(30svh - 0.75rem);
   padding-bottom: 5rem;
   position: relative;
 }
@@ -815,7 +815,6 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   font-weight: 300;
   color: oklch(100% 0 0);
   letter-spacing: 0.04em;
-  margin-top: 5vh;
   margin-bottom: 1.25rem;
   text-shadow: 0 1px 10px oklch(0% 0 0 / 0.30);
 }
@@ -1560,7 +1559,6 @@ body.theme-light .who__check {
 .regret__text p + p { margin-top: 1rem; }
 
 .regret__right .btn-arrow {
-  font-size: var(--step-1);
   color: var(--color-lake-light);
 }
 
