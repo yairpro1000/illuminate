@@ -1857,10 +1857,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 
 .footer__inner {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
   width: var(--container);
   margin-inline: auto;
 }

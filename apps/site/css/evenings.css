@@ -43,10 +43,26 @@ body.theme-light .evenings-hero::after {
 }
 
 .evenings-intro {
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  font-size: clamp(1.125rem, 1.8vw, 1.275rem);
+  font-weight: 700;
   line-height: 1.8;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   margin-bottom: 1.5rem;
+}
+
+.evenings-intro__brand {
+  font-family: 'Nunito', var(--font);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow:
+    0 0 8px oklch(94% 0.16 85 / 0.80),
+    0 0 22px oklch(88% 0.20 82 / 0.45);
+}
+
+.evenings-intro__name {
+  color: var(--color-lake-light);
+  font-weight: 600;
+  letter-spacing: 0.015em;
 }
 
 /* em-dash bullet list */
@@ -78,8 +94,15 @@ body.theme-light .evenings-hero::after {
 .evenings-closing {
   font-size: clamp(1rem, 1.5vw, 1.125rem);
   line-height: 1.8;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   font-style: italic;
+}
+
+body.theme-light .evenings-intro__brand {
+  color: var(--color-text);
+  text-shadow:
+    0 0 8px color-mix(in oklab, var(--color-lake) 65%, transparent),
+    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
 }
 
 /* ── Upcoming placeholder section ───────────────────────────── */
@@ -93,14 +116,6 @@ body.theme-light .evenings-hero::after {
 .upcoming__header {
   text-align: center;
   margin-bottom: 3.5rem;
-}
-
-.upcoming__lede {
-  max-width: 42rem;
-  margin: 1rem auto 0;
-  font-size: 1rem;
-  line-height: 1.7;
-  color: var(--color-text-muted);
 }
 
 .evenings-trust {
