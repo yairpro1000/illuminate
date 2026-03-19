@@ -666,7 +666,7 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain('payment is still pending for');
     expect(confirmationEmail?.body).toContain('Payment due:');
     expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/');
-    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(confirmationEmail?.body).not.toContain('Complete payment: https://example.com/continue-payment.html?token=');
     expect(confirmationEmail?.body).not.toContain('confirmed and paid');
 
     const reminderEffect = mockState.sideEffects.find(
@@ -745,7 +745,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_123',
       invoiceId: 'in_123',
@@ -790,7 +793,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_retry',
       invoiceId: 'in_retry',
@@ -837,7 +843,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_456',
       invoiceId: null,
@@ -851,10 +860,10 @@ describe('booking domain model', () => {
 
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
     expect(refreshedPayment?.invoice_url).toBe(
-      `https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+      `https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
     );
     expect(confirmationEmail?.body).toContain(
-      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
     );
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'payment_settlement_invoice_resolution_completed',

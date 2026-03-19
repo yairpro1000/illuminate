@@ -3,7 +3,7 @@ export interface Env {
   REPOSITORY_MODE: string; // 'mock' | 'supabase'
   EMAIL_MODE:      string; // 'mock' | 'resend'
   CALENDAR_MODE:   string; // 'mock' | 'google'
-  PAYMENTS_MODE:   string; // 'mock' | 'stripe'
+  PAYMENTS_MODE:   string; // 'mock' | 'stripe_sandbox' | 'stripe'
   ANTIBOT_MODE:    string; // 'mock' | 'turnstile'
 
   SITE_URL: string;       // e.g. https://yairb.com (no trailing slash)
@@ -34,6 +34,9 @@ export interface Env {
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PUBLISHABLE_KEY: string;
+  STRIPE_SECRET_KEY_SANDBOX?: string;
+  STRIPE_WEBHOOK_SECRET_SANDBOX?: string;
+  STRIPE_PUBLISHABLE_KEY_SANDBOX?: string;
 
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_SITE_KEY?: string;

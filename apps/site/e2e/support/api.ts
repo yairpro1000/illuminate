@@ -74,7 +74,11 @@ export interface SupabasePaymentRow {
   booking_id: string;
   status: string;
   provider: string;
-  provider_payment_id: string | null;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_link_id: string | null;
   invoice_url: string | null;
   checkout_url: string | null;
   paid_at: string | null;
@@ -384,7 +388,7 @@ export async function waitForBookingArtifacts(email: string): Promise<BookingArt
 export async function getSupabasePaymentRowByBookingId(bookingId: string): Promise<SupabasePaymentRow | null> {
   const { url, secretKey } = getSupabaseEnv();
   const params = new URLSearchParams({
-    select: 'id,booking_id,status,provider,provider_payment_id,invoice_url,checkout_url,paid_at,amount,currency,created_at,updated_at',
+    select: 'id,booking_id,status,provider,stripe_customer_id,stripe_checkout_session_id,stripe_payment_intent_id,stripe_invoice_id,stripe_payment_link_id,invoice_url,checkout_url,paid_at,amount,currency,created_at,updated_at',
     booking_id: `eq.${bookingId}`,
     order: 'created_at.desc',
     limit: '1',

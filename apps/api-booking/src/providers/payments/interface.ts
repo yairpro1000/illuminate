@@ -10,8 +10,13 @@ export interface CreateCheckoutParams {
   lineItems: CheckoutLineItem[];
   /** Opaque booking reference stored in provider metadata. */
   bookingId: string;
+  customerEmail: string;
+  customerName?: string | null;
+  existingStripeCustomerId?: string | null;
   successUrl: string;
   cancelUrl: string;
+  idempotencyKey?: string;
+  metadata?: Record<string, string>;
 }
 
 export interface CheckoutSession {
@@ -19,6 +24,9 @@ export interface CheckoutSession {
   checkoutUrl: string;
   amount: number;
   currency: string;
+  customerId: string | null;
+  paymentIntentId: string | null;
+  rawPayload?: Record<string, unknown> | null;
 }
 
 export interface CreateInvoiceParams {
@@ -28,6 +36,11 @@ export interface CreateInvoiceParams {
   currency: string;
   bookingId: string;
   customerEmail: string;
+  customerName?: string | null;
+  existingStripeCustomerId?: string | null;
+  dueDateIso?: string | null;
+  idempotencyKey?: string;
+  metadata?: Record<string, string>;
 }
 
 export interface InvoiceRecord {
@@ -35,17 +48,25 @@ export interface InvoiceRecord {
   invoiceUrl: string;
   amount: number;
   currency: string;
+  customerId: string | null;
+  paymentIntentId: string | null;
+  paymentLinkId: string | null;
+  rawPayload?: Record<string, unknown> | null;
 }
 
 /** Minimal subset of Stripe webhook event data this system cares about. */
-export interface StripeCheckoutEvent {
-  sessionId: string;
+export interface StripePaymentEvent {
+  eventType: 'checkout.session.completed' | 'invoice.paid' | 'payment_intent.succeeded';
+  checkoutSessionId: string | null;
   paymentIntentId: string | null;
   invoiceId: string | null;
   invoiceUrl: string | null;
+  paymentLinkId: string | null;
   amount: number;
   currency: string;
-  bookingId: string;
+  bookingId: string | null;
+  customerId: string | null;
+  rawPayload: Record<string, unknown>;
 }
 
 export interface IPaymentsProvider {
@@ -61,5 +82,5 @@ export interface IPaymentsProvider {
     rawBody: string,
     signature: string,
     secret: string,
-  ): Promise<StripeCheckoutEvent | null>;
+  ): Promise<StripePaymentEvent | null>;
 }

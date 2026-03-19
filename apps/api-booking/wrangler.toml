@@ -12,6 +12,7 @@ routes = [
 [vars]
 # Dev-stage architecture: all externally sensitive providers stay explicitly mock-first
 # unless intentionally overridden for a focused integration test.
+# PAYMENTS_MODE supports: mock, stripe_sandbox, stripe
 REPOSITORY_MODE = "supabase"
 EMAIL_MODE      = "mock"
 CALENDAR_MODE   = "google"
@@ -64,6 +65,8 @@ ADMIN_AUTH_DISABLED = "true"
 # GOOGLE_SERVICE_ACCOUNT_JSON ← service account JSON (calendar freeBusy + create/update/delete; optional Google Drive backup)
 # STRIPE_SECRET_KEY
 # STRIPE_WEBHOOK_SECRET
+# STRIPE_SECRET_KEY_SANDBOX
+# STRIPE_WEBHOOK_SECRET_SANDBOX
 # TURNSTILE_SITE_KEY
 # TURNSTILE_SECRET_KEY
 # TURNSTILE_TEST_SITE_KEY_PASS

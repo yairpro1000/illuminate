@@ -33,14 +33,18 @@ describe('Admin manual payment settlement', () => {
       id: 'p1',
       booking_id: 'b1',
       provider: 'stripe',
-      provider_payment_id: 'mock_in_1',
       amount: 120,
       currency: 'CHF',
       status: 'CASH_OK',
       checkout_url: null,
       invoice_url: 'https://example.com/mock-invoice/mock_in_1',
-      raw_payload: { invoice_id: 'mock_in_1' },
+      raw_payload: { invoice_response: { id: 'mock_in_1' } },
       paid_at: null,
+      stripe_customer_id: 'mock_cus_1',
+      stripe_checkout_session_id: null,
+      stripe_payment_intent_id: null,
+      stripe_invoice_id: 'mock_in_1',
+      stripe_payment_link_id: null,
     } as any;
     let currentPayment = payment;
     const refreshed = { booking_id: 'b1', client_id: 'c1', current_status: 'CONFIRMED', payment_status: 'SUCCEEDED' } as any;

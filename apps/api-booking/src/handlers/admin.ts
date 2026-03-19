@@ -609,7 +609,10 @@ export async function handleAdminUpdateBooking(
 
       if (typeof updates.price === 'number' && existingPayment && !isPaymentSettledStatus(existingPayment.status)) {
         let invoiceUpdate: {
-          provider_payment_id?: string;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_payment_link_id?: string | null;
           invoice_url?: string | null;
           raw_payload?: Record<string, unknown>;
         } = {};
@@ -621,14 +624,24 @@ export async function handleAdminUpdateBooking(
             currency: booking.currency,
             bookingId: booking.id,
             customerEmail: booking.client_email,
+            customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email,
+            existingStripeCustomerId: existingPayment.stripe_customer_id,
+            idempotencyKey: `booking:${booking.id}:admin-regenerate-invoice`,
+            metadata: {
+              booking_id: booking.id,
+              booking_kind: booking.event_id ? 'event' : 'session',
+              payment_kind: 'pay_later',
+            },
           });
           invoiceUpdate = {
-            provider_payment_id: invoice.invoiceId,
+            stripe_customer_id: invoice.customerId,
+            stripe_invoice_id: invoice.invoiceId,
+            stripe_payment_intent_id: invoice.paymentIntentId,
+            stripe_payment_link_id: invoice.paymentLinkId,
             invoice_url: invoice.invoiceUrl,
             raw_payload: {
               ...(existingPayment.raw_payload ?? {}),
-              invoice_id: invoice.invoiceId,
-              invoice_url: invoice.invoiceUrl,
+              invoice_response: invoice.rawPayload ?? null,
               regenerated_by: 'admin_booking_price_edit',
             },
           };
@@ -776,7 +789,8 @@ export async function handleAdminSettleBookingPayment(
     const note = coerceOptionalString(body.note);
     const invoiceUrl = coerceOptionalString(body.invoice_url) ?? payment.invoice_url;
     const invoiceId = coerceOptionalString(body.invoice_id)
-      ?? (typeof payment.raw_payload?.['invoice_id'] === 'string' ? payment.raw_payload['invoice_id'] as string : null);
+      ?? payment.stripe_invoice_id
+      ?? null;
     const settledAt = coerceOptionalString(body.paid_at);
 
     const denyReason = isPaymentSettledStatus(payment.status)

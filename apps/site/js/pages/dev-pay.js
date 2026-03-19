@@ -3,6 +3,7 @@
   const siteClient = window.siteClient || null;
   const params     = new URLSearchParams(window.location.search);
   const sessionId  = params.get('session_id');
+  const bookingId  = params.get('booking_id');
   const amount     = params.get('amount');
   const currency   = (params.get('currency') || 'CHF').toUpperCase();
 
@@ -29,9 +30,13 @@
       );
 
       if (result === 'success') {
-        window.location.href = 'payment-success?session_id=' + encodeURIComponent(sessionId);
+        const successParams = new URLSearchParams({ session_id: sessionId });
+        if (bookingId) successParams.set('booking_id', bookingId);
+        window.location.href = 'payment-success?' + successParams.toString();
       } else {
-        window.location.href = 'payment-cancel?session_id=' + encodeURIComponent(sessionId);
+        const cancelParams = new URLSearchParams();
+        if (bookingId) cancelParams.set('booking_id', bookingId);
+        window.location.href = 'payment-cancel' + (cancelParams.size > 0 ? `?${cancelParams.toString()}` : '');
       }
     } catch (err) {
       btn.disabled = false;

@@ -51,7 +51,8 @@ export const SERVICE_MODES: ServiceDefinition[] = [
     label: 'Payments',
     modes: [
       { value: 'mock', label: 'Mock (simulated)', wired: true },
-      { value: 'stripe', label: 'Stripe', wired: false }, // flip to true when wired in providers/index.ts
+      { value: 'stripe_sandbox', label: 'Stripe Sandbox', wired: true },
+      { value: 'stripe', label: 'Stripe', wired: true },
     ],
   },
   {

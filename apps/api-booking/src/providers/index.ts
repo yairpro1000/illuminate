@@ -14,6 +14,8 @@ import { ResendEmailProvider } from './email/resend.js';
 import { MockCalendarProvider } from './calendar/mock.js';
 import { GoogleCalendarProvider } from './calendar/google.js';
 import { MockPaymentsProvider } from './payments/mock.js';
+import { StripePaymentsProvider } from './payments/stripe.js';
+import { normalizePaymentsMode, resolveStripeRuntimeConfig } from './payments/runtime-config.js';
 import { MockAntiBotProvider } from './antibot/mock.js';
 import { TurnstileAntiBotProvider } from './antibot/turnstile.js';
 import { makeSupabase } from '../repo/supabase.js';
@@ -79,13 +81,44 @@ export function createProviders(env: Env, logger?: Logger): Providers {
 
   // payments
   let payments: IPaymentsProvider;
-  if (paymentsMode === 'stripe') {
-    // const { StripePaymentsProvider } = await import('./payments/stripe.js');
-    // payments = new StripePaymentsProvider(env.STRIPE_SECRET_KEY);
-    throw new Error('Stripe payments are intentionally mocked in this dev-stage worker.');
+  const normalizedPaymentsMode = normalizePaymentsMode(paymentsMode);
+  const stripeRuntimeConfig = resolveStripeRuntimeConfig(env, paymentsMode);
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'payments_provider_mode_decision',
+    message: 'Evaluated payments provider mode',
+    context: {
+      payments_mode_env: env.PAYMENTS_MODE,
+      payments_mode_override: getOverride('payments') ?? null,
+      payments_mode_effective: normalizedPaymentsMode,
+      stripe_runtime_mode: stripeRuntimeConfig?.mode ?? null,
+      stripe_secret_present: Boolean(stripeRuntimeConfig?.secretKey),
+      stripe_webhook_secret_present: Boolean(stripeRuntimeConfig?.webhookSecret),
+      branch_taken: normalizedPaymentsMode === 'mock'
+        ? 'select_mock_payments_provider'
+        : 'select_stripe_payments_provider',
+      deny_reason: null,
+    },
+  });
+  if (stripeRuntimeConfig) {
+    payments = new StripePaymentsProvider(stripeRuntimeConfig.secretKey, env.SITE_URL);
   } else {
     payments = new MockPaymentsProvider(env.SITE_URL);
   }
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'payments_provider_mode_selected',
+    message: 'Selected payments provider implementation',
+    context: {
+      payments_mode_effective: normalizedPaymentsMode,
+      stripe_runtime_mode: stripeRuntimeConfig?.mode ?? null,
+      provider_class: stripeRuntimeConfig ? 'StripePaymentsProvider' : 'MockPaymentsProvider',
+      branch_taken: stripeRuntimeConfig
+        ? 'payments_provider_selected_stripe'
+        : 'payments_provider_selected_mock',
+      deny_reason: null,
+    },
+  });
 
   // antibot
   let antibot: IAntiBotProvider;

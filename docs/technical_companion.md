@@ -409,7 +409,7 @@ The table below is scoped to website + booking + admin only.
 | `REPOSITORY_MODE` | booking worker | plain var | `mock`, `supabase` | Selects mock repository vs real Supabase persistence. |
 | `EMAIL_MODE` | booking worker | plain var | `mock`, `resend` | Selects mock email provider vs live Resend delivery. |
 | `CALENDAR_MODE` | booking worker | plain var | `mock`, `google` | Selects mock calendar vs Google Calendar integration. |
-| `PAYMENTS_MODE` | booking worker | plain var | `mock`, `stripe` | Selects mock payments vs Stripe-backed checkout/invoice behavior. |
+| `PAYMENTS_MODE` | booking worker | plain var | `mock`, `stripe_sandbox`, `stripe` | Selects mock payments, Stripe sandbox, or live Stripe-backed checkout/invoice behavior. |
 | `ANTIBOT_MODE` | booking worker | plain var | `mock`, `turnstile` | Selects mock antibot behavior vs Turnstile validation. |
 | `SITE_URL` | booking worker | plain var | public site base URL for the environment | Used to generate public links for confirm/manage/payment flows. |
 | `SESSION_ADDRESS` | booking worker | plain var | venue or meeting address text | Displayed in booking details and emails for session bookings. |
@@ -429,6 +429,9 @@ The table below is scoped to website + booking + admin only.
 | `STRIPE_SECRET_KEY` | booking worker | secret | issued by Stripe | Server-side Stripe API key. |
 | `STRIPE_WEBHOOK_SECRET` | booking worker | secret | issued by Stripe webhook endpoint config | Verifies Stripe webhook signatures. |
 | `STRIPE_PUBLISHABLE_KEY` | booking worker | plain/secret var | issued by Stripe | Reserved for public-side Stripe compatibility where needed. |
+| `STRIPE_SECRET_KEY_SANDBOX` | booking worker | secret | issued by Stripe test/sandbox account | Server-side Stripe API key used when `PAYMENTS_MODE=stripe_sandbox`. |
+| `STRIPE_WEBHOOK_SECRET_SANDBOX` | booking worker | secret | issued by Stripe sandbox webhook endpoint config | Verifies sandbox Stripe webhook signatures when `PAYMENTS_MODE=stripe_sandbox`. |
+| `STRIPE_PUBLISHABLE_KEY_SANDBOX` | booking worker | plain/secret var | issued by Stripe test/sandbox account | Sandbox publishable key reserved for public-side Stripe compatibility where needed. |
 | `TURNSTILE_SECRET_KEY` | booking worker | secret | issued by Cloudflare Turnstile | Live Turnstile verification secret. |
 | `TURNSTILE_SITE_KEY` | booking worker | plain/secret var | issued by Cloudflare Turnstile | Live site key exposed via `/api/config` when Turnstile is enabled. |
 | `TURNSTILE_TEST_SITE_KEY_PASS` | booking worker | plain var | Cloudflare documented test key | Forces successful Turnstile behavior in controlled environments. |

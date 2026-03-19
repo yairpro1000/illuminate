@@ -288,7 +288,6 @@ export interface Payment {
   id: string;
   booking_id: string;
   provider: PaymentProvider;
-  provider_payment_id: string | null;
   amount: number;
   currency: string;
   status: PaymentStatus;
@@ -298,6 +297,11 @@ export interface Payment {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_link_id: string | null;
 }
 
 // ── Admin/read models ───────────────────────────────────────────────────────
@@ -322,8 +326,13 @@ export interface OrganizerBookingRow {
   payment_currency: string | null;
   payment_status: PaymentStatus | null;
   payment_provider: PaymentProvider | null;
-  payment_provider_payment_id: string | null;
+  payment_checkout_url: string | null;
   payment_invoice_url: string | null;
+  payment_stripe_customer_id: string | null;
+  payment_stripe_checkout_session_id: string | null;
+  payment_stripe_payment_intent_id: string | null;
+  payment_stripe_invoice_id: string | null;
+  payment_stripe_payment_link_id: string | null;
   payment_paid_at: string | null;
   latest_event_type: BookingEventType | null;
   latest_event_at: string | null;
@@ -409,7 +418,21 @@ export type BookingUpdate = Partial<
 export type ClientUpdate = Partial<Pick<Client, 'first_name' | 'last_name' | 'email' | 'phone'>>;
 
 export type PaymentUpdate = Partial<
-  Pick<Payment, 'status' | 'provider_payment_id' | 'amount' | 'currency' | 'checkout_url' | 'invoice_url' | 'paid_at' | 'raw_payload'>
+  Pick<
+    Payment,
+    | 'status'
+    | 'amount'
+    | 'currency'
+    | 'checkout_url'
+    | 'invoice_url'
+    | 'paid_at'
+    | 'raw_payload'
+    | 'stripe_customer_id'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+    | 'stripe_payment_link_id'
+  >
 >;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────

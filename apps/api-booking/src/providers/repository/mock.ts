@@ -510,9 +510,23 @@ export class MockRepository implements IRepository {
     return matches[0] ?? null;
   }
 
-  async getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null> {
+  async getPaymentByStripeCheckoutSessionId(sessionId: string): Promise<Payment | null> {
     for (const payment of mockState.payments.values()) {
-      if (payment.provider_payment_id === sessionId) return payment;
+      if (payment.stripe_checkout_session_id === sessionId) return payment;
+    }
+    return null;
+  }
+
+  async getPaymentByStripePaymentIntentId(paymentIntentId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_payment_intent_id === paymentIntentId) return payment;
+    }
+    return null;
+  }
+
+  async getPaymentByStripeInvoiceId(invoiceId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_invoice_id === invoiceId) return payment;
     }
     return null;
   }
@@ -654,8 +668,13 @@ export class MockRepository implements IRepository {
         payment_currency: payment?.currency ?? null,
         payment_status: payment?.status ?? null,
         payment_provider: payment?.provider ?? null,
-        payment_provider_payment_id: payment?.provider_payment_id ?? null,
+        payment_checkout_url: payment?.checkout_url ?? null,
         payment_invoice_url: payment?.invoice_url ?? null,
+        payment_stripe_customer_id: payment?.stripe_customer_id ?? null,
+        payment_stripe_checkout_session_id: payment?.stripe_checkout_session_id ?? null,
+        payment_stripe_payment_intent_id: payment?.stripe_payment_intent_id ?? null,
+        payment_stripe_invoice_id: payment?.stripe_invoice_id ?? null,
+        payment_stripe_payment_link_id: payment?.stripe_payment_link_id ?? null,
         payment_paid_at: payment?.paid_at ?? null,
         latest_event_type: latestEvent?.event_type ?? null,
         latest_event_at: latestEvent?.created_at ?? null,

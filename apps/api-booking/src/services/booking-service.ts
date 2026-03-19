@@ -126,7 +126,11 @@ function resolveSettlementInvoiceDetails(
   }
 
   const isMockSettlement = env.PAYMENTS_MODE === 'mock'
-    || (input.payment.provider_payment_id ?? '').startsWith('mock_');
+    || hasMockStripeIdentifier([
+      input.payment.stripe_checkout_session_id,
+      input.payment.stripe_payment_intent_id,
+      input.payment.stripe_invoice_id,
+    ]);
 
   if (!isMockSettlement) {
     return {
@@ -137,7 +141,9 @@ function resolveSettlementInvoiceDetails(
     };
   }
 
-  const invoiceId = input.invoiceId ?? `mock_inv_${input.payment.provider_payment_id ?? input.payment.id}`;
+  const invoiceId = input.invoiceId
+    ?? input.payment.stripe_invoice_id
+    ?? `mock_inv_${input.payment.stripe_checkout_session_id ?? input.payment.id}`;
   return {
     invoiceId,
     invoiceUrl: `${env.SITE_URL}/mock-invoice/${invoiceId}.pdf`,
@@ -265,7 +271,15 @@ export interface ContinuePaymentActionInfo {
 }
 
 interface PaymentSettlementInput {
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>;
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >;
   settlementSource: 'WEBHOOK' | 'ADMIN_UI' | 'SYSTEM';
   settledAt?: string;
   paymentIntentId?: string | null;
@@ -322,6 +336,49 @@ function paymentProviderUrl(payment: Pick<Payment, 'invoice_url' | 'checkout_url
 
 function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'> | null | undefined): string | null {
   return payment?.checkout_url ?? null;
+}
+
+function hasMockStripeIdentifier(values: Array<string | null | undefined>): boolean {
+  return values.some((value) => typeof value === 'string' && value.startsWith('mock_'));
+}
+
+function buildCheckoutSuccessUrl(siteUrl: string, bookingId: string): string {
+  return `${siteUrl}/payment-success.html?booking_id=${encodeURIComponent(bookingId)}&session_id={CHECKOUT_SESSION_ID}`;
+}
+
+function buildCheckoutCancelUrl(siteUrl: string, bookingId: string): string {
+  return `${siteUrl}/payment-cancel.html?booking_id=${encodeURIComponent(bookingId)}`;
+}
+
+function paymentEmailUrl(
+  input: {
+    booking: Pick<Booking, 'booking_type' | 'current_status' | 'id'>;
+    payment: Pick<Payment, 'invoice_url' | 'checkout_url' | 'status'> | null | undefined;
+    siteUrl: string;
+  },
+): { invoiceUrl: string | null; payUrl: string | null } {
+  const invoiceUrl = input.payment?.invoice_url ?? null;
+  if (invoiceUrl) {
+    return { invoiceUrl, payUrl: null };
+  }
+
+  const checkoutUrl = input.payment?.checkout_url ?? null;
+  if (checkoutUrl) {
+    return { invoiceUrl: null, payUrl: checkoutUrl };
+  }
+
+  if (
+    input.booking.booking_type === 'PAY_LATER'
+    && input.booking.current_status === 'CONFIRMED'
+    && isPaymentContinuableOnline(input.payment?.status ?? null)
+  ) {
+    return {
+      invoiceUrl: null,
+      payUrl: buildContinuePaymentUrl(input.siteUrl, input.booking as Booking),
+    };
+  }
+
+  return { invoiceUrl: null, payUrl: null };
 }
 
 function canContinuePayLaterPayment(
@@ -563,6 +620,8 @@ export async function createPayNowBooking(
     title: sessionType.title,
     price: commercialTerms.finalPrice,
     currency: commercialTerms.currency,
+    clientEmail: client.email,
+    clientName: [client.first_name, client.last_name].filter(Boolean).join(' ') || client.email,
   }, bookingCtx);
   await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'SUCCESS', null, bookingCtx);
 
@@ -779,6 +838,8 @@ async function createEventBookingInternal(
       title: input.event.title,
       price: commercialTerms.finalPrice,
       currency: commercialTerms.currency,
+      clientEmail: client.email,
+      clientName: [client.first_name, client.last_name].filter(Boolean).join(' ') || client.email,
     },
     bookingCtx,
   );
@@ -927,8 +988,21 @@ export async function confirmBookingEmail(
 // ── Payment success (webhook/dev) ──────────────────────────────────────────
 
 export async function confirmBookingPayment(
-  payment: { id: string; booking_id: string; provider_payment_id: string | null; status: PaymentStatus },
-  stripeData: { paymentIntentId: string | null; invoiceId: string | null; invoiceUrl: string | null },
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >,
+  stripeData: {
+    paymentIntentId: string | null;
+    invoiceId: string | null;
+    invoiceUrl: string | null;
+    rawPayload?: Record<string, unknown> | null;
+  },
   ctx: BookingContext,
 ): Promise<void> {
   await settleBookingPayment(
@@ -938,13 +1012,22 @@ export async function confirmBookingPayment(
       paymentIntentId: stripeData.paymentIntentId,
       invoiceId: stripeData.invoiceId,
       invoiceUrl: stripeData.invoiceUrl,
+      rawPayload: stripeData.rawPayload ?? null,
     },
     ctx,
   );
 }
 
 export async function settleBookingPaymentManually(
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>,
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >,
   input: {
     invoiceUrl?: string | null;
     invoiceId?: string | null;
@@ -984,7 +1067,9 @@ async function settleBookingPayment(
     context: {
       booking_id: input.payment.booking_id,
       payment_id: input.payment.id,
-      provider_payment_id: input.payment.provider_payment_id,
+      stripe_checkout_session_id: input.payment.stripe_checkout_session_id,
+      stripe_payment_intent_id: input.payment.stripe_payment_intent_id,
+      stripe_invoice_id: input.payment.stripe_invoice_id,
       payments_mode: ctx.env.PAYMENTS_MODE ?? null,
       invoice_id_from_input: input.invoiceId ?? null,
       invoice_url_from_input_present: Boolean(input.invoiceUrl),
@@ -999,12 +1084,11 @@ async function settleBookingPayment(
     status: 'SUCCEEDED',
     paid_at: settledAt,
     invoice_url: resolvedInvoice.invoiceUrl,
+    stripe_payment_intent_id: input.paymentIntentId ?? input.payment.stripe_payment_intent_id ?? null,
+    stripe_invoice_id: resolvedInvoice.invoiceId ?? input.payment.stripe_invoice_id ?? null,
     raw_payload: {
-      payment_intent_id: input.paymentIntentId ?? null,
-      invoice_id: resolvedInvoice.invoiceId,
-      provider_payment_id: input.payment.provider_payment_id,
-      settlement_source: input.settlementSource,
       ...(input.rawPayload ?? {}),
+      settlement_source: input.settlementSource,
     },
   });
 
@@ -1637,10 +1721,11 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
   const paymentSettledForEmail = isPaymentSettledStatus(payment?.status ?? null);
-  const payUrl = paymentMode === 'pay_later' && canContinuePayLaterPayment(booking, payment?.status ?? null)
-    ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
-    : null;
-  const invoiceUrl = payment?.invoice_url ?? null;
+  const paymentEmailLinks = paymentMode === 'pay_later'
+    ? paymentEmailUrl({ booking, payment, siteUrl: ctx.env.SITE_URL })
+    : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
+  const payUrl = paymentEmailLinks.payUrl;
+  const invoiceUrl = paymentEmailLinks.invoiceUrl;
   const paymentDueAt = isPayLaterPendingConfirmation
     ? getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours)
     : null;
@@ -1838,7 +1923,7 @@ export async function getBookingPublicActionInfoByPaymentSession(
   sessionId: string,
   ctx: BookingContext,
 ): Promise<BookingPublicActionInfo> {
-  const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
+  const payment = await ctx.providers.repository.getPaymentByStripeCheckoutSessionId(sessionId);
   if (!payment) throw notFound('Payment session not found');
 
   const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
@@ -3204,7 +3289,6 @@ async function ensurePayLaterPendingPaymentRecord(
   return ctx.providers.repository.createPayment({
     booking_id: booking.id,
     provider: 'stripe',
-    provider_payment_id: null,
     amount: Math.max(0, booking.price),
     currency: booking.currency || 'CHF',
     status: 'PENDING',
@@ -3214,6 +3298,11 @@ async function ensurePayLaterPendingPaymentRecord(
       bootstrap_source: bootstrapSource,
     },
     paid_at: null,
+    stripe_customer_id: null,
+    stripe_checkout_session_id: null,
+    stripe_payment_intent_id: null,
+    stripe_invoice_id: null,
+    stripe_payment_link_id: null,
   });
 }
 
@@ -3283,19 +3372,30 @@ async function ensurePayLaterInvoiceForBooking(
       currency: chargeable.currency || 'CHF',
       bookingId: booking.id,
       customerEmail: booking.client_email ?? '',
+      customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
+      existingStripeCustomerId: payment.stripe_customer_id,
+      dueDateIso: getPaymentDueAtIso(booking.starts_at, (await loadBookingPolicy(ctx)).paymentDueBeforeStartHours),
+      idempotencyKey: `booking:${booking.id}:pay-later-invoice`,
+      metadata: {
+        booking_id: booking.id,
+        booking_kind: booking.event_id ? 'event' : 'session',
+        payment_kind: 'pay_later',
+      },
     });
 
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
-      provider_payment_id: invoice.invoiceId,
       amount: invoice.amount,
       currency: invoice.currency,
       status: 'INVOICE_SENT',
       checkout_url: null,
       invoice_url: invoice.invoiceUrl,
+      stripe_customer_id: invoice.customerId,
+      stripe_payment_intent_id: invoice.paymentIntentId,
+      stripe_invoice_id: invoice.invoiceId,
+      stripe_payment_link_id: invoice.paymentLinkId,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
-        invoice_id: invoice.invoiceId,
-        invoice_url: invoice.invoiceUrl,
+        invoice_response: invoice.rawPayload ?? null,
         bootstrap_source: options.bootstrapSource,
         settlement_source: payment.raw_payload?.['settlement_source'] ?? null,
       },
@@ -3311,7 +3411,8 @@ async function ensurePayLaterInvoiceForBooking(
         session_type_id: booking.session_type_id,
         bootstrap_source: options.bootstrapSource,
         invoice_url_present: Boolean(invoice.invoiceUrl),
-        provider_payment_id: invoice.invoiceId,
+        stripe_invoice_id: invoice.invoiceId,
+        stripe_customer_id: invoice.customerId,
         payment_status_after: updatedPayment.status,
         branch_taken: 'created_invoice_for_pay_later_flow',
       },
@@ -3381,20 +3482,31 @@ async function ensureContinuePaymentUrlForBooking(
         },
       ],
       bookingId: booking.id,
-      successUrl: `${ctx.env.SITE_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${ctx.env.SITE_URL}/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+      customerEmail: booking.client_email ?? '',
+      customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
+      existingStripeCustomerId: payment.stripe_customer_id,
+      successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
+      cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+      idempotencyKey: `booking:${booking.id}:continue-payment-checkout`,
+      metadata: {
+        booking_id: booking.id,
+        booking_kind: booking.event_id ? 'event' : 'session',
+        payment_kind: 'pay_later_recovery',
+      },
     });
 
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
-      provider_payment_id: session.sessionId,
       amount: session.amount,
       currency: session.currency,
       status: 'PENDING',
       checkout_url: session.checkoutUrl,
       invoice_url: payment.invoice_url ?? null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
-        checkout_session_id: session.sessionId,
+        checkout_session_response: session.rawPayload ?? null,
         bootstrap_source: 'continue_payment',
         prior_payment_status: payment.status,
       },
@@ -3409,7 +3521,7 @@ async function ensureContinuePaymentUrlForBooking(
         payment_id: updatedPayment.id,
         prior_payment_status: payment.status,
         payment_status_after: updatedPayment.status,
-        provider_payment_id: updatedPayment.provider_payment_id,
+        stripe_checkout_session_id: updatedPayment.stripe_checkout_session_id,
         has_checkout_url: Boolean(updatedPayment.checkout_url),
         has_invoice_url: Boolean(updatedPayment.invoice_url),
         branch_taken: 'continue_payment_checkout_created',
@@ -3437,7 +3549,10 @@ async function ensureContinuePaymentUrlForBooking(
 
 async function ensureCheckoutForBooking(
   booking: Booking,
-  chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'>,
+  chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'> & {
+    clientEmail: string;
+    clientName?: string | null;
+  },
   ctx: BookingContext,
 ): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string | null }> {
   const policy = await loadBookingPolicy(ctx);
@@ -3465,22 +3580,56 @@ async function ensureCheckoutForBooking(
       },
     ],
     bookingId: booking.id,
-    successUrl: `${ctx.env.SITE_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${ctx.env.SITE_URL}/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+    customerEmail: chargeable.clientEmail,
+    customerName: chargeable.clientName ?? null,
+    existingStripeCustomerId: existing?.stripe_customer_id ?? null,
+    successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
+    cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+    idempotencyKey: `booking:${booking.id}:pay-now-checkout`,
+    metadata: {
+      booking_id: booking.id,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      payment_kind: 'pay_now',
+    },
   });
 
-  await ctx.providers.repository.createPayment({
-    booking_id: booking.id,
-    provider: 'stripe',
-    provider_payment_id: session.sessionId,
-    amount: session.amount,
-    currency: session.currency,
-    status: 'PENDING',
-    checkout_url: session.checkoutUrl,
-    invoice_url: null,
-    raw_payload: null,
-    paid_at: null,
-  });
+  if (existing) {
+    await ctx.providers.repository.updatePayment(existing.id, {
+      amount: session.amount,
+      currency: session.currency,
+      status: 'PENDING',
+      checkout_url: session.checkoutUrl,
+      invoice_url: null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
+      stripe_invoice_id: null,
+      stripe_payment_link_id: null,
+      raw_payload: {
+        ...(existing.raw_payload ?? {}),
+        checkout_session_response: session.rawPayload ?? null,
+      },
+    });
+  } else {
+    await ctx.providers.repository.createPayment({
+      booking_id: booking.id,
+      provider: 'stripe',
+      amount: session.amount,
+      currency: session.currency,
+      status: 'PENDING',
+      checkout_url: session.checkoutUrl,
+      invoice_url: null,
+      raw_payload: {
+        checkout_session_response: session.rawPayload ?? null,
+      },
+      paid_at: null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
+      stripe_invoice_id: null,
+      stripe_payment_link_id: null,
+    });
+  }
 
   const latestEvent = await ctx.providers.repository.getLatestBookingEvent(booking.id);
   const expiresAt = latestEvent
