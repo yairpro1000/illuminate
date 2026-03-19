@@ -34,11 +34,17 @@
 
   function ensureHeaderLogoutButton() {
     var id = 'admin-logout-button';
-    var existing = document.getElementById(id);
-    if (existing) return existing;
-
     var header = document.querySelector('.admin-header');
     if (!header) return null;
+
+    var existing = document.getElementById(id);
+    if (existing) {
+      if (!existing.dataset.logoutBound) {
+        existing.addEventListener('click', redirectToReLogin);
+        existing.dataset.logoutBound = 'true';
+      }
+      return existing;
+    }
 
     var button = document.createElement('button');
     button.id = id;
@@ -47,6 +53,7 @@
     button.textContent = 'Logout';
     button.title = 'Log out of Cloudflare Access and reopen the sign-in options';
     button.addEventListener('click', redirectToReLogin);
+    button.dataset.logoutBound = 'true';
 
     var themeToggle = document.getElementById('themeToggle');
     if (themeToggle && themeToggle.parentNode === header) {

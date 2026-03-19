@@ -51,4 +51,11 @@ describe('admin auth helpers', () => {
     expect(adminConfigHtml).toContain('<script src="js/admin-auth.js"></script>')
     expect(adminContactMessagesHtml).toContain('<script src="js/admin-auth.js"></script>')
   })
+
+  it('renders the logout button markup on all admin pages', () => {
+    expect(adminIndexHtml).toContain('id="admin-logout-button"')
+    expect(adminSessionTypesHtml).toContain('id="admin-logout-button"')
+    expect(adminConfigHtml).toContain('id="admin-logout-button"')
+    expect(adminContactMessagesHtml).toContain('id="admin-logout-button"')
+  })
 })
