@@ -22,6 +22,42 @@
     return root + '/cdn-cgi/access/login?returnTo=' + returnTo;
   }
 
+  function buildAccessLogoutUrl() {
+    var root = getRootApiBase();
+    var returnTo = encodeURIComponent(buildAccessLoginUrl());
+    return root + '/cdn-cgi/access/logout?returnTo=' + returnTo;
+  }
+
+  function redirectToReLogin() {
+    location.assign(buildAccessLogoutUrl());
+  }
+
+  function ensureHeaderLogoutButton() {
+    var id = 'admin-logout-button';
+    var existing = document.getElementById(id);
+    if (existing) return existing;
+
+    var header = document.querySelector('.admin-header');
+    if (!header) return null;
+
+    var button = document.createElement('button');
+    button.id = id;
+    button.type = 'button';
+    button.className = 'theme-toggle';
+    button.textContent = 'Logout';
+    button.title = 'Log out of Cloudflare Access and reopen the sign-in options';
+    button.addEventListener('click', redirectToReLogin);
+
+    var themeToggle = document.getElementById('themeToggle');
+    if (themeToggle && themeToggle.parentNode === header) {
+      header.insertBefore(button, themeToggle);
+    } else {
+      header.appendChild(button);
+    }
+
+    return button;
+  }
+
   function ensureBanner() {
     var id = 'admin-signin-banner';
     var el = document.getElementById(id);
@@ -104,7 +140,12 @@
   window.adminAuth = {
     getRootApiBase: getRootApiBase,
     buildAccessLoginUrl: buildAccessLoginUrl,
+    buildAccessLogoutUrl: buildAccessLogoutUrl,
+    redirectToReLogin: redirectToReLogin,
+    ensureHeaderLogoutButton: ensureHeaderLogoutButton,
     showSignIn: showSignIn,
     handleUnauthorized: handleUnauthorized,
   };
+
+  ensureHeaderLogoutButton();
 })();
