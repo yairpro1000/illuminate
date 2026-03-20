@@ -66,8 +66,10 @@ import {
 import {
   handleGetSessionTypes,
   handleAdminGetSessionTypes,
+  handleAdminGetSessionTypeDetail,
   handleAdminCreateSessionType,
   handleAdminUpdateSessionType,
+  handleAdminUpsertSessionTypeAvailabilityOverride,
 } from './handlers/session-types.js';
 
 export interface AppContext {
@@ -143,8 +145,10 @@ const ROUTES: Route[] = [
   route('POST', '/api/admin/config', handleAdminPatchConfig),
   route('POST', '/api/admin/upload-image', handleAdminUploadImage),
   route('GET', '/api/admin/session-types', handleAdminGetSessionTypes),
+  route('GET', '/api/admin/session-types/:id', handleAdminGetSessionTypeDetail),
   route('POST', '/api/admin/session-types', handleAdminCreateSessionType),
   route('PATCH', '/api/admin/session-types/:id', handleAdminUpdateSessionType),
+  route('PUT', '/api/admin/session-types/:id/availability-overrides/:weekStartDate', handleAdminUpsertSessionTypeAvailabilityOverride),
   route('POST', '/api/stripe/webhook', handleStripeWebhook, 'booking'),
   route('POST', '/api/jobs/:name', handleJobTrigger, 'booking'),
 

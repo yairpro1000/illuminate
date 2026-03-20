@@ -197,6 +197,8 @@ export interface Coupon {
 // ── Session types (offers) ─────────────────────────────────────────────────
 
 export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
+export type SessionTypeAvailabilityMode = 'shared_default' | 'dedicated';
+export type SessionTypeWeekOverrideMode = 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
 
 export interface SessionTypeRecord {
   id: string;
@@ -212,8 +214,53 @@ export interface SessionTypeRecord {
   image_key: string | null;
   drive_file_id: string | null;
   image_alt: string | null;
+  availability_mode: SessionTypeAvailabilityMode;
+  availability_timezone: string | null;
+  weekly_booking_limit: number | null;
+  slot_step_minutes: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SessionTypeAvailabilityWindow {
+  id: string;
+  session_type_id: string;
+  weekday_iso: number;
+  start_local_time: string;
+  end_local_time: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewSessionTypeAvailabilityWindow {
+  session_type_id: string;
+  weekday_iso: number;
+  start_local_time: string;
+  end_local_time: string;
+  sort_order: number;
+  active: boolean;
+}
+
+export interface SessionTypeWeekOverride {
+  session_type_id: string;
+  week_start_date: string;
+  mode: SessionTypeWeekOverrideMode;
+  override_weekly_booking_limit: number | null;
+  note: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewSessionTypeWeekOverride {
+  session_type_id: string;
+  week_start_date: string;
+  mode: SessionTypeWeekOverrideMode;
+  override_weekly_booking_limit: number | null;
+  note: string | null;
+  updated_by: string | null;
 }
 
 export type EventUpdate = Partial<Pick<Event,
@@ -254,6 +301,10 @@ export type SessionTypeUpdate = Partial<
     | 'image_key'
     | 'drive_file_id'
     | 'image_alt'
+    | 'availability_mode'
+    | 'availability_timezone'
+    | 'weekly_booking_limit'
+    | 'slot_step_minutes'
   >
 >;
 

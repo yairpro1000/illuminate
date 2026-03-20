@@ -265,6 +265,22 @@
       .thumb { width: 100%; max-width: 220px; height: auto; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
       .input-with-btn { display: flex; gap: 0.375rem; align-items: center; }
       .input-with-btn input { flex: 1; min-width: 0; }
+      .availability-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+      .availability-table { width: 100%; border-collapse: collapse; }
+      .availability-table th,
+      .availability-table td { padding: 0.5rem; border-bottom: 1px solid var(--color-border); }
+      .availability-table td input,
+      .availability-table td select { width: 100%; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--color-border);
+        border-radius: 999px;
+        padding: 0.2rem 0.55rem;
+        font-size: 0.75rem;
+        color: var(--color-text-muted);
+      }
+      .availability-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-top: 0.75rem; }
 
       /* ── Tabs ── */
       .tab-bar { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
@@ -445,6 +461,68 @@
             </div>
           </div>
         </div>
+        <section class="availability-section">
+          <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Availability</h2>
+          <div class="grid2">
+            <div class="col">
+              <label for="stFAvailabilityMode">Availability mode</label>
+              <select id="stFAvailabilityMode">
+                <option value="shared_default">Shared default</option>
+                <option value="dedicated">Dedicated</option>
+              </select>
+            </div>
+            <div class="col">
+              <label for="stFAvailabilityTimezone">Availability timezone</label>
+              <input id="stFAvailabilityTimezone" value="Europe/Zurich" />
+            </div>
+            <div class="col">
+              <label for="stFWeeklyLimit">Weekly booking limit</label>
+              <input id="stFWeeklyLimit" type="number" min="1" placeholder="Optional" />
+            </div>
+            <div class="col">
+              <label for="stFSlotStep">Slot step (minutes)</label>
+              <input id="stFSlotStep" type="number" min="1" placeholder="Default = duration" />
+            </div>
+          </div>
+          <div style="margin-top: 0.75rem;">
+            <label>Recurring windows</label>
+            <table class="availability-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Active</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="stWindowsBody"></tbody>
+            </table>
+            <div class="availability-actions">
+              <button id="stAddWindow" type="button" class="secondary">Add window</button>
+              <span class="muted">Dedicated offers generate bookable starts only inside these windows.</span>
+            </div>
+          </div>
+          <div id="stOverridesWrap" style="margin-top: 1rem;">
+            <div class="row" style="justify-content: space-between; align-items: center;">
+              <div class="col">
+                <label>Upcoming week overrides</label>
+                <div class="muted">Manual override takes precedence over the weekly limit for that week.</div>
+              </div>
+            </div>
+            <table class="availability-table" style="margin-top: 0.5rem;">
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th>Status</th>
+                  <th>Booked / Limit</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="stOverridesBody"></tbody>
+            </table>
+          </div>
+        </section>
         <div id="stEditMsg" class="status muted"></div>
         <div class="btnrow" style="margin-top: 0.625rem;">
           <button id="stClose" type="button" class="secondary">Close</button>

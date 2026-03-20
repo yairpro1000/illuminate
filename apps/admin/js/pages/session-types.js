@@ -4,11 +4,21 @@
   const R2_BASE = 'https://images.letsilluminate.co';
   const DRIVE_BASE = 'https://drive.google.com/file/d';
   const SESSION_TYPE_STATUSES = ['draft', 'active', 'hidden'];
+  const AVAILABILITY_MODES = ['shared_default', 'dedicated'];
+  const WEEKDAY_OPTIONS = [
+    { value: '1', label: 'Mon' },
+    { value: '2', label: 'Tue' },
+    { value: '3', label: 'Wed' },
+    { value: '4', label: 'Thu' },
+    { value: '5', label: 'Fri' },
+    { value: '6', label: 'Sat' },
+    { value: '7', label: 'Sun' },
+  ];
   const EVENT_STATUSES = ['draft', 'published', 'cancelled', 'sold_out'];
 
   const state = {
     tab: 'session-types',
-    stRows: [], stSearch: '', stEditing: null, stSaving: false, stUploading: false,
+    stRows: [], stSearch: '', stEditing: null, stSaving: false, stUploading: false, stLoadingDetail: false,
     evRows: [], evSearch: '', evEditing: null, evSaving: false, evUploading: false,
   };
 
@@ -85,6 +95,35 @@
     return Array.isArray(items) ? items.join('\n') : '';
   }
 
+  function normalizeAvailabilityState(source) {
+    const input = source && typeof source === 'object' ? source : {};
+    const windows = Array.isArray(input.windows) ? input.windows : [];
+    const upcomingWeeks = Array.isArray(input.upcoming_weeks) ? input.upcoming_weeks : [];
+    return {
+      mode: AVAILABILITY_MODES.includes(input.mode) ? input.mode : 'shared_default',
+      timezone: input.timezone || input.availability_timezone || 'Europe/Zurich',
+      weekly_booking_limit: input.weekly_booking_limit == null || input.weekly_booking_limit === '' ? null : Number(input.weekly_booking_limit),
+      slot_step_minutes: input.slot_step_minutes == null || input.slot_step_minutes === '' ? null : Number(input.slot_step_minutes),
+      windows: windows.map((row, index) => ({
+        weekday_iso: Number(row.weekday_iso) || 1,
+        start_local_time: String(row.start_local_time || '09:00:00').slice(0, 5),
+        end_local_time: String(row.end_local_time || '10:00:00').slice(0, 5),
+        sort_order: Number.isInteger(Number(row.sort_order)) ? Number(row.sort_order) : index,
+        active: row.active !== false,
+      })),
+      upcoming_weeks: upcomingWeeks,
+    };
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   const stView = document.getElementById('stView');
   const evView = document.getElementById('evView');
   const newBtn = document.getElementById('newBtn');
@@ -124,7 +163,7 @@
   });
 
   newBtn.addEventListener('click', () => {
-    if (state.tab === 'session-types') openST(null);
+    if (state.tab === 'session-types') void openST(null);
     else openEV(null);
   });
 
@@ -146,9 +185,97 @@
   const stFDriveId = document.getElementById('stFDriveId');
   const stImgMsg = document.getElementById('stImgMsg');
   const stImgPreview = document.getElementById('stImgPreview');
+  const stFAvailabilityMode = document.getElementById('stFAvailabilityMode');
+  const stFAvailabilityTimezone = document.getElementById('stFAvailabilityTimezone');
+  const stFWeeklyLimit = document.getElementById('stFWeeklyLimit');
+  const stFSlotStep = document.getElementById('stFSlotStep');
+  const stWindowsBody = document.getElementById('stWindowsBody');
+  const stOverridesWrap = document.getElementById('stOverridesWrap');
+  const stOverridesBody = document.getElementById('stOverridesBody');
   const stSaveBtn = document.getElementById('stSave');
 
   setStatusOptions(stFStatus, SESSION_TYPE_STATUSES);
+  setStatusOptions(stFAvailabilityMode, AVAILABILITY_MODES);
+
+  function ensureAvailability() {
+    if (!state.stEditing.availability) {
+      state.stEditing.availability = normalizeAvailabilityState({});
+    }
+    return state.stEditing.availability;
+  }
+
+  function renderAvailabilityWindows() {
+    const availability = ensureAvailability();
+    stWindowsBody.innerHTML = '';
+    if (!availability.windows.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="5" class="muted">No windows configured.</td>';
+      stWindowsBody.appendChild(tr);
+      return;
+    }
+
+    availability.windows.forEach((windowRow, index) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <select data-window-field="weekday_iso" data-window-index="${index}">
+            ${WEEKDAY_OPTIONS.map((option) => `<option value="${option.value}"${String(windowRow.weekday_iso) === option.value ? ' selected' : ''}>${option.label}</option>`).join('')}
+          </select>
+        </td>
+        <td><input data-window-field="start_local_time" data-window-index="${index}" type="time" value="${escapeHtml(String(windowRow.start_local_time || '').slice(0, 5))}" /></td>
+        <td><input data-window-field="end_local_time" data-window-index="${index}" type="time" value="${escapeHtml(String(windowRow.end_local_time || '').slice(0, 5))}" /></td>
+        <td><input data-window-field="active" data-window-index="${index}" type="checkbox"${windowRow.active ? ' checked' : ''} /></td>
+        <td><button type="button" class="secondary" data-remove-window="${index}">Remove</button></td>
+      `;
+      stWindowsBody.appendChild(tr);
+    });
+  }
+
+  function weekStatusPill(week) {
+    const label = week.mode === 'FORCE_CLOSED'
+      ? 'Closed'
+      : week.mode === 'FORCE_OPEN'
+        ? 'Force open'
+        : (week.effective_weekly_booking_limit == null ? 'Auto' : `Auto · limit ${week.effective_weekly_booking_limit}`);
+    return `<span class="pill">${escapeHtml(label)}</span>`;
+  }
+
+  function formatWeekCapacity(week) {
+    if (week.effective_weekly_booking_limit == null) {
+      return `${week.active_booking_count} / unbounded`;
+    }
+    return `${week.active_booking_count} / ${week.effective_weekly_booking_limit}`;
+  }
+
+  function renderAvailabilityOverrides() {
+    const availability = ensureAvailability();
+    stOverridesBody.innerHTML = '';
+    if (!state.stEditing.id) {
+      stOverridesBody.innerHTML = '<tr><td colspan="4" class="muted">Save the session type first to manage week overrides.</td></tr>';
+      return;
+    }
+    if (!availability.upcoming_weeks.length) {
+      stOverridesBody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming weeks loaded.</td></tr>';
+      return;
+    }
+    availability.upcoming_weeks.forEach((week) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(week.week_start_date)}</td>
+        <td>${weekStatusPill(week)}</td>
+        <td>${escapeHtml(formatWeekCapacity(week))}</td>
+        <td>
+          <div class="row">
+            <button type="button" class="secondary" data-override-week="${escapeHtml(week.week_start_date)}" data-override-mode="FORCE_CLOSED">Close</button>
+            <button type="button" class="secondary" data-override-week="${escapeHtml(week.week_start_date)}" data-override-mode="FORCE_OPEN">Open</button>
+            <button type="button" class="secondary" data-override-week="${escapeHtml(week.week_start_date)}" data-override-mode="AUTO">Auto</button>
+            <button type="button" class="secondary" data-override-limit="${escapeHtml(week.week_start_date)}">Custom limit</button>
+          </div>
+        </td>
+      `;
+      stOverridesBody.appendChild(tr);
+    });
+  }
 
   function renderST() {
     stBody.innerHTML = '';
@@ -174,7 +301,7 @@
       tr.appendChild(cell(`${r.duration_minutes} min`));
       tr.appendChild(cell(r.status));
       tr.appendChild(cell(String(r.sort_order || 0)));
-      tr.addEventListener('click', () => openST(r));
+      tr.addEventListener('click', () => { void openST(r); });
       stBody.appendChild(tr);
     }
   }
@@ -191,11 +318,21 @@
     }
   }
 
-  function openST(row) {
-    state.stEditing = row ? { ...row } : {
+  function hydrateSessionTypeEditor(detail, fallbackRow) {
+    const sessionType = detail && detail.session_type ? detail.session_type : fallbackRow;
+    const availabilitySource = detail && detail.availability ? detail.availability : fallbackRow;
+    state.stEditing = sessionType ? {
+      ...sessionType,
+      availability: normalizeAvailabilityState(availabilitySource),
+    } : {
       title: '', slug: '', short_description: '', description: '', duration_minutes: 60, price: 0, currency: 'CHF',
       status: SESSION_TYPE_STATUSES[0], sort_order: 0, image_key: null, image_alt: null, drive_file_id: null,
+      availability_mode: 'shared_default', availability_timezone: 'Europe/Zurich', weekly_booking_limit: null, slot_step_minutes: null,
+      availability: normalizeAvailabilityState({ timezone: 'Europe/Zurich' }),
     };
+  }
+
+  function syncSessionTypeEditorFields() {
     stFTitle.value = state.stEditing.title || '';
     stFSlug.value = state.stEditing.slug || '';
     stFShort.value = state.stEditing.short_description || '';
@@ -208,6 +345,11 @@
     stFAlt.value = state.stEditing.image_alt || '';
     stFImageKey.value = state.stEditing.image_key || '';
     stFDriveId.value = state.stEditing.drive_file_id || '';
+    const availability = ensureAvailability();
+    stFAvailabilityMode.value = availability.mode;
+    stFAvailabilityTimezone.value = availability.timezone || 'Europe/Zurich';
+    stFWeeklyLimit.value = availability.weekly_booking_limit == null ? '' : String(availability.weekly_booking_limit);
+    stFSlotStep.value = availability.slot_step_minutes == null ? '' : String(availability.slot_step_minutes);
     if (state.stEditing.url) {
       stImgPreview.src = state.stEditing.url;
       stImgPreview.classList.remove('hidden');
@@ -218,10 +360,31 @@
       stImgPreview.classList.add('hidden');
     }
     stFImage.value = '';
+    renderAvailabilityWindows();
+    renderAvailabilityOverrides();
+  }
+
+  async function openST(row) {
+    hydrateSessionTypeEditor(null, row);
+    syncSessionTypeEditorFields();
     msg(stEditMsg, '');
     msg(stImgMsg, '');
     stOverlay.classList.remove('hidden');
     stOverlay.setAttribute('aria-hidden', 'false');
+    if (row && row.id) {
+      state.stLoadingDetail = true;
+      msg(stEditMsg, 'Loading availability…');
+      try {
+        const detail = await api(`/admin/session-types/${encodeURIComponent(row.id)}`);
+        hydrateSessionTypeEditor(detail, row);
+        syncSessionTypeEditorFields();
+        msg(stEditMsg, '');
+      } catch (e) {
+        msg(stEditMsg, String(e), true);
+      } finally {
+        state.stLoadingDetail = false;
+      }
+    }
   }
 
   function closeST() {
@@ -230,17 +393,28 @@
   }
 
   async function saveST() {
-    if (state.stSaving) return;
+    if (state.stSaving || state.stLoadingDetail) return;
     state.stSaving = true;
     stSaveBtn.disabled = true;
     msg(stEditMsg, 'Saving...');
     try {
+      const availability = ensureAvailability();
       state.stEditing.image_key = stFImageKey.value.trim() || null;
       state.stEditing.drive_file_id = stFDriveId.value.trim() || null;
       const priceRaw = String(stFPrice.value ?? '').trim();
       const price = priceRaw === '' ? 0 : Number(priceRaw);
       if (!Number.isFinite(price) || price < 0) {
         throw new Error('Price must be a non-negative number.');
+      }
+      const weeklyLimitRaw = String(stFWeeklyLimit.value || '').trim();
+      const slotStepRaw = String(stFSlotStep.value || '').trim();
+      const weeklyLimit = weeklyLimitRaw ? Number(weeklyLimitRaw) : null;
+      const slotStep = slotStepRaw ? Number(slotStepRaw) : null;
+      if (weeklyLimit != null && (!Number.isInteger(weeklyLimit) || weeklyLimit <= 0)) {
+        throw new Error('Weekly limit must be a positive integer.');
+      }
+      if (slotStep != null && (!Number.isInteger(slotStep) || slotStep <= 0)) {
+        throw new Error('Slot step must be a positive integer.');
       }
       const payload = {
         title: stFTitle.value.trim(),
@@ -255,6 +429,19 @@
         image_key: state.stEditing.image_key,
         image_alt: stFAlt.value.trim() || null,
         drive_file_id: state.stEditing.drive_file_id,
+        availability: {
+          mode: stFAvailabilityMode.value,
+          timezone: stFAvailabilityTimezone.value.trim() || 'Europe/Zurich',
+          weekly_booking_limit: weeklyLimit,
+          slot_step_minutes: slotStep,
+          windows: availability.windows.map((window, index) => ({
+            weekday_iso: Number(window.weekday_iso) || 1,
+            start_local_time: String(window.start_local_time || '').slice(0, 5),
+            end_local_time: String(window.end_local_time || '').slice(0, 5),
+            sort_order: index,
+            active: window.active !== false,
+          })),
+        },
       };
       if (state.stEditing.id) {
         await api(`/admin/session-types/${encodeURIComponent(state.stEditing.id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
@@ -303,8 +490,89 @@
     }
   }
 
+  async function upsertWeekOverride(weekStartDate, mode, overrideWeeklyLimit) {
+    if (!state.stEditing || !state.stEditing.id) return;
+    msg(stEditMsg, 'Saving override...');
+    try {
+      const data = await api(
+        `/admin/session-types/${encodeURIComponent(state.stEditing.id)}/availability-overrides/${encodeURIComponent(weekStartDate)}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            mode,
+            override_weekly_booking_limit: overrideWeeklyLimit,
+          }),
+        },
+      );
+      const availability = ensureAvailability();
+      const nextWeeks = availability.upcoming_weeks.slice();
+      const index = nextWeeks.findIndex((week) => week.week_start_date === weekStartDate);
+      if (data.week_summary) {
+        if (index >= 0) nextWeeks[index] = data.week_summary;
+        else nextWeeks.push(data.week_summary);
+      }
+      availability.upcoming_weeks = nextWeeks;
+      renderAvailabilityOverrides();
+      msg(stEditMsg, 'Override saved.');
+    } catch (e) {
+      msg(stEditMsg, String(e), true);
+    }
+  }
+
   document.getElementById('stClose').addEventListener('click', closeST);
   stSaveBtn.addEventListener('click', () => { void saveST(); });
+  document.getElementById('stAddWindow').addEventListener('click', () => {
+    const availability = ensureAvailability();
+    availability.windows.push({
+      weekday_iso: 4,
+      start_local_time: '11:00',
+      end_local_time: '13:00',
+      sort_order: availability.windows.length,
+      active: true,
+    });
+    renderAvailabilityWindows();
+  });
+  stWindowsBody.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!target || !target.dataset) return;
+    const index = Number(target.dataset.windowIndex);
+    if (!Number.isInteger(index) || !state.stEditing || !state.stEditing.availability || !state.stEditing.availability.windows[index]) return;
+    const row = state.stEditing.availability.windows[index];
+    if (target.dataset.windowField === 'weekday_iso') row.weekday_iso = Number(target.value) || 1;
+    if (target.dataset.windowField === 'start_local_time') row.start_local_time = target.value;
+    if (target.dataset.windowField === 'end_local_time') row.end_local_time = target.value;
+    if (target.dataset.windowField === 'active') row.active = Boolean(target.checked);
+  });
+  stWindowsBody.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-window]');
+    if (!button || !state.stEditing || !state.stEditing.availability) return;
+    const index = Number(button.dataset.removeWindow);
+    if (!Number.isInteger(index)) return;
+    state.stEditing.availability.windows.splice(index, 1);
+    renderAvailabilityWindows();
+  });
+  stOverridesBody.addEventListener('click', (event) => {
+    const overrideButton = event.target.closest('[data-override-week]');
+    if (overrideButton) {
+      void upsertWeekOverride(
+        overrideButton.dataset.overrideWeek,
+        overrideButton.dataset.overrideMode,
+        null,
+      );
+      return;
+    }
+    const limitButton = event.target.closest('[data-override-limit]');
+    if (!limitButton) return;
+    const weekStartDate = limitButton.dataset.overrideLimit;
+    const raw = window.prompt(`Set custom weekly limit for ${weekStartDate}`, '3');
+    if (raw == null) return;
+    const limit = Number(raw);
+    if (!Number.isInteger(limit) || limit <= 0) {
+      msg(stEditMsg, 'Custom limit must be a positive integer.', true);
+      return;
+    }
+    void upsertWeekOverride(weekStartDate, 'AUTO', limit);
+  });
   stFImage.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) void uploadSTImage(f);

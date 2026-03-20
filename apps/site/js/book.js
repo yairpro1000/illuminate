@@ -177,7 +177,14 @@ async function refreshSlots() {
   const future = new Date();
   future.setMonth(future.getMonth() + SLOT_WINDOW_MONTHS);
   const to = toYMD(future);
-  const data = await getSlots(from, to, CTX.slotType);
+  const data = await getSlots(
+    from,
+    to,
+    CTX.slotType,
+    SITE_CONFIG.timezone || 'Europe/Zurich',
+    CTX.offerSlug || '',
+    S.selectedSessionType && S.selectedSessionType.id ? S.selectedSessionType.id : '',
+  );
   const nextSlots = Array.isArray(data.slots) ? data.slots : [];
   S.slots = nextSlots;
   S.slotsByDate = {};
@@ -642,12 +649,6 @@ async function init() {
   }
 
   if (CTX.source !== 'evening') {
-    try {
-      await refreshSlots();
-    } catch (err) {
-      console.error('[Book] Failed to load slots:', err);
-    }
-
     if (loadSessionTypes) {
       try {
         const data = await loadSessionTypes();
@@ -661,6 +662,12 @@ async function init() {
       } catch (err) {
         console.error('[Book] Failed to load session types:', err);
       }
+    }
+
+    try {
+      await refreshSlots();
+    } catch (err) {
+      console.error('[Book] Failed to load slots:', err);
     }
 
     const now = new Date();

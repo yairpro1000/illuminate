@@ -28,7 +28,11 @@ import type {
   PaymentUpdate,
   TimeSlot,
   SessionTypeRecord,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   NewSessionType,
+  NewSessionTypeAvailabilityWindow,
+  NewSessionTypeWeekOverride,
   SessionTypeUpdate,
   SystemSetting,
   NewSystemSetting,
@@ -304,6 +308,32 @@ export class SupabaseRepository implements IRepository {
       'Failed to count client session bookings in range',
     );
 
+    return rows.length;
+  }
+
+  async countActiveSessionTypeBookingsInRange(
+    sessionTypeId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+    options?: { excludeBookingId?: string | null },
+  ): Promise<number> {
+    let query = this.db
+      .from('bookings')
+      .select('id')
+      .eq('session_type_id', sessionTypeId)
+      .is('event_id', null)
+      .not('current_status', 'in', '(EXPIRED,CANCELED)')
+      .gte('starts_at', startInclusiveIso)
+      .lt('starts_at', endExclusiveIso);
+
+    if (options?.excludeBookingId) {
+      query = query.neq('id', options.excludeBookingId);
+    }
+
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      query,
+      'Failed to count active session-type bookings in range',
+    );
     return rows.length;
   }
 
@@ -1076,6 +1106,19 @@ export class SupabaseRepository implements IRepository {
     return rows.map((row) => normalizeSessionTypeRow(row));
   }
 
+  async getSessionTypeById(id: string): Promise<SessionTypeRecord | null> {
+    const row = await maybeSingle<SessionTypeRecord>(
+      this.db
+        .from('session_types')
+        .select('*')
+        .eq('id', id)
+        .limit(1)
+        .maybeSingle(),
+      `Failed to load session type ${id}`,
+    );
+    return row ? normalizeSessionTypeRow(row) : null;
+  }
+
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
       this.db
@@ -1099,6 +1142,74 @@ export class SupabaseRepository implements IRepository {
       `Failed to update session type ${id}`,
     );
     return normalizeSessionTypeRow(row);
+  }
+
+  async listSessionTypeAvailabilityWindows(sessionTypeId: string): Promise<SessionTypeAvailabilityWindow[]> {
+    return requireData<SessionTypeAvailabilityWindow[]>(
+      this.db
+        .from('session_type_availability_windows')
+        .select('*')
+        .eq('session_type_id', sessionTypeId)
+        .order('weekday_iso', { ascending: true })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      `Failed to load session-type availability windows for ${sessionTypeId}`,
+    );
+  }
+
+  async replaceSessionTypeAvailabilityWindows(
+    sessionTypeId: string,
+    windows: NewSessionTypeAvailabilityWindow[],
+  ): Promise<SessionTypeAvailabilityWindow[]> {
+    await requireData(
+      this.db
+        .from('session_type_availability_windows')
+        .delete()
+        .eq('session_type_id', sessionTypeId),
+      `Failed to clear session-type availability windows for ${sessionTypeId}`,
+    );
+
+    if (windows.length === 0) {
+      return [];
+    }
+
+    return requireData<SessionTypeAvailabilityWindow[]>(
+      this.db
+        .from('session_type_availability_windows')
+        .insert(windows)
+        .select('*')
+        .order('weekday_iso', { ascending: true })
+        .order('sort_order', { ascending: true }),
+      `Failed to replace session-type availability windows for ${sessionTypeId}`,
+    );
+  }
+
+  async listSessionTypeWeekOverrides(
+    sessionTypeId: string,
+    weekStartDateFrom: string,
+    weekStartDateTo: string,
+  ): Promise<SessionTypeWeekOverride[]> {
+    return requireData<SessionTypeWeekOverride[]>(
+      this.db
+        .from('session_type_week_overrides')
+        .select('*')
+        .eq('session_type_id', sessionTypeId)
+        .gte('week_start_date', weekStartDateFrom)
+        .lte('week_start_date', weekStartDateTo)
+        .order('week_start_date', { ascending: true }),
+      `Failed to load session-type week overrides for ${sessionTypeId}`,
+    );
+  }
+
+  async upsertSessionTypeWeekOverride(data: NewSessionTypeWeekOverride): Promise<SessionTypeWeekOverride> {
+    return requireSingle<SessionTypeWeekOverride>(
+      this.db
+        .from('session_type_week_overrides')
+        .upsert(data, { onConflict: 'session_type_id,week_start_date' })
+        .select('*')
+        .single(),
+      `Failed to upsert session-type week override for ${data.session_type_id} ${data.week_start_date}`,
+    );
   }
 
   async listSystemSettings(): Promise<SystemSetting[]> {

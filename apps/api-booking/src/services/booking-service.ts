@@ -44,6 +44,11 @@ import {
 import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
 import { computePaymentDueReminderTime } from './reminder-service.js';
 import { recordSideEffectAttempts } from './side-effect-attempts.js';
+import {
+  assertSessionTypeWeekCapacityAvailable,
+  localWeekRangeForSlot,
+  resolvePublicSessionTypeForBooking,
+} from './session-availability.js';
 
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
@@ -66,15 +71,6 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
 const MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK = 2;
 const MAX_INTRO_SESSIONS_PER_CLIENT = 1;
 const INTRO_SESSION_REBOOK_EXCLUDED_STATUSES: readonly BookingCurrentStatus[] = ['CANCELED', 'EXPIRED', 'NO_SHOW'];
-const LOCAL_WEEKDAY_INDEX: Record<string, number> = {
-  Mon: 0,
-  Tue: 1,
-  Wed: 2,
-  Thu: 3,
-  Fri: 4,
-  Sat: 5,
-  Sun: 6,
-};
 
 export interface BookingContext {
   providers: Providers;
@@ -392,85 +388,6 @@ function canContinuePayLaterPayment(
     && isPaymentContinuableOnline(paymentStatus ?? null);
 }
 
-function localDateString(iso: string, timezone: string): { date: string; weekdayIndex: number } {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    weekday: 'short',
-  }).formatToParts(new Date(iso));
-
-  const year = parts.find((part) => part.type === 'year')?.value ?? '2000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
-  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? 'Mon';
-
-  return {
-    date: `${year}-${month}-${day}`,
-    weekdayIndex: LOCAL_WEEKDAY_INDEX[weekday] ?? 0,
-  };
-}
-
-function shiftIsoDate(date: string, days: number): string {
-  const shifted = new Date(`${date}T12:00:00Z`);
-  shifted.setUTCDate(shifted.getUTCDate() + days);
-  return shifted.toISOString().slice(0, 10);
-}
-
-function getUtcOffsetMinutes(timezone: string, date: Date): number {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-    second: 'numeric',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(date);
-  const get = (type: string) => parseInt(parts.find((part) => part.type === type)?.value ?? '0', 10);
-  const localHour = get('hour');
-  const localMs = Date.UTC(
-    get('year'),
-    get('month') - 1,
-    get('day'),
-    localHour === 24 ? 0 : localHour,
-    get('minute'),
-    get('second'),
-  );
-  return (localMs - date.getTime()) / 60000;
-}
-
-function localDateTimeToIso(date: string, hour: number, minute: number, timezone: string): string {
-  const reference = new Date(`${date}T12:00:00Z`);
-  const offsetMinutes = getUtcOffsetMinutes(timezone, reference);
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absHours = Math.floor(Math.abs(offsetMinutes) / 60);
-  const absMinutes = Math.abs(offsetMinutes) % 60;
-
-  return `${date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00${sign}${String(absHours).padStart(2, '0')}:${String(absMinutes).padStart(2, '0')}`;
-}
-
-function localWeekRangeForSlot(slotStartIso: string, timezone: string): {
-  weekStartDate: string;
-  weekEndExclusiveDate: string;
-  startInclusiveIso: string;
-  endExclusiveIso: string;
-} {
-  const local = localDateString(slotStartIso, timezone);
-  const weekStartDate = shiftIsoDate(local.date, -local.weekdayIndex);
-  const weekEndExclusiveDate = shiftIsoDate(weekStartDate, 7);
-
-  return {
-    weekStartDate,
-    weekEndExclusiveDate,
-    startInclusiveIso: localDateTimeToIso(weekStartDate, 0, 0, timezone),
-    endExclusiveIso: localDateTimeToIso(weekEndExclusiveDate, 0, 0, timezone),
-  };
-}
-
 async function assertClientWithinWeeklySessionLimit(
   input: {
     clientId: string;
@@ -637,7 +554,17 @@ export async function createPayNowBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind('session', providers, input.offerSlug ?? null);
+  const sessionType = await resolvePublicSessionTypeForBooking(providers.repository, {
+    kind: 'session',
+    offerSlug: input.offerSlug ?? null,
+  });
+  await assertSessionTypeWeekCapacityAvailable(
+    providers.repository,
+    sessionType,
+    input.slotStart,
+    sessionType.availability_timezone?.trim() || input.timezone || env.TIMEZONE,
+    ctx.logger,
+  );
   await assertClientWithinWeeklySessionLimit({
     clientId: client.id,
     slotStart: input.slotStart,
@@ -719,7 +646,17 @@ export async function createPayLaterBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind(input.sessionType, providers, input.offerSlug ?? null);
+  const sessionType = await resolvePublicSessionTypeForBooking(providers.repository, {
+    kind: input.sessionType,
+    offerSlug: input.offerSlug ?? null,
+  });
+  await assertSessionTypeWeekCapacityAvailable(
+    providers.repository,
+    sessionType,
+    input.slotStart,
+    sessionType.availability_timezone?.trim() || input.timezone || env.TIMEZONE,
+    ctx.logger,
+  );
   if (input.sessionType === 'intro') {
     await assertClientCanBookIntroSession({
       clientId: client.id,
@@ -1502,6 +1439,19 @@ export async function rescheduleBooking(
   await assertSlotAvailable(input.newStart, input.newEnd, ctx.providers, {
     ignoreInterval: { start: booking.starts_at, end: booking.ends_at },
   });
+  if (booking.session_type_id) {
+    const sessionType = await ctx.providers.repository.getSessionTypeById(booking.session_type_id);
+    if (sessionType) {
+      await assertSessionTypeWeekCapacityAvailable(
+        ctx.providers.repository,
+        sessionType,
+        input.newStart,
+        sessionType.availability_timezone?.trim() || input.timezone || ctx.env.TIMEZONE,
+        ctx.logger,
+        { excludeBookingId: booking.id },
+      );
+    }
+  }
 
   const updated = await ctx.providers.repository.updateBooking(booking.id, {
     starts_at: input.newStart,
@@ -3246,31 +3196,6 @@ async function sendCalendarReservationFailureAlert(
 function toSyncFailureReason(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return String(error);
-}
-
-async function resolveSessionTypeForKind(
-  kind: 'intro' | 'session',
-  providers: Providers,
-  offerSlug: string | null = null,
-): Promise<SessionTypeRecord> {
-  const all = await providers.repository.getPublicSessionTypes();
-  if (all.length === 0) {
-    throw badRequest('No active session types configured');
-  }
-
-  const introCandidate = all.find((row) => row.slug.includes('intro') || row.price === 0);
-  const explicitOffer = offerSlug && kind === 'session'
-    ? all.find((row) => row.slug === offerSlug)
-    : null;
-  const paidCandidate = all.find((row) => row.id !== introCandidate?.id) ?? all[0];
-
-  const selected = kind === 'intro'
-    ? (introCandidate ?? all[0])
-    : (explicitOffer ?? paidCandidate ?? all[0]);
-  if (!selected) {
-    throw badRequest('Unable to resolve session type');
-  }
-  return selected;
 }
 
 async function inferPaymentModeForBooking(

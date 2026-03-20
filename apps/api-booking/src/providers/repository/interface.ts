@@ -32,8 +32,12 @@ import type {
   SessionTypeRecord,
   EventUpdate,
   NewSessionType,
+  NewSessionTypeAvailabilityWindow,
+  NewSessionTypeWeekOverride,
   NewSystemSetting,
   SessionTypeUpdate,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   SystemSetting,
   SystemSettingUpdate,
   TimeSlot,
@@ -87,6 +91,12 @@ export interface IRepository {
     clientId: string,
     startInclusiveIso: string,
     endExclusiveIso: string,
+  ): Promise<number>;
+  countActiveSessionTypeBookingsInRange(
+    sessionTypeId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+    options?: { excludeBookingId?: string | null },
   ): Promise<number>;
 
   /** Returns start/end intervals that should currently block booking slots. */
@@ -176,8 +186,20 @@ export interface IRepository {
 
   getPublicSessionTypes(): Promise<SessionTypeRecord[]>;
   getAllSessionTypes(): Promise<SessionTypeRecord[]>;
+  getSessionTypeById(id: string): Promise<SessionTypeRecord | null>;
   createSessionType(data: NewSessionType): Promise<SessionTypeRecord>;
   updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord>;
+  listSessionTypeAvailabilityWindows(sessionTypeId: string): Promise<SessionTypeAvailabilityWindow[]>;
+  replaceSessionTypeAvailabilityWindows(
+    sessionTypeId: string,
+    windows: NewSessionTypeAvailabilityWindow[],
+  ): Promise<SessionTypeAvailabilityWindow[]>;
+  listSessionTypeWeekOverrides(
+    sessionTypeId: string,
+    weekStartDateFrom: string,
+    weekStartDateTo: string,
+  ): Promise<SessionTypeWeekOverride[]>;
+  upsertSessionTypeWeekOverride(data: NewSessionTypeWeekOverride): Promise<SessionTypeWeekOverride>;
 
   // ── System settings ─────────────────────────────────────────────────────
 

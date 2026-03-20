@@ -9,7 +9,7 @@ import {
   rescheduleBooking,
 } from '../src/services/booking-service.js';
 import { runSideEffectsOutbox } from '../src/handlers/jobs.js';
-import { MockRepository } from '../src/providers/repository/mock.js';
+import { MockRepository, resetMockSessionTypesForTests } from '../src/providers/repository/mock.js';
 import { MockEmailProvider } from '../src/providers/email/mock.js';
 import { MockCalendarProvider } from '../src/providers/calendar/mock.js';
 import { RetryableCalendarWriteError } from '../src/providers/calendar/interface.js';
@@ -20,6 +20,7 @@ import { mockState } from '../src/providers/mock-state.js';
 const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }));
 
 function resetMockState() {
+  resetMockSessionTypesForTests();
   mockState.clients.clear();
   mockState.bookings.clear();
   mockState.events.clear();
@@ -30,6 +31,8 @@ function resetMockState() {
   mockState.eventReminderSubscriptions.clear();
   mockState.contactMessages.clear();
   mockState.payments.clear();
+  mockState.sessionTypeAvailabilityWindows.clear();
+  mockState.sessionTypeWeekOverrides.clear();
   mockState.sentEmails.length = 0;
   mockState.bookingEvents.length = 0;
   mockState.sideEffects.length = 0;
@@ -454,6 +457,93 @@ describe('booking domain model', () => {
           existing_active_session_count: 2,
           attempted_session_count: 3,
           deny_reason: 'max_2_sessions_per_local_week_reached',
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects an intro booking when the session-type weekly cap is reached and logs the deny branch', async () => {
+    const ctx = makeCtx();
+    await ctx.providers.repository.updateSessionType('mock-st-1', {
+      availability_mode: 'dedicated',
+      availability_timezone: 'Europe/Zurich',
+      weekly_booking_limit: 3,
+      slot_step_minutes: 30,
+    });
+    await ctx.providers.repository.replaceSessionTypeAvailabilityWindows('mock-st-1', [
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 4,
+        start_local_time: '11:00:00',
+        end_local_time: '13:00:00',
+        sort_order: 0,
+        active: true,
+      },
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 4,
+        start_local_time: '16:00:00',
+        end_local_time: '19:00:00',
+        sort_order: 1,
+        active: true,
+      },
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 5,
+        start_local_time: '11:00:00',
+        end_local_time: '16:00:00',
+        sort_order: 2,
+        active: true,
+      },
+    ]);
+
+    for (const [email, start, end] of [
+      ['intro-cap-1@example.com', '2026-03-26T11:00:00+01:00', '2026-03-26T11:45:00+01:00'],
+      ['intro-cap-2@example.com', '2026-03-26T16:00:00+01:00', '2026-03-26T16:45:00+01:00'],
+      ['intro-cap-3@example.com', '2026-03-27T11:00:00+01:00', '2026-03-27T11:45:00+01:00'],
+    ]) {
+      await createPayLaterBooking({
+        slotStart: start,
+        slotEnd: end,
+        timezone: 'Europe/Zurich',
+        sessionType: 'intro',
+        clientName: 'Intro Cap',
+        clientEmail: email,
+        clientPhone: '+41000000200',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      }, ctx);
+    }
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-03-27T12:00:00+01:00',
+      slotEnd: '2026-03-27T12:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Cap',
+      clientEmail: 'intro-cap-4@example.com',
+      clientPhone: '+41000000201',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'SESSION_TYPE_WEEK_CAP_REACHED',
+      message: 'This offer has reached its weekly booking limit for the selected week.',
+    });
+
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'session_type_week_capacity_check_completed',
+        context: expect.objectContaining({
+          session_type_id: 'mock-st-1',
+          branch_taken: 'deny_session_type_week_limit_reached',
+          effective_weekly_limit: 3,
+          active_booking_count: 3,
+          deny_reason: 'session_type_week_limit_reached',
         }),
       }),
     ]);

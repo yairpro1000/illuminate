@@ -1,171 +1,171 @@
 import type { AppContext } from '../router.js';
 import { badRequest, internalError, jsonResponse } from '../lib/errors.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
+import { listAvailableSessionTypeSlots } from '../services/session-availability.js';
 
-// ── Slot rules ────────────────────────────────────────────────────────────────
-
-// Intro conversation (30 min) — possible start hours
-const INTRO_STARTS = [9, 10, 11, 12, 14, 15, 16, 17, 18, 19];
-const INTRO_DURATION_MS = 30 * 60 * 1000;
-
-// Other sessions (60–90 min) — use 90 min for conflict detection, Mon–Fri only
-const SESSION_STARTS = [9, 11, 14, 16, 18];
-const SESSION_DURATION_MS = 90 * 60 * 1000;
 type SlotType = 'intro' | 'session';
 
-// ── Handler ───────────────────────────────────────────────────────────────────
+function requireIsoDate(value: string | null, fieldName: string): string {
+  if (!value) throw badRequest(`${fieldName} query param is required`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw badRequest(`${fieldName} must be YYYY-MM-DD`);
+  }
+  return value;
+}
+
+function resolveSlotType(raw: string | null): SlotType {
+  if (!raw) throw badRequest('type query param is required');
+  if (raw !== 'intro' && raw !== 'session') {
+    throw badRequest('type must be "intro" or "session"');
+  }
+  return raw;
+}
 
 export async function handleGetSlots(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const from = requireIsoDate(url.searchParams.get('from'), 'from');
+  const to = requireIsoDate(url.searchParams.get('to'), 'to');
+  const tz = url.searchParams.get('tz') ?? ctx.env.TIMEZONE ?? 'Europe/Zurich';
+  const slotType = resolveSlotType(url.searchParams.get('type'));
+  const offerSlug = url.searchParams.get('offer_slug')?.trim() || null;
+  const sessionTypeId = url.searchParams.get('session_type_id')?.trim() || null;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'session_type_availability_request_started',
+    message: 'Started public session availability request',
+    context: {
+      path,
+      request_id: ctx.requestId,
+      from,
+      to,
+      requested_timezone: tz,
+      requested_slot_type: slotType,
+      offer_slug: offerSlug,
+      session_type_id: sessionTypeId,
+      branch_taken: 'load_public_session_type_availability',
+      deny_reason: null,
+    },
+  });
+
   try {
     const policy = await getBookingPolicyConfig(ctx.providers.repository);
-    const url      = new URL(request.url);
-    const from     = url.searchParams.get('from');
-    const to       = url.searchParams.get('to');
-    const tz       = url.searchParams.get('tz') ?? ctx.env.TIMEZONE ?? 'Europe/Zurich';
-    const typeParam = url.searchParams.get('type');
+    const [busyTimes, heldSlots] = await Promise.all([
+      ctx.providers.calendar.getBusyTimes(from, to).catch((error) => {
+        ctx.logger.logWarn?.({
+          source: 'backend',
+          eventType: 'session_type_availability_dependency_failed',
+          message: error instanceof Error ? error.message : String(error),
+          context: {
+            path,
+            request_id: ctx.requestId,
+            dependency: 'calendar',
+            branch_taken: 'deny_calendar_busy_times_unavailable',
+            deny_reason: 'calendar_unavailable',
+          },
+        });
+        throw internalError('Calendar temporarily unavailable');
+      }),
+      ctx.providers.repository.getHeldSlots(from, to).catch((error) => {
+        ctx.logger.logWarn?.({
+          source: 'backend',
+          eventType: 'session_type_availability_dependency_failed',
+          message: error instanceof Error ? error.message : String(error),
+          context: {
+            path,
+            request_id: ctx.requestId,
+            dependency: 'repository',
+            branch_taken: 'deny_held_slots_unavailable',
+            deny_reason: 'repository_unavailable',
+          },
+        });
+        throw internalError('Calendar temporarily unavailable');
+      }),
+    ]);
 
-    if (!from || !to) throw badRequest('from and to query params are required');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-      throw badRequest('from and to must be YYYY-MM-DD');
+    const result = await listAvailableSessionTypeSlots(ctx.providers.repository, {
+      from,
+      to,
+      kind: slotType,
+      requestedTimezone: tz,
+      fallbackTimezone: ctx.env.TIMEZONE ?? tz,
+      offerSlug,
+      sessionTypeId,
+      busyTimes,
+      heldSlots,
+      slotLeadTimeHours: policy.slotLeadTimeHours,
+    });
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'session_type_availability_request_completed',
+      message: 'Completed public session availability request',
+      context: {
+        path,
+        request_id: ctx.requestId,
+        from,
+        to,
+        requested_timezone: tz,
+        effective_timezone: result.timezone,
+        requested_slot_type: slotType,
+        session_type_id: result.sessionType.id,
+        session_type_slug: result.sessionType.slug,
+        availability_mode: result.sessionType.availability_mode,
+        weekly_booking_limit: result.sessionType.weekly_booking_limit,
+        returned_slot_count: result.slots.length,
+        branch_taken: result.slots.length > 0
+          ? 'return_session_type_slots'
+          : 'return_empty_session_type_slots',
+        deny_reason: null,
+      },
+    });
+
+    return jsonResponse({
+      ok: true,
+      timezone: result.timezone,
+      session_type_id: result.sessionType.id,
+      session_type_slug: result.sessionType.slug,
+      slots: result.slots,
+    });
+  } catch (error) {
+    if (error instanceof Error && 'statusCode' in error) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'session_type_availability_request_failed',
+        message: error.message,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          from,
+          to,
+          requested_timezone: tz,
+          requested_slot_type: slotType,
+          offer_slug: offerSlug,
+          session_type_id: sessionTypeId,
+          branch_taken: 'propagate_api_error_to_shared_wrapper',
+          deny_reason: (error as { code?: string }).code ?? 'unknown_api_error',
+        },
+      });
+    } else {
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'uncaught_exception',
+        message: 'Session availability request failed unexpectedly',
+        error,
+        context: {
+          path,
+          request_id: ctx.requestId,
+          from,
+          to,
+          requested_timezone: tz,
+          requested_slot_type: slotType,
+          offer_slug: offerSlug,
+          session_type_id: sessionTypeId,
+          branch_taken: 'unexpected_session_type_availability_failure',
+        },
+      });
     }
-    if (!typeParam) throw badRequest('type query param is required');
-    if (typeParam !== 'intro' && typeParam !== 'session') {
-      throw badRequest('type must be "intro" or "session"');
-    }
-    const slotType = typeParam as SlotType;
-
-    console.log('slots request', { from, to, tz, type: slotType });
-
-    let busyTimes: Array<{ start: string; end: string }>;
-    try {
-      busyTimes = await ctx.providers.calendar.getBusyTimes(from, to);
-    } catch (err) {
-      console.error('slots: calendar unavailable', err instanceof Error ? err.message : String(err));
-      throw internalError('Calendar temporarily unavailable');
-    }
-
-    let heldSlots: Array<{ start: string; end: string }>;
-    try {
-      heldSlots = await ctx.providers.repository.getHeldSlots(from, to);
-    } catch (err) {
-      console.error('slots: repository unavailable', err instanceof Error ? err.message : String(err));
-      throw internalError('Calendar temporarily unavailable');
-    }
-
-    const allBusy = [...busyTimes, ...heldSlots];
-
-    // Generate candidate slots for every weekday in the range
-    const slots: Array<{ type: SlotType; start: string; end: string }> = [];
-    const cur = new Date(from + 'T12:00:00Z');
-    const end = new Date(to   + 'T12:00:00Z');
-
-    while (cur <= end) {
-      const dow = cur.getUTCDay();
-      if (dow !== 0 && dow !== 6) { // Mon–Fri only
-        const ymd = cur.toISOString().slice(0, 10);
-
-        if (slotType === 'intro') {
-          for (const h of INTRO_STARTS) {
-            addCandidate('intro', ymd, h, INTRO_DURATION_MS, tz, allBusy, slots, policy.slotLeadTimeHours);
-          }
-        } else {
-          for (const h of SESSION_STARTS) {
-            addCandidate('session', ymd, h, SESSION_DURATION_MS, tz, allBusy, slots, policy.slotLeadTimeHours);
-          }
-        }
-      }
-      cur.setUTCDate(cur.getUTCDate() + 1);
-    }
-
-    // Sort chronologically (ISO strings sort correctly within the same offset)
-    slots.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-
-    return jsonResponse({ ok: true, timezone: tz, slots });
-  } catch (err) {
-    throw err;
+    throw error;
   }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function addCandidate(
-  type:       SlotType,
-  ymd:        string,
-  h:          number,
-  durationMs: number,
-  tz:         string,
-  allBusy:    Array<{ start: string; end: string }>,
-  out:        Array<{ type: SlotType; start: string; end: string }>,
-  slotLeadTimeHours: number,
-): void {
-  const startIso = localTimeToISO(ymd, h, 0, tz);
-  const startMs  = new Date(startIso).getTime();
-  const endMs    = startMs + durationMs;
-
-  if (startMs < Date.now() + slotLeadTimeHours * 60 * 60 * 1000) {
-    return;
-  }
-
-  const overlaps = allBusy.some(b => {
-    const bStart = new Date(b.start).getTime();
-    const bEnd   = new Date(b.end).getTime();
-    return startMs < bEnd && endMs > bStart;
-  });
-
-  if (!overlaps) {
-    out.push({ type, start: startIso, end: new Date(endMs).toISOString() });
-  }
-}
-
-/**
- * Returns the UTC offset in minutes for the given IANA timezone at the given UTC instant.
- * Uses Intl.DateTimeFormat to read the wall-clock time and compute the difference.
- */
-function getUtcOffsetMinutes(tz: string, date: Date): number {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year:     'numeric',
-    month:    'numeric',
-    day:      'numeric',
-    hour:     'numeric',
-    minute:   'numeric',
-    second:   'numeric',
-    hour12:   false,
-  });
-  const parts = fmt.formatToParts(date);
-  const get = (type: string) =>
-    parseInt(parts.find(p => p.type === type)!.value, 10);
-
-  const h = get('hour');
-  const localMs = Date.UTC(
-    get('year'),
-    get('month') - 1,
-    get('day'),
-    h === 24 ? 0 : h, // hour12:false can yield 24 at midnight
-    get('minute'),
-    get('second'),
-  );
-  return (localMs - date.getTime()) / 60000;
-}
-
-/**
- * Converts a local wall-clock time (YYYY-MM-DD HH:00) in the given IANA timezone
- * to an ISO 8601 string with the explicit UTC offset, e.g. "2026-03-20T09:00:00+01:00".
- *
- * Uses the noon-of-day UTC instant as the reference for offset lookup, which is
- * safely away from any DST boundary (Europe/Zurich transitions happen at 02:00/03:00).
- */
-function localTimeToISO(dateStr: string, h: number, m: number, tz: string): string {
-  const refDate   = new Date(`${dateStr}T12:00:00Z`);
-  const offsetMin = getUtcOffsetMinutes(tz, refDate);
-
-  const sign  = offsetMin >= 0 ? '+' : '-';
-  const absH  = Math.floor(Math.abs(offsetMin) / 60);
-  const absM  = Math.abs(offsetMin) % 60;
-
-  return `${dateStr}T${pad(h)}:${pad(m)}:00${sign}${pad(absH)}:${pad(absM)}`;
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, '0');
 }

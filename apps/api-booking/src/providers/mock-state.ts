@@ -14,6 +14,8 @@ import type {
   EventLateAccessLink,
   EventReminderSubscription,
   Payment,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   SystemSetting,
 } from '../types.js';
 
@@ -45,6 +47,8 @@ export const mockState = {
   contactMessages: new Map<string, ContactMessage>(),
   payments: new Map<string, Payment>(),
   systemSettings: new Map<string, SystemSetting>(),
+  sessionTypeAvailabilityWindows: new Map<string, SessionTypeAvailabilityWindow[]>(),
+  sessionTypeWeekOverrides: new Map<string, SessionTypeWeekOverride>(),
   sentEmails: [] as SentEmail[],
   // booking audit/events recorded by the mock repository
   bookingEvents: [] as BookingEventRecord[],

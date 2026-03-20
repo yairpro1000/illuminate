@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { handleGetSlots } from '../src/handlers/slots.js';
-import { MockRepository } from '../src/providers/repository/mock.js';
+import { MockRepository, resetMockSessionTypesForTests } from '../src/providers/repository/mock.js';
 import { mockState } from '../src/providers/mock-state.js';
 import {
   applyBookingPolicyOverridesForTests,
@@ -22,6 +22,7 @@ const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }
 const seededSystemSettings = [...mockState.systemSettings.values()].map((setting) => ({ ...setting }));
 
 function resetMockState(): void {
+  resetMockSessionTypesForTests();
   mockState.clients.clear();
   mockState.bookings.clear();
   mockState.events.clear();
@@ -33,6 +34,8 @@ function resetMockState(): void {
   mockState.contactMessages.clear();
   mockState.payments.clear();
   mockState.systemSettings.clear();
+  mockState.sessionTypeAvailabilityWindows.clear();
+  mockState.sessionTypeWeekOverrides.clear();
   for (const setting of seededSystemSettings) {
     mockState.systemSettings.set(setting.keyname, { ...setting });
   }
@@ -156,5 +159,90 @@ describe('booking policy config', () => {
 
     expect(res.status).toBe(200);
     expect(body.slots).toEqual([]);
+  });
+
+  it('closes remaining dedicated intro slots for a week once the weekly limit is reached', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-24T08:00:00.000Z'));
+    const ctx = makeCtx({
+      providers: {
+        calendar: { getBusyTimes: async () => [] },
+      } as any,
+    });
+    await ctx.providers.repository.updateSessionType('mock-st-1', {
+      availability_mode: 'dedicated',
+      availability_timezone: 'Europe/Zurich',
+      weekly_booking_limit: 3,
+      slot_step_minutes: 30,
+    });
+    await ctx.providers.repository.replaceSessionTypeAvailabilityWindows('mock-st-1', [
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 4,
+        start_local_time: '11:00:00',
+        end_local_time: '13:00:00',
+        sort_order: 0,
+        active: true,
+      },
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 5,
+        start_local_time: '11:00:00',
+        end_local_time: '16:00:00',
+        sort_order: 1,
+        active: true,
+      },
+    ]);
+
+    for (const [index, start, end] of [
+      ['1', '2026-03-26T11:00:00+01:00', '2026-03-26T11:45:00+01:00'],
+      ['2', '2026-03-26T12:00:00+01:00', '2026-03-26T12:45:00+01:00'],
+      ['3', '2026-03-26T16:00:00+01:00', '2026-03-26T16:45:00+01:00'],
+    ]) {
+      await ctx.providers.repository.createClient({
+        first_name: `Intro${index}`,
+        last_name: 'Cap',
+        email: `slot-cap-${index}@example.com`,
+        phone: null,
+      });
+      const client = await ctx.providers.repository.getClientByEmail(`slot-cap-${index}@example.com`);
+      await ctx.providers.repository.createBooking({
+        client_id: client.id,
+        event_id: null,
+        session_type_id: 'mock-st-1',
+        booking_type: 'FREE',
+        starts_at: start,
+        ends_at: end,
+        timezone: 'Europe/Zurich',
+        google_event_id: null,
+        meeting_provider: null,
+        meeting_link: null,
+        address_line: 'Somewhere 1, Zurich',
+        maps_url: 'https://maps.example',
+        price: 0,
+        currency: 'CHF',
+        coupon_code: null,
+        current_status: 'PENDING',
+        notes: null,
+      });
+    }
+
+    const res = await handleGetSlots(
+      new Request('https://api.local/api/slots?from=2026-03-27&to=2026-03-27&tz=Europe%2FZurich&type=intro'),
+      ctx,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.session_type_id).toBe('mock-st-1');
+    expect(body.slots).toEqual([]);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'session_type_availability_request_completed',
+      context: expect.objectContaining({
+        session_type_id: 'mock-st-1',
+        availability_mode: 'dedicated',
+        branch_taken: 'return_empty_session_type_slots',
+      }),
+    }));
   });
 });
