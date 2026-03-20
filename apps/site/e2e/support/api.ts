@@ -58,6 +58,42 @@ export interface PublicSlot {
   end: string;
 }
 
+export interface AdminSessionTypeAvailabilityWindow {
+  id: string;
+  session_type_id: string;
+  weekday_iso: number;
+  start_local_time: string;
+  end_local_time: string;
+  sort_order: number;
+  active: boolean;
+}
+
+export interface AdminSessionTypeWeekSummary {
+  week_start_date: string;
+  week_end_exclusive_date: string;
+  mode: 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
+  override_weekly_booking_limit: number | null;
+  effective_weekly_booking_limit: number | null;
+  active_booking_count: number;
+  remaining_capacity: number | null;
+  branch_taken: string;
+  deny_reason: string | null;
+  note: string | null;
+  updated_by: string | null;
+}
+
+export interface AdminSessionTypeDetail {
+  session_type: Record<string, any>;
+  availability: {
+    mode: 'shared_default' | 'dedicated';
+    timezone: string;
+    weekly_booking_limit: number | null;
+    slot_step_minutes: number | null;
+    windows: AdminSessionTypeAvailabilityWindow[];
+    upcoming_weeks: AdminSessionTypeWeekSummary[];
+  };
+}
+
 export interface CapturedEmailSummary {
   id: string;
   to: string;
@@ -183,42 +219,60 @@ async function adminJson<T>(path: string, init?: RequestInit): Promise<T> {
   return apiJson<T>(path, { ...init, headers });
 }
 
-export async function getSlots(from: string, to: string, type: 'intro' | 'session', tz = 'Europe/Zurich'): Promise<PublicSlot[]> {
+export async function getSlots(
+  from: string,
+  to: string,
+  type: 'intro' | 'session',
+  tz = 'Europe/Zurich',
+  options?: { offerSlug?: string; sessionTypeId?: string },
+): Promise<PublicSlot[]> {
   const params = new URLSearchParams({ from, to, type, tz });
+  if (options?.offerSlug) params.set('offer_slug', options.offerSlug);
+  if (options?.sessionTypeId) params.set('session_type_id', options.sessionTypeId);
   const data = await apiJson<{ slots: PublicSlot[] }>(`/api/slots?${params.toString()}`);
   return Array.isArray(data.slots) ? data.slots : [];
 }
 
-export async function createPayNowBookingForSlot(slot: PublicSlot, email: string): Promise<{ booking_id: string; checkout_url: string | null; checkout_hold_expires_at: string | null }> {
+export async function createPayNowBookingForSlot(
+  slot: PublicSlot,
+  email: string,
+  options?: { offerSlug?: string },
+): Promise<{ booking_id: string; checkout_url: string | null; checkout_hold_expires_at: string | null }> {
   return apiJson('/api/bookings/pay-now', {
     method: 'POST',
     body: JSON.stringify({
       slot_start: slot.start,
       slot_end: slot.end,
       type: slot.type,
+      offer_slug: options?.offerSlug || null,
       timezone: 'Europe/Zurich',
       first_name: 'P4',
       last_name: 'E2E',
       client_email: email,
       client_phone: '+41790000000',
-      turnstile_token: 'test_turnstile_ok',
+      turnstile_token: 'ok',
     }),
   });
 }
 
-export async function createPayLaterBookingForSlot(slot: PublicSlot, email: string): Promise<{ booking_id: string; status: string }> {
+export async function createPayLaterBookingForSlot(
+  slot: PublicSlot,
+  email: string,
+  options?: { offerSlug?: string },
+): Promise<{ booking_id: string; status: string }> {
   return apiJson('/api/bookings/pay-later', {
     method: 'POST',
     body: JSON.stringify({
       slot_start: slot.start,
       slot_end: slot.end,
       type: slot.type,
+      offer_slug: options?.offerSlug || null,
       timezone: 'Europe/Zurich',
       first_name: 'P4',
       last_name: 'E2E',
       client_email: email,
       client_phone: '+41790000000',
-      turnstile_token: 'test_turnstile_ok',
+      turnstile_token: 'ok',
     }),
   });
 }
@@ -331,6 +385,21 @@ export async function createAdminSessionType(input: {
       drive_file_id: null,
     }),
   });
+}
+
+export async function updateAdminSessionType(
+  id: string,
+  patch: Record<string, unknown>,
+): Promise<Record<string, any>> {
+  const data = await adminJson<{ session_type: Record<string, any> }>(`/api/admin/session-types/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+  return data.session_type;
+}
+
+export async function getAdminSessionTypeDetail(id: string): Promise<AdminSessionTypeDetail> {
+  return adminJson<AdminSessionTypeDetail>(`/api/admin/session-types/${encodeURIComponent(id)}`);
 }
 
 export async function ensureAdminServiceMode(key: ServiceKey, mode: string): Promise<void> {
