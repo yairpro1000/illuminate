@@ -4,6 +4,7 @@ import {
   clickFirstAvailableSlot,
   ensureAntiBotMock,
   ensureEmailMock,
+  ensurePaymentsMock,
   expectManageStatus,
   fillContactDetails,
   getEvents,
@@ -71,6 +72,7 @@ test.describe('P4 core booking flows', () => {
   test.beforeAll(async () => {
     await ensureEmailMock();
     await ensureAntiBotMock();
+    await ensurePaymentsMock();
   });
 
   test('free intro flow confirms, manage link opens, slot disappears, cancel returns slot', async ({ page }, testInfo) => {
@@ -169,6 +171,51 @@ test.describe('P4 core booking flows', () => {
     const paidArtifacts = await waitForBookingArtifacts(email);
     expect(paidArtifacts.payment?.session_id).toBeTruthy();
     expect(['CONFIRMED', 'COMPLETED']).toContain(paidArtifacts.booking.status);
+  });
+
+  test('paid 1:1 pay-now booking can be cancelled from manage after mock payment success', async ({ page }, testInfo) => {
+    const runtime = attachRuntimeMonitor(page);
+    const email = makeScenarioEmail('p4-pay-now-cancel');
+
+    await page.goto(`${SITE_BASE_URL}/sessions.html`);
+    await page.locator('a.btn[href*="book.html?type=session&offer="]').first().click();
+    await expect(page).toHaveURL(/\/book(?:\.html)?\?type=session/);
+
+    let checkpoint = runtime.checkpoint();
+    const chosenSlot = await clickFirstAvailableSlot(page);
+    await fillContactDetails(page, {
+      firstName: 'P4',
+      lastName: 'PayNowCancel',
+      email,
+      phone: '+41790000000',
+    });
+    await page.locator('[data-payment="pay-now"]').click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('.step-eyebrow')).toContainText('Review your booking');
+    await expect(page.locator('.review-table')).toContainText(chosenSlot.timeLabel);
+    await expect(page.locator('button[data-submit]')).toContainText('Proceed to Payment');
+    await page.locator('button[data-submit]').click();
+    await page.waitForURL(/\/dev-pay\?session_id=/);
+    await page.locator('#btn-success').click();
+    await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
+    await expect(page.locator('.result-title')).toContainText(/Payment confirmed!|Payment received/);
+    await runtime.assertNoNewIssues(checkpoint, 'pay-now-session-cancel-success', testInfo);
+
+    const paidArtifacts = await expectManageStatus(email, 'CONFIRMED');
+    expect(paidArtifacts.payment?.session_id).toBeTruthy();
+
+    checkpoint = runtime.checkpoint();
+    await page.goto(paidArtifacts.links.manage_url);
+    await expect(page.locator('#cancel-btn')).toBeVisible();
+    await page.locator('#cancel-btn').click();
+    await page.locator('#cancel-yes').click();
+    await expectInlineMockEmailPreview(page, {
+      title: 'Cancelled',
+      frameText: 'Your session has been cancelled.',
+    });
+    await runtime.assertNoNewIssues(checkpoint, 'pay-now-manage-cancel', testInfo);
+
+    await expectManageStatus(email, 'CANCELED');
   });
 
   test('free evening registration confirms through tokenized flow', async ({ page }, testInfo) => {

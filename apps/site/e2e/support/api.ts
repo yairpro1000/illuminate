@@ -356,6 +356,10 @@ export async function ensureAntiBotMock(): Promise<void> {
   await ensureAdminServiceMode('antibot', 'mock');
 }
 
+export async function ensurePaymentsMock(): Promise<void> {
+  await ensureAdminServiceMode('payments', 'mock');
+}
+
 export async function listCapturedEmails(): Promise<CapturedEmailSummary[]> {
   const data = await apiJson<{ emails: CapturedEmailSummary[] }>('/api/__dev/emails');
   return Array.isArray(data.emails) ? data.emails : [];
