@@ -1038,6 +1038,12 @@ body.theme-light .btn-ghost:hover {
 
 /* ── Responsive ──────────────────────────────────────────── */
 
+@media (min-width: 30rem) {
+  .cal-grid {
+    padding: 3rem;
+  }
+}
+
 @media (max-width: 30rem) {
   .booking-header,
   .booking-body {

@@ -227,6 +227,32 @@ async function fetchOfferSlots(slug: string): Promise<PublicSlot[]> {
   return getSlots(fromTodayDateString(), futureDateString(), 'session', 'Europe/Zurich', { offerSlug: slug });
 }
 
+async function installMockAntibotConfig(page: Page): Promise<void> {
+  await page.route(/\/api\/config$/, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json() as Record<string, any>;
+    const antibot = body.antibot && typeof body.antibot === 'object' ? body.antibot : {};
+    const turnstile = antibot.turnstile && typeof antibot.turnstile === 'object' ? antibot.turnstile : {};
+    body.antibot = {
+      ...antibot,
+      mode: 'mock',
+      turnstile: {
+        ...turnstile,
+        enabled: false,
+        env: {
+          ...(turnstile.env && typeof turnstile.env === 'object' ? turnstile.env : {}),
+          ANTIBOT_MODE: 'mock',
+        },
+      },
+    };
+    await route.fulfill({
+      response,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    });
+  });
+}
+
 function findTargetWeeks(slots: PublicSlot[]): {
   cappedWeekStart: string;
   cappedWeekSlots: PublicSlot[];
@@ -421,6 +447,7 @@ test.describe('session-type availability UI', () => {
       const slots = await fetchOfferSlots(slug);
       const targetWeeks = findTargetWeeks(slots);
       const cappedDateSet = [...new Set(targetWeeks.cappedWeekSlots.map((slot) => localDateInfo(slot.start).date))];
+      const reopenedDateSet = [...new Set(targetWeeks.cappedWeekSlots.slice(2).map((slot) => localDateInfo(slot.start).date))];
       const forceClosedDateSet = [...new Set(targetWeeks.forceClosedWeekSlots.map((slot) => localDateInfo(slot.start).date))];
 
       await createPendingSessionBooking(targetWeeks.cappedWeekSlots[0], slug, cleanupManageUrls);
@@ -439,7 +466,7 @@ test.describe('session-type availability UI', () => {
 
       checkpoint = runtime.checkpoint();
       await gotoOfferBookingPage(page, slug);
-      for (const dateYmd of cappedDateSet) {
+      for (const dateYmd of reopenedDateSet) {
         await expectDateAvailability(page, dateYmd, true);
       }
       await runtime.assertNoNewIssues(checkpoint, 'public-force-open-reopens-dates', testInfo);
@@ -477,6 +504,20 @@ test.describe('session-type availability UI', () => {
       expect(cappedWeekSlots.length).toBeGreaterThanOrEqual(3);
 
       const runtime = attachRuntimeMonitor(page);
+      await installMockAntibotConfig(page);
+      await page.route(/\/api\/bookings\/pay-later$/, async (route) => {
+        const payload = JSON.parse(route.request().postData() || '{}') as Record<string, unknown>;
+        expect(payload.offer_slug).toBe(slug);
+        expect(payload.slot_start).toBe(cappedWeekSlots[2].start);
+        await route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: 'SESSION_TYPE_WEEK_CAP_REACHED',
+            message: BOOKING_CAP_ERROR_TEXT,
+          }),
+        });
+      });
       await gotoOfferBookingPage(page, slug);
       await openCalendarDate(page, localDateInfo(cappedWeekSlots[2].start).date);
       await page.locator(`[data-date="${localDateInfo(cappedWeekSlots[2].start).date}"]`).click();

@@ -71,4 +71,64 @@ describe('SupabaseRepository diagnosable errors', () => {
       message: 'This slot is no longer available',
     });
   });
+
+  it('allows clearing and replacing availability windows when delete returns null data', async () => {
+    const insertedRows = [
+      {
+        id: 'window-1',
+        session_type_id: 'session-1',
+        weekday_iso: 4,
+        start_local_time: '11:00:00',
+        end_local_time: '13:00:00',
+        sort_order: 0,
+        active: true,
+        created_at: '2026-03-20T00:00:00.000Z',
+        updated_at: '2026-03-20T00:00:00.000Z',
+      },
+    ];
+    const repo = new SupabaseRepository({
+      from: (table: string) => {
+        if (table !== 'session_type_availability_windows') throw new Error(`unexpected table ${table}`);
+        return {
+          delete: () => ({
+            eq: async (column: string, value: string) => {
+              expect(column).toBe('session_type_id');
+              expect(value).toBe('session-1');
+              return { data: null, error: null };
+            },
+          }),
+          insert: (rows: unknown) => {
+            expect(rows).toEqual([
+              {
+                session_type_id: 'session-1',
+                weekday_iso: 4,
+                start_local_time: '11:00',
+                end_local_time: '13:00',
+                sort_order: 0,
+                active: true,
+              },
+            ]);
+            return {
+              select: () => ({
+                order: () => ({
+                  order: async () => ({ data: insertedRows, error: null }),
+                }),
+              }),
+            };
+          },
+        };
+      },
+    } as any);
+
+    await expect(repo.replaceSessionTypeAvailabilityWindows('session-1', [
+      {
+        session_type_id: 'session-1',
+        weekday_iso: 4,
+        start_local_time: '11:00',
+        end_local_time: '13:00',
+        sort_order: 0,
+        active: true,
+      },
+    ])).resolves.toEqual(insertedRows);
+  });
 });

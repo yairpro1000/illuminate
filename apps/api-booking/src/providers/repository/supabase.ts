@@ -1161,7 +1161,7 @@ export class SupabaseRepository implements IRepository {
     sessionTypeId: string,
     windows: NewSessionTypeAvailabilityWindow[],
   ): Promise<SessionTypeAvailabilityWindow[]> {
-    await requireData(
+    await requireMutation(
       this.db
         .from('session_type_availability_windows')
         .delete()
@@ -1377,6 +1377,14 @@ async function requireData<T>(
   if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
   if (data === null) throw new Error(message);
   return data;
+}
+
+async function requireMutation(
+  promise: PromiseLike<{ error: QueryError | null }>,
+  message: string,
+): Promise<void> {
+  const { error } = await promise;
+  if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
 }
 
 interface QueryError {

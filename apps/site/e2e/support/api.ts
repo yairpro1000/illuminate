@@ -368,7 +368,7 @@ export async function createAdminSessionType(input: {
   status?: string;
   sort_order?: number;
 }): Promise<Record<string, any>> {
-  return adminJson('/api/admin/session-types', {
+  const data = await adminJson<{ session_type: Record<string, any> }>('/api/admin/session-types', {
     method: 'POST',
     body: JSON.stringify({
       title: input.title,
@@ -385,6 +385,7 @@ export async function createAdminSessionType(input: {
       drive_file_id: null,
     }),
   });
+  return data.session_type;
 }
 
 export async function updateAdminSessionType(
