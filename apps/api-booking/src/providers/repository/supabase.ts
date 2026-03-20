@@ -2,6 +2,7 @@ import type { Db } from '../../repo/supabase.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import type {
   Booking,
+  BookingCurrentStatus,
   BookingEventRecord,
   BookingSideEffect,
   BookingSideEffectAttempt,
@@ -259,6 +260,30 @@ export class SupabaseRepository implements IRepository {
       `Failed to update booking ${id}`,
     );
     return this.requireBookingById(id);
+  }
+
+  async countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number> {
+    let query = this.db
+      .from('bookings')
+      .select('id')
+      .eq('client_id', clientId)
+      .is('event_id', null)
+      .eq('session_type_id', sessionTypeId);
+
+    if (excludedStatuses.length > 0) {
+      query = query.not('current_status', 'in', `(${excludedStatuses.join(',')})`);
+    }
+
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      query,
+      'Failed to count client bookings by session type',
+    );
+
+    return rows.length;
   }
 
   async countClientActiveSessionBookingsInRange(

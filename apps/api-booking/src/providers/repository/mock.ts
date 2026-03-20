@@ -2,6 +2,7 @@ import { mockState } from '../mock-state.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import type {
   Booking,
+  BookingCurrentStatus,
   BookingEventRecord,
   BookingSideEffect,
   BookingSideEffectAttempt,
@@ -158,6 +159,25 @@ export class MockRepository implements IRepository {
     };
     mockState.bookings.set(id, updated);
     return this.hydrateBooking(updated);
+  }
+
+  async countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number> {
+    const excluded = new Set(excludedStatuses);
+    let count = 0;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.client_id !== clientId) continue;
+      if (booking.event_id) continue;
+      if (booking.session_type_id !== sessionTypeId) continue;
+      if (excluded.has(booking.current_status)) continue;
+      count += 1;
+    }
+
+    return count;
   }
 
   async countClientActiveSessionBookingsInRange(

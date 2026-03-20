@@ -459,6 +459,102 @@ describe('booking domain model', () => {
     ]);
   });
 
+  it('allows a replacement intro session after a prior intro was marked NO_SHOW', async () => {
+    const ctx = makeCtx();
+
+    const first = await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Retry',
+      clientEmail: 'intro-retry@example.com',
+      clientPhone: '+41000000101',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await ctx.providers.repository.updateBooking(first.bookingId, { current_status: 'NO_SHOW' });
+
+    const second = await createPayLaterBooking({
+      slotStart: '2026-04-02T11:00:00+02:00',
+      slotEnd: '2026-04-02T11:45:00+02:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Retry',
+      clientEmail: 'intro-retry@example.com',
+      clientPhone: '+41000000101',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    expect(second.status).toBe('PENDING');
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_intro_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'allow_client_intro_session_limit',
+          existing_intro_booking_count: 0,
+          attempted_intro_booking_count: 1,
+          deny_reason: null,
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects another intro session once the client already has a completed intro booking', async () => {
+    const ctx = makeCtx();
+
+    const first = await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Once',
+      clientEmail: 'intro-once@example.com',
+      clientPhone: '+41000000102',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await ctx.providers.repository.updateBooking(first.bookingId, { current_status: 'COMPLETED' });
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-04-02T11:00:00+02:00',
+      slotEnd: '2026-04-02T11:45:00+02:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Once',
+      clientEmail: 'intro-once@example.com',
+      clientPhone: '+41000000102',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CLIENT_INTRO_SESSION_LIMIT_REACHED',
+      message: 'You can only book one intro session. If you need help with an existing intro booking, please contact me.',
+    });
+
+    expect(mockState.bookings.size).toBe(1);
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_intro_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'deny_client_intro_session_limit_reached',
+          existing_intro_booking_count: 1,
+          attempted_intro_booking_count: 2,
+          deny_reason: 'client_already_has_non_rebookable_intro_booking',
+        }),
+      }),
+    ]);
+  });
+
   it('schedules retryable calendar confirmation failures with backoff and logs calendar_retry', async () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const calendar = new MockCalendarProvider();

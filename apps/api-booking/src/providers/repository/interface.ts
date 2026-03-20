@@ -78,6 +78,11 @@ export interface IRepository {
   getBookingById(id: string): Promise<Booking | null>;
   getBookingByConfirmTokenHash(hash: string): Promise<Booking | null>;
   updateBooking(id: string, updates: BookingUpdate): Promise<Booking>;
+  countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number>;
   countClientActiveSessionBookingsInRange(
     clientId: string,
     startInclusiveIso: string,

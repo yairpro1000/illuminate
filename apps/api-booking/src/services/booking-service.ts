@@ -64,6 +64,8 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'CREATE_STRIPE_REFUND',
 ]);
 const MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK = 2;
+const MAX_INTRO_SESSIONS_PER_CLIENT = 1;
+const INTRO_SESSION_REBOOK_EXCLUDED_STATUSES: readonly BookingCurrentStatus[] = ['CANCELED', 'EXPIRED', 'NO_SHOW'];
 const LOCAL_WEEKDAY_INDEX: Record<string, number> = {
   Mon: 0,
   Tue: 1,
@@ -546,6 +548,74 @@ async function assertClientWithinWeeklySessionLimit(
   ctx.logger.logInfo?.(logEntry);
 }
 
+async function assertClientCanBookIntroSession(
+  input: {
+    clientId: string;
+    slotStart: string;
+    timezone: string;
+    sessionTypeId: string;
+    sessionTypeSlug: string;
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'client_intro_session_limit_check_started',
+    message: 'Checking per-client intro session booking limit',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: 'intro',
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      intro_limit: MAX_INTRO_SESSIONS_PER_CLIENT,
+      excluded_statuses: [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+      branch_taken: 'count_client_intro_bookings',
+      deny_reason: null,
+    },
+  });
+
+  const existingCount = await ctx.providers.repository.countClientBookingsBySessionType(
+    input.clientId,
+    input.sessionTypeId,
+    [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+  );
+  const wouldExceedLimit = existingCount >= MAX_INTRO_SESSIONS_PER_CLIENT;
+  const logEntry = {
+    source: 'backend' as const,
+    eventType: 'client_intro_session_limit_check_completed',
+    message: 'Completed per-client intro session booking limit check',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: 'intro',
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      intro_limit: MAX_INTRO_SESSIONS_PER_CLIENT,
+      excluded_statuses: [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+      existing_intro_booking_count: existingCount,
+      attempted_intro_booking_count: existingCount + 1,
+      branch_taken: wouldExceedLimit
+        ? 'deny_client_intro_session_limit_reached'
+        : 'allow_client_intro_session_limit',
+      deny_reason: wouldExceedLimit ? 'client_already_has_non_rebookable_intro_booking' : null,
+    },
+  };
+
+  if (wouldExceedLimit) {
+    ctx.logger.logWarn?.(logEntry);
+    throw new ApiError(
+      409,
+      'CLIENT_INTRO_SESSION_LIMIT_REACHED',
+      'You can only book one intro session. If you need help with an existing intro booking, please contact me.',
+    );
+  }
+
+  ctx.logger.logInfo?.(logEntry);
+}
+
 // ── Session flow: Pay Now ──────────────────────────────────────────────────
 
 export async function createPayNowBooking(
@@ -650,6 +720,15 @@ export async function createPayLaterBooking(
   );
 
   const sessionType = await resolveSessionTypeForKind(input.sessionType, providers, input.offerSlug ?? null);
+  if (input.sessionType === 'intro') {
+    await assertClientCanBookIntroSession({
+      clientId: client.id,
+      slotStart: input.slotStart,
+      timezone: input.timezone,
+      sessionTypeId: sessionType.id,
+      sessionTypeSlug: sessionType.slug,
+    }, ctx);
+  }
   await assertClientWithinWeeklySessionLimit({
     clientId: client.id,
     slotStart: input.slotStart,
