@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = 'couponCode';
   const CHF_TO_ILS_DISPLAY_RATE = 4;
+  const SITE_CLIENT = window.siteClient || null;
   const ISRAEL_COUPON = Object.freeze({
     code: 'ISRAEL',
     discountPercent: 25,
@@ -99,10 +100,17 @@
     }));
   }
 
+  function getPublicConfigUrl() {
+    const apiBase = SITE_CLIENT && typeof SITE_CLIENT.getApiBase === 'function'
+      ? SITE_CLIENT.getApiBase()
+      : '';
+    return `${String(apiBase || '').replace(/\/+$/g, '')}/api/config`.replace(/^\/api\/config$/, '/api/config');
+  }
+
   function resolveVisitorCountry() {
     if (visitorCountryResolved) return Promise.resolve(visitorCountry);
     if (visitorCountryRequest) return visitorCountryRequest;
-    visitorCountryRequest = window.fetch('/api/config', {
+    visitorCountryRequest = window.fetch(getPublicConfigUrl(), {
       cache: 'no-store',
       headers: {
         Accept: 'application/json',

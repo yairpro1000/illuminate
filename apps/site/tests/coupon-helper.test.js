@@ -113,4 +113,37 @@ describe('site coupon helper', () => {
     expect(banner).not.toBeNull()
     expect(banner.textContent).toContain('Apply Israel discount')
   })
+
+  it('uses the shared site API base for visitor country refresh when available', async () => {
+    document.body.setAttribute('data-page', 'sessions')
+    document.body.innerHTML = `
+      <section id="session-types">
+        <div class="container"></div>
+      </section>
+    `
+    window.siteClient = {
+      getApiBase: () => 'https://illuminate.yairpro.workers.dev/',
+    }
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        visitor: {
+          country: 'IL',
+        },
+      }),
+    })
+    evalCode(couponCode)
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await window.SiteCoupon.resolveVisitorCountry()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://illuminate.yairpro.workers.dev/api/config',
+      expect.objectContaining({
+        cache: 'no-store',
+      }),
+    )
+    expect(document.querySelector('[data-coupon-suggestion]')).not.toBeNull()
+    delete window.siteClient
+  })
 })
