@@ -3,6 +3,8 @@
   var STORAGE_KEY = 'admin_api_base';
   var STORAGE_KEY_ROOT = 'API_BASE'; // alternate key: treated as root URL, /api is appended
   var LOCAL_HOSTS = { 'localhost':1, '127.0.0.1':1, '::1':1 };
+  var PAGES_DEV_SUFFIX = '.pages.dev';
+  var PREVIEW_WORKER_ROOT = 'https://illuminate.yairpro.workers.dev';
 
   function sanitizeBase(s) { return String(s || '').replace(/\/+$/g, ''); }
 
@@ -54,6 +56,7 @@
     var envBase = (window.ENV && window.ENV.VITE_API_BASE) || '';
     if (String(envBase).trim()) return sanitizeBase(envBase);
     if (isLocalhost()) return 'http://localhost:8788';
+    if (getHostname().endsWith(PAGES_DEV_SUFFIX)) return PREVIEW_WORKER_ROOT;
     return 'https://api.letsilluminate.co';
   }
 

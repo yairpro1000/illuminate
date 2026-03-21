@@ -12,6 +12,7 @@ describe('site api-base.js', () => {
     // reset globals and storage
     window.API_BASE = undefined
     window.ENV = undefined
+    window.__SITE_API_BASE_HOSTNAME__ = undefined
     // Use an in-memory localStorage mock to avoid jsdom quirks
     const mem = new Map()
     window.localStorage = {
@@ -38,5 +39,11 @@ describe('site api-base.js', () => {
     window.localStorage.setItem('API_BASE', 'http://devhost:9999///')
     evalCode(apiBaseCode)
     expect(window.API_BASE).toBe('http://devhost:9999')
+  })
+
+  it('defaults to the workers.dev root on pages.dev previews', () => {
+    window.__SITE_API_BASE_HOSTNAME__ = 'preview-branch.pages.dev'
+    evalCode(apiBaseCode)
+    expect(window.API_BASE).toBe('https://illuminate.yairpro.workers.dev')
   })
 })

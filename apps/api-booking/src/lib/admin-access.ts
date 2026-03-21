@@ -176,6 +176,25 @@ function isLocalhostRequest(request: Request): boolean {
   }
 }
 
+function isWorkersDevRequest(request: Request): boolean {
+  try {
+    return new URL(request.url).hostname.endsWith('.workers.dev');
+  } catch {
+    return false;
+  }
+}
+
+function getRequestOrigin(request: Request): { origin: string | null; host: string | null } {
+  const origin = request.headers.get('Origin');
+  if (!origin) return { origin: null, host: null };
+  try {
+    const parsed = new URL(origin);
+    return { origin: parsed.origin.replace(/\/+$/, ''), host: parsed.hostname.toLowerCase() };
+  } catch {
+    return { origin: null, host: null };
+  }
+}
+
 function logAdminAccessDecision(
   logger: Logger | undefined,
   request: Request,
@@ -195,6 +214,9 @@ function logAdminAccessDecision(
       has_access_aud: !!env.CLOUDFLARE_ACCESS_AUD?.trim(),
       has_access_email_header: !!getAccessEmail(request),
       has_access_jwt_header: !!getAccessJwt(request),
+      has_preview_dev_email: !!env.ADMIN_PREVIEW_DEV_EMAIL?.trim(),
+      request_origin: getRequestOrigin(request).origin,
+      workers_dev_request: isWorkersDevRequest(request),
     }));
   }
   if (!logger) return;
@@ -210,6 +232,9 @@ function logAdminAccessDecision(
       has_access_aud: !!env.CLOUDFLARE_ACCESS_AUD?.trim(),
       has_access_email_header: !!getAccessEmail(request),
       has_access_jwt_header: !!getAccessJwt(request),
+      has_preview_dev_email: !!env.ADMIN_PREVIEW_DEV_EMAIL?.trim(),
+      request_origin: getRequestOrigin(request).origin,
+      workers_dev_request: isWorkersDevRequest(request),
       allowlist_configured: parseAllowlist(env.ADMIN_ALLOWED_EMAILS).size > 0,
     },
   });
@@ -231,6 +256,9 @@ export async function requireAdminAccess(
   const accessAud = env.CLOUDFLARE_ACCESS_AUD?.trim();
   const accessEmail = getAccessEmail(request);
   const allowlist = parseAllowlist(env.ADMIN_ALLOWED_EMAILS);
+  const previewEmail = env.ADMIN_PREVIEW_DEV_EMAIL?.trim();
+  const requestOrigin = getRequestOrigin(request);
+  const previewOriginAllowed = requestOrigin.host?.endsWith('.pages.dev') ?? false;
 
   if (accessAud) {
     const token = getAccessJwt(request);
@@ -269,6 +297,21 @@ export async function requireAdminAccess(
       return { email: normalized };
     }
     logAdminAccessDecision(logger, request, env, 'localhost_dev_email', 'deny', 'dev_email_not_allowlisted');
+  }
+
+  if (previewEmail && isWorkersDevRequest(request) && previewOriginAllowed) {
+    const normalized = normalizeEmail(previewEmail);
+    if (allowlist.size === 0 || allowlist.has(normalized)) {
+      logAdminAccessDecision(logger, request, env, 'workers_dev_preview_email', 'allow');
+      return { email: normalized };
+    }
+    logAdminAccessDecision(logger, request, env, 'workers_dev_preview_email', 'deny', 'preview_email_not_allowlisted');
+    throw forbidden('Admin access denied');
+  }
+
+  if (previewEmail && requestOrigin.host?.endsWith('.pages.dev')) {
+    logAdminAccessDecision(logger, request, env, 'workers_dev_preview_email', 'deny', 'preview_requires_workers_dev_host');
+    throw unauthorized('Admin authentication required');
   }
 
   logAdminAccessDecision(logger, request, env, 'no_admin_auth_path_matched', 'deny', 'no_eligible_auth_mechanism');

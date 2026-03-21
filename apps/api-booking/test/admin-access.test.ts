@@ -171,4 +171,16 @@ describe('requireAdminAccess', () => {
       }),
     }));
   });
+
+  it('allows pages.dev previews to use the workers.dev host with ADMIN_PREVIEW_DEV_EMAIL', async () => {
+    const env = makeEnv({
+      ADMIN_ALLOWED_EMAILS: 'yairpro@gmail.com',
+      ADMIN_PREVIEW_DEV_EMAIL: 'yairpro@gmail.com',
+    });
+    const req = new Request('https://illuminate.yairpro.workers.dev/api/admin/events', {
+      headers: { Origin: 'https://preview-branch.pages.dev' },
+    });
+
+    await expect(requireAdminAccess(req, env)).resolves.toEqual({ email: 'yairpro@gmail.com' });
+  });
 });

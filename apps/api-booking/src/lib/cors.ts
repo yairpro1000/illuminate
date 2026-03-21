@@ -13,6 +13,10 @@ const ALLOWED_HEADERS = [
 ].join(', ');
 const ALLOWED_METHODS = 'GET, POST, PATCH, PUT, OPTIONS';
 
+function isTruthy(value: string | undefined): boolean {
+  return /^(1|true|yes|on)$/i.test(String(value ?? '').trim());
+}
+
 export function corsHeaders(origin: string): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
@@ -54,6 +58,7 @@ export function getAllowedOrigin(
   configuredOrigins?: string,
   /** When true (ADMIN_DEV_EMAIL is set), all origins are permitted — dev only. */
   devMode = false,
+  allowPagesDevOrigins = false,
 ): string | null {
   const origin = request.headers.get('Origin');
   if (!origin) return null;
@@ -77,7 +82,12 @@ export function getAllowedOrigin(
   if (normalizedOrigin === siteUrl.replace(/\/+$/, '')) return normalizedOrigin;
   if (host === 'letsilluminate.co' || host.endsWith('.letsilluminate.co')) return normalizedOrigin;
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return normalizedOrigin;
+  if (allowPagesDevOrigins && host.endsWith('.pages.dev')) return normalizedOrigin;
   if (normalizedConfigured.has(normalizedOrigin)) return normalizedOrigin;
   if (devMode) return normalizedOrigin;
   return null;
+}
+
+export function allowPagesDevOrigins(value: string | undefined): boolean {
+  return isTruthy(value);
 }

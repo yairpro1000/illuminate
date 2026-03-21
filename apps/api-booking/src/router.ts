@@ -56,7 +56,7 @@ import {
   handleTestBookingsCleanup,
 } from './handlers/dev.js';
 
-import { handlePreflight, getAllowedOrigin, addCors } from './lib/cors.js';
+import { handlePreflight, getAllowedOrigin, addCors, allowPagesDevOrigins } from './lib/cors.js';
 import { ApiError, errorBody, jsonResponse } from './lib/errors.js';
 import { type OperationContext } from './lib/execution.js';
 import {
@@ -170,7 +170,14 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   const isAdminEventsPath = url.pathname === '/api/admin/events';
   const isFrontendObservabilityPath = url.pathname === '/api/observability/frontend';
   const devMode = !!ctx.env.ADMIN_DEV_EMAIL;
-  const origin = getAllowedOrigin(request, ctx.env.SITE_URL, ctx.env.API_ALLOWED_ORIGINS, !!ctx.env.ADMIN_DEV_EMAIL);
+  const pagesDevOriginsAllowed = allowPagesDevOrigins(ctx.env.API_ALLOW_PAGES_DEV_ORIGINS);
+  const origin = getAllowedOrigin(
+    request,
+    ctx.env.SITE_URL,
+    ctx.env.API_ALLOWED_ORIGINS,
+    !!ctx.env.ADMIN_DEV_EMAIL,
+    pagesDevOriginsAllowed,
+  );
   const requestSizeBytes = headerByteLength(request.headers);
   if (isAdminEventsPath) {
     console.log('[admin-events-debug] ingress', JSON.stringify({
@@ -202,6 +209,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         requested_headers: requestedHeaders,
         site_url: ctx.env.SITE_URL,
         configured_origins: ctx.env.API_ALLOWED_ORIGINS || null,
+        allow_pages_dev_origins: pagesDevOriginsAllowed,
         dev_mode: devMode,
         branch_taken: 'evaluate_cors_preflight',
       },
@@ -227,6 +235,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
           status_code: preflightRes.status,
           branch_taken: 'allow_cors_preflight',
           deny_reason: null,
+          allow_pages_dev_origins: pagesDevOriginsAllowed,
           dev_mode: devMode,
         },
       });
@@ -245,6 +254,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
           status_code: preflightRes.status,
           branch_taken: 'deny_cors_preflight_origin_not_allowed',
           deny_reason: 'origin_not_allowed',
+          allow_pages_dev_origins: pagesDevOriginsAllowed,
           dev_mode: devMode,
         },
       });

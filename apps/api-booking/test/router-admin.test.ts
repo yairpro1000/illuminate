@@ -67,6 +67,34 @@ describe('Router integration (admin)', () => {
     }));
   });
 
+  it('allows pages.dev preflight requests when preview origin support is enabled', async () => {
+    const ctx = makeCtx({
+      env: {
+        SITE_URL: 'https://letsilluminate.co',
+        API_ALLOWED_ORIGINS: 'https://letsilluminate.co',
+        API_ALLOW_PAGES_DEV_ORIGINS: 'true',
+      } as any,
+    });
+    const req = new Request('https://illuminate.yairpro.workers.dev/api/health', {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://preview-branch.pages.dev',
+        'Access-Control-Request-Method': 'GET',
+      },
+    });
+    const res = await handleRequest(req, ctx);
+    expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://preview-branch.pages.dev');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cors_preflight_evaluation_completed',
+      context: expect.objectContaining({
+        branch_taken: 'allow_cors_preflight',
+        allowed_origin: 'https://preview-branch.pages.dev',
+        allow_pages_dev_origins: true,
+      }),
+    }));
+  });
+
   it('routes to admin config with auth', async () => {
     const ctx = makeCtx();
     const req = adminRequest('GET', 'https://api.local/api/admin/config');

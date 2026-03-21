@@ -10,8 +10,10 @@ export interface Env {
   SESSION_ADDRESS: string;
   SESSION_MAPS_URL: string;
   API_ALLOWED_ORIGINS?: string;
+  API_ALLOW_PAGES_DEV_ORIGINS?: string;
   ADMIN_ALLOWED_EMAILS?: string;
   ADMIN_DEV_EMAIL?: string;
+  ADMIN_PREVIEW_DEV_EMAIL?: string;
   ADMIN_AUTH_DISABLED?: string;
   CLOUDFLARE_ACCESS_AUD?: string;
 

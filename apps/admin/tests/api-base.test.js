@@ -47,4 +47,10 @@ describe('admin api-base.js', () => {
     expect(window.getAdminApiBase()).toBe('https://api.letsilluminate.co/api')
     expect(window.localStorage.getItem('admin_api_base')).toBe(null)
   })
+
+  it('defaults to the workers.dev api on pages.dev previews', () => {
+    window.__ADMIN_API_BASE_HOSTNAME__ = 'admin-preview.pages.dev'
+    evalCode(adminApiBaseCode)
+    expect(window.getAdminApiBase()).toBe('https://illuminate.yairpro.workers.dev/api')
+  })
 })
