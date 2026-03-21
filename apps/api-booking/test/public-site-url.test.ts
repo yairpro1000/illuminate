@@ -78,6 +78,31 @@ describe('public site URL resolution', () => {
     }));
   });
 
+  it('maps illuminateadmin.pages.dev origins to the temporary public Pages host', () => {
+    const logger = makeLogger();
+    const siteUrl = resolvePublicSiteUrl(
+      new Request('https://api.local/api/admin/bookings/123/manage-link', {
+        headers: {
+          Origin: 'https://illuminateadmin.pages.dev',
+        },
+      }),
+      makeEnv({ SITE_URL: 'https://letsilluminate.co' }),
+      logger,
+    );
+
+    expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_site_url_resolution_completed',
+      context: expect.objectContaining({
+        resolved_site_url: 'https://illuminate-tw9.pages.dev',
+        matched_header: 'origin',
+        matched_host: 'illuminateadmin.pages.dev',
+        branch_taken: 'use_origin_header_site_url',
+        deny_reason: null,
+      }),
+    }));
+  });
+
   it('returns yairb.ch public links for pay-later bookings created from yairb.ch', async () => {
     const ctx = makeCtx({
       siteUrl: '',

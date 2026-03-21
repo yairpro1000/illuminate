@@ -9,7 +9,7 @@ function isAdminPreviewHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return host === 'admin.letsilluminate.co'
     || host === 'admin.yairb.ch'
-    || (host.endsWith(PREVIEW_SUFFIX) && host.startsWith('admin'));
+    || (host.endsWith(PREVIEW_SUFFIX) && host.includes('admin'));
 }
 
 function sanitizeSiteUrl(value: string): string {
