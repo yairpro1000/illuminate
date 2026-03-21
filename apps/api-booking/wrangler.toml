@@ -86,3 +86,4 @@ enabled = true
 # Unified cron sweep:
 # - every minute: run all booking due checks + side-effects dispatch + calendar sync retries
 crons = ["* * * * *"]
+
