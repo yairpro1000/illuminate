@@ -165,7 +165,40 @@ describe('evenings page', () => {
     const image = document.querySelector('.event-card__img')
     expect(image).not.toBeNull()
     expect(image.getAttribute('src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
+    expect(image.getAttribute('data-fallback-src')).toBe('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/events/abc123-body.jpg')
     expect(image.getAttribute('alt')).toBe('Body Evening')
+  })
+
+  it('falls back to the public r2.dev host when the primary image host fails', async () => {
+    window.siteClient.requestJson.mockResolvedValue({
+      events: [
+        {
+          id: 'ev-01',
+          slug: 'ev-01-body',
+          title: 'Body Evening',
+          description: 'Description',
+          starts_at: '2026-06-19T17:00:00Z',
+          ends_at: '2026-06-19T19:00:00Z',
+          address_line: 'Lugano',
+          is_paid: false,
+          price_per_person: 0,
+          currency: 'CHF',
+          capacity: 10,
+          image_key: 'events/abc123-body.jpg',
+          render: { is_past: false, public_registration_open: true, show_reminder_signup_cta: false, sold_out: false },
+          stats: { active_bookings: 1, capacity: 10 },
+        },
+      ],
+    })
+
+    evalCode(eveningsPageCode)
+    await flush()
+
+    const image = document.querySelector('.event-card__img')
+    image.dispatchEvent(new Event('error'))
+
+    expect(image.getAttribute('src')).toBe('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/events/abc123-body.jpg')
+    expect(image.getAttribute('data-fallback-applied')).toBe('true')
   })
 
   it('renders structured marketing content into subtitle and scannable lists with legacy fallback', async () => {

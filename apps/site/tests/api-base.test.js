@@ -46,4 +46,10 @@ describe('site api-base.js', () => {
     evalCode(apiBaseCode)
     expect(window.API_BASE).toBe('https://illuminate.yairpro.workers.dev')
   })
+
+  it('defaults to the workers.dev root on yairb.ch while letsilluminate is unhealthy', () => {
+    window.__SITE_API_BASE_HOSTNAME__ = 'yairb.ch'
+    evalCode(apiBaseCode)
+    expect(window.API_BASE).toBe('https://illuminate.yairpro.workers.dev')
+  })
 })

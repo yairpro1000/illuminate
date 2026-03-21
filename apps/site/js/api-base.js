@@ -1,6 +1,7 @@
 (function(){
   'use strict';
   var LOCAL_HOSTS = { 'localhost':1, '127.0.0.1':1, '::1':1 };
+  var WORKER_ROOT_HOSTS = { 'yairb.ch':1, 'www.yairb.ch':1 };
   var PAGES_DEV_SUFFIX = '.pages.dev';
   var PREVIEW_WORKER_ROOT = 'https://illuminate.yairpro.workers.dev';
   function sanitizeBase(s) { return String(s || '').replace(/\/+$/g, ''); }
@@ -18,6 +19,7 @@
     var envBase = (window.ENV && window.ENV.VITE_API_BASE) || '';
     if (String(envBase).trim()) return sanitizeBase(envBase);
     if (LOCAL_HOSTS[getHostname()]) return 'http://localhost:8788';
+    if (WORKER_ROOT_HOSTS[getHostname()]) return PREVIEW_WORKER_ROOT;
     if (getHostname().endsWith(PAGES_DEV_SUFFIX)) return PREVIEW_WORKER_ROOT;
     return 'https://api.letsilluminate.co';
   }

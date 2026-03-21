@@ -51,7 +51,8 @@
     };
   }
 
-  const R2_BASE = 'https://images.letsilluminate.co';
+  const R2_PRIMARY_BASE = 'https://images.letsilluminate.co';
+  const R2_FALLBACK_BASE = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
 
   function escapeHtml(value) {
     return String(value ?? '')
@@ -66,9 +67,31 @@
     return escapeHtml(value);
   }
 
-  function eventImageUrl(event) {
-    if (event.image_key) return `${R2_BASE}/${event.image_key}`;
-    return '';
+  function buildImageUrl(base, imageKey) {
+    return `${String(base || '').replace(/\/+$/g, '')}/${String(imageKey || '').replace(/^\/+/g, '')}`;
+  }
+
+  function eventImageSources(event) {
+    if (!event.image_key) return { primary: '', fallback: '' };
+    return {
+      primary: buildImageUrl(R2_PRIMARY_BASE, event.image_key),
+      fallback: buildImageUrl(R2_FALLBACK_BASE, event.image_key),
+    };
+  }
+
+  function attachImageFallbackHandlers(container) {
+    container.querySelectorAll('.event-card__img[data-fallback-src]').forEach((img) => {
+      img.addEventListener('error', () => {
+        const fallbackSrc = img.getAttribute('data-fallback-src') || '';
+        const fallbackApplied = img.getAttribute('data-fallback-applied') === 'true';
+        if (!fallbackApplied && fallbackSrc && img.getAttribute('src') !== fallbackSrc) {
+          img.setAttribute('data-fallback-applied', 'true');
+          img.setAttribute('src', fallbackSrc);
+          return;
+        }
+        img.parentElement?.classList.add('event-card__image--placeholder');
+      });
+    });
   }
 
   function formatDurationLabel(startIso, endIso) {
@@ -218,6 +241,8 @@
       return left > 0 && left <= 5 ? left : null;
     })();
 
+    const imageSources = eventImageSources(event);
+
     const badge = soldOut
       ? '<span class="event-tag event-tag--sold-out">Sold out</span>'
       : isPast
@@ -248,11 +273,11 @@
         <div class="event-card__image">
           <img
             class="event-card__img"
-            src="${escapeAttr(eventImageUrl(event))}"
+            src="${escapeAttr(imageSources.primary)}"
+            data-fallback-src="${escapeAttr(imageSources.fallback)}"
             alt="${escapeAttr(event.title)}"
             loading="lazy"
             decoding="async"
-            onerror="this.parentElement.classList.add('event-card__image--placeholder'); this.removeAttribute('onerror');"
           />
           <div class="event-card__date-badge" aria-hidden="true">
             <span class="event-card__day">${dateBadge.day}</span>
@@ -390,6 +415,7 @@
     grid.querySelectorAll('.fade-up').forEach((el) => revealObserver.observe(el));
 
     attachReminderHandlers(grid);
+    attachImageFallbackHandlers(grid);
   }
 
   window.addEventListener('sitecouponchange', () => {
