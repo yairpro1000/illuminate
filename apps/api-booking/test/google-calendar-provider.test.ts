@@ -205,6 +205,72 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     }));
   });
 
+  it('retries createEvent without conferenceData when Google rejects the conference type', async () => {
+    stubServiceAccountSigning();
+    const invalidConferenceBody = {
+      error: {
+        code: 400,
+        message: 'Invalid conference type value.',
+        status: 'INVALID_ARGUMENT',
+        errors: [{ reason: 'invalid' }],
+      },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(invalidConferenceBody), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-no-conference',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-no-conference',
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeProvider(logger);
+    const created = await provider.createEvent(makeCalendarEvent() as any);
+
+    const initialInsertBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+    const fallbackInsertBody = JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+
+    expect(initialInsertBody['conferenceData']).toEqual({
+      createRequest: {
+        requestId: 'uuid-123',
+        conferenceSolutionKey: {
+          type: 'hangoutsMeet',
+        },
+      },
+    });
+    expect(fallbackInsertBody).not.toHaveProperty('conferenceData');
+    expect(created).toEqual({
+      eventId: 'google-event-no-conference',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-no-conference',
+      meetingProvider: null,
+      meetingLink: null,
+    });
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_insert_conference_fallback_started',
+      context: expect.objectContaining({
+        requested_conference_type: 'hangoutsMeet',
+        branch_taken: 'retry_google_events_insert_without_conference_data',
+        deny_reason: 'google_calendar_invalid_conference_type',
+      }),
+    }));
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_insert_completed',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-no-conference',
+        requested_conference_type: 'hangoutsMeet',
+        branch_taken: 'google_event_created_without_conference_after_invalid_conference_type',
+      }),
+    }));
+  });
+
   it('aborts createEvent and logs clearly when token exchange fails', async () => {
     stubServiceAccountSigning();
     const tokenFailureBody = {
@@ -372,6 +438,71 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       context: expect.objectContaining({
         google_event_id: 'google-event-3',
         branch_taken: 'call_google_events_update',
+      }),
+    }));
+  });
+
+  it('retries updateEvent without conferenceData when Google rejects the conference type', async () => {
+    stubServiceAccountSigning();
+    const invalidConferenceBody = {
+      error: {
+        code: 400,
+        message: 'Invalid conference type value.',
+        status: 'INVALID_ARGUMENT',
+        errors: [{ reason: 'invalid' }],
+      },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(invalidConferenceBody), { status: 400 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'google-event-4',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-4',
+      }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const logger = {
+      logProviderCall: vi.fn(),
+      logInfo: vi.fn(),
+      logWarn: vi.fn(),
+      logError: vi.fn(),
+    } as any;
+
+    const provider = makeProvider(logger);
+    const updated = await provider.updateEvent('google-event-4', makeCalendarEvent() as any);
+
+    const initialUpdateBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+    const fallbackUpdateBody = JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body ?? '{}')) as Record<string, unknown>;
+
+    expect(initialUpdateBody['conferenceData']).toEqual({
+      createRequest: {
+        requestId: 'uuid-123',
+        conferenceSolutionKey: {
+          type: 'hangoutsMeet',
+        },
+      },
+    });
+    expect(fallbackUpdateBody).not.toHaveProperty('conferenceData');
+    expect(updated).toEqual({
+      eventId: 'google-event-4',
+      htmlLink: 'https://calendar.google.com/calendar/event?eid=google-event-4',
+      meetingProvider: null,
+      meetingLink: null,
+    });
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_update_conference_fallback_started',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-4',
+        requested_conference_type: 'hangoutsMeet',
+        branch_taken: 'retry_google_events_update_without_conference_data',
+      }),
+    }));
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_update_completed',
+      context: expect.objectContaining({
+        google_event_id: 'google-event-4',
+        requested_conference_type: 'hangoutsMeet',
+        branch_taken: 'google_event_updated_without_conference_after_invalid_conference_type',
       }),
     }));
   });

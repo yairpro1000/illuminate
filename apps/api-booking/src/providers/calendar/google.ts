@@ -48,6 +48,7 @@ interface GoogleCalendarListResponse {
 }
 
 const GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS = [500, 1500, 3000] as const;
+const GOOGLE_CONFERENCE_SOLUTION_TYPE = 'hangoutsMeet' as const;
 
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
@@ -131,6 +132,13 @@ function randomInteger(min: number, max: number): number {
 function isRetryableWriteFailure(status: number, parsedError: ParsedGoogleApiError): boolean {
   return (status === 403 || status === 429)
     && Boolean(parsedError.reason && RETRYABLE_WRITE_REASONS.has(parsedError.reason));
+}
+
+function isInvalidConferenceTypeFailure(status: number, parsedError: ParsedGoogleApiError): boolean {
+  return status === 400
+    && parsedError.reason === 'invalid'
+    && typeof parsedError.message === 'string'
+    && /invalid conference type value/i.test(parsedError.message);
 }
 
 function b64url(str: string): string {
@@ -749,6 +757,45 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const initialErrorBody = await initialRes.text();
     const initialGoogleError = parseGoogleApiError(initialErrorBody);
 
+    if (isInvalidConferenceTypeFailure(initialRes.status, initialGoogleError)) {
+      const fallbackResult = await this.retryCalendarWriteWithoutConferenceData({
+        operation: 'create_event',
+        writeKind: 'insert',
+        url,
+        token,
+        event,
+        eventIdHint: options?.eventIdHint ?? null,
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        googleEventId: null,
+        send: (fallbackUrl, fallbackToken, fallbackBody) => this.postCalendarEvent(fallbackUrl, fallbackToken, fallbackBody),
+      });
+
+      if (fallbackResult.ok) {
+        const fallbackData = await fallbackResult.response.json() as GoogleCalendarEventResponse;
+        const result = toCalendarUpsertResult(fallbackData);
+        this.logger?.logInfo?.({
+          source: 'backend',
+          eventType: 'google_calendar_insert_completed',
+          message: 'Google Calendar events.insert succeeded',
+          context: {
+            booking_id: diagnostics.bookingId,
+            request_id: diagnostics.requestId,
+            google_event_id: result.eventId,
+            meeting_provider: result.meetingProvider,
+            has_meeting_link: Boolean(result.meetingLink),
+            meeting_link_source: detectMeetingLinkSource(fallbackData),
+            requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
+            branch_taken: 'google_event_created_without_conference_after_invalid_conference_type',
+            deny_reason: 'google_calendar_invalid_conference_type',
+          },
+        });
+        return result;
+      }
+
+      throw new Error(`Google createEvent failed (${fallbackResult.status}): ${fallbackResult.errorBody}`);
+    }
+
     this.logGoogleInsertFailure({
       status: initialRes.status,
       googleError: initialGoogleError,
@@ -835,6 +882,46 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
     const initialErrorBody = await initialRes.text();
     const initialGoogleError = parseGoogleApiError(initialErrorBody);
+
+    if (isInvalidConferenceTypeFailure(initialRes.status, initialGoogleError)) {
+      const fallbackResult = await this.retryCalendarWriteWithoutConferenceData({
+        operation: 'update_event',
+        writeKind: 'update',
+        url,
+        token,
+        event,
+        eventIdHint: null,
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        googleEventId: eventId,
+        send: (fallbackUrl, fallbackToken, fallbackBody) => this.putCalendarEvent(fallbackUrl, fallbackToken, fallbackBody),
+      });
+
+      if (fallbackResult.ok) {
+        const fallbackData = await fallbackResult.response.json() as GoogleCalendarEventResponse;
+        const result = toCalendarUpsertResult(fallbackData);
+        this.logger?.logInfo?.({
+          source: 'backend',
+          eventType: 'google_calendar_update_completed',
+          message: 'Google Calendar events.update succeeded',
+          context: {
+            booking_id: diagnostics.bookingId,
+            request_id: diagnostics.requestId,
+            google_event_id: result.eventId,
+            meeting_provider: result.meetingProvider,
+            has_meeting_link: Boolean(result.meetingLink),
+            meeting_link_source: detectMeetingLinkSource(fallbackData),
+            requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
+            branch_taken: 'google_event_updated_without_conference_after_invalid_conference_type',
+            deny_reason: 'google_calendar_invalid_conference_type',
+          },
+        });
+        return result;
+      }
+
+      throw new Error(`Google updateEvent failed (${fallbackResult.status}): ${fallbackResult.errorBody}`);
+    }
+
     this.logger?.logError?.({
       source: 'backend',
       eventType: 'google_calendar_update_failed',
@@ -993,6 +1080,92 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     });
   }
 
+  private async retryCalendarWriteWithoutConferenceData(input: {
+    operation: 'create_event' | 'update_event';
+    writeKind: 'insert' | 'update';
+    url: string;
+    token: string;
+    event: CalendarEvent;
+    eventIdHint: string | null;
+    bookingId: string | null;
+    requestId: string | null;
+    googleEventId: string | null;
+    send: (url: string, token: string, body: string) => Promise<Response>;
+  }): Promise<
+    | { ok: true; response: Response }
+    | { ok: false; status: number; errorBody: string; parsedError: ParsedGoogleApiError }
+  > {
+    this.logger?.logWarn?.({
+      source: 'backend',
+      eventType: `google_calendar_${input.writeKind}_conference_fallback_started`,
+      message: 'Google Calendar rejected Meet conference creation; retrying without conference data',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: input.googleEventId,
+        calendar_operation: input.operation,
+        requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
+        branch_taken: `retry_google_events_${input.writeKind}_without_conference_data`,
+        deny_reason: 'google_calendar_invalid_conference_type',
+      },
+    });
+
+    const fallbackBody = JSON.stringify(
+      buildGoogleEventBody(input.event, {
+        eventIdHint: input.eventIdHint,
+        createConference: false,
+      }),
+    );
+    const fallbackRes = await input.send(input.url, input.token, fallbackBody);
+    if (fallbackRes.ok) {
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: `google_calendar_${input.writeKind}_conference_fallback_completed`,
+        message: 'Google Calendar write succeeded after retrying without conference data',
+        context: {
+          booking_id: input.bookingId,
+          request_id: input.requestId,
+          google_event_id: input.googleEventId,
+          calendar_operation: input.operation,
+          requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
+          google_http_status: fallbackRes.status,
+          branch_taken: `google_events_${input.writeKind}_succeeded_without_conference_data`,
+          deny_reason: 'google_calendar_invalid_conference_type',
+        },
+      });
+      return { ok: true, response: fallbackRes };
+    }
+
+    const fallbackErrorBody = await fallbackRes.text();
+    const fallbackParsedError = parseGoogleApiError(fallbackErrorBody);
+    this.logger?.logError?.({
+      source: 'backend',
+      eventType: `google_calendar_${input.writeKind}_conference_fallback_failed`,
+      message: 'Google Calendar write still failed after retrying without conference data',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: input.googleEventId,
+        calendar_operation: input.operation,
+        requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
+        google_http_status: fallbackRes.status,
+        google_error_code: fallbackParsedError.code,
+        google_error_status: fallbackParsedError.status,
+        google_error_reason: fallbackParsedError.reason,
+        google_error_message: fallbackParsedError.message,
+        google_response_body: sanitizeGoogleBodyForError(fallbackErrorBody),
+        branch_taken: `google_events_${input.writeKind}_failed_after_conference_fallback`,
+        deny_reason: fallbackParsedError.reason ?? fallbackParsedError.message ?? `google_events_${input.writeKind}_http_${fallbackRes.status}`,
+      },
+    });
+    return {
+      ok: false,
+      status: fallbackRes.status,
+      errorBody: fallbackErrorBody,
+      parsedError: fallbackParsedError,
+    };
+  }
+
   private logGoogleInsertFailure(input: {
     status: number;
     googleError: ParsedGoogleApiError;
@@ -1043,7 +1216,7 @@ function buildGoogleEventBody(
           createRequest: {
             requestId: conferenceRequestId,
             conferenceSolutionKey: {
-              type: 'hangoutsMeet',
+              type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
             },
           },
         },
