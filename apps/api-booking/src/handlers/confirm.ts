@@ -16,6 +16,7 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
   });
   const actionInfo = await getBookingPublicActionInfo(booking, {
     providers: ctx.providers,
@@ -24,6 +25,7 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
   });
   const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
   const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;

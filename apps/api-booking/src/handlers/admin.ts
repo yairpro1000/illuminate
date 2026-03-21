@@ -839,6 +839,7 @@ export async function handleAdminSettleBookingPayment(
         requestId: ctx.requestId,
         correlationId: ctx.correlationId,
         operation: ctx.operation,
+        siteUrl: ctx.siteUrl,
       },
     );
 
@@ -892,6 +893,7 @@ export async function handleAdminCreateBookingManageLink(
       env: ctx.env,
       logger: ctx.logger,
       requestId: ctx.requestId,
+      siteUrl: ctx.siteUrl,
     });
     return ok({
       booking_id: booking.id,
@@ -938,7 +940,7 @@ export async function handleAdminCreateClientManageLink(
     });
     const booking = await ctx.providers.repository.getBookingById(bookingId);
     if (!booking) throw notFound('Booking not found');
-    const url = await buildManageUrl(ctx.env.SITE_URL, booking);
+    const url = await buildManageUrl(ctx.siteUrl, booking);
     return ok({
       booking_id: booking.id,
       url,
@@ -992,7 +994,7 @@ export async function handleAdminCreateLateAccessLink(
     return created({
       event_id: event.id,
       expires_at: expiresAt,
-      url: buildLateAccessUrl(event, ctx.env.SITE_URL, rawToken),
+      url: buildLateAccessUrl(event, ctx.siteUrl, rawToken),
     });
   } catch (err) {
     throw err;

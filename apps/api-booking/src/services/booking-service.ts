@@ -79,10 +79,15 @@ export interface BookingContext {
   requestId: string;
   correlationId?: string;
   operation?: OperationContext;
+  siteUrl?: string;
 }
 
 async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
   return getBookingPolicyConfig(ctx.providers.repository);
+}
+
+function bookingSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
+  return String(ctx.siteUrl || ctx.env.SITE_URL || '').replace(/\/+$/g, '');
 }
 
 function withBookingOperationContext(ctx: BookingContext, bookingId: string): BookingContext {
@@ -112,7 +117,8 @@ function withBookingOperationContext(ctx: BookingContext, bookingId: string): Bo
 
 function resolveSettlementInvoiceDetails(
   input: Pick<PaymentSettlementInput, 'payment' | 'invoiceId' | 'invoiceUrl'>,
-  env: Pick<Env, 'SITE_URL' | 'PAYMENTS_MODE'>,
+  env: Pick<Env, 'PAYMENTS_MODE'>,
+  siteUrl: string,
 ): { invoiceId: string | null; invoiceUrl: string | null; branchTaken: string; denyReason: string | null } {
   if (input.invoiceUrl) {
     return {
@@ -144,7 +150,7 @@ function resolveSettlementInvoiceDetails(
     ?? `mock_inv_${input.payment.stripe_checkout_session_id ?? input.payment.id}`;
   return {
     invoiceId,
-    invoiceUrl: `${env.SITE_URL}/mock-invoice/${invoiceId}.pdf`,
+    invoiceUrl: `${siteUrl}/mock-invoice/${invoiceId}.pdf`,
     branchTaken: 'generated_mock_invoice_url_for_settlement',
     denyReason: null,
   };
@@ -1074,7 +1080,7 @@ async function settleBookingPayment(
 ): Promise<void> {
   const { providers, logger } = ctx;
   const settledAt = input.settledAt ?? new Date().toISOString();
-  const resolvedInvoice = resolveSettlementInvoiceDetails(input, ctx.env);
+  const resolvedInvoice = resolveSettlementInvoiceDetails(input, ctx.env, bookingSiteUrl(ctx));
 
   logger.logInfo?.({
     source: 'backend',
@@ -1228,7 +1234,7 @@ export async function buildAdminManageUrl(
   ).toISOString();
   const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
   const manageToken = buildStableManageToken(booking.id);
-  const url = `${ctx.env.SITE_URL}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
+  const url = `${bookingSiteUrl(ctx)}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
   return { url, adminToken, expiresAt };
 }
 
@@ -1656,12 +1662,12 @@ export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingC
 
   if (!confirmToken) return;
 
-  const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+  const confirmUrl = buildConfirmUrl(bookingSiteUrl(ctx), confirmToken);
   await sendEmailConfirmation(booking, confirmUrl, ctx);
 }
 
 export async function send24hBookingReminder(booking: Booking, ctx: BookingContext): Promise<void> {
-  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const manageUrl = await buildManageUrl(bookingSiteUrl(ctx), booking);
 
   if (!booking.event_id) {
     await ctx.providers.email.sendBookingReminder24h(booking, manageUrl);
@@ -1693,7 +1699,7 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
   });
 
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
+    await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(bookingSiteUrl(ctx), booking));
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'booking_cancellation_email_dispatch_completed',
@@ -1727,7 +1733,7 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     throw new Error('event_not_found_for_cancellation_email');
   }
 
-  await ctx.providers.email.sendEventCancellation(booking, event, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
+  await ctx.providers.email.sendEventCancellation(booking, event, buildStartNewBookingUrl(bookingSiteUrl(ctx), booking));
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_cancellation_email_dispatch_completed',
@@ -1745,13 +1751,14 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
 
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
   const policy = await loadBookingPolicy(ctx);
-  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const siteUrl = bookingSiteUrl(ctx);
+  const manageUrl = await buildManageUrl(siteUrl, booking);
   const paymentMode = await inferPaymentModeForBooking(booking.id, ctx.providers.repository);
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
   const paymentSettledForEmail = isPaymentSettledStatus(payment?.status ?? null);
   const paymentEmailLinks = paymentMode === 'pay_later'
-    ? paymentEmailUrl({ booking, payment, siteUrl: ctx.env.SITE_URL })
+    ? paymentEmailUrl({ booking, payment, siteUrl })
     : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
   const payUrl = paymentEmailLinks.payUrl;
   const invoiceUrl = paymentEmailLinks.invoiceUrl;
@@ -1897,17 +1904,17 @@ export async function getBookingPublicActionInfo(
     : null;
   const manageUrl = isTerminalStatus(booking.current_status)
     ? null
-    : await buildManageUrl(ctx.env.SITE_URL, booking);
+    : await buildManageUrl(bookingSiteUrl(ctx), booking);
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const checkoutUrl = payment && canContinuePayLaterPayment(booking, payment.status)
-    ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
+    ? buildContinuePaymentUrl(bookingSiteUrl(ctx), booking)
     : payment
       && !isTerminalStatus(booking.current_status)
       && booking.booking_type !== 'PAY_LATER'
       && isPaymentContinuableOnline(payment.status)
       && Boolean(paymentProviderUrl(payment))
-      ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
+      ? buildContinuePaymentUrl(bookingSiteUrl(ctx), booking)
       : null;
 
   if (checkoutUrl) {
@@ -1970,7 +1977,7 @@ export async function getContinuePaymentActionInfo(
   const booking = access.booking;
   const policy = await loadBookingPolicy(ctx);
   const paymentDueAt = getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours);
-  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const manageUrl = await buildManageUrl(bookingSiteUrl(ctx), booking);
   let payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   let branchTaken = 'allow_continue_payment_redirect';
   let denyReason: string | null = null;
@@ -2874,7 +2881,7 @@ async function executeImmediateTransitionSideEffect(
         throw new Error('confirm_token_missing');
       }
 
-      const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+      const confirmUrl = buildConfirmUrl(bookingSiteUrl(ctx), confirmToken);
       await sendEmailConfirmation(booking, confirmUrl, ctx);
       return booking;
     }
@@ -2908,7 +2915,7 @@ async function executeImmediateTransitionSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(bookingSiteUrl(ctx), booking));
       return booking;
     }
 
@@ -3375,6 +3382,7 @@ async function ensurePayLaterInvoiceForBooking(
       amount: chargeable.price,
       currency: chargeable.currency || 'CHF',
       bookingId: booking.id,
+      siteUrl: bookingSiteUrl(ctx),
       customerEmail: booking.client_email ?? '',
       customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
       existingStripeCustomerId: payment.stripe_customer_id,
@@ -3489,8 +3497,9 @@ async function ensureContinuePaymentUrlForBooking(
       customerEmail: booking.client_email ?? '',
       customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
       existingStripeCustomerId: payment.stripe_customer_id,
-      successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
-      cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+      siteUrl: bookingSiteUrl(ctx),
+      successUrl: buildCheckoutSuccessUrl(bookingSiteUrl(ctx), booking.id),
+      cancelUrl: buildCheckoutCancelUrl(bookingSiteUrl(ctx), booking.id),
       idempotencyKey: `booking:${booking.id}:continue-payment-checkout`,
       metadata: {
         booking_id: booking.id,
@@ -3587,8 +3596,9 @@ async function ensureCheckoutForBooking(
     customerEmail: chargeable.clientEmail,
     customerName: chargeable.clientName ?? null,
     existingStripeCustomerId: existing?.stripe_customer_id ?? null,
-    successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
-    cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+    siteUrl: bookingSiteUrl(ctx),
+    successUrl: buildCheckoutSuccessUrl(bookingSiteUrl(ctx), booking.id),
+    cancelUrl: buildCheckoutCancelUrl(bookingSiteUrl(ctx), booking.id),
     idempotencyKey: `booking:${booking.id}:pay-now-checkout`,
     metadata: {
       booking_id: booking.id,

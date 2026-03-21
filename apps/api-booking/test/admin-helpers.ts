@@ -83,6 +83,7 @@ export function makeCtx(partial: Partial<AppContext> = {}): AppContext {
     requestId: 'req-1',
     correlationId: 'corr-1',
     operation: createOperationContext({ appArea: 'website', requestId: 'req-1', correlationId: 'corr-1' }),
+    siteUrl: ((partial as any).siteUrl as string | undefined) ?? (((partial as any).env?.SITE_URL as string | undefined) ?? 'https://example.com'),
     executionCtx: undefined,
     ...(restPartial as Partial<AppContext>),
   } as AppContext;

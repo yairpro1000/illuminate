@@ -11,12 +11,13 @@ export class MockPaymentsProvider implements IPaymentsProvider {
   constructor(private readonly siteUrl: string) {}
 
   async createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession> {
+    const siteUrl = params.siteUrl ?? this.siteUrl;
     const sessionId = `mock_cs_${crypto.randomUUID()}`;
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
     const amount = params.lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
     const currency = params.lineItems[0]?.currency ?? 'CHF';
 
-    const checkoutUrl = `${this.siteUrl}/dev-pay?session_id=${sessionId}&booking_id=${params.bookingId}&amount=${amount}&currency=${currency}`;
+    const checkoutUrl = `${siteUrl}/dev-pay?session_id=${sessionId}&booking_id=${params.bookingId}&amount=${amount}&currency=${currency}`;
 
     console.log(`[payments:mock] createCheckoutSession → ${sessionId}`, {
       bookingId: params.bookingId,
@@ -39,9 +40,10 @@ export class MockPaymentsProvider implements IPaymentsProvider {
   }
 
   async createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord> {
+    const siteUrl = params.siteUrl ?? this.siteUrl;
     const invoiceId = `mock_in_${crypto.randomUUID()}`;
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
-    const invoiceUrl = `${this.siteUrl}/mock-invoice/${invoiceId}?booking_id=${encodeURIComponent(params.bookingId)}&amount=${params.amount}&currency=${encodeURIComponent(params.currency)}&email=${encodeURIComponent(params.customerEmail)}`;
+    const invoiceUrl = `${siteUrl}/mock-invoice/${invoiceId}?booking_id=${encodeURIComponent(params.bookingId)}&amount=${params.amount}&currency=${encodeURIComponent(params.currency)}&email=${encodeURIComponent(params.customerEmail)}`;
 
     console.log(`[payments:mock] createInvoice → ${invoiceId}`, {
       bookingId: params.bookingId,
@@ -80,18 +82,20 @@ export class MockPaymentsProvider implements IPaymentsProvider {
       if (!object || typeof eventType !== 'string') return null;
 
       const metadata = (object['metadata'] as Record<string, string>) ?? {};
+      const siteUrl = metadata['site_url'] ?? this.siteUrl;
       if (eventType === 'checkout.session.completed') {
         return {
           eventType,
           checkoutSessionId: object['id'] as string,
           paymentIntentId: (object['payment_intent'] as string | null) ?? null,
           invoiceId: (object['invoice'] as string | null) ?? null,
-          invoiceUrl: `${this.siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
+          invoiceUrl: `${siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
           paymentLinkId: null,
           amount: Number(object['amount_total'] ?? 0) / 100,
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? (object['client_reference_id'] as string | null) ?? null,
           customerId: (object['customer'] as string | null) ?? null,
+          siteUrl,
           rawPayload: body,
         };
       }
@@ -102,12 +106,13 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           checkoutSessionId: null,
           paymentIntentId: (object['payment_intent'] as string | null) ?? null,
           invoiceId: object['id'] as string,
-          invoiceUrl: (object['hosted_invoice_url'] as string | null) ?? `${this.siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
+          invoiceUrl: (object['hosted_invoice_url'] as string | null) ?? `${siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
           paymentLinkId: null,
           amount: Number(object['amount_paid'] ?? object['amount_due'] ?? 0) / 100,
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? null,
           customerId: (object['customer'] as string | null) ?? null,
+          siteUrl,
           rawPayload: body,
         };
       }
@@ -124,6 +129,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? null,
           customerId: (object['customer'] as string | null) ?? null,
+          siteUrl,
           rawPayload: body,
         };
       }

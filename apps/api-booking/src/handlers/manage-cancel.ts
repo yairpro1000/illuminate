@@ -48,6 +48,7 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     });
     const booking = access.booking;
     ctx.logger.logInfo?.({
@@ -69,6 +70,7 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     }, {
       source: access.actorSource,
       bypassPolicyWindow: access.bypassPolicyWindow,

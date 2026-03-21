@@ -1,0 +1,140 @@
+import type { Env } from '../env.js';
+import type { Logger } from './logger.js';
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const PREVIEW_SUFFIX = '.pages.dev';
+
+function sanitizeSiteUrl(value: string): string {
+  return String(value || '').trim().replace(/\/+$/g, '');
+}
+
+function canonicalSiteUrlForHost(hostname: string, protocol: string): string | null {
+  const host = hostname.toLowerCase();
+  if (host === 'admin.letsilluminate.co') return `${protocol}//letsilluminate.co`;
+  if (
+    host === 'letsilluminate.co'
+    || host === 'www.letsilluminate.co'
+    || host === 'yairb.ch'
+    || host === 'www.yairb.ch'
+  ) {
+    return `${protocol}//${host}`;
+  }
+  if (host.endsWith(PREVIEW_SUFFIX) || LOCAL_HOSTS.has(host)) {
+    return `${protocol}//${host}`;
+  }
+  return null;
+}
+
+function parseCandidateUrl(rawValue: string | null): URL | null {
+  if (!rawValue) return null;
+  try {
+    return new URL(rawValue);
+  } catch {
+    return null;
+  }
+}
+
+export interface PublicSiteUrlDecisionInput {
+  originHeader: string | null;
+  refererHeader: string | null;
+  defaultSiteUrl: string;
+}
+
+export interface PublicSiteUrlDecision {
+  siteUrl: string;
+  branchTaken: string;
+  denyReason: string | null;
+  matchedHeader: 'origin' | 'referer' | null;
+  matchedSource: string | null;
+  matchedHost: string | null;
+}
+
+export function decidePublicSiteUrl(input: PublicSiteUrlDecisionInput): PublicSiteUrlDecision {
+  const defaultSiteUrl = sanitizeSiteUrl(input.defaultSiteUrl);
+  const originUrl = parseCandidateUrl(input.originHeader);
+  if (originUrl) {
+    const mapped = canonicalSiteUrlForHost(originUrl.hostname, originUrl.protocol);
+    if (mapped) {
+      return {
+        siteUrl: mapped,
+        branchTaken: 'use_origin_header_site_url',
+        denyReason: null,
+        matchedHeader: 'origin',
+        matchedSource: input.originHeader,
+        matchedHost: originUrl.hostname.toLowerCase(),
+      };
+    }
+  }
+
+  const refererUrl = parseCandidateUrl(input.refererHeader);
+  if (refererUrl) {
+    const mapped = canonicalSiteUrlForHost(refererUrl.hostname, refererUrl.protocol);
+    if (mapped) {
+      return {
+        siteUrl: mapped,
+        branchTaken: 'use_referer_header_site_url',
+        denyReason: null,
+        matchedHeader: 'referer',
+        matchedSource: input.refererHeader,
+        matchedHost: refererUrl.hostname.toLowerCase(),
+      };
+    }
+  }
+
+  return {
+    siteUrl: defaultSiteUrl,
+    branchTaken: 'fallback_env_site_url',
+    denyReason: originUrl || refererUrl ? 'request_site_host_not_supported' : 'request_site_headers_missing',
+    matchedHeader: null,
+    matchedSource: null,
+    matchedHost: originUrl?.hostname?.toLowerCase() ?? refererUrl?.hostname?.toLowerCase() ?? null,
+  };
+}
+
+export function resolvePublicSiteUrl(
+  request: Request,
+  env: Pick<Env, 'SITE_URL'>,
+  logger?: Logger,
+): string {
+  const originHeader = request.headers.get('Origin');
+  const refererHeader = request.headers.get('Referer');
+
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'public_site_url_resolution_started',
+    message: 'Started public site URL resolution for request-scoped booking links',
+    context: {
+      path: new URL(request.url).pathname,
+      request_origin: originHeader,
+      request_referer: refererHeader,
+      default_site_url: sanitizeSiteUrl(env.SITE_URL),
+      branch_taken: 'evaluate_request_site_headers',
+      deny_reason: null,
+    },
+  });
+
+  const decision = decidePublicSiteUrl({
+    originHeader,
+    refererHeader,
+    defaultSiteUrl: env.SITE_URL,
+  });
+
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'public_site_url_resolution_completed',
+    message: 'Resolved public site URL for request-scoped booking links',
+    context: {
+      path: new URL(request.url).pathname,
+      request_origin: originHeader,
+      request_referer: refererHeader,
+      resolved_site_url: decision.siteUrl,
+      matched_header: decision.matchedHeader,
+      matched_header_value: decision.matchedSource,
+      matched_host: decision.matchedHost,
+      branch_taken: decision.branchTaken,
+      deny_reason: decision.denyReason,
+    },
+  });
+
+  return decision.siteUrl;
+}

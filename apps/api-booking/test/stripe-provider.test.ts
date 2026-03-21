@@ -36,6 +36,7 @@ describe('StripePaymentsProvider.parseWebhookEvent', () => {
       currency: 'CHF',
       bookingId: 'booking_123',
       customerId: 'cus_123',
+      siteUrl: null,
       rawPayload: expect.objectContaining({
         type: 'invoice.paid',
       }),

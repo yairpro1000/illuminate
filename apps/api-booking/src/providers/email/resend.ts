@@ -19,9 +19,32 @@ export interface BuiltEmailMessage {
 
 export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 export const EMAIL_REPLY_TO = 'hello@yairb.ch';
-const CONTACT_PAGE_URL = 'https://letsilluminate.co/contact.html';
-const SESSIONS_PAGE_URL = 'https://letsilluminate.co/sessions.html';
-const EVENTS_PAGE_URL = 'https://letsilluminate.co/evenings.html';
+const DEFAULT_SITE_URL = 'https://letsilluminate.co';
+function sanitizeSiteUrl(siteUrl?: string | null): string {
+  return String(siteUrl || DEFAULT_SITE_URL).replace(/\/+$/g, '');
+}
+
+function siteUrlFromKnownLink(link?: string | null): string {
+  if (!link) return DEFAULT_SITE_URL;
+  try {
+    return sanitizeSiteUrl(new URL(link).origin);
+  } catch {
+    return DEFAULT_SITE_URL;
+  }
+}
+
+function contactPageUrl(siteUrl?: string | null): string {
+  return `${sanitizeSiteUrl(siteUrl)}/contact.html`;
+}
+
+function sessionsPageUrl(siteUrl?: string | null): string {
+  return `${sanitizeSiteUrl(siteUrl)}/sessions.html`;
+}
+
+function eventsPageUrl(siteUrl?: string | null): string {
+  return `${sanitizeSiteUrl(siteUrl)}/evenings.html`;
+}
+
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('en-GB', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -96,8 +119,8 @@ function bookingSubjectContext(booking: Booking): string {
   return `on ${sessionSubjectDate(booking)}`;
 }
 
-function eventBookingUrl(eventId: string | null | undefined): string {
-  return eventId ? EVENTS_PAGE_URL : SESSIONS_PAGE_URL;
+function eventBookingUrl(eventId: string | null | undefined, siteUrl?: string | null): string {
+  return eventId ? eventsPageUrl(siteUrl) : sessionsPageUrl(siteUrl);
 }
 
 function bookingConfirmationSubject(
@@ -341,13 +364,14 @@ function eventDetailTextLines(
   return lines;
 }
 
-function bookingPolicyHtml(policyText: string): string {
+function bookingPolicyHtml(policyText: string, siteUrl?: string | null): string {
+  const contactUrl = contactPageUrl(siteUrl);
   const lines = policyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const [title, firstRule, secondRule, thirdRule] = lines;
   const linkedThirdRule = String(thirdRule || '')
     .split(/(contact)/gi)
     .map((part) => part.toLowerCase() === 'contact'
-      ? `<a href="${esc(CONTACT_PAGE_URL)}">contact</a>`
+      ? `<a href="${esc(contactUrl)}">contact</a>`
       : esc(part))
     .join('');
 
@@ -371,6 +395,7 @@ function bookingConfirmationHtml(
   policyText: string,
   options: ConfirmationEmailOptions = {},
 ): string {
+  const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
@@ -439,7 +464,7 @@ function bookingConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
-    ${bookingPolicyHtml(policyText)}
+    ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -520,6 +545,7 @@ function eventConfirmationHtml(
   policyText: string,
   options: ConfirmationEmailOptions = {},
 ): string {
+  const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
@@ -562,7 +588,7 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
-    ${bookingPolicyHtml(policyText)}
+    ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -753,8 +779,10 @@ export function buildBookingCancellationEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
-  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(booking.event_id);
-  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${CONTACT_PAGE_URL}`;
+  const siteUrl = siteUrlFromKnownLink(startNewBookingUrl);
+  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(booking.event_id, siteUrl);
+  const contactUrl = contactPageUrl(siteUrl);
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -766,7 +794,7 @@ export function buildBookingCancellationEmail(
     ['We are sorry to see you go.', 'Your session has been cancelled.'],
     'Book again',
     bookingUrl,
-    [`<a href="${esc(CONTACT_PAGE_URL)}">Contact Yair &rarr;</a>`],
+    [`<a href="${esc(contactUrl)}">Contact Yair &rarr;</a>`],
     'You can always',
   );
   return buildEmailMessage(
@@ -783,8 +811,10 @@ export function buildEventCancellationEmail(
   event: Event,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
-  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(event.id);
-  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${CONTACT_PAGE_URL}`;
+  const siteUrl = siteUrlFromKnownLink(startNewBookingUrl);
+  const bookingUrl = startNewBookingUrl ?? eventBookingUrl(event.id, siteUrl);
+  const contactUrl = contactPageUrl(siteUrl);
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -796,7 +826,7 @@ export function buildEventCancellationEmail(
     ['We are sorry to see you go.', 'Your event booking has been cancelled.'],
     'Book again',
     bookingUrl,
-    [`<a href="${esc(CONTACT_PAGE_URL)}">Contact Yair &rarr;</a>`],
+    [`<a href="${esc(contactUrl)}">Contact Yair &rarr;</a>`],
     'You can always',
   );
   return buildEmailMessage(
@@ -812,6 +842,7 @@ export function buildBookingExpiredEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
 ): BuiltEmailMessage {
+  const siteUrl = siteUrlFromKnownLink(startNewBookingUrl);
   const restartLine = startNewBookingUrl ? `\nBook again: ${startNewBookingUrl}` : '';
   const text = `Hi ${clientName(booking)},\n\nYour booking request for ${fmt(booking.starts_at)} expired because it was not completed in time.\n\nThe slot has been released.${restartLine}`;
   const html = simpleHtml(
@@ -827,7 +858,7 @@ export function buildBookingExpiredEmail(
       'The slot has been released.',
     ],
     startNewBookingUrl ? 'Book again' : 'Back to homepage',
-    startNewBookingUrl ?? 'https://yairb.ch',
+    startNewBookingUrl ?? siteUrl,
     [],
     startNewBookingUrl ? 'It\'s ok, you can:' : undefined,
   );

@@ -45,6 +45,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     },
   );
 
@@ -91,6 +92,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     },
   );
 
@@ -120,8 +122,8 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
     status: result.status,
     ...(booking?.booking_type === 'PAY_LATER'
       ? {
-          continue_payment_url: buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
-          manage_url: await buildManageUrl(ctx.env.SITE_URL, booking),
+          continue_payment_url: buildContinuePaymentUrl(ctx.siteUrl, booking),
+          manage_url: await buildManageUrl(ctx.siteUrl, booking),
         }
       : {}),
     ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),

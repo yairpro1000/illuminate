@@ -40,6 +40,7 @@ export interface JobContext {
   requestId: string;
   correlationId?: string;
   operation?: OperationContext;
+  siteUrl?: string;
   triggerSource: 'cron' | 'manual';
 }
 
@@ -115,6 +116,7 @@ export async function handleJobTrigger(
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
     triggerSource: 'manual',
   });
   return ok({ ok: true, job: name });
@@ -817,7 +819,9 @@ async function executeSideEffect(
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
   };
+  const bookingSiteUrl = String(ctx.siteUrl || ctx.env.SITE_URL || '').replace(/\/+$/g, '');
 
   switch (effect.effect_intent) {
     case 'SEND_BOOKING_CONFIRMATION_REQUEST': {
@@ -829,7 +833,7 @@ async function executeSideEffect(
         throw new Error('confirm_token_missing');
       }
 
-      const confirmUrl = buildConfirmUrl(ctx.env.SITE_URL, confirmToken);
+      const confirmUrl = buildConfirmUrl(bookingSiteUrl, confirmToken);
       const policy = await getBookingPolicyConfig(ctx.providers.repository);
       if (booking.event_id) {
         const event = await ctx.providers.repository.getEventById(booking.event_id);
@@ -854,7 +858,7 @@ async function executeSideEffect(
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
       const payUrl = payment?.invoice_url
         ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(ctx.env.SITE_URL, booking);
+        ?? buildContinuePaymentUrl(bookingSiteUrl, booking);
       if (!payUrl) throw new Error('checkout_url_missing');
 
       if (!booking.event_id) {
@@ -874,7 +878,7 @@ async function executeSideEffect(
     }
 
     case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(ctx.env.SITE_URL, booking));
+      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(bookingSiteUrl, booking));
       return;
     }
 
@@ -966,7 +970,7 @@ async function executeSideEffect(
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
       const payUrl = payment?.invoice_url
         ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(ctx.env.SITE_URL, booking);
+        ?? buildContinuePaymentUrl(bookingSiteUrl, booking);
       if (!payUrl) throw new Error('checkout_url_missing');
       const alreadySettled = isPaymentSettledStatus(payment?.status);
       const manualArrangement = isPaymentManualArrangementStatus(payment?.status);
@@ -1000,7 +1004,7 @@ async function executeSideEffect(
         throw new Error('irrelevant_payment_link_manual_arrangement');
       }
 
-      const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+      const manageUrl = await buildManageUrl(bookingSiteUrl, booking);
       const policy = await getBookingPolicyConfig(ctx.providers.repository);
       await ctx.providers.email.sendBookingPaymentDue(
         booking,

@@ -59,6 +59,7 @@ import {
 import { handlePreflight, getAllowedOrigin, addCors, allowPagesDevOrigins } from './lib/cors.js';
 import { ApiError, errorBody, jsonResponse } from './lib/errors.js';
 import { type OperationContext } from './lib/execution.js';
+import { resolvePublicSiteUrl } from './lib/public-site-url.js';
 import {
   recordExceptionLog,
   wrapProvidersForOperation,
@@ -79,6 +80,7 @@ export interface AppContext {
   requestId: string;
   correlationId: string;
   operation: OperationContext;
+  siteUrl: string;
   executionCtx?: ExecutionContext;
 }
 
@@ -170,10 +172,11 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
   const isAdminEventsPath = url.pathname === '/api/admin/events';
   const isFrontendObservabilityPath = url.pathname === '/api/observability/frontend';
   const devMode = !!ctx.env.ADMIN_DEV_EMAIL;
+  const siteUrl = ctx.siteUrl || resolvePublicSiteUrl(request, ctx.env, ctx.logger);
   const pagesDevOriginsAllowed = allowPagesDevOrigins(ctx.env.API_ALLOW_PAGES_DEV_ORIGINS);
   const origin = getAllowedOrigin(
     request,
-    ctx.env.SITE_URL,
+    siteUrl,
     ctx.env.API_ALLOWED_ORIGINS,
     !!ctx.env.ADMIN_DEV_EMAIL,
     pagesDevOriginsAllowed,
@@ -207,7 +210,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         request_origin: request.headers.get('Origin'),
         requested_method: request.headers.get('Access-Control-Request-Method'),
         requested_headers: requestedHeaders,
-        site_url: ctx.env.SITE_URL,
+        site_url: siteUrl,
         configured_origins: ctx.env.API_ALLOWED_ORIGINS || null,
         allow_pages_dev_origins: pagesDevOriginsAllowed,
         dev_mode: devMode,
@@ -312,7 +315,7 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     const startedAt = Date.now();
 
     try {
-      const res = await executeObservedRoute(request, ctx, params, r.handler, r.executionLayer);
+      const res = await executeObservedRoute(request, { ...ctx, siteUrl }, params, r.handler, r.executionLayer);
       if (!isFrontendObservabilityPath || res.status >= 400) {
         ctx.logger.logRequest?.({
           method: request.method,

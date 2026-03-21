@@ -41,6 +41,7 @@ export async function handleContinuePayment(request: Request, ctx: AppContext): 
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     });
 
     ctx.logger.logInfo?.({

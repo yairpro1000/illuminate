@@ -16,6 +16,7 @@ export async function handlePaymentStatus(request: Request, ctx: AppContext): Pr
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
   });
   const previewDecision = getMockEmailPreviewDecision(ctx.env.EMAIL_MODE, request);
   const mockEmailPreview = resolveLatestMockEmailPreviewForBooking(actionInfo.booking.id, {

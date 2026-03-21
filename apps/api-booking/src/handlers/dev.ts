@@ -224,7 +224,7 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
       {
         paymentIntentId: `mock_pi_${crypto.randomUUID()}`,
         invoiceId: `mock_inv_${crypto.randomUUID()}`,
-        invoiceUrl: `${ctx.env.SITE_URL}/mock-invoice/${sessionId}.pdf`,
+        invoiceUrl: `${ctx.siteUrl}/mock-invoice/${sessionId}.pdf`,
       },
       {
         providers: ctx.providers,
@@ -265,7 +265,7 @@ export async function handleDevEmails(request: Request, ctx: AppContext): Promis
       booking_id: email.booking_id,
       event_id: email.event_id,
       has_html: Boolean(email.html),
-      preview_url: `${ctx.env.SITE_URL}/dev-emails.html?email_id=${encodeURIComponent(email.id)}`,
+      preview_url: `${ctx.siteUrl}/dev-emails.html?email_id=${encodeURIComponent(email.id)}`,
       preview_html_url: `${requestOrigin}/api/__dev/emails/${encodeURIComponent(email.id)}/html`,
     }));
     ctx.logger.logInfo?.({
@@ -547,7 +547,7 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
     ? latestSubmitted.payload['confirm_token'] as string
     : null;
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-  const manageUrl = await buildManageUrl(ctx.env.SITE_URL, booking);
+  const manageUrl = await buildManageUrl(ctx.siteUrl, booking);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -581,7 +581,7 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
       timezone: booking.timezone,
     },
     links: {
-      confirm_url: confirmToken ? buildConfirmUrl(ctx.env.SITE_URL, confirmToken) : null,
+      confirm_url: confirmToken ? buildConfirmUrl(ctx.siteUrl, confirmToken) : null,
       manage_url: manageUrl,
     },
     payment: payment ? {
@@ -787,6 +787,7 @@ export async function handleTestBookingExpire(request: Request, ctx: AppContext)
     requestId: ctx.requestId,
     correlationId: ctx.correlationId,
     operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
   });
 
   ctx.logger.logInfo?.({
@@ -944,6 +945,7 @@ export async function handleTestBookingsCleanup(request: Request, ctx: AppContex
         requestId: ctx.requestId,
         correlationId: ctx.correlationId,
         operation: ctx.operation,
+        siteUrl: ctx.siteUrl,
       }, {
         source: 'ADMIN_UI',
         bypassPolicyWindow: true,

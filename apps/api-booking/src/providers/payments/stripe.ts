@@ -36,6 +36,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
   ) {}
 
   async createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession> {
+    const siteUrl = params.siteUrl ?? this.siteUrl;
     const customerId = await this.ensureCustomer({
       email: params.customerEmail,
       name: params.customerName ?? null,
@@ -51,10 +52,10 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     form.set('customer', customerId);
     form.set('metadata[booking_id]', params.bookingId);
     form.set('metadata[payment_flow]', 'pay_now');
-    form.set('metadata[site_url]', this.siteUrl);
+    form.set('metadata[site_url]', siteUrl);
     form.set('payment_intent_data[metadata][booking_id]', params.bookingId);
     form.set('payment_intent_data[metadata][payment_flow]', 'pay_now');
-    form.set('payment_intent_data[metadata][site_url]', this.siteUrl);
+    form.set('payment_intent_data[metadata][site_url]', siteUrl);
     appendMetadata(form, params.metadata);
     appendMetadata(form, params.metadata, 'payment_intent_data[metadata]');
     params.lineItems.forEach((item, index) => {
@@ -80,6 +81,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
   }
 
   async createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord> {
+    const siteUrl = params.siteUrl ?? this.siteUrl;
     const customerId = await this.ensureCustomer({
       email: params.customerEmail,
       name: params.customerName ?? null,
@@ -93,7 +95,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     invoiceForm.set('auto_advance', 'false');
     invoiceForm.set('metadata[booking_id]', params.bookingId);
     invoiceForm.set('metadata[payment_flow]', 'pay_later');
-    invoiceForm.set('metadata[site_url]', this.siteUrl);
+    invoiceForm.set('metadata[site_url]', siteUrl);
     if (params.dueDateIso) {
       invoiceForm.set('due_date', String(Math.floor(new Date(params.dueDateIso).getTime() / 1000)));
     } else {
@@ -161,6 +163,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
 
     const metadata = isRecord(eventObject['metadata']) ? eventObject['metadata'] as Record<string, unknown> : {};
     const bookingId = asNullableString(metadata['booking_id']) ?? asNullableString(eventObject['client_reference_id']);
+    const siteUrl = asNullableString(metadata['site_url']);
 
     if (eventType === 'checkout.session.completed') {
       return {
@@ -174,6 +177,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
         bookingId,
         customerId: asNullableString(eventObject['customer']),
+        siteUrl,
         rawPayload: parsed,
       };
     }
@@ -193,6 +197,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
         bookingId,
         customerId: asNullableString(eventObject['customer']),
+        siteUrl,
         rawPayload: parsed,
       };
     }
@@ -212,6 +217,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
         bookingId,
         customerId: asNullableString(eventObject['customer']),
+        siteUrl,
         rawPayload: parsed,
       };
     }

@@ -10,6 +10,7 @@ export interface CreateCheckoutParams {
   lineItems: CheckoutLineItem[];
   /** Opaque booking reference stored in provider metadata. */
   bookingId: string;
+  siteUrl?: string | null;
   customerEmail: string;
   customerName?: string | null;
   existingStripeCustomerId?: string | null;
@@ -35,6 +36,7 @@ export interface CreateInvoiceParams {
   amount: number;
   currency: string;
   bookingId: string;
+  siteUrl?: string | null;
   customerEmail: string;
   customerName?: string | null;
   existingStripeCustomerId?: string | null;
@@ -66,6 +68,7 @@ export interface StripePaymentEvent {
   currency: string;
   bookingId: string | null;
   customerId: string | null;
+  siteUrl: string | null;
   rawPayload: Record<string, unknown>;
 }
 

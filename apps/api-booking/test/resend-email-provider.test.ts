@@ -105,6 +105,8 @@ describe('Resend payment-due email payload', () => {
       id: 'evt-1',
       title: 'ILLUMINATE Evening',
       starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
       address_line: 'Via Example 1, Lugano',
     } as any, 'https://letsilluminate.co/confirm.html?token=abc', 15);
 

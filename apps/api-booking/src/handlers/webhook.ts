@@ -94,6 +94,25 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
     return ok({ received: true, handled: true, idempotent: true });
   }
 
+  const settledSiteUrl = event.siteUrl ?? ctx.siteUrl;
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'stripe_webhook_site_url_resolution_decision',
+    message: 'Resolved public site URL for Stripe webhook settlement side effects',
+    context: {
+      payment_id: payment.id,
+      booking_id: payment.booking_id,
+      stripe_event_type: event.eventType,
+      webhook_event_site_url: event.siteUrl,
+      request_site_url: ctx.siteUrl,
+      resolved_site_url: settledSiteUrl,
+      branch_taken: event.siteUrl
+        ? 'use_webhook_metadata_site_url'
+        : 'fallback_request_site_url',
+      deny_reason: event.siteUrl ? null : 'webhook_metadata_site_url_missing',
+    },
+  });
+
   await confirmBookingPayment(
     {
       id: payment.id,
@@ -116,6 +135,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: settledSiteUrl,
     },
   );
 

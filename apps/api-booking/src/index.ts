@@ -13,6 +13,7 @@ import {
 import { runCron }         from './handlers/jobs.js';
 import { errorBody, jsonResponse } from './lib/errors.js';
 import { addCorsIfAllowed } from './lib/cors.js';
+import { resolvePublicSiteUrl } from './lib/public-site-url.js';
 
 function inferAppAreaFromPath(pathname: string): 'website' | 'admin' {
   return pathname.startsWith('/api/admin/') ? 'admin' : 'website';
@@ -39,6 +40,7 @@ export default {
 
       try {
         const providers = createProviders(env, logger);
+        const siteUrl = resolvePublicSiteUrl(request, env, logger);
         const response = await handleRequest(request, {
           providers,
           env,
@@ -46,6 +48,7 @@ export default {
           requestId,
           correlationId,
           operation,
+          siteUrl,
           executionCtx,
         });
         await finalizeApiLog(env, inboundApiLogId, {

@@ -42,6 +42,7 @@ function makeCtx() {
     logger: makeLogger(),
     requestId: 'req-stripe-webhook',
     correlationId: 'corr-stripe-webhook',
+    siteUrl: 'https://example.com',
     operation: createOperationContext({
       appArea: 'website',
       requestId: 'req-stripe-webhook',
@@ -121,6 +122,7 @@ describe('Stripe webhook handling', () => {
       currency: payment!.currency,
       bookingId: created.bookingId,
       customerId: payment!.stripe_customer_id,
+      siteUrl: null,
       rawPayload: { type: 'checkout.session.completed' },
     });
 
@@ -176,6 +178,7 @@ describe('Stripe webhook handling', () => {
       currency: payment!.currency,
       bookingId: created.bookingId,
       customerId: payment!.stripe_customer_id,
+      siteUrl: null,
       rawPayload: { type: 'invoice.paid' },
     });
 
@@ -231,6 +234,7 @@ describe('Stripe webhook handling', () => {
       currency: payment!.currency,
       bookingId: created.bookingId,
       customerId: payment!.stripe_customer_id,
+      siteUrl: null,
       rawPayload: { type: 'payment_intent.succeeded' },
     });
 
@@ -287,6 +291,7 @@ describe('Stripe webhook handling', () => {
       currency: payment!.currency,
       bookingId: created.bookingId,
       customerId: payment!.stripe_customer_id,
+      siteUrl: null,
       rawPayload: { type: 'payment_intent.succeeded' },
     });
 
@@ -310,6 +315,59 @@ describe('Stripe webhook handling', () => {
       context: expect.objectContaining({
         payment_id: payment!.id,
         branch_taken: 'match_invoice_primary_for_payment_intent',
+      }),
+    }));
+  });
+
+  it('uses webhook metadata site URL for post-payment confirmation emails', async () => {
+    const ctx = makeCtx();
+    const created = await createPayNowBooking({
+      slotStart: '2026-03-30T10:00:00.000Z',
+      slotEnd: '2026-03-30T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Webhook Site Url',
+      clientEmail: 'webhook-site-url@example.com',
+      clientPhone: '+41000000075',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    ctx.providers.payments.parseWebhookEvent = vi.fn().mockResolvedValue({
+      eventType: 'checkout.session.completed',
+      checkoutSessionId: payment!.stripe_checkout_session_id,
+      paymentIntentId: 'pi_checkout_site_url_123',
+      invoiceId: null,
+      invoiceUrl: null,
+      paymentLinkId: null,
+      amount: payment!.amount,
+      currency: payment!.currency,
+      bookingId: created.bookingId,
+      customerId: payment!.stripe_customer_id,
+      siteUrl: 'https://yairb.ch',
+      rawPayload: { type: 'checkout.session.completed' },
+    });
+
+    const response = await handleStripeWebhook(
+      new Request('https://api.local/api/stripe/webhook', {
+        method: 'POST',
+        headers: { 'stripe-signature': 'mock' },
+        body: '{}',
+      }),
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    const sentEmail = mockState.sentEmails.at(-1);
+    expect(sentEmail?.kind).toBe('booking_confirmation');
+    expect(sentEmail?.text).toContain('Manage booking: https://yairb.ch/manage.html?token=m1.');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'stripe_webhook_site_url_resolution_decision',
+      context: expect.objectContaining({
+        resolved_site_url: 'https://yairb.ch',
+        branch_taken: 'use_webhook_metadata_site_url',
       }),
     }));
   });

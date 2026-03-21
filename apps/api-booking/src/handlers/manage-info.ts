@@ -48,6 +48,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     });
     const booking = access.booking;
     const bookingPolicy = await getBookingPolicyConfig(ctx.providers.repository);

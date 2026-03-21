@@ -122,6 +122,7 @@ export async function handleEventBook(
       requestId: ctx.requestId,
       correlationId: ctx.correlationId,
       operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
     },
   );
 
@@ -266,6 +267,7 @@ export async function handleEventBookWithAccess(
         requestId: ctx.requestId,
         correlationId: ctx.correlationId,
         operation: ctx.operation,
+        siteUrl: ctx.siteUrl,
       },
     );
 
