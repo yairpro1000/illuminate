@@ -25,6 +25,10 @@ describe('public config endpoint diagnostics', () => {
     const res = await handleGetPublicConfig(req, ctx);
 
     expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(res.headers.get('Pragma')).toBe('no-cache');
+    expect(res.headers.get('Expires')).toBe('0');
+    expect(res.headers.get('Vary')).toBe('cf-ipcountry');
     await expect(res.json()).resolves.toEqual({
       config_version: 'booking_policy_v1',
       visitor: {
@@ -74,6 +78,8 @@ describe('public config endpoint diagnostics', () => {
         request_country: null,
         antibot_mode: 'mock',
         turnstile_enabled: false,
+        response_cache_control: 'private, no-store, max-age=0',
+        response_vary: 'cf-ipcountry',
         turnstile_env_snapshot: expect.objectContaining({
           TURNSTILE_TEST_SITE_KEY_PASS: 'site-key-pass',
           TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: 'site-key-fail',
@@ -154,6 +160,7 @@ describe('public config endpoint diagnostics', () => {
 
     expect(res.status).toBe(500);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    expect(res.headers.get('Vary')).toBe('Origin');
     await expect(res.json()).resolves.toEqual(expect.objectContaining({
       error: 'INTERNAL_ERROR',
       message: 'Internal server error',
@@ -232,7 +239,37 @@ describe('public config endpoint diagnostics', () => {
         antibot_mode_override: 'mock',
         antibot_mode_effective: 'mock',
         turnstile_enabled: false,
+        response_cache_control: 'private, no-store, max-age=0',
+        response_vary: 'cf-ipcountry',
       }),
+    }));
+  });
+
+  it('preserves country vary headers when CORS is added to /api/config responses', async () => {
+    const ctx = makeCtx({
+      env: {
+        SITE_URL: 'https://letsilluminate.co',
+        API_ALLOWED_ORIGINS: 'https://letsilluminate.co',
+      } as any,
+    });
+    const req = new Request('https://api.local/api/config', {
+      method: 'GET',
+      headers: {
+        Origin: 'https://letsilluminate.co',
+        'cf-ipcountry': 'CH',
+      },
+    });
+
+    const res = await handleRequest(req, ctx);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(res.headers.get('Vary')).toBe('cf-ipcountry, Origin');
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      visitor: {
+        country: 'CH',
+      },
     }));
   });
 });

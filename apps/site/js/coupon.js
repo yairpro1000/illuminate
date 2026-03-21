@@ -103,6 +103,7 @@
     if (visitorCountryResolved) return Promise.resolve(visitorCountry);
     if (visitorCountryRequest) return visitorCountryRequest;
     visitorCountryRequest = window.fetch('/api/config', {
+      cache: 'no-store',
       headers: {
         Accept: 'application/json',
       },

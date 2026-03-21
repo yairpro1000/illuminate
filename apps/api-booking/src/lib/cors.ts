@@ -28,15 +28,37 @@ export function corsHeaders(origin: string): Record<string, string> {
   };
 }
 
+function mergeHeaderTokens(...values: Array<string | null | undefined>): string | null {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    String(value || '')
+      .split(',')
+      .map((token) => token.trim())
+      .filter(Boolean)
+      .forEach((token) => {
+        const normalized = token.toLowerCase();
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        merged.push(token);
+      });
+  });
+  return merged.length ? merged.join(', ') : null;
+}
+
 export function handlePreflight(origin: string): Response {
   return new Response(null, { status: 204, headers: corsHeaders(origin) });
 }
 
 export function addCors(response: Response, origin: string): Response {
   const headers = new Headers(response.headers);
-  for (const [k, v] of Object.entries(corsHeaders(origin))) {
+  const nextCorsHeaders = corsHeaders(origin);
+  for (const [k, v] of Object.entries(nextCorsHeaders)) {
+    if (k.toLowerCase() === 'vary') continue;
     headers.set(k, v);
   }
+  const mergedVary = mergeHeaderTokens(response.headers.get('Vary'), nextCorsHeaders.Vary);
+  if (mergedVary) headers.set('Vary', mergedVary);
   return new Response(response.body, { status: response.status, headers });
 }
 

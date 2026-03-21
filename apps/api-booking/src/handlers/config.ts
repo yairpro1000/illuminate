@@ -1,5 +1,5 @@
 import type { AppContext } from '../router.js';
-import { ApiError, internalError, ok } from '../lib/errors.js';
+import { ApiError, internalError, jsonResponse } from '../lib/errors.js';
 import { getBookingPolicyConfig, getBookingPolicyText } from '../domain/booking-effect-policy.js';
 import { describeBookingPolicyValidationError } from '../config/booking-policy.js';
 import { getOverride } from '../lib/config-overrides.js';
@@ -10,6 +10,18 @@ interface PublicBookingPolicy {
   pay_now_checkout_window_minutes: number;
   pay_now_reminder_grace_minutes: number;
   pay_now_total_expiry_minutes: number;
+}
+
+const PUBLIC_CONFIG_CACHE_CONTROL = 'private, no-store, max-age=0';
+const PUBLIC_CONFIG_VARY = 'cf-ipcountry';
+
+function createPublicConfigResponse(body: unknown): Response {
+  return jsonResponse(body, 200, {
+    'Cache-Control': PUBLIC_CONFIG_CACHE_CONTROL,
+    Pragma: 'no-cache',
+    Expires: '0',
+    Vary: PUBLIC_CONFIG_VARY,
+  });
 }
 
 function buildPublicBookingPolicy(policy: Awaited<ReturnType<typeof getBookingPolicyConfig>>): PublicBookingPolicy {
@@ -143,11 +155,13 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         antibot_mode_effective: effectiveAntibotMode,
         turnstile_enabled: responseBody.antibot.turnstile.enabled,
         turnstile_env_snapshot: responseBody.antibot.turnstile.env,
+        response_cache_control: PUBLIC_CONFIG_CACHE_CONTROL,
+        response_vary: PUBLIC_CONFIG_VARY,
         branch_taken: 'public_config_response_prepared',
       },
     });
 
-    return ok(responseBody);
+    return createPublicConfigResponse(responseBody);
   } catch (err) {
     const path = new URL(request.url).pathname;
     const statusCode = err instanceof ApiError ? err.statusCode : 500;

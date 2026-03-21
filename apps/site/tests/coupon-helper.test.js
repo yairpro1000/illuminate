@@ -79,6 +79,13 @@ describe('site coupon helper', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'))
     await window.SiteCoupon.resolveVisitorCountry()
 
+    expect(fetchMock).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+      cache: 'no-store',
+      credentials: 'same-origin',
+      headers: expect.objectContaining({
+        Accept: 'application/json',
+      }),
+    }))
     expect(document.querySelector('[data-coupon-suggestion]')).toBeNull()
   })
 
