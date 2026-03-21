@@ -3,6 +3,8 @@
   "name": "pa-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-03-05",
+  "workers_dev": true,
+  "preview_urls": true,
   // Production route ownership for deployed worker.
   // Local `wrangler dev` still serves on localhost and does not require this host for PA_DEV_EMAIL bypass.
   "routes": [
