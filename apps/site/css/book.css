@@ -153,7 +153,7 @@
   padding: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: oklch(15% 0.03 208 / 0.55);
+  background: oklch(14% 0.034 228 / 0.55);
 }
 
 .coupon-review__header {
@@ -197,7 +197,7 @@
   justify-content: space-between;
   padding: 0.875rem 1rem;
   border-bottom: 1px solid var(--color-border);
-  background: oklch(14% 0.025 208 / 0.6);
+  background: oklch(13% 0.030 228 / 0.6);
 }
 
 .cal-month-name {
@@ -515,7 +515,7 @@
   font-family: var(--font);
   font-size: 0.9375rem;
   color: var(--color-text);
-  background: oklch(13% 0.024 209);
+  background: oklch(12% 0.028 228);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 0.75rem 0.875rem;
@@ -951,14 +951,14 @@
 
 body.theme-light .booking-card {
   background: oklch(100% 0 0 / 0.82);
-  border-color: oklch(59% 0.160 200 / 0.12);
-  --color-text:       oklch(14% 0.025 210);
-  --color-text-muted: oklch(35% 0.020 210);
-  --color-text-subtle: oklch(52% 0.018 210);
+  border-color: oklch(60% 0.200 192 / 0.12);
+  --color-text:       oklch(13% 0.028 228);
+  --color-text-muted: oklch(35% 0.022 226);
+  --color-text-subtle: oklch(52% 0.018 224);
 }
 
 body.theme-light .booking-header {
-  border-bottom-color: oklch(59% 0.160 200 / 0.12);
+  border-bottom-color: oklch(60% 0.200 192 / 0.12);
 }
 
 body.theme-light .event-banner {
@@ -976,8 +976,8 @@ body.theme-light .calendar {
 
 body.theme-light .form-input {
   background: oklch(99% 0 0 / 0.7);
-  border-color: oklch(59% 0.160 200 / 0.2);
-  color: oklch(14% 0.025 210);
+  border-color: oklch(60% 0.200 192 / 0.2);
+  color: oklch(13% 0.028 228);
 }
 
 body.theme-light .form-input::placeholder {
@@ -1002,7 +1002,7 @@ body.theme-light .payment-opt--selected {
 body.theme-light .time-slot {
   background: oklch(99% 0 0 / 0.6);
   border-color: oklch(59% 0.160 200 / 0.18);
-  color: oklch(35% 0.020 210);
+  color: oklch(35% 0.022 226);
 }
 
 body.theme-light .time-slot:hover {
@@ -1020,7 +1020,7 @@ body.theme-light .review-table {
 }
 
 body.theme-light .review-row {
-  border-bottom-color: oklch(59% 0.160 200 / 0.12);
+  border-bottom-color: oklch(60% 0.200 192 / 0.12);
 }
 
 body.theme-light .coupon-review {
@@ -1029,14 +1029,20 @@ body.theme-light .coupon-review {
 }
 
 body.theme-light .btn-ghost {
-  color: oklch(52% 0.018 210);
+  color: oklch(52% 0.018 224);
 }
 
 body.theme-light .btn-ghost:hover {
-  color: oklch(35% 0.020 210);
+  color: oklch(35% 0.022 226);
 }
 
 /* ── Responsive ──────────────────────────────────────────── */
+
+@media (min-width: 30rem) {
+  .cal-grid {
+    padding: 3rem;
+  }
+}
 
 @media (max-width: 30rem) {
   .booking-header,

@@ -201,7 +201,7 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
 
     if (!sessionId || !result) throw badRequest('session_id and result are required');
 
-    const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
+    const payment = await ctx.providers.repository.getPaymentByStripeCheckoutSessionId(sessionId);
     if (!payment) throw badRequest('Payment not found for session_id');
     if (payment.status === 'SUCCEEDED') return ok({ already: 'succeeded' });
 
@@ -216,8 +216,10 @@ export async function handleSimulatePayment(request: Request, ctx: AppContext): 
       {
         id: payment.id,
         booking_id: payment.booking_id,
-        provider_payment_id: payment.provider_payment_id,
         status: payment.status,
+        stripe_checkout_session_id: payment.stripe_checkout_session_id,
+        stripe_payment_intent_id: payment.stripe_payment_intent_id,
+        stripe_invoice_id: payment.stripe_invoice_id,
       },
       {
         paymentIntentId: `mock_pi_${crypto.randomUUID()}`,
@@ -424,10 +426,15 @@ export async function handleDevBookings(_request: Request, ctx: AppContext): Pro
       id: payment.id,
       booking_id: payment.booking_id,
       provider: payment.provider,
-      provider_payment_id: payment.provider_payment_id,
+      stripe_customer_id: payment.stripe_customer_id,
+      stripe_checkout_session_id: payment.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment.stripe_payment_intent_id,
+      stripe_invoice_id: payment.stripe_invoice_id,
+      stripe_payment_link_id: payment.stripe_payment_link_id,
       amount: payment.amount,
       currency: payment.currency,
       status: payment.status,
+      checkout_url: payment.checkout_url,
       invoice_url: payment.invoice_url,
       paid_at: payment.paid_at,
       created_at: payment.created_at,
@@ -580,7 +587,7 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
     payment: payment ? {
       id: payment.id,
       status: payment.status,
-      session_id: payment.provider_payment_id,
+      session_id: payment.stripe_checkout_session_id,
       checkout_url: payment.checkout_url,
     } : null,
   });

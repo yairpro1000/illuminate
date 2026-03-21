@@ -19,6 +19,7 @@ export interface CreateCalendarEventOptions {
 
 export interface CalendarEventUpsertResult {
   eventId: string;
+  htmlLink: string | null;
   meetingProvider: 'google_meet' | null;
   meetingLink: string | null;
 }

@@ -80,7 +80,7 @@ function renderNav(nav) {
   nav.innerHTML = `
     <div class="nav__inner">
       <a href="${logoHref}" class="nav__logo">
-        ILLUMINATE <span>by Yair Benharroch</span>
+        <span class="nav__logo-brand">ILLUMINATE</span> <span>by Yair Benharroch</span>
       </a>
       <ul class="nav__links" role="list">
         ${desktopLinks}
@@ -111,6 +111,8 @@ function getFooterItems(variant, homeLinksMode) {
       { key: 'about', label: 'About', href: `${homePrefix}#about` },
       { key: 'worldview', label: 'My Worldview', href: 'worldview.html' },
       { key: 'contact-mail', label: 'Contact', href: 'mailto:hello@yairbendavid.com' },
+      { key: 'privacy', label: 'Privacy Policy', href: 'privacy.html' },
+      { key: 'terms', label: 'Terms of Service', href: 'terms.html' },
     ];
   }
 
@@ -120,6 +122,8 @@ function getFooterItems(variant, homeLinksMode) {
     { key: 'evenings', label: 'Evenings', href: 'evenings.html' },
     { key: 'sessions', label: '1:1 Sessions', href: 'sessions.html' },
     { key: 'contact', label: 'Get in touch', href: 'contact.html' },
+    { key: 'privacy', label: 'Privacy Policy', href: 'privacy.html' },
+    { key: 'terms', label: 'Terms of Service', href: 'terms.html' },
   ];
 }
 
@@ -134,7 +138,6 @@ function renderFooter(footer) {
 
   footer.innerHTML = `
     <div class="footer__inner">
-      <span class="footer__logo">ILLUMINATE <span>by Yair Benharroch</span></span>
       <nav class="footer__links" aria-label="Footer navigation">
         ${links}
       </nav>

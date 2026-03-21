@@ -38,16 +38,18 @@ function makeEnv() {
     OBSERVABILITY_SCHEMA: 'public',
     RESEND_API_KEY: 'resend-secret',
     GOOGLE_CALENDAR_ID: 'calendar@example.com',
-    GOOGLE_CLIENT_CALENDAR: 'client-id',
-    GOOGLE_CLIENT_SECRET_CALENDAR: 'client-secret',
-    GOOGLE_REFRESH_TOKEN_CALENDAR: 'refresh-token',
-    GOOGLE_CLIENT_EMAIL: 'service@example.com',
-    GOOGLE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
-    GOOGLE_TOKEN_URI: 'https://oauth2.googleapis.com/token',
+    GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({
+      client_email: 'service@example.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+      token_uri: 'https://oauth2.googleapis.com/token',
+    }),
     TIMEZONE: 'Europe/Zurich',
     STRIPE_SECRET_KEY: 'stripe-secret',
     STRIPE_WEBHOOK_SECRET: 'whsec',
     STRIPE_PUBLISHABLE_KEY: 'pk_test',
+    STRIPE_SECRET_KEY_SANDBOX: 'stripe-secret-sandbox',
+    STRIPE_WEBHOOK_SECRET_SANDBOX: 'whsec_sandbox',
+    STRIPE_PUBLISHABLE_KEY_SANDBOX: 'pk_test_sandbox',
     TURNSTILE_SECRET_KEY: 'turnstile',
     JOB_SECRET: 'job-secret',
     IMAGES_BUCKET: {} as R2Bucket,
@@ -63,6 +65,34 @@ function makeLogger() {
 }
 
 describe('provider observability wrapper', () => {
+  it('selects the Stripe provider for stripe_sandbox mode and logs the decision', async () => {
+    const logger = makeLogger();
+    const env = makeEnv();
+    env.PAYMENTS_MODE = 'stripe_sandbox';
+
+    const providers = createProviders(env, logger);
+
+    expect(providers.payments.constructor.name).toBe('StripePaymentsProvider');
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'payments_provider_mode_decision',
+      context: expect.objectContaining({
+        payments_mode_effective: 'stripe_sandbox',
+        stripe_runtime_mode: 'stripe_sandbox',
+        stripe_secret_present: true,
+        stripe_webhook_secret_present: true,
+        branch_taken: 'select_stripe_payments_provider',
+      }),
+    }));
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'payments_provider_mode_selected',
+      context: expect.objectContaining({
+        payments_mode_effective: 'stripe_sandbox',
+        provider_class: 'StripePaymentsProvider',
+        branch_taken: 'payments_provider_selected_stripe',
+      }),
+    }));
+  });
+
   it('wraps only external providers and leaves repository calls outside the outbound wrapper', async () => {
     insert.mockClear();
     updateEq.mockClear();

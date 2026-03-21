@@ -23,7 +23,7 @@
   <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
   <script>
     (function () {
-      var t = localStorage.getItem('yb-theme') || 'light';
+      var t = localStorage.getItem('yb-theme') || 'dark';
       if (t === 'light') document.body.classList.add('theme-light');
     })();
   </script>
@@ -61,7 +61,8 @@
       <div class="hero__content">
 
         <h1 class="heading-display hero__headline fade-up" id="hero-heading">
-          <span class="gradient-text">ILLUMINATE Evenings</span>
+          <span class="hero__brand">ILLUMINATE</span>
+          <span class="gradient-text">Evenings</span>
         </h1>
 
         <p class="hero__subtext fade-up fade-up--delay-1">
@@ -70,8 +71,9 @@
 
         <div class="evenings-body fade-up fade-up--delay-2">
           <p class="evenings-intro">
-            In a world of performance, distraction, and polarization,<br class="break-md" />
-            ILLUMINATE offers a guided social space where you can practice:
+            In a world of performance, distraction, and fast media that stays on the surface,
+            <span class="evenings-intro__brand">ILLUMINATE</span>
+            <span class="evenings-intro__name">Evenings</span> offer a guided social space where you can practice:
           </p>
 
           <ul class="evenings-practices">
@@ -102,6 +104,13 @@
           <h2 class="heading-xl mt-md fade-up fade-up--delay-1" id="upcoming-heading">
             Dates &amp; Details
           </h2>
+          <ul class="evenings-trust fade-up fade-up--delay-2" aria-label="Evenings trust signals">
+            <li>Gentle and guided</li>
+            <li>No experience needed</li>
+            <li>Small group atmosphere</li>
+            <li>Open to first-timers</li>
+            <li>Easy booking</li>
+          </ul>
         </div>
 
         <!-- Cards injected here by js/evenings.js -->

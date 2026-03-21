@@ -786,7 +786,6 @@ CREATE TABLE IF NOT EXISTS "public"."payments" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "booking_id" "uuid" NOT NULL,
     "provider" "text" NOT NULL,
-    "provider_payment_id" "text",
     "amount" numeric(10,2) NOT NULL,
     "currency" "text" DEFAULT 'CHF'::"text" NOT NULL,
     "status" "text" DEFAULT 'PENDING'::"text" NOT NULL,
@@ -796,6 +795,11 @@ CREATE TABLE IF NOT EXISTS "public"."payments" (
     "paid_at" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "stripe_customer_id" "text",
+    "stripe_checkout_session_id" "text",
+    "stripe_payment_intent_id" "text",
+    "stripe_invoice_id" "text",
+    "stripe_payment_link_id" "text",
     CONSTRAINT "payments_amount_cents_check" CHECK (("amount" >= (0)::numeric)),
     CONSTRAINT "payments_status_check" CHECK (("status" = ANY (ARRAY['PENDING'::"text", 'INVOICE_SENT'::"text", 'CASH_OK'::"text", 'SUCCEEDED'::"text", 'FAILED'::"text", 'REFUNDED'::"text"])))
 );
@@ -1189,11 +1193,23 @@ CREATE INDEX "idx_payments_booking" ON "public"."payments" USING "btree" ("booki
 
 
 
-CREATE INDEX "idx_payments_provider_payment" ON "public"."payments" USING "btree" ("provider", "provider_payment_id");
-
-
-
 CREATE INDEX "idx_payments_status" ON "public"."payments" USING "btree" ("status", "created_at" DESC);
+
+
+
+CREATE INDEX "idx_payments_stripe_checkout_session_id" ON "public"."payments" USING "btree" ("stripe_checkout_session_id");
+
+
+
+CREATE INDEX "idx_payments_stripe_payment_intent_id" ON "public"."payments" USING "btree" ("stripe_payment_intent_id");
+
+
+
+CREATE INDEX "idx_payments_stripe_invoice_id" ON "public"."payments" USING "btree" ("stripe_invoice_id");
+
+
+
+CREATE INDEX "idx_payments_stripe_payment_link_id" ON "public"."payments" USING "btree" ("stripe_payment_link_id");
 
 
 
@@ -1644,7 +1660,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
 
 
 

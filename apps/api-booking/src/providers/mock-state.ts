@@ -14,6 +14,8 @@ import type {
   EventLateAccessLink,
   EventReminderSubscription,
   Payment,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   SystemSetting,
 } from '../types.js';
 
@@ -45,6 +47,8 @@ export const mockState = {
   contactMessages: new Map<string, ContactMessage>(),
   payments: new Map<string, Payment>(),
   systemSettings: new Map<string, SystemSetting>(),
+  sessionTypeAvailabilityWindows: new Map<string, SessionTypeAvailabilityWindow[]>(),
+  sessionTypeWeekOverrides: new Map<string, SessionTypeWeekOverride>(),
   sentEmails: [] as SentEmail[],
   // booking audit/events recorded by the mock repository
   bookingEvents: [] as BookingEventRecord[],
@@ -62,6 +66,20 @@ const SEED_EVENTS: Event[] = [
     slug: 'ev-01-body',
     title: 'Listening to the Body',
     description: 'A guided evening of embodied presence: gentle pair connection, a deep body-listening meditation, and grounded sharing.',
+    marketing_content: {
+      subtitle: 'A guided evening to reconnect with the intelligence of your body, intuition, and inner calm.',
+      intro: 'Instead of trying to think your way forward, this evening helps you slow down, feel inward, and hear what your body has already been saying.',
+      what_to_expect: [
+        'guided body-listening meditation',
+        'grounded sharing in a calm atmosphere',
+        'space to notice the difference between mind, gut, and heart',
+      ],
+      takeaways: [
+        'more inner clarity',
+        'a deeper felt sense of self-trust',
+        'a simple embodied practice to return to afterwards',
+      ],
+    },
     starts_at: '2026-03-20T19:00:00+01:00',
     ends_at: '2026-03-20T20:55:00+01:00',
     timezone: 'Europe/Zurich',
@@ -77,10 +95,24 @@ const SEED_EVENTS: Event[] = [
     updated_at: nowIso,
   },
   {
-    id: 'ev-02-guidance',
-    slug: 'ev-02-guidance',
+    id: 'ev-02-inner-compass',
+    slug: 'ev-02-inner-compass',
     title: 'Inner Compass Night',
     description: 'We explore what becomes possible when conversation is structured with care.',
+    marketing_content: {
+      subtitle: 'A structured conversation evening to help you hear what is truly yours beneath noise, pressure, and habit.',
+      intro: 'Through carefully held questions and present connection, this evening supports you in listening more honestly to yourself while meeting others from a more rooted place.',
+      what_to_expect: [
+        'guided pair and group questions',
+        'moments of reflection and inner-guidance practice',
+        'a thoughtful social atmosphere with real conversation',
+      ],
+      takeaways: [
+        'more clarity about what matters to you',
+        'a stronger connection to your own inner compass',
+        'fresh insight through authentic human contact',
+      ],
+    },
     starts_at: '2026-04-17T19:00:00+02:00',
     ends_at: '2026-04-17T21:00:00+02:00',
     timezone: 'Europe/Zurich',
@@ -100,6 +132,20 @@ const SEED_EVENTS: Event[] = [
     slug: 'ev-03-mirror',
     title: 'Mirrors & Gifts',
     description: 'A warm, imaginative evening where we practice affirming connection.',
+    marketing_content: {
+      subtitle: 'A warm and imaginative evening of reflection, affirmation, and being seen through the eyes of others.',
+      intro: 'Sometimes our gifts become easier to recognize when they are mirrored back to us. This evening creates a gentle space to explore that with openness and playfulness.',
+      what_to_expect: [
+        'guided connection in pairs or small groups',
+        'gentle mirroring of strengths, qualities, and gifts',
+        'an intuitive but grounded atmosphere',
+      ],
+      takeaways: [
+        'a clearer sense of your natural gifts',
+        'the experience of seeing and being seen beautifully',
+        'more warmth and confidence in how you relate to others',
+      ],
+    },
     starts_at: '2026-05-15T19:00:00+02:00',
     ends_at: '2026-05-15T20:55:00+02:00',
     timezone: 'Europe/Zurich',
@@ -119,6 +165,20 @@ const SEED_EVENTS: Event[] = [
     slug: 'ev-04-new-earth',
     title: 'New Earth Conversations',
     description: 'A guided dialogue evening using New Earth themes as inspiration.',
+    marketing_content: {
+      subtitle: 'A guided dialogue evening for exploring meaning, change, and the kind of world we want to help create.',
+      intro: 'Rather than staying trapped in reaction or abstraction, this evening invites a grounded conversation about personal and collective transformation.',
+      what_to_expect: [
+        'guided dialogue around New Earth themes',
+        'reflection on the link between inner and outer change',
+        'space for different perspectives without pressure to agree',
+      ],
+      takeaways: [
+        'a larger frame for current times',
+        'more grounded hope and orientation',
+        'a deeper sense of meaningful participation',
+      ],
+    },
     starts_at: '2026-06-19T19:00:00+02:00',
     ends_at: '2026-06-19T21:00:00+02:00',
     timezone: 'Europe/Zurich',

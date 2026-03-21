@@ -98,7 +98,7 @@ describe('test booking artifacts helper', () => {
       getPaymentByBookingId: vi.fn().mockResolvedValue({
         id: 'pay-1',
         status: 'PENDING',
-        provider_payment_id: 'cs_test_123',
+        stripe_checkout_session_id: 'cs_test_123',
         checkout_url: 'https://letsilluminate.co/dev-pay?session_id=cs_test_123',
       }),
     };

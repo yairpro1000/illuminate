@@ -1,11 +1,10 @@
 import { instrumentFetch } from '../../../shared/observability/backend.js';
 import type { Logger } from '../lib/logger.js';
-
-interface GoogleSaConfig {
-  client_email: string;
-  private_key: string;
-  token_uri: string;
-}
+import {
+  resolveGoogleServiceAccountConfig,
+  type GoogleServiceAccountConfig,
+  type GoogleServiceAccountEnv,
+} from './google-service-account.js';
 
 function b64url(input: string | Uint8Array): string {
   const raw = typeof input === 'string' ? input : String.fromCharCode(...input);
@@ -34,7 +33,7 @@ async function signJwtRS256(pemPrivateKey: string, signingInput: string): Promis
   return b64url(new Uint8Array(sig));
 }
 
-async function getAccessToken(config: GoogleSaConfig, scope: string, logger?: Logger): Promise<string> {
+async function getAccessToken(config: GoogleServiceAccountConfig, scope: string, logger?: Logger): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload = b64url(JSON.stringify({
@@ -77,7 +76,7 @@ export async function uploadToGoogleDrive(opts: {
   mimeType: string;
   filename: string;
   folderId: string;
-  serviceAccount: GoogleSaConfig;
+  serviceAccount: GoogleServiceAccountConfig;
   logger?: Logger;
 }): Promise<{ fileId: string }>
 {
@@ -201,7 +200,7 @@ export async function getOrCreateDriveFolderPath(opts: {
   rootFolderName: string;
   rootFolderId?: string | null;
   subfolderName: string;
-  serviceAccount: GoogleSaConfig;
+  serviceAccount: GoogleServiceAccountConfig;
   logger?: Logger;
 }): Promise<string> {
   const token = await getAccessToken(
@@ -222,26 +221,6 @@ export async function getOrCreateDriveFolderPath(opts: {
   return found ?? createDriveFolder(opts.subfolderName, parentId, token, opts.logger);
 }
 
-export function resolveServiceAccountFromEnv(env: {
-  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
-  GOOGLE_CLIENT_EMAIL?: string;
-  GOOGLE_PRIVATE_KEY?: string;
-  GOOGLE_TOKEN_URI?: string;
-}): GoogleSaConfig {
-  if (env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    const obj = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON);
-    return {
-      client_email: obj.client_email,
-      private_key: obj.private_key,
-      token_uri: obj.token_uri || 'https://oauth2.googleapis.com/token',
-    };
-  }
-  if (!env.GOOGLE_CLIENT_EMAIL || !env.GOOGLE_PRIVATE_KEY || !env.GOOGLE_TOKEN_URI) {
-    throw new Error('Missing Google service account configuration');
-  }
-  return {
-    client_email: env.GOOGLE_CLIENT_EMAIL,
-    private_key: env.GOOGLE_PRIVATE_KEY,
-    token_uri: env.GOOGLE_TOKEN_URI,
-  };
+export function resolveServiceAccountFromEnv(env: GoogleServiceAccountEnv): GoogleServiceAccountConfig {
+  return resolveGoogleServiceAccountConfig(env);
 }

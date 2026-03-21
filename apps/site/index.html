@@ -22,7 +22,7 @@
   <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
   <script>
     (function () {
-      var t = localStorage.getItem('yb-theme') || 'light';
+      var t = localStorage.getItem('yb-theme') || 'dark';
       if (t === 'light') document.body.classList.add('theme-light');
     })();
   </script>
@@ -88,17 +88,17 @@
         </h1>
 
         <p class="hero__subtext fade-up fade-up--delay-1">
-          A calm, focused space where <em>intuition and strength meet</em><br />
-          and your inner truth can safely land.
+          A calm, focused space where <br /><em class="about-accent">intuition and strength meet</em><br />
+          and your inner truth can safely land. 
         </p>
 
         <div class="hero__actions fade-up fade-up--delay-2">
           <a href="book.html?type=intro" class="btn btn-primary">
             Schedule Your Introductory<br />Clarity Session
           </a>
-          <a href="#how-we-work" class="btn btn-secondary">
+          <!-- <a href="#how-we-work" class="btn btn-secondary">
             Explore How We Work
-          </a>
+          </a> -->
         </div>
 
       </div>
@@ -121,7 +121,7 @@
                 <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <div class="who__card-content">
-                <p class="who__lead">If you are a <strong>high achiever</strong> who knows how to build, move, and succeed, yet sense that in the rush of achievement, something essential risks being overlooked: intimacy, integrity, and the people who matter most.</p>
+                <p class="who__lead">If you are a <strong class="about-accent">high achiever</strong> who knows how to build, move, and succeed, yet sense that in the rush of achievement, something essential risks being overlooked: intimacy, integrity, and the people who matter most.</p>
               </div>
             </article>
 
@@ -130,7 +130,7 @@
                 <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <div class="who__card-content">
-                <p class="who__lead">If you are used to being <strong>the strong one</strong>, and long to experience what it feels like to be guided with the same strength and care you offer others.</p>
+                <p class="who__lead">If you are used to being <strong class="about-accent">the strong one</strong>, and long to experience what it feels like to be guided with the same strength and care you offer others.</p>
               </div>
             </article>
 
@@ -139,7 +139,7 @@
                 <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <div class="who__card-content">
-                <p class="who__lead">If you are <strong>highly sensitive</strong>, feeling deeply, caring deeply, yet have grown used to shrinking your own truth to keep the peace and avoid conflict, at a quiet cost to yourself.</p>
+                <p class="who__lead">If you are <strong class="about-accent">highly sensitive</strong>, feeling deeply, caring deeply, yet have grown used to shrinking your own truth to keep the peace and avoid conflict, at a quiet cost to yourself.</p>
               </div>
             </article>
 
@@ -148,7 +148,7 @@
                 <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <div class="who__card-content">
-                <p class="who__lead">If you often <strong>second-guess yourself</strong>, feeling how fear or self-doubt quietly hold you back from acting on what you truly want.</p>
+                <p class="who__lead">If you often <strong class="about-accent">second-guess yourself</strong>, feeling how fear or self-doubt quietly hold you back from acting on what you truly want.</p>
               </div>
             </article>
 
@@ -157,14 +157,14 @@
                 <polyline points="2.5,9.5 7,14.5 15.5,3.5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
               <div class="who__card-content">
-                <p class="who__lead">Or you are simply standing <strong>at a crossroads</strong>, facing a real decision, and you wish not just to choose correctly this time, but to reconnect with an inner compass you can trust for life.</p>
+                <p class="who__lead">Or you are simply standing <strong class="about-accent">at a crossroads</strong>, facing a real decision, and you wish not just to choose correctly this time, but to reconnect with an inner compass you can trust for life.</p>
               </div>
             </article>
 
           </div>
 
           <div class="who__closing fade-up fade-up--delay-5">
-            <p>If any of this strikes a chord,<br/> this is where we begin.</p>
+            <p>If any of these speak to you,  it's time to</p>
             <a href="book.html?type=intro" class="btn btn-primary" style="margin-top: 1.25rem;">
               Schedule Your Introductory Clarity Session
             </a>
@@ -187,12 +187,12 @@
           </h2>
 
           <p class="calm-mirror__sublabel fade-up fade-up--delay-2">Have you ever wondered:</p>
-          <p class="calm-mirror__question fade-up fade-up--delay-2">"If there were a part of me that already knew…<br />what would it say right now?"</p>
+          <p class="calm-mirror__question about-accent fade-up fade-up--delay-2">"If there were a part in me that already knew…<br />what would it say right now?"</p>
 
           <blockquote class="calm-mirror__quote fade-up fade-up--delay-3">
             <div class="calm-mirror__text">
               <p>Clarity requires a compassionate mirror.</p>
-              <p>A space where looking inward does not feel like danger, but like coming back to yourself.</p>
+              <p>A space where looking inward does not feel like danger, but like coming back home to yourself.</p>
               <p>This is where the nervous system softens. Where what was suppressed can be spoken. Where inner conflict begins to resolve.</p>
               <p><strong class="about-accent">ILLUMINATE</strong> is where your heart and mind go back to being whole.</p>
             </div>
@@ -215,19 +215,18 @@
 	        <div class="about-strip fade-up">
 
 	          <div class="about-strip__photo-wrap">
-	            <img src="img/Me_at_rosenlaui.jpeg" alt="Yair Benharroch at Rosenlaui" class="about-strip__photo"
+	            <img src="img/me/me_lake1.jpg" alt="Yair Benharroch by the lake" class="about-strip__photo"
 	              loading="lazy" />
 	          </div>
 
 	          <div class="about-strip__content">
 	            <span class="label">Who am I?</span>
 	            <p class="about-strip__text">
-	              My name is <strong class=”about-accent”>Yair (יָאִיר)</strong>, Hebrew for “<strong
-	                class="about-accent">will illuminate</strong>.”
+	              My name is <span class="hero__subtext"><em class=" about-accent">Yair (יָאִיר)</em></span>, Hebrew for “will illuminate.”
 	            </p>
 	
 	            <p class="about-strip__text">
-	              For more than 25 years, I have been drawn to questions of truth, alignment, and inner coherence. What I
+	              For more than 25 years, I have been drawn to questions of truth, coherence, and inner clarity. What I
 	              share here is not only something I studied; it is something I have lived, tested, and refined through
 	              experience.
 	            </p>
@@ -243,43 +242,55 @@
 	              was missing.
 	            </p>
 	
-	            <p class="about-strip__text">What I was looking for did not fully exist outside.<br/>
-	            So I committed to cultivating it from the inside.</p>
+	            <p class="about-strip__text hero__subtext">What I was looking for did not fully exist outside.<br/>
+	            So I committed to cultivating it<br/> <strong class="about-accent">from the inside</strong>.</p>
 	
 	            <p class="about-strip__text">My work is grounded in a simple belief:</p>
 	
 	            <p class="about-strip__text">
-	              intuition without courage remains unrealized,<br />
-	              and courage without compassion becomes force.
+	              Intuition without courage remains unrealized,<br />
+	              and courage without compassion becomes arbitrary force.
 	            </p>
 	
 	            <p class="about-strip__text">
-	              Over time, these values converged into what I call <strong class="about-accent">competent kindness</strong>.
+	              Over time, these values converged into what I call<br/> <span class="hero__subtext"><em class=" about-accent">competent kindness</em></span>.
 	            </p>
 	
 	            <p class="about-strip__text">
 	              Kindness that does not collapse boundaries.<br />
 	              Kindness that is not afraid of clarity.<br />
-	              Kindness that can look truth in the eye and name it.<br />
-	              And strength that remains guided by the heart.
+	              Kindness that can look truth in the eye and name it. And... <br />
+	              <strong class="about-accent">strength that remains guided by the heart</strong>.
 	            </p>
 	
-		            <p class="about-strip__text">This is the space I have been crafting, and how <strong class="about-accent">ILLUMINATE</strong> was born.
+		            <p class="about-strip__text">This is the space I have been crafting, <br/>and how 
+                  <span class="evenings-intro__brand">
+                    ILLUMINATE
+                  
+                  was born.</span> 
 		            </p>
 		
 		            <!-- <a href="worldview.html" class="btn-arrow about-strip__worldview-link">More about my worldview</a> -->
 		
-		            <div class="about-strip__location">
-	              <p class="about-strip__text">
-	                Based in Lugano, Switzerland, whose alpine landscapes bring me quiet happiness and reflect the clarity and calm I value in this work.
-	              </p>
-	            </div>
 	          </div>
 	
 	        </div>
+
+        <div class="about-strip__photo-caption-block fade-up">
+          <div class="about-strip__photo-wrap">
+            <img src="img/me/Me_at_rosenlaui.jpeg" alt="Yair Benharroch at Rosenlaui" class="about-strip__photo"
+              loading="lazy" />
+          </div>
+          <div class="about-strip__location">
+            <p class="about-strip__text">
+              Based in Lugano, Switzerland, whose alpine landscapes bring me quiet happiness and reflect the clarity and calm I value in this work.
+            </p>
+          </div>
+        </div>
+
         <div style="text-align: center; margin-top: 2.5rem;">
-          <a href="book.html?type=intro" class="btn btn-primary">
-            Schedule Your Introductory<br /> Clarity Session
+          <a href="contact.html" class="btn btn-secondary">
+            Start a conversation with Yair
           </a>
         </div>
       </div>
@@ -298,6 +309,7 @@
               <div class="bubble-msg">With huge love<br>You helped me understand what made me lose the joy of life I had
                 and why I wanted to only sleep all day.</div>
             </div>
+            <p class="bubble-name">Ben Y.</p>
           </div>
 
           <!-- <div class="bubble-card">
@@ -311,6 +323,7 @@
               <div class="bubble-msg">Wow, what precision. Thank you Yair for the stunning message, for the the time
                 you invest, for the giving, and for the attitude 💙💙💙</div>
             </div>
+            <p class="bubble-name">Noa B.</p>
           </div>
 
           <div class="bubble-card">
@@ -318,6 +331,7 @@
               <div class="bubble-msg">🙏 Wow, you got me right, thank you.<br>I would be happy if I could be of help to
                 you sometime.</div>
             </div>
+            <p class="bubble-name">Daniel M.</p>
           </div>
 
           <div class="bubble-card">
@@ -325,6 +339,7 @@
               <div class="bubble-msg">Oh, how bright the messages that come through you are!<br>They really move
                 me<br>Thank you very much 😍</div>
             </div>
+            <p class="bubble-name">Elena K.</p>
           </div>
 
           <div class="bubble-card">
@@ -332,7 +347,22 @@
               <div class="bubble-msg">You have rare abilities in terms of channeling and healing. I would suggest that
                 no matter what you do, don't neglect it.</div>
             </div>
+            <p class="bubble-name">Shira T.</p>
           </div>
+        </div>
+        <div class="reviews__wrap fade-up fade-up--delay-2">
+          <div class="chat-messages">
+            <div class="bubble-msg bubble-msg--media">
+              <img src="img/reviews2.jpg" alt="A message from a client after a session"
+                class="reviews__img reviews__img--single" loading="lazy" />
+            </div>
+          </div>
+          <p class="bubble-name">Linda E.</p>
+        </div>
+        <div style="text-align: center; margin-top: 2.5rem;">
+          <a href="book.html?type=intro" class="btn btn-primary">
+            I want this too
+          </a>
         </div>
       </div>
     </section>
@@ -352,17 +382,17 @@
         </div>
 
         <p class="manifesto__body fade-up fade-up--delay-1">
-          This is about setting you free to be your authentic self.
+          This is about setting you free to be your authentic self<br> <span style="color: var(--color-white);">+ pragmatic tools to live a fulfilling life.</span>
         </p>
 
         <p class="manifesto__close fade-up fade-up--delay-2">
-          When you make choices that respect who you really are,<br />
-          what you get is&ensp;<span class="manifesto__selflove">self-love</span>.
+          <!-- When you make choices that respect who you really are,<br /> -->
+          <span class="about-accent">what you get is&ensp;<span class="hero__subtext"><em class="manifesto__selflove about-accent">self-love. <br> In practice.</em></span></span>
         </p>
 
-        <p class="manifesto__close fade-up fade-up--delay-3">
+        <!-- <p class="manifesto__close fade-up fade-up--delay-3">
           In practice.
-        </p>
+        </p> -->
 
         <div class="fade-up fade-up--delay-4">
           <a href="book.html?type=intro" class="btn-arrow">Step Into Clarity</a>
@@ -381,14 +411,14 @@
         <div class="steps__header fade-up">
           <span class="label">How We Work</span>
           <h2 class="heading-xl mt-md" id="how-heading">
-            A clear structure<br />for real work.
+            A clear structure<br />for real work
           </h2>
           <p class="body-lg mt-md">
-            We use conversation, energy work, and somatic awareness to illuminate the inner landscape where clarity lives.
+            <strong style="color: var(--color-lake-light)">We use conversation, energy work, and body awareness</strong> to illuminate the inner landscape where clarity lives.
           </p>
              <p class="body-lg mt-md">
               But clarity is not only inner.<br />
-            This is why we integrate modern tools to help translate it into real-world action: concrete decisions, aligned priorities, and practical next steps in your day-to-day life.
+            This is why <strong style="color: var(--color-lake-light)">we integrate modern tools</strong> to help translate it into real-world action: concrete decisions, aligned priorities, and <strong style="color: var(--color-lake-light)">practical next steps in your day-to-day life</strong>.
           </p>
           <!-- <p class="body-lg mt-md">
             When useful, we integrate modern tools — even AI — to help translate inner clarity into real-world action.
@@ -403,7 +433,7 @@
           <div class="step fade-up fade-up--delay-1">
             <div class="step__number" aria-hidden="true">01</div>
             <span class="step__amount">Free</span>
-            <h3 class="step__title">Introductory Clarity Conversation</h3>
+            <h3 class="step__title about-accent">Introductory Clarity Conversation</h3>
             <p class="step__body">
               We meet to assess alignment. No commitment required.
               A space to explore whether this is the right fit for you.
@@ -413,7 +443,7 @@
           <div class="step fade-up fade-up--delay-2">
             <div class="step__number" aria-hidden="true">02</div>
             <span class="step__amount" data-coupon-price data-price-chf="150" data-price-currency="CHF">CHF 150</span>
-            <h3 class="step__title">Extended First Session</h3>
+            <h3 class="step__title about-accent">Extended First Session</h3>
             <p class="step__body">
               An extended session to map where you are, what is blocking you, and what you truly want. This becomes the foundation everything else is built on.
             </p>
@@ -422,7 +452,7 @@
           <div class="step fade-up fade-up--delay-3">
             <div class="step__number" aria-hidden="true">03</div>
             <span class="step__amount" data-coupon-price data-price-chf="120" data-price-currency="CHF" data-price-suffix="× 7">CHF 120 × 7</span>
-            <h3 class="step__title">The Clarity Cycle</h3>
+            <h3 class="step__title about-accent">The Clarity Cycle</h3>
             <p class="step__body">
               Seven focused sessions to unpack what's stuck and practice the new you.
               On the last session, we reassess whether to pause here for now or choose a goal for a new cycle.
@@ -457,7 +487,7 @@
 
         <div class="investment__grid">
 
-          <div class="pricing-card fade-up fade-up--delay-1">
+          <!-- <div class="pricing-card fade-up fade-up--delay-1">
             <p class="pricing-card__label">Extended First Session</p>
             <p class="pricing-card__amount" data-coupon-price data-price-chf="150" data-price-currency="CHF">CHF 150</p>
             <p class="pricing-card__desc">
@@ -472,18 +502,18 @@
             <a href="book.html?type=intro" class="btn btn-secondary" style="width:100%; text-align:center;">
               Begin Here
             </a>
-          </div>
+          </div> -->
 
           <div class="pricing-card pricing-card--featured fade-up fade-up--delay-2">
             <p class="pricing-card__label">Full Clarity Cycle</p>
             <p class="pricing-card__amount" data-coupon-price data-price-chf="990" data-price-currency="CHF" data-price-suffix="/ cycle">CHF 990 <span>/ cycle</span></p>
             <p class="pricing-card__desc">
-              Extended first session + 7 focused sessions. Payable in full or 3 installments of <span data-coupon-price data-price-chf="330" data-price-currency="CHF">CHF 330</span>.
+              1 Extended first session +<br/> 7 focused sessions
             </p>
             <div class="pricing-card__divider"></div>
             <ul class="pricing-card__features">
-              <li class="pricing-card__feature">Extended first <span data-coupon-price data-price-chf="150" data-price-currency="CHF">CHF 150</span></li>
-              <li class="pricing-card__feature">7 focused <span data-coupon-price data-price-chf="120" data-price-currency="CHF" data-price-suffix="each">CHF 120 each</span></li>
+              <li class="pricing-card__feature">Extended first session<span data-coupon-price data-price-chf="150" data-price-currency="CHF">CHF 150</span></li>
+              <li class="pricing-card__feature">7 focused sessions<span data-coupon-price data-price-chf="120" data-price-currency="CHF" data-price-suffix="each">CHF 120 each</span></li>
               <li class="pricing-card__feature">Structured map & ongoing guidance</li>
               <li class="pricing-card__feature">Installment option available</li>
             </ul>
@@ -493,6 +523,11 @@
           </div>
 
         </div>
+
+        <p class="investment__evenings-nudge fade-up fade-up--delay-3">
+          Not ready for a full cycle yet?
+          <a href="evenings.html" class="btn-arrow">Experience our <span class="evenings-intro__brand">ILLUMINATE</span> <span class="evenings-intro__name">Evenings</span></a>
+        </p>
 
       </div>
     </section>
@@ -505,20 +540,19 @@
         <div class="regret__inner fade-up">
 
           <h2 class="heading-xl mb-md" id="regret-heading">
-            This is not just about you.
+            This is not just about you...
           </h2>
 
           <div class="regret__grid">
 
             <div class="regret__left">
               <blockquote class="regret__quote">
-                <div class="regret__text">
-                  <p>The years we spend avoiding ourselves<br />
-                    don't just cost us.<br />
-                    They cost the people we love most.</p>
+                <div class="regret__text">  
+                  <p>The years you spend avoiding yourself don't just cost you.<br />
+                    They cost the people you love most.</p>
                   <p class="regret__teal">The version of you that never got to show up fully.<br />
                     The conversations that never happened.<br />
-                    The closeness that stayed just out of reach.</p>
+                    The intimacy that stayed just out of reach.</p>
                 </div>
               </blockquote>
             </div>
@@ -531,18 +565,6 @@
 
           </div>
 
-        </div>
-      </div>
-    </section>
-
-    <div class="section-divider"></div>
-
-    <!-- ── REVIEW CLOSE ──────────────────────────────────── -->
-    <section class="section" id="review-close">
-      <div class="container">
-        <div class="reviews__wrap fade-up">
-          <img src="img/reviews2.jpg" alt="A message from a client after a session"
-            class="reviews__img reviews__img--single" loading="lazy" />
         </div>
       </div>
     </section>
@@ -568,7 +590,7 @@
 
           <div class="final__actions fade-up fade-up--delay-2">
             <a href="book.html?type=intro" class="btn btn-primary">
-              Schedule Your Introductory Clarity Session
+              Schedule Your Introductory<br/> Clarity Session
             </a>
             <a href="#how-we-work" class="btn-arrow" style="font-size: 0.9375rem; color: var(--color-text-muted);">
               Explore How We Work
@@ -577,6 +599,11 @@
               More about my worldview
             </a> -->
           </div>
+
+          <p class="investment__evenings-nudge fade-up fade-up--delay-3" style="align-items: center;">
+            Not ready for a full cycle yet?
+            <a href="evenings.html" class="btn-arrow">Experience our <span class="evenings-intro__brand">ILLUMINATE</span> <span class="evenings-intro__name">Evenings</span></a>
+          </p>
 
         </div>
       </div>

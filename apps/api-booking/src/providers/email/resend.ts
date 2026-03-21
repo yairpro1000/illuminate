@@ -145,6 +145,17 @@ function bookingConfirmationBody(
     return lines.filter((line): line is string => line !== null).join('\n');
   }
 
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: sessionLabel(booking),
+    startsAt: booking.starts_at,
+    endsAt: booking.ends_at,
+    timezone: booking.timezone,
+    location: booking.address_line ?? '',
+    description: [
+      `${sessionLabel(booking)} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
@@ -158,9 +169,7 @@ function bookingConfirmationBody(
     `Location: ${booking.address_line}`,
     booking.maps_url ? `Map: ${booking.maps_url}` : null,
     booking.meeting_link ? `Join Google Meet: ${booking.meeting_link}` : null,
-    '',
-    'A calendar invitation has been sent to you.',
-    "If you don't see it, please check your spam folder.",
+    `Add to calendar: ${calendarUrl}`,
     '',
     'Need to reschedule or cancel?',
     `Manage booking: ${manageUrl}`,
@@ -253,6 +262,85 @@ function detailBlock(rows: Array<[string, string]>): string {
   return `<div class="detail-block"><table>${trs}</table></div>`;
 }
 
+function eventDetailRows(
+  booking: Booking,
+  event: Event,
+  options: {
+    includeMap?: boolean;
+    includeMeetingLink?: boolean;
+    includeCalendar?: boolean;
+  } = {},
+): Array<[string, string]> {
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? booking.address_line ?? '',
+    description: [
+      `${event.title} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
+  const rows: Array<[string, string]> = [
+    ['Event', `<strong>${esc(event.title)}</strong>`],
+    ['Date', esc(fmtBodyDate(event.starts_at, event.timezone))],
+    ['Time', esc(fmtBodyTimeRange(event.starts_at, event.ends_at, event.timezone))],
+    ['Location', esc(event.address_line ?? booking.address_line ?? '')],
+  ];
+
+  if (options.includeMap && event.maps_url) {
+    rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
+  }
+  if (options.includeMeetingLink && booking.meeting_link) {
+    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
+  }
+  if (options.includeCalendar) {
+    rows.push(['Calendar', `<a href="${esc(calendarUrl)}">Add to Google Calendar</a>`]);
+  }
+
+  return rows;
+}
+
+function eventDetailTextLines(
+  booking: Booking,
+  event: Event,
+  options: {
+    includeMap?: boolean;
+    includeMeetingLink?: boolean;
+    includeCalendar?: boolean;
+  } = {},
+): string[] {
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? booking.address_line ?? '',
+    description: [
+      `${event.title} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
+  const lines = [
+    `Date: ${fmtBodyDate(event.starts_at, event.timezone)}`,
+    `Time: ${fmtBodyTimeRange(event.starts_at, event.ends_at, event.timezone)}`,
+    `Location: ${event.address_line ?? booking.address_line ?? ''}`,
+  ];
+
+  if (options.includeMap && event.maps_url) {
+    lines.push(`Map: ${event.maps_url}`);
+  }
+  if (options.includeMeetingLink && booking.meeting_link) {
+    lines.push(`Join Google Meet: ${booking.meeting_link}`);
+  }
+  if (options.includeCalendar) {
+    lines.push(`Add to calendar: ${calendarUrl}`);
+  }
+
+  return lines;
+}
+
 function bookingPolicyHtml(policyText: string): string {
   const lines = policyText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const [title, firstRule, secondRule, thirdRule] = lines;
@@ -314,6 +402,17 @@ function bookingConfirmationHtml(
     return htmlLayout(body);
   }
 
+  const calendarUrl = buildGoogleCalendarTemplateUrl({
+    title: sessionLabel(booking),
+    startsAt: booking.starts_at,
+    endsAt: booking.ends_at,
+    timezone: booking.timezone,
+    location: booking.address_line ?? '',
+    description: [
+      `${sessionLabel(booking)} with Yair Benharroch.`,
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n'),
+  });
   const rows: Array<[string, string]> = [
     ['Session', esc(sessionLabel(booking))],
     ['Date', esc(fmtBodyDate(booking.starts_at, booking.timezone))],
@@ -326,8 +425,10 @@ function bookingConfirmationHtml(
   if (booking.meeting_link) {
     rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
   }
+  rows.push(['Calendar', `<a href="${esc(calendarUrl)}">Add to Google Calendar</a>`]);
 
   const extraLinks = [
+    `<p class="secondary-link"><a href="${esc(calendarUrl)}">Add to Google Calendar &rarr;</a></p>`,
     payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
     invoiceUrl ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>` : '',
   ].join('');
@@ -336,7 +437,6 @@ function bookingConfirmationHtml(
     <p>Hi ${esc(clientName(booking))},</p>
     <p>${options.paymentSettled === false ? 'Your session is confirmed.' : 'Your session is confirmed and payment has been settled.'}</p>
     ${detailBlock(rows)}
-    <p>A calendar invitation has been sent to you. If you don't see it, check your spam folder.</p>
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
     ${bookingPolicyHtml(policyText)}
@@ -371,9 +471,27 @@ function simpleHtml(
 }
 
 function buildGoogleCalendarUrl(event: Event): string {
+  return buildGoogleCalendarTemplateUrl({
+    title: event.title,
+    startsAt: event.starts_at,
+    endsAt: event.ends_at,
+    timezone: event.timezone,
+    location: event.address_line ?? '',
+    description: '',
+  });
+}
+
+function buildGoogleCalendarTemplateUrl(input: {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  location: string;
+  description: string;
+}): string {
   function calStr(iso: string): string {
     const parts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: event.timezone,
+      timeZone: input.timezone,
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false,
@@ -384,10 +502,11 @@ function buildGoogleCalendarUrl(event: Event): string {
   }
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: event.title,
-    dates: `${calStr(event.starts_at)}/${calStr(event.ends_at)}`,
-    ctz: event.timezone,
-    location: event.address_line ?? '',
+    text: input.title,
+    dates: `${calStr(input.startsAt)}/${calStr(input.endsAt)}`,
+    ctz: input.timezone,
+    details: input.description,
+    location: input.location,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
@@ -406,11 +525,7 @@ function eventConfirmationHtml(
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
       : null;
-    const rows: Array<[string, string]> = [
-      ['Event', `<strong>${esc(event.title)}</strong>`],
-      ['Date &amp; time', esc(fmt(event.starts_at))],
-      ['Location', esc(event.address_line ?? '')],
-    ];
+    const rows = eventDetailRows(booking, event);
     if (paymentDueLabel) {
       rows.push(['Payment due', esc(paymentDueLabel)]);
     }
@@ -431,18 +546,11 @@ function eventConfirmationHtml(
     return htmlLayout(body);
   }
 
-  const rows: Array<[string, string]> = [
-    ['Event', `<strong>${esc(event.title)}</strong>`],
-    ['Date &amp; time', esc(fmt(event.starts_at))],
-    ['Location', esc(event.address_line ?? '')],
-  ];
-  if (event.maps_url) {
-    rows.push(['Map', `<a href="${esc(event.maps_url)}">Open in Maps</a>`]);
-  }
-  if (booking.meeting_link) {
-    rows.push(['Google Meet', `<a href="${esc(booking.meeting_link)}">Join Google Meet</a>`]);
-  }
-  rows.push(['Calendar', `<a href="${esc(buildGoogleCalendarUrl(event))}">Add to Google Calendar</a>`]);
+  const rows = eventDetailRows(booking, event, {
+    includeMap: true,
+    includeMeetingLink: true,
+    includeCalendar: true,
+  });
 
   const invoiceLine = invoiceUrl
     ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
@@ -739,10 +847,10 @@ export function buildEventConfirmRequestEmail(
   confirmationWindowMinutes: number,
 ): BuiltEmailMessage {
   const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
-  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
-    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+    eventDetailRows(booking, event),
     ['Please confirm your spot.', `Your spot is kindly held for the next ${esc(windowLabel)} before expiring.`],
     'Confirm my spot',
     confirmUrl,
@@ -771,11 +879,16 @@ export function buildEventConfirmationEmail(
     ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
     : null;
   const calUrl = buildGoogleCalendarUrl(event);
+  const eventDetailLines = eventDetailTextLines(booking, event, {
+    includeMap: paymentSettled || !isPendingPayment,
+    includeMeetingLink: paymentSettled || !isPendingPayment,
+    includeCalendar: paymentSettled || !isPendingPayment,
+  });
   const text = paymentSettled
-    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\nAdd to calendar: ${calUrl}\n\nManage: ${manageUrl}\n\n${policyText}`
+    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
     : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${!isPendingPayment ? `\nAdd to calendar: ${calUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
-      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\nDate & time: ${fmt(event.starts_at)}\nAddress: ${event.address_line}\nMap: ${event.maps_url}${booking.meeting_link ? `\nJoin Google Meet: ${booking.meeting_link}` : ''}\nAdd to calendar: ${calUrl}\n\nManage: ${manageUrl}\n\n${policyText}`;
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
+      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),
@@ -790,10 +903,10 @@ export function buildEventReminder24hEmail(
   event: Event,
   manageUrl: string,
 ): BuiltEmailMessage {
-  const text = `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow at ${fmt(event.starts_at)}.\n\nManage: ${manageUrl}`;
+  const text = `Hi ${clientName(booking)},\n\nReminder: ${event.title} is tomorrow.\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nManage: ${manageUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
-    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))], ['Location', esc(event.address_line ?? '')]],
+    eventDetailRows(booking, event),
     ['Your event is tomorrow.'],
     'Manage booking',
     manageUrl,
@@ -815,7 +928,7 @@ export function buildEventFollowupEmail(
   const text = `Hi ${clientName(booking)},\n\nYour booking for ${event.title} is still pending.\n\nContinue: ${actionUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
-    [['Event', `<strong>${esc(event.title)}</strong>`], ['Date &amp; time', esc(fmt(event.starts_at))]],
+    eventDetailRows(booking, event),
     ['Your booking is still pending.'],
     'Continue',
     actionUrl,

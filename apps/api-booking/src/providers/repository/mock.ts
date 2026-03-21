@@ -2,6 +2,7 @@ import { mockState } from '../mock-state.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import type {
   Booking,
+  BookingCurrentStatus,
   BookingEventRecord,
   BookingSideEffect,
   BookingSideEffectAttempt,
@@ -25,8 +26,12 @@ import type {
   Payment,
   PaymentUpdate,
   SessionTypeRecord,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   SystemSetting,
   SystemSettingUpdate,
+  NewSessionTypeAvailabilityWindow,
+  NewSessionTypeWeekOverride,
   NewSystemSetting,
   NewSessionType,
   SessionTypeUpdate,
@@ -160,6 +165,70 @@ export class MockRepository implements IRepository {
     return this.hydrateBooking(updated);
   }
 
+  async countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number> {
+    const excluded = new Set(excludedStatuses);
+    let count = 0;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.client_id !== clientId) continue;
+      if (booking.event_id) continue;
+      if (booking.session_type_id !== sessionTypeId) continue;
+      if (excluded.has(booking.current_status)) continue;
+      count += 1;
+    }
+
+    return count;
+  }
+
+  async countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number> {
+    const startInclusiveMs = new Date(startInclusiveIso).getTime();
+    const endExclusiveMs = new Date(endExclusiveIso).getTime();
+    let count = 0;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.client_id !== clientId) continue;
+      if (!booking.session_type_id || booking.event_id) continue;
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED') continue;
+
+      const startsAtMs = new Date(booking.starts_at).getTime();
+      if (startsAtMs < startInclusiveMs || startsAtMs >= endExclusiveMs) continue;
+      count += 1;
+    }
+
+    return count;
+  }
+
+  async countActiveSessionTypeBookingsInRange(
+    sessionTypeId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+    options?: { excludeBookingId?: string | null },
+  ): Promise<number> {
+    const startInclusiveMs = new Date(startInclusiveIso).getTime();
+    const endExclusiveMs = new Date(endExclusiveIso).getTime();
+    let count = 0;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.id === options?.excludeBookingId) continue;
+      if (booking.session_type_id !== sessionTypeId || booking.event_id) continue;
+      if (booking.current_status === 'EXPIRED' || booking.current_status === 'CANCELED') continue;
+
+      const startsAtMs = new Date(booking.starts_at).getTime();
+      if (startsAtMs < startInclusiveMs || startsAtMs >= endExclusiveMs) continue;
+      count += 1;
+    }
+
+    return count;
+  }
+
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
     const fromMs = new Date(`${from}T00:00:00Z`).getTime();
     const toMs = new Date(`${to}T23:59:59Z`).getTime();
@@ -257,6 +326,12 @@ export class MockRepository implements IRepository {
   async getBookingSideEffectById(id: string): Promise<BookingSideEffect | null> {
     const row = mockState.sideEffects.find((effect) => effect.id === id);
     return row ? stripBookingId(row) : null;
+  }
+
+  async listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]> {
+    return mockState.sideEffects
+      .filter((effect) => effect.booking_event_id === eventId)
+      .map((effect) => stripBookingId(effect));
   }
 
   async getPendingBookingSideEffects(
@@ -482,9 +557,23 @@ export class MockRepository implements IRepository {
     return matches[0] ?? null;
   }
 
-  async getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null> {
+  async getPaymentByStripeCheckoutSessionId(sessionId: string): Promise<Payment | null> {
     for (const payment of mockState.payments.values()) {
-      if (payment.provider_payment_id === sessionId) return payment;
+      if (payment.stripe_checkout_session_id === sessionId) return payment;
+    }
+    return null;
+  }
+
+  async getPaymentByStripePaymentIntentId(paymentIntentId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_payment_intent_id === paymentIntentId) return payment;
+    }
+    return null;
+  }
+
+  async getPaymentByStripeInvoiceId(invoiceId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_invoice_id === invoiceId) return payment;
     }
     return null;
   }
@@ -626,8 +715,13 @@ export class MockRepository implements IRepository {
         payment_currency: payment?.currency ?? null,
         payment_status: payment?.status ?? null,
         payment_provider: payment?.provider ?? null,
-        payment_provider_payment_id: payment?.provider_payment_id ?? null,
+        payment_checkout_url: payment?.checkout_url ?? null,
         payment_invoice_url: payment?.invoice_url ?? null,
+        payment_stripe_customer_id: payment?.stripe_customer_id ?? null,
+        payment_stripe_checkout_session_id: payment?.stripe_checkout_session_id ?? null,
+        payment_stripe_payment_intent_id: payment?.stripe_payment_intent_id ?? null,
+        payment_stripe_invoice_id: payment?.stripe_invoice_id ?? null,
+        payment_stripe_payment_link_id: payment?.stripe_payment_link_id ?? null,
         payment_paid_at: payment?.paid_at ?? null,
         latest_event_type: latestEvent?.event_type ?? null,
         latest_event_at: latestEvent?.created_at ?? null,
@@ -664,6 +758,11 @@ export class MockRepository implements IRepository {
     return MOCK_SESSION_TYPES.map((sessionType) => normalizeSessionTypeRow(sessionType));
   }
 
+  async getSessionTypeById(id: string): Promise<SessionTypeRecord | null> {
+    const row = MOCK_SESSION_TYPES.find((sessionType) => sessionType.id === id);
+    return row ? normalizeSessionTypeRow(row) : null;
+  }
+
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const record = normalizeSessionTypeRow({
       ...data,
@@ -685,6 +784,65 @@ export class MockRepository implements IRepository {
       updated_at: now(),
     });
     return MOCK_SESSION_TYPES[index]!;
+  }
+
+  async listSessionTypeAvailabilityWindows(sessionTypeId: string): Promise<SessionTypeAvailabilityWindow[]> {
+    return (mockState.sessionTypeAvailabilityWindows.get(sessionTypeId) ?? [])
+      .map((window) => ({ ...window }))
+      .sort((a, b) => a.weekday_iso - b.weekday_iso || a.sort_order - b.sort_order);
+  }
+
+  async replaceSessionTypeAvailabilityWindows(
+    sessionTypeId: string,
+    windows: NewSessionTypeAvailabilityWindow[],
+  ): Promise<SessionTypeAvailabilityWindow[]> {
+    const timestamp = now();
+    const rows = windows.map((window, index) => ({
+      id: `st-window-${sessionTypeId}-${index + 1}`,
+      session_type_id: sessionTypeId,
+      weekday_iso: window.weekday_iso,
+      start_local_time: window.start_local_time,
+      end_local_time: window.end_local_time,
+      sort_order: window.sort_order,
+      active: window.active,
+      created_at: timestamp,
+      updated_at: timestamp,
+    }));
+    mockState.sessionTypeAvailabilityWindows.set(sessionTypeId, rows);
+    return rows.map((window) => ({ ...window }));
+  }
+
+  async listSessionTypeWeekOverrides(
+    sessionTypeId: string,
+    weekStartDateFrom: string,
+    weekStartDateTo: string,
+  ): Promise<SessionTypeWeekOverride[]> {
+    return [...mockState.sessionTypeWeekOverrides.values()]
+      .filter((override) =>
+        override.session_type_id === sessionTypeId
+        && override.week_start_date >= weekStartDateFrom
+        && override.week_start_date <= weekStartDateTo,
+      )
+      .sort((a, b) => a.week_start_date.localeCompare(b.week_start_date))
+      .map((override) => ({ ...override }));
+  }
+
+  async upsertSessionTypeWeekOverride(data: NewSessionTypeWeekOverride): Promise<SessionTypeWeekOverride> {
+    const key = `${data.session_type_id}:${data.week_start_date}`;
+    const existing = mockState.sessionTypeWeekOverrides.get(key);
+    const timestamp = now();
+    const row: SessionTypeWeekOverride = {
+      session_type_id: data.session_type_id,
+      week_start_date: data.week_start_date,
+      mode: data.mode,
+      override_weekly_booking_limit: data.override_weekly_booking_limit,
+      note: data.note,
+      updated_by: data.updated_by,
+      created_at: existing?.created_at ?? timestamp,
+      updated_at: timestamp,
+    };
+    mockState.sessionTypeWeekOverrides.set(key, row);
+    return { ...row };
   }
 
   async listSystemSettings(): Promise<SystemSetting[]> {
@@ -771,7 +929,7 @@ export class MockRepository implements IRepository {
   }
 }
 
-const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
+const SEEDED_MOCK_SESSION_TYPES: SessionTypeRecord[] = [
   {
     id: 'mock-st-1',
     title: 'Introductory Clarity Conversation',
@@ -786,6 +944,10 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     image_key: null,
     drive_file_id: null,
     image_alt: null,
+    availability_mode: 'shared_default',
+    availability_timezone: null,
+    weekly_booking_limit: null,
+    slot_step_minutes: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   },
@@ -803,6 +965,10 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     image_key: null,
     drive_file_id: null,
     image_alt: null,
+    availability_mode: 'shared_default',
+    availability_timezone: null,
+    weekly_booking_limit: null,
+    slot_step_minutes: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   },
@@ -820,6 +986,10 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     image_key: null,
     drive_file_id: null,
     image_alt: null,
+    availability_mode: 'shared_default',
+    availability_timezone: null,
+    weekly_booking_limit: null,
+    slot_step_minutes: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   },
@@ -837,10 +1007,24 @@ const MOCK_SESSION_TYPES: SessionTypeRecord[] = [
     image_key: null,
     drive_file_id: null,
     image_alt: null,
+    availability_mode: 'shared_default',
+    availability_timezone: null,
+    weekly_booking_limit: null,
+    slot_step_minutes: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
   },
 ];
+
+const MOCK_SESSION_TYPES: SessionTypeRecord[] = SEEDED_MOCK_SESSION_TYPES.map((sessionType) => ({ ...sessionType }));
+
+export function resetMockSessionTypesForTests(): void {
+  MOCK_SESSION_TYPES.splice(
+    0,
+    MOCK_SESSION_TYPES.length,
+    ...SEEDED_MOCK_SESSION_TYPES.map((sessionType) => ({ ...sessionType })),
+  );
+}
 
 function stripBookingId(effect: BookingSideEffect & { booking_id: string }): BookingSideEffect {
   const { booking_id: _bookingId, ...rest } = effect;

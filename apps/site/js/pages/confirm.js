@@ -5,15 +5,11 @@
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
 
-  function renderCalendarSection(calendarEvent, syncPendingRetry) {
+  function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
     return `
       <div class="confirmation__calendar">
-        <p class="confirm-msg" style="margin:0 0 1rem">
-          ${syncPendingRetry
-            ? 'Google Calendar is still catching up right now. Add this booking manually below.'
-            : 'Add this booking to your calendar now.'}
-        </p>
+        <p class="confirm-msg" style="margin:0 0 1rem">Add this booking to your calendar.</p>
         ${buildAtcWidget(calendarEvent)}
       </div>
     `;
@@ -52,7 +48,7 @@
     const data = await siteClient.requestJson(`/api/bookings/confirm?token=${encodeURIComponent(token)}`);
     const isEvent = data.source === 'event';
     const awaitsPayment = String(data.next_action_label || '').toLowerCase() === 'complete payment';
-    const calendarHtml = renderCalendarSection(data.calendar_event, data.calendar_sync_pending_retry);
+    const calendarHtml = renderCalendarSection(data.calendar_event);
     show(
       checkSvg,
       'Confirmed!',
@@ -60,9 +56,7 @@
         ? 'Your event booking is confirmed.'
         : (awaitsPayment
           ? 'Your booking is confirmed and awaiting payment.'
-          : data.calendar_sync_pending_retry
-            ? 'Your booking is confirmed. Google Calendar is delayed right now, but you can add it manually below.'
-            : 'Your booking is confirmed.'),
+          : 'Your booking is confirmed.'),
       data.next_action_url || 'index.html',
       data.next_action_label || '← Back to homepage',
       'index.html',

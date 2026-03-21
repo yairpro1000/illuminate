@@ -11,7 +11,7 @@ const ALLOWED_HEADERS = [
   'cf-access-jwt-assertion',
   'Cf-Access-Jwt-Assertion',
 ].join(', ');
-const ALLOWED_METHODS = 'GET, POST, PATCH, OPTIONS';
+const ALLOWED_METHODS = 'GET, POST, PATCH, PUT, OPTIONS';
 
 export function corsHeaders(origin: string): Record<string, string> {
   return {

@@ -852,9 +852,9 @@ async function executeSideEffect(
 
     case 'SEND_PAYMENT_REMINDER': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = (payment?.invoice_url ?? payment?.checkout_url)
-        ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
-        : null;
+      const payUrl = payment?.invoice_url
+        ?? payment?.checkout_url
+        ?? buildContinuePaymentUrl(ctx.env.SITE_URL, booking);
       if (!payUrl) throw new Error('checkout_url_missing');
 
       if (!booking.event_id) {
@@ -946,7 +946,12 @@ async function executeSideEffect(
           booking.id,
           'PAYMENT_SETTLED',
           'SYSTEM',
-          { side_effect_id: effect.id, provider_payment_id: settledPayment.provider_payment_id },
+          {
+            side_effect_id: effect.id,
+            stripe_checkout_session_id: settledPayment.stripe_checkout_session_id,
+            stripe_payment_intent_id: settledPayment.stripe_payment_intent_id,
+            stripe_invoice_id: settledPayment.stripe_invoice_id,
+          },
           bookingCtx,
         );
         return;
@@ -959,7 +964,9 @@ async function executeSideEffect(
 
     case 'SEND_PAYMENT_LINK': {
       const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.invoice_url ?? payment?.checkout_url;
+      const payUrl = payment?.invoice_url
+        ?? payment?.checkout_url
+        ?? buildContinuePaymentUrl(ctx.env.SITE_URL, booking);
       if (!payUrl) throw new Error('checkout_url_missing');
       const alreadySettled = isPaymentSettledStatus(payment?.status);
       const manualArrangement = isPaymentManualArrangementStatus(payment?.status);
@@ -971,7 +978,7 @@ async function executeSideEffect(
           booking_id: booking.id,
           side_effect_id: effect.id,
           payment_status: payment?.status ?? null,
-          has_checkout_url: Boolean(payUrl),
+          has_payment_url: Boolean(payUrl),
           should_send_payment_link: !alreadySettled && !manualArrangement,
           branch_taken: alreadySettled
             ? 'skip_payment_link_already_settled'
@@ -997,7 +1004,7 @@ async function executeSideEffect(
       const policy = await getBookingPolicyConfig(ctx.providers.repository);
       await ctx.providers.email.sendBookingPaymentDue(
         booking,
-        buildContinuePaymentUrl(ctx.env.SITE_URL, booking),
+        payUrl,
         manageUrl,
         new Date(
           new Date(booking.starts_at).getTime() - policy.paymentDueBeforeStartHours * 60 * 60 * 1000,

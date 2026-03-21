@@ -129,6 +129,7 @@ export interface Event {
   slug: string;
   title: string;
   description: string;
+  marketing_content: EventMarketingContent | null;
   starts_at: string;
   ends_at: string;
   timezone: string;
@@ -146,6 +147,13 @@ export interface Event {
   whatsapp_group_invite_url?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EventMarketingContent {
+  subtitle?: string;
+  intro?: string;
+  what_to_expect?: string[];
+  takeaways?: string[];
 }
 
 export interface EventLateAccessLink {
@@ -189,6 +197,8 @@ export interface Coupon {
 // ── Session types (offers) ─────────────────────────────────────────────────
 
 export type SessionTypeStatus = 'draft' | 'active' | 'hidden';
+export type SessionTypeAvailabilityMode = 'shared_default' | 'dedicated';
+export type SessionTypeWeekOverrideMode = 'AUTO' | 'FORCE_OPEN' | 'FORCE_CLOSED';
 
 export interface SessionTypeRecord {
   id: string;
@@ -204,14 +214,60 @@ export interface SessionTypeRecord {
   image_key: string | null;
   drive_file_id: string | null;
   image_alt: string | null;
+  availability_mode: SessionTypeAvailabilityMode;
+  availability_timezone: string | null;
+  weekly_booking_limit: number | null;
+  slot_step_minutes: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SessionTypeAvailabilityWindow {
+  id: string;
+  session_type_id: string;
+  weekday_iso: number;
+  start_local_time: string;
+  end_local_time: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewSessionTypeAvailabilityWindow {
+  session_type_id: string;
+  weekday_iso: number;
+  start_local_time: string;
+  end_local_time: string;
+  sort_order: number;
+  active: boolean;
+}
+
+export interface SessionTypeWeekOverride {
+  session_type_id: string;
+  week_start_date: string;
+  mode: SessionTypeWeekOverrideMode;
+  override_weekly_booking_limit: number | null;
+  note: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewSessionTypeWeekOverride {
+  session_type_id: string;
+  week_start_date: string;
+  mode: SessionTypeWeekOverrideMode;
+  override_weekly_booking_limit: number | null;
+  note: string | null;
+  updated_by: string | null;
 }
 
 export type EventUpdate = Partial<Pick<Event,
   | 'slug'
   | 'title'
   | 'description'
+  | 'marketing_content'
   | 'starts_at'
   | 'ends_at'
   | 'timezone'
@@ -245,6 +301,10 @@ export type SessionTypeUpdate = Partial<
     | 'image_key'
     | 'drive_file_id'
     | 'image_alt'
+    | 'availability_mode'
+    | 'availability_timezone'
+    | 'weekly_booking_limit'
+    | 'slot_step_minutes'
   >
 >;
 
@@ -279,7 +339,6 @@ export interface Payment {
   id: string;
   booking_id: string;
   provider: PaymentProvider;
-  provider_payment_id: string | null;
   amount: number;
   currency: string;
   status: PaymentStatus;
@@ -289,6 +348,11 @@ export interface Payment {
   paid_at: string | null;
   created_at: string;
   updated_at: string;
+  stripe_customer_id: string | null;
+  stripe_checkout_session_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_invoice_id: string | null;
+  stripe_payment_link_id: string | null;
 }
 
 // ── Admin/read models ───────────────────────────────────────────────────────
@@ -313,8 +377,13 @@ export interface OrganizerBookingRow {
   payment_currency: string | null;
   payment_status: PaymentStatus | null;
   payment_provider: PaymentProvider | null;
-  payment_provider_payment_id: string | null;
+  payment_checkout_url: string | null;
   payment_invoice_url: string | null;
+  payment_stripe_customer_id: string | null;
+  payment_stripe_checkout_session_id: string | null;
+  payment_stripe_payment_intent_id: string | null;
+  payment_stripe_invoice_id: string | null;
+  payment_stripe_payment_link_id: string | null;
   payment_paid_at: string | null;
   latest_event_type: BookingEventType | null;
   latest_event_at: string | null;
@@ -400,7 +469,21 @@ export type BookingUpdate = Partial<
 export type ClientUpdate = Partial<Pick<Client, 'first_name' | 'last_name' | 'email' | 'phone'>>;
 
 export type PaymentUpdate = Partial<
-  Pick<Payment, 'status' | 'provider_payment_id' | 'amount' | 'currency' | 'checkout_url' | 'invoice_url' | 'paid_at' | 'raw_payload'>
+  Pick<
+    Payment,
+    | 'status'
+    | 'amount'
+    | 'currency'
+    | 'checkout_url'
+    | 'invoice_url'
+    | 'paid_at'
+    | 'raw_payload'
+    | 'stripe_customer_id'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+    | 'stripe_payment_link_id'
+  >
 >;
 
 // ── Shared helpers ──────────────────────────────────────────────────────────

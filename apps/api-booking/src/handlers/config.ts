@@ -2,6 +2,7 @@ import type { AppContext } from '../router.js';
 import { ApiError, internalError, ok } from '../lib/errors.js';
 import { getBookingPolicyConfig, getBookingPolicyText } from '../domain/booking-effect-policy.js';
 import { describeBookingPolicyValidationError } from '../config/booking-policy.js';
+import { getOverride } from '../lib/config-overrides.js';
 
 interface PublicBookingPolicy {
   [key: string]: number;
@@ -41,6 +42,8 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
   try {
     const path = new URL(request.url).pathname;
     const requestCountry = (request.headers.get('cf-ipcountry') || '').trim().toUpperCase() || null;
+    const antibotModeOverride = getOverride('antibot') ?? null;
+    const effectiveAntibotMode = antibotModeOverride ?? ctx.env.ANTIBOT_MODE;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'public_config_request_started',
@@ -49,6 +52,9 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         path,
         request_id: ctx.requestId,
         request_country: requestCountry,
+        antibot_mode_env: ctx.env.ANTIBOT_MODE ?? null,
+        antibot_mode_override: antibotModeOverride,
+        antibot_mode_effective: effectiveAntibotMode,
         branch_taken: 'evaluate_public_booking_policy',
       },
     });
@@ -99,16 +105,18 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
       booking_policy: bookingPolicy,
       booking_policy_text: getBookingPolicyText(policy.selfServiceLockWindowHours),
       antibot: {
-        mode: ctx.env.ANTIBOT_MODE,
+        mode: effectiveAntibotMode,
         turnstile: {
-          enabled: ctx.env.ANTIBOT_MODE === 'turnstile',
+          enabled: effectiveAntibotMode === 'turnstile',
           site_key: ctx.env.TURNSTILE_SITE_KEY ?? null,
           test_site_keys: {
             pass: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
             fail: ctx.env.TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL ?? null,
           },
           env: {
-            ANTIBOT_MODE: ctx.env.ANTIBOT_MODE ?? null,
+            ANTIBOT_MODE: effectiveAntibotMode ?? null,
+            ANTIBOT_MODE_ENV: ctx.env.ANTIBOT_MODE ?? null,
+            ANTIBOT_MODE_OVERRIDE: antibotModeOverride,
             TURNSTILE_SITE_KEY: ctx.env.TURNSTILE_SITE_KEY ?? null,
             TURNSTILE_TEST_SITE_KEY_PASS: ctx.env.TURNSTILE_TEST_SITE_KEY_PASS ?? null,
             TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL: ctx.env.TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL ?? null,
@@ -130,6 +138,9 @@ export async function handleGetPublicConfig(request: Request, ctx: AppContext): 
         request_country: requestCountry,
         config_version: responseBody.config_version,
         antibot_mode: responseBody.antibot.mode,
+        antibot_mode_env: ctx.env.ANTIBOT_MODE ?? null,
+        antibot_mode_override: antibotModeOverride,
+        antibot_mode_effective: effectiveAntibotMode,
         turnstile_enabled: responseBody.antibot.turnstile.enabled,
         turnstile_env_snapshot: responseBody.antibot.turnstile.env,
         branch_taken: 'public_config_response_prepared',

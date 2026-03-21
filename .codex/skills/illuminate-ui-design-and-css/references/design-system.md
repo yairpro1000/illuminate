@@ -35,7 +35,18 @@ Wait for explicit confirmation unless the user already confirmed the variant in 
 
 ## Full Illuminate UI
 
-Use this for public-facing and experiential surfaces. Keep the dark-default, teal-accent, glass-card aesthetic.
+Use this for public-facing and experiential surfaces. Match the current live site, not the older teal-only design language.
+
+### Source Of Truth
+
+Check the relevant shipped CSS before changing or extending public styling:
+
+- `apps/site/css/main.css` for global tokens, nav, hero, cards, buttons, theme behavior
+- `apps/site/css/book.css` for booking, form, review, and recovery patterns
+- `apps/site/css/contact.css` for contact-form and light-panel behavior
+- `apps/site/css/evenings.css` and `apps/site/css/sessions.css` for public content-card and event-list patterns
+
+When the live CSS and this reference disagree, prefer the live CSS and update the skill later if needed.
 
 ### Core Tokens
 
@@ -43,25 +54,34 @@ Define these CSS custom properties in `:root` and use them throughout:
 
 ```css
 :root {
-  --color-bg: oklch(11% 0.022 210);
-  --color-bg-alt: oklch(14% 0.025 208);
-  --color-bg-card: oklch(17% 0.030 207);
+  --color-bg: oklch(10% 0.026 230);
+  --color-bg-alt: oklch(13% 0.030 228);
+  --color-bg-card: oklch(16% 0.036 226);
 
-  --color-lake-deep: oklch(44% 0.155 204);
-  --color-lake: oklch(59% 0.160 200);
-  --color-lake-lt: oklch(73% 0.130 195);
-  --color-lake-mist: oklch(59% 0.160 200 / 0.14);
-  --color-lake-glow: oklch(59% 0.160 200 / 0.35);
+  --color-lake-deep: oklch(44% 0.185 196);
+  --color-lake: oklch(60% 0.200 192);
+  --color-lake-light: oklch(74% 0.165 188);
+  --color-lake-mist: oklch(60% 0.200 192 / 0.13);
+  --color-lake-glow: oklch(60% 0.200 192 / 0.38);
 
-  --color-stone: oklch(78% 0.030 75);
-  --color-stone-muted: oklch(58% 0.025 78);
+  --color-sword: oklch(62% 0.220 240);
+  --color-sword-glow: oklch(62% 0.220 240 / 0.40);
+  --color-valley: oklch(52% 0.160 155);
+  --color-valley-mist: oklch(52% 0.160 155 / 0.12);
 
-  --color-text: oklch(91% 0.015 200);
-  --color-text-muted: oklch(65% 0.020 207);
-  --color-text-subtle: oklch(48% 0.018 210);
+  --color-stone: oklch(80% 0.018 230);
+  --color-stone-muted: oklch(60% 0.015 228);
 
-  --color-border: oklch(59% 0.160 200 / 0.18);
-  --color-border-hover: oklch(59% 0.160 200 / 0.42);
+  --color-text: oklch(92% 0.012 220);
+  --color-text-muted: oklch(82% 0.014 222);
+  --color-text-subtle: oklch(70% 0.012 224);
+
+  --color-border: oklch(60% 0.200 192 / 0.18);
+  --color-border-hover: oklch(60% 0.200 192 / 0.42);
+  --color-white: oklch(99% 0.004 220);
+
+  --color-word-highlight: oklch(87% 0.175 85);
+  --color-word-highlight-glow: oklch(84% 0.200 82 / 0.60);
 
   --section-py: clamp(5rem, 10vw, 8rem);
   --container: min(64rem, 100% - 3rem);
@@ -76,22 +96,52 @@ Define these CSS custom properties in `:root` and use them throughout:
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
 
   --shadow-glow: 0 0 25px var(--color-lake-glow);
-  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.4);
+  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.45);
 }
 ```
 
-For light mode, override colors in `body.theme-light {}` and persist the choice in `localStorage` under `yb-theme`.
+Public surfaces are dual-mode. When the surface supports theme switching, keep `body.theme-light {}` and persist the choice in `localStorage` under `yb-theme`.
+
+Light mode uses an alpine-lake treatment instead of a flat white reset:
+
+```css
+body.theme-light {
+  --color-bg: oklch(96.5% 0.008 185);
+  --color-bg-alt: oklch(93% 0.011 183);
+  --color-bg-card: oklch(99% 0.005 190);
+
+  --color-lake-deep: oklch(36% 0.185 196);
+  --color-lake: oklch(44% 0.190 192);
+  --color-lake-light: oklch(38% 0.175 188);
+  --color-lake-mist: oklch(44% 0.190 192 / 0.09);
+  --color-lake-glow: oklch(44% 0.190 192 / 0.22);
+
+  --color-text: oklch(13% 0.028 228);
+  --color-text-muted: oklch(35% 0.022 226);
+  --color-text-subtle: oklch(55% 0.018 224);
+
+  --color-border: oklch(44% 0.190 192 / 0.14);
+  --color-border-hover: oklch(44% 0.190 192 / 0.34);
+
+  --shadow-glow: 0 0 22px oklch(44% 0.190 192 / 0.18);
+  --shadow-card:
+    0 4px 24px oklch(13% 0.028 228 / 0.08),
+    0 1px 4px oklch(13% 0.028 228 / 0.06);
+}
+```
 
 ### Typography
 
-- Load Google Fonts with `display=swap`.
-- Preconnect to `fonts.googleapis.com` and `fonts.gstatic.com`.
-- Use `Inter` for body and UI.
-- Use `Nunito` at `800` for hero display text only.
-- Use `Poppins` for special headers.
+Use the live site's type pairing:
+
+- Use self-hosted `Canela` as the core public serif.
+- Use Google `Nunito` at `800` for the brand wordmark and selected focal branding moments.
+- Keep body copy, labels, forms, and UI controls in `Canela`, not a generic sans.
+- Use `display=swap` for loaded fonts.
 
 Use these type scales:
 
+- hero brand: `clamp(2.6rem, 9vw, 6.5rem)` with wide tracking
 - hero display: `clamp(2.6rem, 6vw, 5rem)`
 - section h2: `clamp(2rem, 4.5vw, 3.5rem)`
 - subsection h3: `clamp(1.5rem, 3vw, 2.25rem)`
@@ -101,6 +151,7 @@ Use these type scales:
 - labels: `0.75rem`, uppercase, `letter-spacing: 0.12em`
 
 Keep heading line-height around `1.1` to `1.3`. Keep body line-height around `1.6` to `1.8`.
+Use italics intentionally for prelude copy, teasers, and reflective secondary text.
 
 ### Layout
 
@@ -118,6 +169,8 @@ Keep heading line-height around `1.1` to `1.3`. Keep body line-height around `1.
 - Use CSS Grid for multi-column layouts.
 - Use Flexbox for nav, button groups, and inline alignment.
 - Use `48rem` as the main responsive breakpoint.
+- Keep narrow reading widths around `38rem` to `40rem` for hero copy, booking flows, event intros, and form panels.
+- On public pages, let major sections breathe. Do not collapse spacing to generic app density.
 
 ### Components
 
@@ -126,51 +179,79 @@ Buttons:
 ```css
 .btn-primary {
   background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
-  color: var(--color-text);
+  color: var(--color-white);
   border-radius: var(--radius-md);
-  padding: 0.75rem 1.75rem;
+  padding: 0.875rem 2.25rem;
   font-weight: 600;
-  box-shadow: var(--shadow-glow);
-  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+  box-shadow: 0 0 20px var(--color-lake-glow);
+  transition:
+    transform 1s var(--ease),
+    box-shadow 1s var(--ease),
+    background 0.3s var(--ease);
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 35px var(--color-lake-glow);
+  transform: translateY(-3px);
+  box-shadow: 0 0 38px var(--color-lake-glow), 0 8px 24px oklch(0% 0 0 / 0.35);
 }
 
 .btn-secondary {
   background: transparent;
   border: 1px solid var(--color-border);
-  color: var(--color-lake-lt);
+  color: var(--color-lake-light);
   border-radius: var(--radius-md);
-  padding: 0.75rem 1.75rem;
-  transition: background 0.2s, border-color 0.2s;
+  padding: 0.8125rem 2.125rem;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
 
 .btn-secondary:hover {
   background: var(--color-lake-mist);
   border-color: var(--color-border-hover);
+  transform: translateY(-2px);
 }
 ```
 
-Glass cards:
+In dark mode, the live site sometimes upgrades focal CTAs from teal to divine-gold glow. Use that only for hero-grade or conversion-grade emphasis, and revert to teal in `body.theme-light`.
+
+Link-style CTA:
+
+```css
+.btn-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-lake-light);
+  font-size: 2.25rem;
+  font-weight: 500;
+  font-style: italic;
+  transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
+}
+
+.btn-arrow:hover {
+  gap: 0.85rem;
+}
+```
+
+Glass cards and content cards:
 
 ```css
 .glass-card {
-  background: var(--color-bg-card);
+  background: oklch(16% 0.036 226 / 0.7);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 2.25rem;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 2rem;
-  box-shadow: var(--shadow-card);
-  transition: border-color 0.3s, box-shadow 0.3s;
+  transition:
+    border-color 0.3s var(--ease),
+    transform 0.35s var(--ease),
+    box-shadow 0.35s var(--ease);
 }
 
 .glass-card:hover {
   border-color: var(--color-border-hover);
-  box-shadow: var(--shadow-glow), var(--shadow-card);
+  transform: translateY(-5px) scale(1.01);
+  box-shadow: var(--shadow-card), 0 0 30px var(--color-lake-mist);
 }
 ```
 
@@ -178,11 +259,11 @@ Inputs:
 
 ```css
 .form-input {
-  background: var(--color-bg-alt);
+  background: oklch(12% 0.028 228);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text);
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.875rem;
   width: 100%;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -193,6 +274,21 @@ Inputs:
   box-shadow: 0 0 0 3px var(--color-lake-mist);
 }
 ```
+
+Public booking and form work should also reuse these recurring patterns where applicable:
+
+- sticky coupon banner with gradient or frosted-light treatment
+- pill chips for labels, prices, states, and selected slots
+- booking cards with large radii and restrained borders
+- event cards with glass or frosted panels, pill tags, and image/date overlays
+- progress steppers, calendars, and slot buttons that use mist fills instead of loud solid fills
+
+### Theme Behavior
+
+- Dark mode is the primary mood: cosmic navy base, teal water accents, gold focal glow.
+- Light mode is not a neutral reset. It uses a warm pearl base, alpine-lake photography, translucent overlays, and teal-darkened text tokens.
+- Keep component-specific light-mode overrides where readability depends on them.
+- If a section intentionally lets the background image breathe through, prefer overlay changes and token overrides over inventing a separate component style.
 
 ### Scroll Reveal
 
@@ -230,29 +326,34 @@ document.querySelectorAll('.fade-up').forEach((element) => observer.observe(elem
 
 ### Aesthetic Rules
 
-- Keep dark mode as the default.
-- Use teal as the only accent color unless the task gives a concrete exception.
-- Use hover lift plus glow for interactive emphasis.
+- Keep dark mode as the default mood.
+- Use teal-water accents as the base system.
+- Use divine-gold glow only for focal public emphasis in dark mode.
+- Keep the brand feeling spiritual, atmospheric, and deliberate, not SaaS-generic.
+- Use hover lift plus glow for interactive emphasis on public surfaces.
 - Use fluid heading sizes with `clamp()`.
 - Use BEM naming.
 - Never use `transition: all`.
 - Avoid inline styles for design values.
 - Keep section rhythm consistent with `--section-py` and `.container`.
-- Prefer subtle borders and shadows over noisy decoration.
+- Prefer subtle borders, glow, blur, and image layering over noisy ornament.
 
 ### Full UI Checklist
 
 - all colors come from `--color-*` variables
+- public tokens match the live Divine Valley palette
 - all headings use fluid `clamp()` sizing
-- fonts are loaded with preconnect and `display=swap`
+- typography follows `Canela` plus `Nunito`, not generic sans substitutions
 - `.container` and `.section` wrappers exist
-- card components follow the glass-card pattern
-- CTAs map to `.btn-primary` or `.btn-secondary`
+- card components follow the glass-card or shipped event-card pattern
+- CTAs map to `.btn-primary`, `.btn-secondary`, or `.btn-arrow`
 - scroll reveal is present where appropriate
 - no `transition: all`
 - no hardcoded colors outside token definitions
-- `body.theme-light {}` exists
-- hover states lift or glow instead of changing color alone
+- `body.theme-light {}` exists when the surface supports theme switching
+- hover states lift, glow, or deepen mist instead of changing color alone
+- dark-mode gold emphasis is used sparingly and intentionally
+- public light mode keeps the alpine-lake treatment instead of flattening to plain white
 
 ## Lean Admin UI
 
@@ -270,14 +371,14 @@ Use this for internal tools and backoffice surfaces. Preserve the same tokens an
 
 ### Remove
 
-- all transitions and animations
-- glassmorphism and `backdrop-filter`
-- glow shadows
-- hover transforms
-- gradient backgrounds
+- long cinematic transitions and animations
+- hero-brand glow treatments
+- decorative `text-shadow` glow stacks
+- most hover transforms
+- background photography as a core layout device
 - scroll reveal
 - display-style fluid hero sizing
-- easing variables that only support motion
+- non-essential blur and halo effects
 
 ### Additional Tokens
 
@@ -373,7 +474,7 @@ Buttons:
 ```css
 .btn-primary {
   background: var(--color-lake-deep);
-  color: var(--color-text);
+  color: var(--color-white);
   border-radius: var(--radius-sm);
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
@@ -388,7 +489,7 @@ Buttons:
 .btn-secondary {
   background: transparent;
   border: 1px solid var(--color-border);
-  color: var(--color-lake-lt);
+  color: var(--color-lake-light);
   border-radius: var(--radius-sm);
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
@@ -473,7 +574,7 @@ Badges:
 .badge--success { background: oklch(35% 0.12 145 / 0.25); color: oklch(75% 0.14 145); }
 .badge--warning { background: oklch(40% 0.14 75 / 0.25); color: oklch(80% 0.14 75); }
 .badge--danger { background: oklch(35% 0.18 25 / 0.25); color: oklch(72% 0.18 25); }
-.badge--neutral { background: var(--color-lake-mist); color: var(--color-lake-lt); }
+.badge--neutral { background: var(--color-lake-mist); color: var(--color-lake-light); }
 ```
 
 Inputs:
@@ -498,19 +599,21 @@ Inputs:
 ### Admin Rules
 
 - use flat colors, not gradients
-- keep state changes instant
-- avoid glow, blur, and decorative depth
+- keep state changes quick and restrained
+- avoid glow, heavy blur, brand-wordmark theatrics, and decorative depth
 - keep sizing compact
 - keep the same base color tokens
 - prefix admin-specific blocks with `admin-`
 - keep the same theme toggle persistence pattern
+- keep the same OKLCH token language, but bias toward clarity over atmosphere
 
 ### Admin Checklist
 
 - all colors come from token variables
-- no `transition`, `animation`, or `@keyframes`
-- no `backdrop-filter`, glow shadows, or gradients
-- no hover transforms
+- no decorative `@keyframes`
+- no brand-glow text or CTA treatments
+- no photography-dependent layouts
+- hover behavior stays functional and restrained
 - primary buttons are flat solid teal
 - cards are opaque
 - tables and forms stay compact

@@ -187,7 +187,6 @@
       <span class="coupon-price coupon-price--discounted">
         <span class="coupon-price__old"><s>${formatChf(preview.baseChf, currency)} (${formatIls(preview.baseChf)})${suffix}</s></span>
         <strong class="coupon-price__new">${formatChf(preview.finalChf, currency)} (${formatIls(preview.finalChf)})${suffix}</strong>
-        <span class="coupon-price__note">Charged in CHF</span>
       </span>
     `;
   }
@@ -275,6 +274,8 @@
     if (page === 'home' && homeSuggestionTriggered) {
       const section = document.getElementById(HOME_SUGGESTION_SECTION_ID);
       mountSuggestionInto(section && (section.querySelector('.container') || section));
+      const investment = document.getElementById('investment');
+      mountSuggestionInto(investment && (investment.querySelector('.container') || investment));
       return;
     }
     if (page === 'sessions') {

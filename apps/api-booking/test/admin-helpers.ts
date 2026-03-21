@@ -22,16 +22,18 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
     SUPABASE_SECRET_KEY: 'x',
     RESEND_API_KEY: 'x',
     GOOGLE_CALENDAR_ID: 'x',
-    GOOGLE_CLIENT_CALENDAR: 'x',
-    GOOGLE_CLIENT_SECRET_CALENDAR: 'x',
-    GOOGLE_REFRESH_TOKEN_CALENDAR: 'x',
-    GOOGLE_CLIENT_EMAIL: 'x',
-    GOOGLE_PRIVATE_KEY: 'x',
-    GOOGLE_TOKEN_URI: 'x',
+    GOOGLE_SERVICE_ACCOUNT_JSON: JSON.stringify({
+      client_email: 'service-account@example.iam.gserviceaccount.com',
+      private_key: '-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----',
+      token_uri: 'https://oauth2.googleapis.com/token',
+    }),
     TIMEZONE: 'Europe/Zurich',
     STRIPE_SECRET_KEY: 'x',
     STRIPE_WEBHOOK_SECRET: 'x',
     STRIPE_PUBLISHABLE_KEY: 'x',
+    STRIPE_SECRET_KEY_SANDBOX: 'x_sandbox',
+    STRIPE_WEBHOOK_SECRET_SANDBOX: 'whsec_sandbox',
+    STRIPE_PUBLISHABLE_KEY_SANDBOX: 'pk_test_sandbox',
     TURNSTILE_SECRET_KEY: 'x',
     TURNSTILE_SITE_KEY: 'site-key-live',
     TURNSTILE_TEST_SITE_KEY_PASS: 'site-key-pass',
@@ -42,7 +44,6 @@ export function makeEnv(overrides: Partial<Env> = {}): Env {
     IMAGES_BUCKET: { put: vi.fn().mockResolvedValue(undefined) },
     IMAGE_BASE_URL: 'https://assets.example.com',
     GOOGLE_DRIVE_FOLDER_ID: undefined,
-    GOOGLE_SERVICE_ACCOUNT_JSON: undefined,
   };
   return { ...base, ...overrides } as Env;
 }

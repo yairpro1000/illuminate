@@ -327,10 +327,10 @@ Modes:
 - `mock`
 - `google`
 
-Important split-auth rule:
+Important auth rule:
 
 - availability reads use service-account credentials
-- booking writes use OAuth refresh-token credentials
+- booking writes use the same service-account credentials
 
 ### 7.5 Turnstile
 
@@ -409,7 +409,7 @@ The table below is scoped to website + booking + admin only.
 | `REPOSITORY_MODE` | booking worker | plain var | `mock`, `supabase` | Selects mock repository vs real Supabase persistence. |
 | `EMAIL_MODE` | booking worker | plain var | `mock`, `resend` | Selects mock email provider vs live Resend delivery. |
 | `CALENDAR_MODE` | booking worker | plain var | `mock`, `google` | Selects mock calendar vs Google Calendar integration. |
-| `PAYMENTS_MODE` | booking worker | plain var | `mock`, `stripe` | Selects mock payments vs Stripe-backed checkout/invoice behavior. |
+| `PAYMENTS_MODE` | booking worker | plain var | `mock`, `stripe_sandbox`, `stripe` | Selects mock payments, Stripe sandbox, or live Stripe-backed checkout/invoice behavior. |
 | `ANTIBOT_MODE` | booking worker | plain var | `mock`, `turnstile` | Selects mock antibot behavior vs Turnstile validation. |
 | `SITE_URL` | booking worker | plain var | public site base URL for the environment | Used to generate public links for confirm/manage/payment flows. |
 | `SESSION_ADDRESS` | booking worker | plain var | venue or meeting address text | Displayed in booking details and emails for session bookings. |
@@ -424,16 +424,14 @@ The table below is scoped to website + booking + admin only.
 | `OBSERVABILITY_SCHEMA` | booking worker | plain var | schema name, current default `public` | Chooses which DB schema the observability wrapper writes to. |
 | `RESEND_API_KEY` | booking worker | secret | issued by Resend | Live email provider credential. |
 | `GOOGLE_CALENDAR_ID` | booking worker | plain var | Google Calendar id | Target calendar id for both availability reads and booking writes. |
-| `GOOGLE_CLIENT_CALENDAR` | booking worker | secret | issued by Google Cloud OAuth client | OAuth client id used for booking write operations. |
-| `GOOGLE_CLIENT_SECRET_CALENDAR` | booking worker | secret | issued by Google Cloud OAuth client | OAuth client secret used for booking write operations. |
-| `GOOGLE_REFRESH_TOKEN_CALENDAR` | booking worker | secret | issued from Google OAuth consent flow | Refresh token used to mint write-capable Google access tokens. |
-| `GOOGLE_CLIENT_EMAIL` | booking worker | secret/plain var | Google service account email | Service account identity for availability reads and optional Drive backup. |
-| `GOOGLE_PRIVATE_KEY` | booking worker | secret | Google service account private key | Private key paired with the service account for JWT-based access tokens. |
-| `GOOGLE_TOKEN_URI` | booking worker | plain var | usually `https://oauth2.googleapis.com/token` | Token endpoint for Google auth exchanges. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | booking worker | secret | Google service account JSON blob | Required credential for Google Calendar service-account authentication; includes `client_email`, `private_key`, and optional `token_uri`. |
 | `TIMEZONE` | booking worker | plain var | IANA timezone, current `Europe/Zurich` | Default timezone for slot generation and date calculations. |
 | `STRIPE_SECRET_KEY` | booking worker | secret | issued by Stripe | Server-side Stripe API key. |
 | `STRIPE_WEBHOOK_SECRET` | booking worker | secret | issued by Stripe webhook endpoint config | Verifies Stripe webhook signatures. |
 | `STRIPE_PUBLISHABLE_KEY` | booking worker | plain/secret var | issued by Stripe | Reserved for public-side Stripe compatibility where needed. |
+| `STRIPE_SECRET_KEY_SANDBOX` | booking worker | secret | issued by Stripe test/sandbox account | Server-side Stripe API key used when `PAYMENTS_MODE=stripe_sandbox`. |
+| `STRIPE_WEBHOOK_SECRET_SANDBOX` | booking worker | secret | issued by Stripe sandbox webhook endpoint config | Verifies sandbox Stripe webhook signatures when `PAYMENTS_MODE=stripe_sandbox`. |
+| `STRIPE_PUBLISHABLE_KEY_SANDBOX` | booking worker | plain/secret var | issued by Stripe test/sandbox account | Sandbox publishable key reserved for public-side Stripe compatibility where needed. |
 | `TURNSTILE_SECRET_KEY` | booking worker | secret | issued by Cloudflare Turnstile | Live Turnstile verification secret. |
 | `TURNSTILE_SITE_KEY` | booking worker | plain/secret var | issued by Cloudflare Turnstile | Live site key exposed via `/api/config` when Turnstile is enabled. |
 | `TURNSTILE_TEST_SITE_KEY_PASS` | booking worker | plain var | Cloudflare documented test key | Forces successful Turnstile behavior in controlled environments. |
@@ -444,7 +442,6 @@ The table below is scoped to website + booking + admin only.
 | `ADMIN_MANAGE_TOKEN_SECRET` | booking worker | secret | project-issued secret | Signs privileged admin manage links. |
 | `IMAGE_BASE_URL` | booking worker | plain var | CDN/base URL for booking/admin images | Public base URL used to serve uploaded images. |
 | `GOOGLE_DRIVE_FOLDER_ID` | booking worker | secret/plain var | Google Drive folder id | Optional destination/reference folder for Drive-backed image backup. |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | booking worker | secret | Google service account JSON blob | Optional combined credential that can replace separate service-account fields. |
 | `IMAGES_BUCKET` | booking worker | binding | Cloudflare R2 bucket binding | Stores uploaded images for session types and events. |
 | `VITE_API_BASE` | public site | frontend env | base API host, e.g. `https://api.letsilluminate.co` | Optional runtime hint for the public site API base. |
 | `VITE_API_BASE` | admin site | frontend env | root API host, e.g. `https://api.letsilluminate.co` | Optional runtime hint for the admin site API base. |

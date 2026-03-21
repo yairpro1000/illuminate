@@ -27,7 +27,14 @@ describe('Late Stripe payment handling', () => {
     const booking = { id: 'b1', current_status: 'EXPIRED', event_id: null } as any;
     const ctx = makeCtx({ providers: { repository: { getBookingById: vi.fn().mockResolvedValue(booking) } } });
     await confirmBookingPayment(
-      { id: 'p1', booking_id: 'b1', provider_payment_id: 'sess' },
+      {
+        id: 'p1',
+        booking_id: 'b1',
+        status: 'PENDING',
+        stripe_checkout_session_id: 'sess',
+        stripe_payment_intent_id: null,
+        stripe_invoice_id: null,
+      },
       { paymentIntentId: 'pi', invoiceId: 'in', invoiceUrl: 'https://invoice' },
       ctx,
     );

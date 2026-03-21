@@ -21,6 +21,7 @@ describe('Router integration (admin)', () => {
     const res = await handleRequest(req, ctx);
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toContain('PUT');
     expect(res.headers.get('Access-Control-Allow-Headers')).toContain('x-illuminate-ui-test-mode');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'cors_preflight_evaluation_started',
@@ -73,6 +74,44 @@ describe('Router integration (admin)', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body.services)).toBe(true);
+  });
+
+  it('routes GET /api/admin/session-types/:id to the session-type detail handler', async () => {
+    const ctx = makeCtx();
+    const req = adminRequest('GET', 'https://api.local/api/admin/session-types/mock-st-1');
+    const res = await handleRequest(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.session_type).toEqual(expect.objectContaining({
+      id: 'mock-st-1',
+    }));
+    expect(body.availability).toEqual(expect.objectContaining({
+      mode: expect.any(String),
+      upcoming_weeks: expect.any(Array),
+    }));
+  });
+
+  it('routes PUT /api/admin/session-types/:id/availability-overrides/:weekStartDate to the override handler', async () => {
+    const ctx = makeCtx();
+    const req = adminRequest(
+      'PUT',
+      'https://api.local/api/admin/session-types/mock-st-1/availability-overrides/2026-03-23',
+      { mode: 'FORCE_CLOSED', override_weekly_booking_limit: null },
+    );
+    const res = await handleRequest(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.override).toEqual(expect.objectContaining({
+      session_type_id: 'mock-st-1',
+      week_start_date: '2026-03-23',
+      mode: 'FORCE_CLOSED',
+    }));
+    expect(body.week_summary).toEqual(expect.objectContaining({
+      week_start_date: '2026-03-23',
+      mode: 'FORCE_CLOSED',
+    }));
   });
 
   it('routes POST admin config updates without preflight-only methods', async () => {

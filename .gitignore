@@ -4,6 +4,7 @@
 .dev.vars
 .wrangler/
 dist/
+!dist/_headers
 **/.wrangler/
 **/dist/
 **/node_modules/

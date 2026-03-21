@@ -3,7 +3,7 @@ export interface Env {
   REPOSITORY_MODE: string; // 'mock' | 'supabase'
   EMAIL_MODE:      string; // 'mock' | 'resend'
   CALENDAR_MODE:   string; // 'mock' | 'google'
-  PAYMENTS_MODE:   string; // 'mock' | 'stripe'
+  PAYMENTS_MODE:   string; // 'mock' | 'stripe_sandbox' | 'stripe'
   ANTIBOT_MODE:    string; // 'mock' | 'turnstile'
 
   SITE_URL: string;       // e.g. https://yairb.com (no trailing slash)
@@ -25,24 +25,18 @@ export interface Env {
   // Used by both calendar paths (availability reads and booking writes).
   GOOGLE_CALENDAR_ID: string;
 
-  // Google Calendar OAuth refresh-token credentials.
-  // Used only by calendar write operations: createEvent/updateEvent/deleteEvent.
-  GOOGLE_CLIENT_CALENDAR: string;
-  GOOGLE_CLIENT_SECRET_CALENDAR: string;
-  GOOGLE_REFRESH_TOKEN_CALENDAR: string;
-
-  // Service account credentials.
-  // Used by calendar availability reads: getBusyTimes/freeBusy.
-  // Also reused by optional Google Drive backup code.
-  GOOGLE_CLIENT_EMAIL: string;
-  GOOGLE_PRIVATE_KEY: string;
-  GOOGLE_TOKEN_URI: string;
+  // Google Calendar and optional Google Drive service-account JSON.
+  // Calendar integration reads only this combined secret.
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
 
   TIMEZONE: string; // e.g. 'Europe/Zurich'
 
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PUBLISHABLE_KEY: string;
+  STRIPE_SECRET_KEY_SANDBOX?: string;
+  STRIPE_WEBHOOK_SECRET_SANDBOX?: string;
+  STRIPE_PUBLISHABLE_KEY_SANDBOX?: string;
 
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_SITE_KEY?: string;
@@ -58,7 +52,6 @@ export interface Env {
   IMAGES_BUCKET: R2Bucket;
   IMAGE_BASE_URL?: string; // e.g. https://assets.example.com
 
-  // Google Drive backup (service account)
+  // Google Drive backup destination
   GOOGLE_DRIVE_FOLDER_ID?: string;
-  GOOGLE_SERVICE_ACCOUNT_JSON?: string; // optional; overrides GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY
 }

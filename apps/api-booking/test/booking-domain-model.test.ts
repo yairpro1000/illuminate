@@ -9,7 +9,7 @@ import {
   rescheduleBooking,
 } from '../src/services/booking-service.js';
 import { runSideEffectsOutbox } from '../src/handlers/jobs.js';
-import { MockRepository } from '../src/providers/repository/mock.js';
+import { MockRepository, resetMockSessionTypesForTests } from '../src/providers/repository/mock.js';
 import { MockEmailProvider } from '../src/providers/email/mock.js';
 import { MockCalendarProvider } from '../src/providers/calendar/mock.js';
 import { RetryableCalendarWriteError } from '../src/providers/calendar/interface.js';
@@ -20,6 +20,7 @@ import { mockState } from '../src/providers/mock-state.js';
 const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }));
 
 function resetMockState() {
+  resetMockSessionTypesForTests();
   mockState.clients.clear();
   mockState.bookings.clear();
   mockState.events.clear();
@@ -30,6 +31,8 @@ function resetMockState() {
   mockState.eventReminderSubscriptions.clear();
   mockState.contactMessages.clear();
   mockState.payments.clear();
+  mockState.sessionTypeAvailabilityWindows.clear();
+  mockState.sessionTypeWeekOverrides.clear();
   mockState.sentEmails.length = 0;
   mockState.bookingEvents.length = 0;
   mockState.sideEffects.length = 0;
@@ -73,6 +76,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('booking domain model', () => {
@@ -251,12 +255,39 @@ describe('booking domain model', () => {
     expect(confirmed.meeting_provider).toBe('google_meet');
     expect(confirmed.meeting_link).toContain('https://meet.google.com/');
 
+    const verificationEffect = submission
+      ? mockState.sideEffects.find(
+        (effect) => effect.booking_event_id === submission.id && effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION',
+      )
+      : null;
+    const verificationAttempt = verificationEffect
+      ? mockState.sideEffectAttempts.find((attempt) => attempt.booking_side_effect_id === verificationEffect.id)
+      : null;
+    expect(verificationEffect?.status).toBe('SUCCESS');
+    expect(verificationAttempt?.status).toBe('SUCCESS');
+
+    const confirmationEffects = submission
+      ? mockState.sideEffects.filter(
+        (effect) => effect.booking_event_id === submission.id
+          && (effect.effect_intent === 'RESERVE_CALENDAR_SLOT' || effect.effect_intent === 'SEND_BOOKING_CONFIRMATION'),
+      )
+      : [];
+    expect(confirmationEffects.map((effect) => effect.effect_intent)).toEqual([
+      'RESERVE_CALENDAR_SLOT',
+      'SEND_BOOKING_CONFIRMATION',
+    ]);
+    const confirmationAttempts = confirmationEffects.map((effect) =>
+      mockState.sideEffectAttempts.find((attempt) => attempt.booking_side_effect_id === effect.id),
+    );
+    expect(confirmationAttempts.every((attempt) => attempt?.status === 'SUCCESS')).toBe(true);
+
     const confirmationEmail = mockState.sentEmails.find(
       (email) => email.kind === 'booking_confirmation' && email.to === 'intro@example.com',
     );
     expect(confirmationEmail).toBeTruthy();
     expect(confirmationEmail?.body).toContain('Join Google Meet:');
     expect(confirmationEmail?.body).toContain(String(confirmed.meeting_link));
+    expect(confirmationEmail?.body).toContain('Add to calendar: https://calendar.google.com/calendar/render?');
   });
 
   it('keeps free 1:1 confirmation successful when calendar sync is pending retry', async () => {
@@ -312,6 +343,306 @@ describe('booking domain model', () => {
     expect(retryEffect?.expires_at).toBeNull();
     expect(retryAttempt?.attempt_num).toBe(1);
     expect(retryAttempt?.status).toBe('FAILED');
+  });
+
+  it('allows a second 1:1 session in the same local week and logs the allow branch', async () => {
+    const ctx = makeCtx();
+
+    await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:30:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const second = await createPayLaterBooking({
+      slotStart: '2026-03-26T11:00:00+01:00',
+      slotEnd: '2026-03-26T12:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    expect(second.status).toBe('PENDING');
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_started',
+        context: expect.objectContaining({
+          branch_taken: 'count_client_sessions_for_local_week',
+          weekly_limit: 2,
+          week_start_date: '2026-03-23',
+          week_end_exclusive_date: '2026-03-30',
+        }),
+      }),
+    ]);
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'allow_client_weekly_session_limit',
+          existing_active_session_count: 1,
+          attempted_session_count: 2,
+          deny_reason: null,
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects a third 1:1 session in the same local week and logs the deny branch', async () => {
+    const ctx = makeCtx();
+
+    await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:30:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await createPayLaterBooking({
+      slotStart: '2026-03-26T11:00:00+01:00',
+      slotEnd: '2026-03-26T12:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-03-27T13:00:00+01:00',
+      slotEnd: '2026-03-27T14:00:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Weekly Limit',
+      clientEmail: 'weekly-limit@example.com',
+      clientPhone: '+41000000100',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CLIENT_WEEKLY_SESSION_LIMIT_REACHED',
+      message: 'A client can have at most 2 active 1:1 sessions in the same week.',
+    });
+
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_weekly_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'deny_client_weekly_session_limit_reached',
+          existing_active_session_count: 2,
+          attempted_session_count: 3,
+          deny_reason: 'max_2_sessions_per_local_week_reached',
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects an intro booking when the session-type weekly cap is reached and logs the deny branch', async () => {
+    const ctx = makeCtx();
+    await ctx.providers.repository.updateSessionType('mock-st-1', {
+      availability_mode: 'dedicated',
+      availability_timezone: 'Europe/Zurich',
+      weekly_booking_limit: 3,
+      slot_step_minutes: 30,
+    });
+    await ctx.providers.repository.replaceSessionTypeAvailabilityWindows('mock-st-1', [
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 4,
+        start_local_time: '11:00:00',
+        end_local_time: '13:00:00',
+        sort_order: 0,
+        active: true,
+      },
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 4,
+        start_local_time: '16:00:00',
+        end_local_time: '19:00:00',
+        sort_order: 1,
+        active: true,
+      },
+      {
+        session_type_id: 'mock-st-1',
+        weekday_iso: 5,
+        start_local_time: '11:00:00',
+        end_local_time: '16:00:00',
+        sort_order: 2,
+        active: true,
+      },
+    ]);
+
+    for (const [email, start, end] of [
+      ['intro-cap-1@example.com', '2026-03-26T11:00:00+01:00', '2026-03-26T11:45:00+01:00'],
+      ['intro-cap-2@example.com', '2026-03-26T16:00:00+01:00', '2026-03-26T16:45:00+01:00'],
+      ['intro-cap-3@example.com', '2026-03-27T11:00:00+01:00', '2026-03-27T11:45:00+01:00'],
+    ]) {
+      await createPayLaterBooking({
+        slotStart: start,
+        slotEnd: end,
+        timezone: 'Europe/Zurich',
+        sessionType: 'intro',
+        clientName: 'Intro Cap',
+        clientEmail: email,
+        clientPhone: '+41000000200',
+        reminderEmailOptIn: true,
+        reminderWhatsappOptIn: false,
+        turnstileToken: 'ok',
+        remoteIp: null,
+      }, ctx);
+    }
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-03-27T12:00:00+01:00',
+      slotEnd: '2026-03-27T12:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Cap',
+      clientEmail: 'intro-cap-4@example.com',
+      clientPhone: '+41000000201',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'SESSION_TYPE_WEEK_CAP_REACHED',
+      message: 'This offer has reached its weekly booking limit for the selected week.',
+    });
+
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'session_type_week_capacity_check_completed',
+        context: expect.objectContaining({
+          session_type_id: 'mock-st-1',
+          branch_taken: 'deny_session_type_week_limit_reached',
+          effective_weekly_limit: 3,
+          active_booking_count: 3,
+          deny_reason: 'session_type_week_limit_reached',
+        }),
+      }),
+    ]);
+  });
+
+  it('allows a replacement intro session after a prior intro was marked NO_SHOW', async () => {
+    const ctx = makeCtx();
+
+    const first = await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Retry',
+      clientEmail: 'intro-retry@example.com',
+      clientPhone: '+41000000101',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await ctx.providers.repository.updateBooking(first.bookingId, { current_status: 'NO_SHOW' });
+
+    const second = await createPayLaterBooking({
+      slotStart: '2026-04-02T11:00:00+02:00',
+      slotEnd: '2026-04-02T11:45:00+02:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Retry',
+      clientEmail: 'intro-retry@example.com',
+      clientPhone: '+41000000101',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    expect(second.status).toBe('PENDING');
+    expect(ctx.logger.logInfo.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_intro_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'allow_client_intro_session_limit',
+          existing_intro_booking_count: 0,
+          attempted_intro_booking_count: 1,
+          deny_reason: null,
+        }),
+      }),
+    ]);
+  });
+
+  it('rejects another intro session once the client already has a completed intro booking', async () => {
+    const ctx = makeCtx();
+
+    const first = await createPayLaterBooking({
+      slotStart: '2026-03-24T09:00:00+01:00',
+      slotEnd: '2026-03-24T09:45:00+01:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Once',
+      clientEmail: 'intro-once@example.com',
+      clientPhone: '+41000000102',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    await ctx.providers.repository.updateBooking(first.bookingId, { current_status: 'COMPLETED' });
+
+    await expect(createPayLaterBooking({
+      slotStart: '2026-04-02T11:00:00+02:00',
+      slotEnd: '2026-04-02T11:45:00+02:00',
+      timezone: 'Europe/Zurich',
+      sessionType: 'intro',
+      clientName: 'Intro Once',
+      clientEmail: 'intro-once@example.com',
+      clientPhone: '+41000000102',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CLIENT_INTRO_SESSION_LIMIT_REACHED',
+      message: 'You can only book one intro session. If you need help with an existing intro booking, please contact me.',
+    });
+
+    expect(mockState.bookings.size).toBe(1);
+    expect(ctx.logger.logWarn.mock.calls).toContainEqual([
+      expect.objectContaining({
+        eventType: 'client_intro_session_limit_check_completed',
+        context: expect.objectContaining({
+          branch_taken: 'deny_client_intro_session_limit_reached',
+          existing_intro_booking_count: 1,
+          attempted_intro_booking_count: 2,
+          deny_reason: 'client_already_has_non_rebookable_intro_booking',
+        }),
+      }),
+    ]);
   });
 
   it('schedules retryable calendar confirmation failures with backoff and logs calendar_retry', async () => {
@@ -385,6 +716,7 @@ describe('booking domain model', () => {
       .mockRejectedValueOnce(new Error('calendar create failed'))
       .mockResolvedValueOnce({
         eventId: 'g-retry-confirm',
+        htmlLink: 'https://calendar.google.com/calendar/event?eid=g-retry-confirm',
         meetingProvider: 'google_meet',
         meetingLink: 'https://meet.google.com/retry-confirm',
       }) as any;
@@ -483,6 +815,8 @@ describe('booking domain model', () => {
   });
 
   it('confirms pay-later bookings, creates the payment row, and sends a confirmed-but-unpaid email', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-01T12:00:00.000Z'));
     const ctx = makeCtx();
 
     const created = await createPayLaterBooking({
@@ -518,7 +852,7 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain('payment is still pending for');
     expect(confirmationEmail?.body).toContain('Payment due:');
     expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/');
-    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(confirmationEmail?.body).not.toContain('Complete payment: https://example.com/continue-payment.html?token=');
     expect(confirmationEmail?.body).not.toContain('confirmed and paid');
 
     const reminderEffect = mockState.sideEffects.find(
@@ -597,7 +931,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_123',
       invoiceId: 'in_123',
@@ -642,7 +979,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_retry',
       invoiceId: 'in_retry',
@@ -689,7 +1029,10 @@ describe('booking domain model', () => {
     await confirmBookingPayment({
       id: payment!.id,
       booking_id: payment!.booking_id,
-      provider_payment_id: payment!.provider_payment_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
     }, {
       paymentIntentId: 'pi_456',
       invoiceId: null,
@@ -703,10 +1046,10 @@ describe('booking domain model', () => {
 
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
     expect(refreshedPayment?.invoice_url).toBe(
-      `https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+      `https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
     );
     expect(confirmationEmail?.body).toContain(
-      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.provider_payment_id}.pdf`,
+      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
     );
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'payment_settlement_invoice_resolution_completed',

@@ -32,8 +32,12 @@ import type {
   SessionTypeRecord,
   EventUpdate,
   NewSessionType,
+  NewSessionTypeAvailabilityWindow,
+  NewSessionTypeWeekOverride,
   NewSystemSetting,
   SessionTypeUpdate,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   SystemSetting,
   SystemSettingUpdate,
   TimeSlot,
@@ -78,6 +82,22 @@ export interface IRepository {
   getBookingById(id: string): Promise<Booking | null>;
   getBookingByConfirmTokenHash(hash: string): Promise<Booking | null>;
   updateBooking(id: string, updates: BookingUpdate): Promise<Booking>;
+  countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number>;
+  countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number>;
+  countActiveSessionTypeBookingsInRange(
+    sessionTypeId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+    options?: { excludeBookingId?: string | null },
+  ): Promise<number>;
 
   /** Returns start/end intervals that should currently block booking slots. */
   getHeldSlots(from: string, to: string): Promise<TimeSlot[]>;
@@ -101,6 +121,7 @@ export interface IRepository {
   createBookingSideEffects(effects: NewBookingSideEffect[]): Promise<BookingSideEffect[]>;
 
   getBookingSideEffectById(id: string): Promise<BookingSideEffect | null>;
+  listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]>;
 
   getPendingBookingSideEffects(
     limit: number,
@@ -147,7 +168,9 @@ export interface IRepository {
 
   createPayment(data: NewPayment): Promise<Payment>;
   getPaymentByBookingId(bookingId: string): Promise<Payment | null>;
-  getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null>;
+  getPaymentByStripeCheckoutSessionId(sessionId: string): Promise<Payment | null>;
+  getPaymentByStripePaymentIntentId(paymentIntentId: string): Promise<Payment | null>;
+  getPaymentByStripeInvoiceId(invoiceId: string): Promise<Payment | null>;
   updatePayment(id: string, updates: PaymentUpdate): Promise<Payment>;
 
   // ── Contact form ────────────────────────────────────────────────────────
@@ -163,8 +186,20 @@ export interface IRepository {
 
   getPublicSessionTypes(): Promise<SessionTypeRecord[]>;
   getAllSessionTypes(): Promise<SessionTypeRecord[]>;
+  getSessionTypeById(id: string): Promise<SessionTypeRecord | null>;
   createSessionType(data: NewSessionType): Promise<SessionTypeRecord>;
   updateSessionType(id: string, updates: SessionTypeUpdate): Promise<SessionTypeRecord>;
+  listSessionTypeAvailabilityWindows(sessionTypeId: string): Promise<SessionTypeAvailabilityWindow[]>;
+  replaceSessionTypeAvailabilityWindows(
+    sessionTypeId: string,
+    windows: NewSessionTypeAvailabilityWindow[],
+  ): Promise<SessionTypeAvailabilityWindow[]>;
+  listSessionTypeWeekOverrides(
+    sessionTypeId: string,
+    weekStartDateFrom: string,
+    weekStartDateTo: string,
+  ): Promise<SessionTypeWeekOverride[]>;
+  upsertSessionTypeWeekOverride(data: NewSessionTypeWeekOverride): Promise<SessionTypeWeekOverride>;
 
   // ── System settings ─────────────────────────────────────────────────────
 

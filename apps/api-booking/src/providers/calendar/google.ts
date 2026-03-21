@@ -7,21 +7,14 @@ import type {
 import { RetryableCalendarWriteError as RetryableCalendarWriteErrorClass } from './interface.js';
 import type { TimeSlot } from '../../types.js';
 import type { Logger } from '../../lib/logger.js';
+import {
+  resolveGoogleServiceAccountJsonConfig,
+  type GoogleServiceAccountConfig,
+} from '../../lib/google-service-account.js';
 import { instrumentFetch } from '../../../../shared/observability/backend.js';
 
-/**
- * Intentional split auth model for Google Calendar provider:
- * - Availability reads (getBusyTimes/freeBusy) use service-account JWT credentials.
- * - Booking writes (createEvent/updateEvent/deleteEvent) use OAuth refresh-token credentials.
- * Canonical reference: docs/calendar_integration.md -> "Google Calendar Auth Model (Canonical)".
- */
 interface GoogleEnv {
-  GOOGLE_CLIENT_CALENDAR: string;
-  GOOGLE_CLIENT_SECRET_CALENDAR: string;
-  GOOGLE_REFRESH_TOKEN_CALENDAR: string;
-  GOOGLE_CLIENT_EMAIL: string;
-  GOOGLE_PRIVATE_KEY: string;
-  GOOGLE_TOKEN_URI: string;
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
   GOOGLE_CALENDAR_ID: string;
 }
 
@@ -34,9 +27,15 @@ interface ParsedGoogleApiError {
 
 interface GoogleCalendarEventResponse {
   id: string;
+  htmlLink?: string | null;
   status?: string | null;
   hangoutLink?: string | null;
   conferenceData?: {
+    createRequest?: {
+      status?: {
+        statusCode?: string | null;
+      } | null;
+    } | null;
     entryPoints?: Array<{
       uri?: string | null;
       entryPointType?: string | null;
@@ -47,6 +46,8 @@ interface GoogleCalendarEventResponse {
 interface GoogleCalendarListResponse {
   items?: GoogleCalendarEventResponse[] | null;
 }
+
+const GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS = [500, 1500, 3000] as const;
 
 // ── In-memory freeBusy cache (60 s TTL) ───────────────────────────────────────
 
@@ -136,19 +137,19 @@ function b64url(str: string): string {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
-async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
+async function createServiceAccountJWT(serviceAccount: GoogleServiceAccountConfig): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header64  = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const payload64 = b64url(JSON.stringify({
-    iss:   env.GOOGLE_CLIENT_EMAIL,
+    iss:   serviceAccount.client_email,
     scope: 'https://www.googleapis.com/auth/calendar',
-    aud:   env.GOOGLE_TOKEN_URI,
+    aud:   serviceAccount.token_uri,
     iat:   now,
     exp:   now + 3600,
   }));
   const signingInput = `${header64}.${payload64}`;
 
-  const pemBody = env.GOOGLE_PRIVATE_KEY
+  const pemBody = serviceAccount.private_key
     .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/g, '')
     .replace(/-----END PRIVATE KEY-----/g, '')
@@ -173,27 +174,94 @@ async function createServiceAccountJWT(env: GoogleEnv): Promise<string> {
   return `${signingInput}.${sig64}`;
 }
 
-async function getServiceAccountAccessToken(env: GoogleEnv, logger?: Logger): Promise<string> {
-  const jwt = await createServiceAccountJWT(env);
+async function getServiceAccountAccessToken(
+  env: GoogleEnv,
+  logger?: Logger,
+  diagnostics?: GoogleCalendarDiagnostics,
+): Promise<string> {
+  const bookingId = diagnostics?.bookingId ?? null;
+  const requestId = diagnostics?.requestId ?? null;
+  const calendarOperation = diagnostics?.calendarOperation ?? 'free_busy';
+  let serviceAccount: GoogleServiceAccountConfig;
+
+  try {
+    serviceAccount = resolveGoogleServiceAccountJsonConfig(env);
+  } catch (error) {
+    logger?.logError?.({
+      source: 'backend',
+      eventType: 'google_calendar_service_account_config_invalid',
+      message: 'Google Calendar service-account configuration is missing or invalid',
+      context: {
+        auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
+        calendar_operation: calendarOperation,
+        booking_id: bookingId,
+        request_id: requestId,
+        branch_taken: 'abort_calendar_operation_missing_service_account_json',
+        deny_reason: error instanceof Error ? error.message : 'invalid_google_service_account_json',
+      },
+    });
+    throw error;
+  }
+
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'google_calendar_service_account_token_exchange_started',
+    message: 'Starting Google service-account token exchange',
+    context: {
+      auth_mode: 'service_account',
+      auth_config_source: 'service_account_json',
+      calendar_operation: calendarOperation,
+      booking_id: bookingId,
+      request_id: requestId,
+      branch_taken: 'exchange_service_account_jwt_for_access_token',
+      deny_reason: null,
+    },
+  });
+
+  const jwt = await createServiceAccountJWT(serviceAccount);
   const body = new URLSearchParams({
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion: jwt,
   });
 
-  const res = logger
-    ? await instrumentFetch(logger, {
-        provider: 'google_calendar',
-        operation: 'service_account_token_exchange',
-        method: 'POST',
-        url: env.GOOGLE_TOKEN_URI,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-      })
-    : await fetch(env.GOOGLE_TOKEN_URI, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body,
-      });
+  let res: Response;
+  try {
+    res = logger
+      ? await instrumentFetch(logger, {
+          provider: 'google_calendar',
+          operation: 'service_account_token_exchange',
+          method: 'POST',
+          url: serviceAccount.token_uri,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        })
+      : await fetch(serviceAccount.token_uri, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+  } catch (error) {
+    logger?.logError?.({
+      source: 'backend',
+      eventType: 'google_calendar_service_account_token_exchange_failed',
+      message: 'Google service-account token exchange request failed before receiving a response',
+      context: {
+        auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
+        calendar_operation: calendarOperation,
+        booking_id: bookingId,
+        request_id: requestId,
+        google_http_status: null,
+        google_error_reason: 'service_account_token_exchange_request_failed',
+        google_error_message: error instanceof Error ? error.message : String(error),
+        google_response_body: null,
+        branch_taken: 'abort_calendar_operation_service_account_token_exchange_request_failed',
+        deny_reason: 'service_account_token_exchange_request_failed',
+      },
+    });
+    throw new Error('Google service-account token exchange failed (request_error)');
+  }
 
   if (!res.ok) {
     const errorBody = await res.text();
@@ -201,15 +269,20 @@ async function getServiceAccountAccessToken(env: GoogleEnv, logger?: Logger): Pr
     logger?.logError?.({
       source: 'backend',
       eventType: 'google_calendar_service_account_token_exchange_failed',
-      message: 'Google service-account token exchange failed for freeBusy read',
+      message: 'Google service-account token exchange failed',
       context: {
+        auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
+        calendar_operation: calendarOperation,
+        booking_id: bookingId,
+        request_id: requestId,
         google_http_status: res.status,
         google_error_code: parsedError.code,
         google_error_status: parsedError.status,
         google_error_reason: parsedError.reason,
         google_error_message: parsedError.message,
         google_response_body: sanitizeGoogleBodyForError(errorBody),
-        branch_taken: 'abort_free_busy_service_account_token_exchange_failed',
+        branch_taken: 'abort_calendar_operation_service_account_token_exchange_failed',
         deny_reason: parsedError.reason ?? parsedError.message ?? `google_service_account_token_exchange_http_${res.status}`,
       },
     });
@@ -223,143 +296,35 @@ async function getServiceAccountAccessToken(env: GoogleEnv, logger?: Logger): Pr
       eventType: 'google_calendar_service_account_token_exchange_failed',
       message: 'Google service-account token exchange response missing access_token',
       context: {
+        auth_mode: 'service_account',
+        auth_config_source: 'service_account_json',
+        calendar_operation: calendarOperation,
+        booking_id: bookingId,
+        request_id: requestId,
         google_http_status: res.status,
         google_response_body: sanitizeGoogleBodyForError(stringifyUnknownPayload(data)),
-        branch_taken: 'abort_free_busy_service_account_token_exchange_missing_access_token',
+        branch_taken: 'abort_calendar_operation_service_account_token_exchange_missing_access_token',
         deny_reason: 'service_account_token_exchange_missing_access_token',
       },
     });
     throw new Error('Google service-account token exchange failed (missing_access_token)');
   }
+
+  logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'google_calendar_service_account_token_exchange_succeeded',
+    message: 'Google service-account token exchange succeeded',
+    context: {
+      auth_mode: 'service_account',
+      auth_config_source: 'service_account_json',
+      calendar_operation: calendarOperation,
+      booking_id: bookingId,
+      request_id: requestId,
+      branch_taken: 'service_account_token_exchange_succeeded',
+      deny_reason: null,
+    },
+  });
   return data.access_token;
-}
-
-async function getGoogleAccessToken(
-  env: GoogleEnv,
-  logger?: Logger,
-  diagnostics?: GoogleCalendarDiagnostics,
-): Promise<string> {
-  const tokenUrl = 'https://oauth2.googleapis.com/token';
-  const bookingId = diagnostics?.bookingId ?? null;
-  const requestId = diagnostics?.requestId ?? null;
-  const calendarOperation = diagnostics?.calendarOperation ?? 'create_event';
-
-  const body = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_CALENDAR,
-    client_secret: env.GOOGLE_CLIENT_SECRET_CALENDAR,
-    refresh_token: env.GOOGLE_REFRESH_TOKEN_CALENDAR,
-    grant_type: 'refresh_token',
-  });
-
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'google_calendar_token_exchange_started',
-    message: 'Starting Google OAuth refresh-token exchange',
-    context: {
-      calendar_operation: calendarOperation,
-      booking_id: bookingId,
-      request_id: requestId,
-      branch_taken: 'exchange_refresh_token_for_access_token',
-      deny_reason: null,
-    },
-  });
-
-  let res: Response;
-  try {
-    res = logger
-      ? await instrumentFetch(logger, {
-          provider: 'google_calendar',
-          operation: 'token_exchange',
-          method: 'POST',
-          url: tokenUrl,
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: body.toString(),
-        })
-      : await fetch(tokenUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        });
-  } catch (error) {
-    logger?.logError?.({
-      source: 'backend',
-      eventType: 'google_calendar_token_exchange_failed',
-      message: 'Google OAuth token exchange request failed before receiving a response',
-      context: {
-        calendar_operation: calendarOperation,
-        booking_id: bookingId,
-        request_id: requestId,
-        google_http_status: null,
-        google_error_reason: 'token_exchange_request_failed',
-        google_error_message: error instanceof Error ? error.message : String(error),
-        google_response_body: null,
-        branch_taken: 'abort_calendar_write_token_exchange_request_failed',
-        deny_reason: 'token_exchange_request_failed',
-      },
-    });
-    throw new Error('Google token exchange failed (request_error)');
-  }
-
-  if (!res.ok) {
-    const errorBody = await res.text();
-    const parsedError = parseGoogleApiError(errorBody);
-    logger?.logError?.({
-      source: 'backend',
-      eventType: 'google_calendar_token_exchange_failed',
-      message: 'Google OAuth token exchange failed',
-      context: {
-        calendar_operation: calendarOperation,
-        booking_id: bookingId,
-        request_id: requestId,
-        google_http_status: res.status,
-        google_error_code: parsedError.code,
-        google_error_status: parsedError.status,
-        google_error_reason: parsedError.reason,
-        google_error_message: parsedError.message,
-        google_response_body: sanitizeGoogleBodyForError(errorBody),
-        branch_taken: 'abort_calendar_write_token_exchange_failed',
-        deny_reason: parsedError.reason ?? parsedError.message ?? `google_token_exchange_http_${res.status}`,
-      },
-    });
-    throw new Error(`Google token exchange failed (${res.status}): ${errorBody}`);
-  }
-
-  const data = await res.json() as { access_token?: unknown };
-  const accessToken = typeof data.access_token === 'string' ? data.access_token : '';
-  if (!accessToken) {
-    logger?.logError?.({
-      source: 'backend',
-      eventType: 'google_calendar_token_exchange_failed',
-      message: 'Google OAuth token exchange response missing access_token',
-      context: {
-        calendar_operation: calendarOperation,
-        booking_id: bookingId,
-        request_id: requestId,
-        google_http_status: res.status,
-        google_error_reason: 'token_exchange_missing_access_token',
-        google_error_message: null,
-        google_response_body: sanitizeGoogleBodyForError(stringifyUnknownPayload(data)),
-        branch_taken: 'abort_calendar_write_token_exchange_missing_access_token',
-        deny_reason: 'token_exchange_missing_access_token',
-      },
-    });
-    throw new Error('Google token exchange failed (missing_access_token)');
-  }
-
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'google_calendar_token_exchange_succeeded',
-    message: 'Google OAuth token exchange succeeded',
-    context: {
-      calendar_operation: calendarOperation,
-      booking_id: bookingId,
-      request_id: requestId,
-      branch_taken: 'token_exchange_succeeded',
-      deny_reason: null,
-    },
-  });
-
-  return accessToken;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
@@ -381,7 +346,9 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       return cached.data;
     }
 
-    const token = await getServiceAccountAccessToken(this.env, this.logger);
+    const token = await getServiceAccountAccessToken(this.env, this.logger, {
+      calendarOperation: 'free_busy',
+    });
     const chunks = splitDateRangeIntoChunks(from, to, MAX_FREEBUSY_CHUNK_DAYS);
     const busy: TimeSlot[] = [];
     const seen = new Set<string>();
@@ -556,6 +523,138 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     return existing ? toCalendarUpsertResult(existing) : null;
   }
 
+  private async hydrateConferenceDataIfMissing(
+    token: string,
+    data: GoogleCalendarEventResponse,
+    input: {
+      bookingId: string | null;
+      requestId: string | null;
+      operation: 'create_event' | 'update_event';
+    },
+  ): Promise<GoogleCalendarEventResponse> {
+    if (extractGoogleMeetLink(data)) {
+      return data;
+    }
+
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_meet_hydration_started',
+      message: 'Google Calendar write response had no Meet link; fetching event to hydrate conference data',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: data.id,
+        calendar_operation: input.operation,
+        conference_create_status: readConferenceCreateStatus(data),
+        branch_taken: 'refetch_google_event_for_meet_link_hydration',
+        deny_reason: 'google_meet_link_missing_in_initial_write_response',
+      },
+    });
+
+    let hydrated = data;
+    for (let attemptIndex = 0; attemptIndex <= GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS.length; attemptIndex += 1) {
+      if (attemptIndex > 0) {
+        await sleep(GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS[attemptIndex - 1] ?? 0);
+      }
+
+      const fetched = await this.fetchCalendarEventById(token, data.id, input);
+      if (!fetched) {
+        break;
+      }
+
+      hydrated = fetched;
+      if (extractGoogleMeetLink(hydrated)) {
+        this.logger?.logInfo?.({
+          source: 'backend',
+          eventType: 'google_calendar_meet_hydration_completed',
+          message: 'Fetched Google Calendar event now contains Meet link data',
+          context: {
+            booking_id: input.bookingId,
+            request_id: input.requestId,
+            google_event_id: hydrated.id,
+            calendar_operation: input.operation,
+            hydration_attempt: attemptIndex + 1,
+            conference_create_status: readConferenceCreateStatus(hydrated),
+            branch_taken: 'google_event_hydrated_with_meet_link',
+            deny_reason: null,
+          },
+        });
+        return hydrated;
+      }
+    }
+
+    this.logger?.logWarn?.({
+      source: 'backend',
+      eventType: 'google_calendar_meet_hydration_completed',
+      message: 'Fetched Google Calendar event still has no Meet link data after hydration attempts',
+      context: {
+        booking_id: input.bookingId,
+        request_id: input.requestId,
+        google_event_id: hydrated.id,
+        calendar_operation: input.operation,
+        conference_create_status: readConferenceCreateStatus(hydrated),
+        branch_taken: 'google_event_hydration_completed_without_meet_link',
+        deny_reason: 'google_meet_link_missing_after_hydration_attempts',
+      },
+    });
+    return hydrated;
+  }
+
+  private async fetchCalendarEventById(
+    token: string,
+    eventId: string,
+    input: {
+      bookingId: string | null;
+      requestId: string | null;
+      operation: 'create_event' | 'update_event';
+    },
+  ): Promise<GoogleCalendarEventResponse | null> {
+    const calId = encodeURIComponent(this.calendarId);
+    const evId = encodeURIComponent(eventId);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?conferenceDataVersion=1`;
+
+    const res = this.logger
+      ? await instrumentFetch(this.logger, {
+          provider: 'google_calendar',
+          operation: 'hydrate_meet_link',
+          method: 'GET',
+          url,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
+      : await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      const parsedError = parseGoogleApiError(errorBody);
+      this.logger?.logWarn?.({
+        source: 'backend',
+        eventType: 'google_calendar_meet_hydration_fetch_failed',
+        message: 'Failed to fetch Google Calendar event while hydrating Meet link data',
+        context: {
+          booking_id: input.bookingId,
+          request_id: input.requestId,
+          google_event_id: eventId,
+          calendar_operation: input.operation,
+          google_http_status: res.status,
+          google_error_reason: parsedError.reason,
+          google_error_message: parsedError.message,
+          branch_taken: 'google_event_hydration_fetch_failed',
+          deny_reason: parsedError.reason ?? parsedError.message ?? `google_event_get_http_${res.status}`,
+        },
+      });
+      return null;
+    }
+
+    return await res.json() as GoogleCalendarEventResponse;
+  }
+
   async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
@@ -581,7 +680,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       },
     });
 
-    const token = await getGoogleAccessToken(this.env, this.logger, {
+    const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'create_event',
       bookingId: diagnostics.bookingId,
       requestId: diagnostics.requestId,
@@ -608,7 +707,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     }
 
     const calId = encodeURIComponent(this.calendarId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=all&conferenceDataVersion=1`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events?sendUpdates=none&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: options?.eventIdHint ?? null,
@@ -618,7 +717,12 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const initialRes = await this.postCalendarEvent(url, token, initialBody);
 
     if (initialRes.ok) {
-      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const initialData = await initialRes.json() as GoogleCalendarEventResponse;
+      const data = await this.hydrateConferenceDataIfMissing(token, initialData, {
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        operation: 'create_event',
+      });
       const result = toCalendarUpsertResult(data);
       this.logger?.logInfo?.({
         source: 'backend',
@@ -673,23 +777,43 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
     const diagnostics = toGoogleDiagnosticsContext(event);
-    const token = await getGoogleAccessToken(this.env, this.logger, {
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_update_request',
+      message: 'Preparing Google Calendar events.update request',
+      context: {
+        booking_id: diagnostics.bookingId,
+        request_id: diagnostics.requestId,
+        google_event_id: eventId,
+        calendar_id_present: this.calendarId.length > 0,
+        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
+        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
+        branch_taken: 'call_google_events_update',
+        deny_reason: null,
+      },
+    });
+    const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'update_event',
       bookingId: diagnostics.bookingId,
       requestId: diagnostics.requestId,
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all&conferenceDataVersion=1`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=none&conferenceDataVersion=1`;
     const initialBody = JSON.stringify(
       buildGoogleEventBody(event, {
         eventIdHint: null,
-        createConference: false,
+        createConference: true,
       }),
     );
     const initialRes = await this.putCalendarEvent(url, token, initialBody);
     if (initialRes.ok) {
-      const data = await initialRes.json() as GoogleCalendarEventResponse;
+      const initialData = await initialRes.json() as GoogleCalendarEventResponse;
+      const data = await this.hydrateConferenceDataIfMissing(token, initialData, {
+        bookingId: diagnostics.bookingId,
+        requestId: diagnostics.requestId,
+        operation: 'update_event',
+      });
       const result = toCalendarUpsertResult(data);
       this.logger?.logInfo?.({
         source: 'backend',
@@ -737,12 +861,25 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
-    const token = await getGoogleAccessToken(this.env, this.logger, {
+    this.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'google_calendar_delete_request',
+      message: 'Preparing Google Calendar events.delete request',
+      context: {
+        google_event_id: eventId,
+        calendar_id_present: this.calendarId.length > 0,
+        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
+        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
+        branch_taken: 'call_google_events_delete',
+        deny_reason: null,
+      },
+    });
+    const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'delete_event',
     });
     const calId = encodeURIComponent(this.calendarId);
     const evId  = encodeURIComponent(eventId);
-    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=all`;
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calId}/events/${evId}?sendUpdates=none`;
     const res = this.logger
       ? await instrumentFetch(this.logger, {
           provider: 'google_calendar',
@@ -756,8 +893,36 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           headers: { 'Authorization': `Bearer ${token}` },
         });
 
-    // 404 / 410 = already gone — treat as success (idempotent)
-    if (!res.ok && res.status !== 404 && res.status !== 410) {
+    if (res.ok) {
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: 'google_calendar_delete_completed',
+        message: 'Google Calendar events.delete succeeded',
+        context: {
+          google_event_id: eventId,
+          branch_taken: 'google_event_deleted',
+          deny_reason: null,
+        },
+      });
+      return;
+    }
+
+    if (res.status === 404 || res.status === 410) {
+      this.logger?.logInfo?.({
+        source: 'backend',
+        eventType: 'google_calendar_delete_completed',
+        message: 'Google Calendar event already absent; treating delete as success',
+        context: {
+          google_event_id: eventId,
+          google_http_status: res.status,
+          branch_taken: 'google_event_already_absent_treated_as_success',
+          deny_reason: 'google_event_not_found',
+        },
+      });
+      return;
+    }
+
+    if (!res.ok) {
       const body = await res.text();
       const parsedError = parseGoogleApiError(body);
       this.logger?.logError?.({
@@ -864,6 +1029,7 @@ function buildGoogleEventBody(
   event: CalendarEvent,
   options: { eventIdHint: string | null; createConference: boolean },
 ): Record<string, unknown> {
+  const conferenceRequestId = crypto.randomUUID();
   return {
     ...(options.eventIdHint ? { id: options.eventIdHint } : {}),
     summary: event.title,
@@ -871,12 +1037,14 @@ function buildGoogleEventBody(
     location: event.location,
     start: { dateTime: event.startIso, timeZone: event.timezone },
     end: { dateTime: event.endIso, timeZone: event.timezone },
-    attendees: [{ email: event.attendeeEmail, displayName: event.attendeeName }],
     ...(options.createConference
       ? {
         conferenceData: {
           createRequest: {
-            requestId: `meet-${crypto.randomUUID()}`,
+            requestId: conferenceRequestId,
+            conferenceSolutionKey: {
+              type: 'hangoutsMeet',
+            },
           },
         },
       }
@@ -889,20 +1057,24 @@ function toCalendarUpsertResult(data: GoogleCalendarEventResponse): CalendarEven
   const meetingLink = extractGoogleMeetLink(data);
   return {
     eventId: data.id,
+    htmlLink: typeof data.htmlLink === 'string' && data.htmlLink.trim() ? data.htmlLink.trim() : null,
     meetingProvider: meetingLink ? 'google_meet' : null,
     meetingLink,
   };
 }
 
 function extractGoogleMeetLink(data: GoogleCalendarEventResponse): string | null {
-  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
-    return data.hangoutLink.trim();
-  }
-
   const videoEntryPoint = data.conferenceData?.entryPoints?.find(
     (entryPoint) => entryPoint.entryPointType === 'video' && typeof entryPoint.uri === 'string' && entryPoint.uri.trim(),
   );
-  return videoEntryPoint?.uri?.trim() ?? null;
+  if (videoEntryPoint?.uri?.trim()) {
+    return videoEntryPoint.uri.trim();
+  }
+
+  if (typeof data.hangoutLink === 'string' && data.hangoutLink.trim()) {
+    return data.hangoutLink.trim();
+  }
+  return null;
 }
 
 function detectMeetingLinkSource(data: GoogleCalendarEventResponse): 'hangoutLink' | 'conferenceData.video' | 'missing' {
@@ -914,6 +1086,11 @@ function detectMeetingLinkSource(data: GoogleCalendarEventResponse): 'hangoutLin
   )
     ? 'conferenceData.video'
     : 'missing';
+}
+
+function readConferenceCreateStatus(data: GoogleCalendarEventResponse): string | null {
+  const statusCode = data.conferenceData?.createRequest?.status?.statusCode;
+  return typeof statusCode === 'string' && statusCode.trim() ? statusCode.trim() : null;
 }
 
 function toGoogleDiagnosticsContext(event: CalendarEvent): { bookingId: string | null; requestId: string | null } {

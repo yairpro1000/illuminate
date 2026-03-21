@@ -350,22 +350,156 @@ export async function handleEventBookWithAccess(
 
 // POST /api/events/reminder-subscriptions
 export async function handleCreateEventReminderSubscription(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
     const body = await request.json() as Record<string, unknown>;
-    const email = requireString(body, 'email');
+    const email = typeof body['email'] === 'string' ? body['email'].trim() : '';
+    const firstName = typeof body['first_name'] === 'string' ? body['first_name'].trim() : '';
+    const lastName = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
+    const eventFamily = typeof body['event_family'] === 'string' && body['event_family'].trim()
+      ? body['event_family'].trim()
+      : 'illuminate_evenings';
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_reminder_subscription_request_started',
+      message: 'Evaluating public event reminder subscription request',
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        has_email: !!email,
+        has_first_name: !!firstName,
+        has_last_name: !!lastName,
+        requested_event_family: eventFamily,
+        branch_taken: 'validate_public_reminder_subscription_payload',
+      },
+    });
+
+    if (!email) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'event_reminder_subscription_validation_failed',
+        message: 'Public reminder subscription denied because email was missing',
+        context: {
+          path,
+          repository_mode: ctx.env.REPOSITORY_MODE,
+          has_email: false,
+          has_first_name: !!firstName,
+          has_last_name: !!lastName,
+          requested_event_family: eventFamily,
+          branch_taken: 'deny_missing_email',
+          deny_reason: 'email_required',
+        },
+      });
+      throw badRequest('email is required');
+    }
+
+    if (!firstName) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'event_reminder_subscription_validation_failed',
+        message: 'Public reminder subscription denied because first name was missing',
+        context: {
+          path,
+          repository_mode: ctx.env.REPOSITORY_MODE,
+          has_email: true,
+          has_first_name: false,
+          has_last_name: !!lastName,
+          requested_event_family: eventFamily,
+          branch_taken: 'deny_missing_first_name',
+          deny_reason: 'first_name_required',
+        },
+      });
+      throw badRequest('first_name is required');
+    }
+
+    if (!lastName) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'event_reminder_subscription_validation_failed',
+        message: 'Public reminder subscription denied because last name was missing',
+        context: {
+          path,
+          repository_mode: ctx.env.REPOSITORY_MODE,
+          has_email: true,
+          has_first_name: true,
+          has_last_name: false,
+          requested_event_family: eventFamily,
+          branch_taken: 'deny_missing_last_name',
+          deny_reason: 'last_name_required',
+        },
+      });
+      throw badRequest('last_name is required');
+    }
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_reminder_subscription_validation_completed',
+      message: 'Public reminder subscription payload passed validation',
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        has_email: true,
+        has_first_name: true,
+        has_last_name: true,
+        requested_event_family: eventFamily,
+        branch_taken: 'allow_valid_public_reminder_subscription_payload',
+        deny_reason: null,
+      },
+    });
 
     const created = await ctx.providers.repository.createOrUpdateEventReminderSubscription({
       email,
-      first_name: typeof body['first_name'] === 'string' ? body['first_name'].trim() || null : null,
-      last_name: typeof body['last_name'] === 'string' ? body['last_name'].trim() || null : null,
+      first_name: firstName,
+      last_name: lastName,
       phone: typeof body['phone'] === 'string' ? body['phone'].trim() || null : null,
-      event_family: typeof body['event_family'] === 'string' && body['event_family'].trim()
-        ? body['event_family'].trim()
-        : 'illuminate_evenings',
+      event_family: eventFamily,
+    });
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'event_reminder_subscription_request_completed',
+      message: 'Public reminder subscription stored successfully',
+      context: {
+        path,
+        repository_mode: ctx.env.REPOSITORY_MODE,
+        reminder_subscription_id: created.id,
+        normalized_email: created.email,
+        event_family: created.event_family,
+        branch_taken: 'return_created_reminder_subscription',
+        deny_reason: null,
+      },
     });
 
     return ok({ id: created.id, email: created.email, event_family: created.event_family });
   } catch (err) {
+    if (err instanceof ApiError) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'event_reminder_subscription_request_failed',
+        message: err.message,
+        context: {
+          path,
+          repository_mode: ctx.env.REPOSITORY_MODE,
+          status_code: err.statusCode,
+          error_code: err.code,
+          branch_taken: 'handled_api_error',
+          deny_reason: err.message,
+        },
+      });
+    } else {
+      ctx.logger.captureException?.({
+        source: 'backend',
+        eventType: 'event_reminder_subscription_request_failed',
+        message: 'Public reminder subscription failed unexpectedly',
+        error: err,
+        context: {
+          path,
+          repository_mode: ctx.env.REPOSITORY_MODE,
+          branch_taken: 'unexpected_exception',
+        },
+      });
+    }
     throw err;
   }
 }

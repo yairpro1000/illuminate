@@ -2,6 +2,7 @@ import type { Db } from '../../repo/supabase.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
 import type {
   Booking,
+  BookingCurrentStatus,
   BookingEventRecord,
   BookingSideEffect,
   BookingSideEffectAttempt,
@@ -27,7 +28,11 @@ import type {
   PaymentUpdate,
   TimeSlot,
   SessionTypeRecord,
+  SessionTypeAvailabilityWindow,
+  SessionTypeWeekOverride,
   NewSessionType,
+  NewSessionTypeAvailabilityWindow,
+  NewSessionTypeWeekOverride,
   SessionTypeUpdate,
   SystemSetting,
   NewSystemSetting,
@@ -261,6 +266,77 @@ export class SupabaseRepository implements IRepository {
     return this.requireBookingById(id);
   }
 
+  async countClientBookingsBySessionType(
+    clientId: string,
+    sessionTypeId: string,
+    excludedStatuses: BookingCurrentStatus[],
+  ): Promise<number> {
+    let query = this.db
+      .from('bookings')
+      .select('id')
+      .eq('client_id', clientId)
+      .is('event_id', null)
+      .eq('session_type_id', sessionTypeId);
+
+    if (excludedStatuses.length > 0) {
+      query = query.not('current_status', 'in', `(${excludedStatuses.join(',')})`);
+    }
+
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      query,
+      'Failed to count client bookings by session type',
+    );
+
+    return rows.length;
+  }
+
+  async countClientActiveSessionBookingsInRange(
+    clientId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+  ): Promise<number> {
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      this.db
+        .from('bookings')
+        .select('id')
+        .eq('client_id', clientId)
+        .is('event_id', null)
+        .not('session_type_id', 'is', null)
+        .not('current_status', 'in', '(EXPIRED,CANCELED)')
+        .gte('starts_at', startInclusiveIso)
+        .lt('starts_at', endExclusiveIso),
+      'Failed to count client session bookings in range',
+    );
+
+    return rows.length;
+  }
+
+  async countActiveSessionTypeBookingsInRange(
+    sessionTypeId: string,
+    startInclusiveIso: string,
+    endExclusiveIso: string,
+    options?: { excludeBookingId?: string | null },
+  ): Promise<number> {
+    let query = this.db
+      .from('bookings')
+      .select('id')
+      .eq('session_type_id', sessionTypeId)
+      .is('event_id', null)
+      .not('current_status', 'in', '(EXPIRED,CANCELED)')
+      .gte('starts_at', startInclusiveIso)
+      .lt('starts_at', endExclusiveIso);
+
+    if (options?.excludeBookingId) {
+      query = query.neq('id', options.excludeBookingId);
+    }
+
+    const rows = await requireData<Array<Pick<Booking, 'id'>>>(
+      query,
+      'Failed to count active session-type bookings in range',
+    );
+    return rows.length;
+  }
+
   async getHeldSlots(from: string, to: string): Promise<TimeSlot[]> {
     const rows = await requireData<Array<Pick<Booking, 'starts_at' | 'ends_at'>>>(
       this.db
@@ -360,6 +436,17 @@ export class SupabaseRepository implements IRepository {
     return maybeSingle<BookingSideEffect>(
       this.db.from('booking_side_effects').select('*').eq('id', id).limit(1).maybeSingle(),
       'Failed to load booking side effect',
+    );
+  }
+
+  async listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]> {
+    return requireData<BookingSideEffect[]>(
+      this.db
+        .from('booking_side_effects')
+        .select('*')
+        .eq('booking_event_id', eventId)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking side effects for event',
     );
   }
 
@@ -630,16 +717,42 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
-  async getPaymentByStripeSessionId(sessionId: string): Promise<Payment | null> {
+  async getPaymentByStripeCheckoutSessionId(sessionId: string): Promise<Payment | null> {
     return maybeSingle<Payment>(
       this.db
         .from('payments')
         .select('*')
-        .eq('provider_payment_id', sessionId)
+        .eq('stripe_checkout_session_id', sessionId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
-      'Failed to load payment by provider session',
+      'Failed to load payment by checkout session',
+    );
+  }
+
+  async getPaymentByStripePaymentIntentId(paymentIntentId: string): Promise<Payment | null> {
+    return maybeSingle<Payment>(
+      this.db
+        .from('payments')
+        .select('*')
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load payment by payment intent',
+    );
+  }
+
+  async getPaymentByStripeInvoiceId(invoiceId: string): Promise<Payment | null> {
+    return maybeSingle<Payment>(
+      this.db
+        .from('payments')
+        .select('*')
+        .eq('stripe_invoice_id', invoiceId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load payment by invoice',
     );
   }
 
@@ -751,8 +864,13 @@ export class SupabaseRepository implements IRepository {
       currency: string;
       status: OrganizerBookingRow['payment_status'];
       provider: OrganizerBookingRow['payment_provider'];
-      provider_payment_id: OrganizerBookingRow['payment_provider_payment_id'];
+      checkout_url: OrganizerBookingRow['payment_checkout_url'];
       invoice_url: OrganizerBookingRow['payment_invoice_url'];
+      stripe_customer_id: OrganizerBookingRow['payment_stripe_customer_id'];
+      stripe_checkout_session_id: OrganizerBookingRow['payment_stripe_checkout_session_id'];
+      stripe_payment_intent_id: OrganizerBookingRow['payment_stripe_payment_intent_id'];
+      stripe_invoice_id: OrganizerBookingRow['payment_stripe_invoice_id'];
+      stripe_payment_link_id: OrganizerBookingRow['payment_stripe_payment_link_id'];
       paid_at: OrganizerBookingRow['payment_paid_at'];
     }>();
     const latestAttemptByBooking = new Map<string, { status: OrganizerBookingRow['latest_side_effect_attempt_status']; created_at: string }>();
@@ -799,16 +917,23 @@ export class SupabaseRepository implements IRepository {
         currency: string;
         status: OrganizerBookingRow['payment_status'];
         provider: OrganizerBookingRow['payment_provider'];
-        provider_payment_id: OrganizerBookingRow['payment_provider_payment_id'];
+        checkout_url: OrganizerBookingRow['payment_checkout_url'];
         invoice_url: OrganizerBookingRow['payment_invoice_url'];
+        stripe_customer_id: OrganizerBookingRow['payment_stripe_customer_id'];
+        stripe_checkout_session_id: OrganizerBookingRow['payment_stripe_checkout_session_id'];
+        stripe_payment_intent_id: OrganizerBookingRow['payment_stripe_payment_intent_id'];
+        stripe_invoice_id: OrganizerBookingRow['payment_stripe_invoice_id'];
+        stripe_payment_link_id: OrganizerBookingRow['payment_stripe_payment_link_id'];
         paid_at: OrganizerBookingRow['payment_paid_at'];
         created_at: string;
       }>>(
         this.db
           .from('payments')
-          .select('booking_id, amount, currency, status, provider, provider_payment_id, invoice_url, paid_at, created_at')
+          .select(
+            'booking_id, amount, currency, status, provider, checkout_url, invoice_url, stripe_customer_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_invoice_id, stripe_payment_link_id, paid_at, created_at',
+          )
           .in('booking_id', bookingIds)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false }) as any,
         'Failed to load organizer booking payments',
       );
       for (const payment of payments) {
@@ -818,8 +943,13 @@ export class SupabaseRepository implements IRepository {
             currency: payment.currency,
             status: payment.status,
             provider: payment.provider,
-            provider_payment_id: payment.provider_payment_id,
+            checkout_url: payment.checkout_url,
             invoice_url: payment.invoice_url,
+            stripe_customer_id: payment.stripe_customer_id,
+            stripe_checkout_session_id: payment.stripe_checkout_session_id,
+            stripe_payment_intent_id: payment.stripe_payment_intent_id,
+            stripe_invoice_id: payment.stripe_invoice_id,
+            stripe_payment_link_id: payment.stripe_payment_link_id,
             paid_at: payment.paid_at,
           });
         }
@@ -921,8 +1051,13 @@ export class SupabaseRepository implements IRepository {
         payment_currency: payment?.currency ?? null,
         payment_status: payment?.status ?? null,
         payment_provider: payment?.provider ?? null,
-        payment_provider_payment_id: payment?.provider_payment_id ?? null,
+        payment_checkout_url: payment?.checkout_url ?? null,
         payment_invoice_url: payment?.invoice_url ?? null,
+        payment_stripe_customer_id: payment?.stripe_customer_id ?? null,
+        payment_stripe_checkout_session_id: payment?.stripe_checkout_session_id ?? null,
+        payment_stripe_payment_intent_id: payment?.stripe_payment_intent_id ?? null,
+        payment_stripe_invoice_id: payment?.stripe_invoice_id ?? null,
+        payment_stripe_payment_link_id: payment?.stripe_payment_link_id ?? null,
         payment_paid_at: payment?.paid_at ?? null,
         latest_event_type: latestEvent?.event_type ?? null,
         latest_event_at: latestEvent?.created_at ?? null,
@@ -971,6 +1106,19 @@ export class SupabaseRepository implements IRepository {
     return rows.map((row) => normalizeSessionTypeRow(row));
   }
 
+  async getSessionTypeById(id: string): Promise<SessionTypeRecord | null> {
+    const row = await maybeSingle<SessionTypeRecord>(
+      this.db
+        .from('session_types')
+        .select('*')
+        .eq('id', id)
+        .limit(1)
+        .maybeSingle(),
+      `Failed to load session type ${id}`,
+    );
+    return row ? normalizeSessionTypeRow(row) : null;
+  }
+
   async createSessionType(data: NewSessionType): Promise<SessionTypeRecord> {
     const row = await requireSingle<SessionTypeRecord>(
       this.db
@@ -994,6 +1142,74 @@ export class SupabaseRepository implements IRepository {
       `Failed to update session type ${id}`,
     );
     return normalizeSessionTypeRow(row);
+  }
+
+  async listSessionTypeAvailabilityWindows(sessionTypeId: string): Promise<SessionTypeAvailabilityWindow[]> {
+    return requireData<SessionTypeAvailabilityWindow[]>(
+      this.db
+        .from('session_type_availability_windows')
+        .select('*')
+        .eq('session_type_id', sessionTypeId)
+        .order('weekday_iso', { ascending: true })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      `Failed to load session-type availability windows for ${sessionTypeId}`,
+    );
+  }
+
+  async replaceSessionTypeAvailabilityWindows(
+    sessionTypeId: string,
+    windows: NewSessionTypeAvailabilityWindow[],
+  ): Promise<SessionTypeAvailabilityWindow[]> {
+    await requireMutation(
+      this.db
+        .from('session_type_availability_windows')
+        .delete()
+        .eq('session_type_id', sessionTypeId),
+      `Failed to clear session-type availability windows for ${sessionTypeId}`,
+    );
+
+    if (windows.length === 0) {
+      return [];
+    }
+
+    return requireData<SessionTypeAvailabilityWindow[]>(
+      this.db
+        .from('session_type_availability_windows')
+        .insert(windows)
+        .select('*')
+        .order('weekday_iso', { ascending: true })
+        .order('sort_order', { ascending: true }),
+      `Failed to replace session-type availability windows for ${sessionTypeId}`,
+    );
+  }
+
+  async listSessionTypeWeekOverrides(
+    sessionTypeId: string,
+    weekStartDateFrom: string,
+    weekStartDateTo: string,
+  ): Promise<SessionTypeWeekOverride[]> {
+    return requireData<SessionTypeWeekOverride[]>(
+      this.db
+        .from('session_type_week_overrides')
+        .select('*')
+        .eq('session_type_id', sessionTypeId)
+        .gte('week_start_date', weekStartDateFrom)
+        .lte('week_start_date', weekStartDateTo)
+        .order('week_start_date', { ascending: true }),
+      `Failed to load session-type week overrides for ${sessionTypeId}`,
+    );
+  }
+
+  async upsertSessionTypeWeekOverride(data: NewSessionTypeWeekOverride): Promise<SessionTypeWeekOverride> {
+    return requireSingle<SessionTypeWeekOverride>(
+      this.db
+        .from('session_type_week_overrides')
+        .upsert(data, { onConflict: 'session_type_id,week_start_date' })
+        .select('*')
+        .single(),
+      `Failed to upsert session-type week override for ${data.session_type_id} ${data.week_start_date}`,
+    );
   }
 
   async listSystemSettings(): Promise<SystemSetting[]> {
@@ -1161,6 +1377,14 @@ async function requireData<T>(
   if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
   if (data === null) throw new Error(message);
   return data;
+}
+
+async function requireMutation(
+  promise: PromiseLike<{ error: QueryError | null }>,
+  message: string,
+): Promise<void> {
+  const { error } = await promise;
+  if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
 }
 
 interface QueryError {

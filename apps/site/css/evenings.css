@@ -3,6 +3,22 @@
    Extends main.css without modifying it.
    ============================================================ */
 
+/* ── Evenings hero subtext — yellow with glow, slightly larger ── */
+.evenings-hero .hero__subtext {
+  font-size: clamp(1.375rem, 2.5vw, 1.75rem);
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.14  95 / 0.75),
+    0 0 18px oklch(90%  0.18  92 / 0.45),
+    0 0 40px oklch(86%  0.20  90 / 0.22);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+body.theme-light .evenings-hero .hero__subtext {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+
 /* ── Evenings page hero: no opening screen, content starts immediately ── */
 
 /* hero__content normally has padding-block: 5rem 5rem from main.css.
@@ -27,9 +43,10 @@ body.theme-light .evenings-hero::after {
 }
 
 .evenings-intro {
-  font-size: clamp(1rem, 1.5vw, 1.125rem);
+  font-size: clamp(1.125rem, 1.8vw, 1.275rem);
+  font-weight: 700;
   line-height: 1.8;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   margin-bottom: 1.5rem;
 }
 
@@ -62,7 +79,7 @@ body.theme-light .evenings-hero::after {
 .evenings-closing {
   font-size: clamp(1rem, 1.5vw, 1.125rem);
   line-height: 1.8;
-  color: var(--color-text-muted);
+  color: var(--color-text);
   font-style: italic;
 }
 
@@ -77,6 +94,26 @@ body.theme-light .evenings-hero::after {
 .upcoming__header {
   text-align: center;
   margin-bottom: 3.5rem;
+}
+
+.evenings-trust {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  max-width: 48rem;
+  margin: 1.5rem auto 0;
+}
+
+.evenings-trust li {
+  padding: 0.55rem 0.95rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--color-lake-mist), oklch(18% 0.03 210 / 0.55));
+  color: var(--color-text);
+  font-size: 0.875rem;
+  line-height: 1.2;
 }
 
 /* ── Events tabs ────────────────────────────────────────────── */
@@ -124,8 +161,20 @@ body.theme-light .evenings-hero::after {
 /* ── Events grid ────────────────────────────────────────────── */
 .events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
   gap: 2rem;
+}
+
+:root {
+  --event-reminder-panel-bg:
+    linear-gradient(180deg, oklch(18% 0.038 224 / 0.96), oklch(14% 0.03 228 / 0.92));
+  --event-reminder-panel-border: oklch(60% 0.2 192 / 0.24);
+  --event-reminder-panel-shadow:
+    0 0 0 1px oklch(60% 0.2 192 / 0.08) inset,
+    0 20px 36px oklch(0% 0 0 / 0.24);
+  --event-reminder-input-bg: oklch(12% 0.022 228 / 0.78);
+  --event-reminder-input-border: oklch(60% 0.2 192 / 0.18);
+  --event-reminder-input-border-focus: oklch(60% 0.2 192 / 0.4);
 }
 
 /* ── Empty state ─────────────────────────────────────────────── */
@@ -190,8 +239,8 @@ body.theme-light .evenings-hero::after {
     -45deg,
     var(--color-bg-alt),
     var(--color-bg-alt) 12px,
-    oklch(17% 0.028 207) 12px,
-    oklch(17% 0.028 207) 24px
+    oklch(16% 0.034 226) 12px,
+    oklch(16% 0.034 226) 24px
   );
 }
 
@@ -205,7 +254,7 @@ body.theme-light .evenings-hero::after {
   position: absolute;
   top: 0.875rem;
   right: 0.875rem;
-  background: oklch(11% 0.022 210 / 0.82);
+  background: oklch(10% 0.026 230 / 0.82);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--color-border);
@@ -236,7 +285,7 @@ body.theme-light .evenings-hero::after {
   padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
   flex: 1;
 }
 
@@ -266,52 +315,204 @@ body.theme-light .evenings-hero::after {
 }
 
 /* ── Text content ───────────────────────────────────────────── */
+.event-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .event-card__title {
-  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-size: clamp(1.25rem, 2.2vw, 1.6rem);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.15;
   color: var(--color-text);
 }
 
-.event-card__teaser {
-  font-size: 0.9375rem;
+.event-card__subtitle {
+  font-size: 0.98rem;
+  line-height: 1.55;
+  color: var(--color-word-highlight);
+  text-shadow: 0 0 6px oklch(94% 0.14 95 / 0.6), 0 0 18px oklch(94% 0.14 95 / 0.35);
   font-style: italic;
-  color: var(--color-lake-light);
-  line-height: 1.5;
 }
 
-.event-card__desc {
-  font-size: 0.9rem;
-  line-height: 1.7;
-  color: var(--color-text-muted);
+.event-card__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
 }
 
-/* ── Meta ───────────────────────────────────────────────────── */
-.event-card__meta {
+.event-card__fact {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  border-top: 1px solid var(--color-border);
-  padding-top: 0.875rem;
-  margin-top: 0.25rem;
+  gap: 0.25rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, oklch(18% 0.03 210 / 0.95), oklch(15% 0.028 210 / 0.88));
+  border: 1px solid var(--color-border);
 }
 
-.event-card__meta-row {
-  display: flex;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  line-height: 1.5;
+.event-card__fact--wide {
+  grid-column: span 2;
 }
 
-.event-card__meta-row dt {
-  font-weight: 600;
+.event-card__fact--emphasis {
+  border-color: var(--color-border-hover);
+  box-shadow: 0 0 0 1px var(--color-lake-mist) inset;
+}
+
+.event-card__fact-label {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   color: var(--color-text-subtle);
-  min-width: 3.75rem;
-  flex-shrink: 0;
 }
 
-.event-card__meta-row dd {
+.event-card__fact-value {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.event-card__fact-meta {
   color: var(--color-text-muted);
+}
+
+.event-card__intro {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--color-lake-light);
+  font-style: italic;
+}
+
+.event-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.event-card__section-label {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-subtle);
+}
+
+.event-card__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.event-card__list li {
+  position: relative;
+  padding-left: 1.15rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.event-card__list li::before {
+  content: '';
+  position: absolute;
+  top: 0.55rem;
+  left: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--color-lake);
+  box-shadow: 0 0 10px var(--color-lake-glow);
+}
+
+.event-card__cta-primary {
+  box-shadow: 0 0 26px var(--color-lake-glow);
+}
+
+.event-card__cta-reminder[aria-expanded="true"] {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+  color: var(--color-lake);
+}
+
+.event-reminder-form[hidden] {
+  display: none;
+}
+
+.event-reminder-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  padding: 1rem;
+  border: 1px solid var(--event-reminder-panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--event-reminder-panel-bg);
+  box-shadow: var(--event-reminder-panel-shadow);
+}
+
+.event-reminder-form__field {
+  width: 100%;
+  min-width: 0;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--event-reminder-input-border);
+  border-radius: var(--radius-md);
+  background: var(--event-reminder-input-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  transition:
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.event-reminder-form__field::placeholder {
+  color: var(--color-text-subtle);
+}
+
+.event-reminder-form__field:focus {
+  outline: none;
+  border-color: var(--event-reminder-input-border-focus);
+  box-shadow:
+    0 0 0 3px var(--color-lake-mist),
+    0 0 18px oklch(60% 0.2 192 / 0.18);
+}
+
+.event-reminder-form__field--email,
+.event-reminder-form__submit,
+.event-reminder-form__msg {
+  grid-column: 1 / -1;
+}
+
+.event-reminder-form__submit.btn-primary {
+  width: 100%;
+  margin-top: 0.1rem;
+  background: linear-gradient(135deg, oklch(88% 0.16 90), oklch(82% 0.18 78));
+  color: oklch(18% 0.03 228);
+  box-shadow:
+    0 0 28px oklch(86% 0.18 84 / 0.34),
+    0 10px 24px oklch(0% 0 0 / 0.22);
+}
+
+.event-reminder-form__submit.btn-primary:hover {
+  box-shadow:
+    0 0 42px oklch(86% 0.18 84 / 0.42),
+    0 14px 28px oklch(0% 0 0 / 0.28);
+}
+
+.event-reminder-form__msg {
+  min-height: 1.25rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--color-lake-light);
+}
+
+.event-reminder-form__msg:not(:empty) {
+  margin-top: -0.15rem;
 }
 
 /* .event-card__actions (CTA row) is now in add-to-calendar.css */
@@ -342,9 +543,60 @@ body.theme-light .event-card__day {
   color: var(--color-lake-deep);
 }
 
+body.theme-light .evenings-trust li,
+body.theme-light .event-card__fact {
+  background: oklch(99% 0.004 200 / 0.84);
+}
+
+body.theme-light {
+  --event-reminder-panel-bg:
+    linear-gradient(180deg, oklch(99% 0.008 194 / 0.95), oklch(96% 0.014 196 / 0.92));
+  --event-reminder-panel-border: oklch(44% 0.19 192 / 0.16);
+  --event-reminder-panel-shadow:
+    0 0 0 1px oklch(44% 0.19 192 / 0.08) inset,
+    0 12px 28px oklch(14% 0.025 210 / 0.1);
+  --event-reminder-input-bg: oklch(100% 0 0 / 0.86);
+  --event-reminder-input-border: oklch(44% 0.19 192 / 0.14);
+  --event-reminder-input-border-focus: oklch(44% 0.19 192 / 0.28);
+}
+
+body.theme-light .event-card__cta-reminder[aria-expanded="true"] {
+  color: var(--color-lake-deep);
+}
+
+body.theme-light .event-reminder-form__field {
+  color: oklch(16% 0.028 228);
+}
+
+body.theme-light .event-reminder-form__submit.btn-primary {
+  background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
+  color: var(--color-white);
+  box-shadow: 0 0 24px var(--color-lake-glow);
+}
+
+body.theme-light .event-reminder-form__submit.btn-primary:hover {
+  box-shadow: 0 0 36px var(--color-lake-glow), 0 8px 24px oklch(14% 0.025 210 / 0.16);
+}
+
+body.theme-light .event-reminder-form__msg {
+  color: var(--color-lake-deep);
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 48rem) {
   .break-md {
     display: none;
+  }
+
+  .event-card__facts {
+    grid-template-columns: 1fr;
+  }
+
+  .event-card__fact--wide {
+    grid-column: span 1;
+  }
+
+  .event-reminder-form {
+    grid-template-columns: 1fr;
   }
 }

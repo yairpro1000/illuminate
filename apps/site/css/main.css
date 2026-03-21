@@ -1,9 +1,95 @@
 /* ============================================================
    YAIR BEN-DAVID — Main Stylesheet
-   Lake Lugano palette · OKLCH · 2026
+   Divine Valley palette · OKLCH · 2026
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Nunito:wght@800&family=Poppins:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@800&display=swap');
+
+/* ── Canela Text — local self-hosted ── */
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Thin-Trial.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-ThinItalic-Trial.otf') format('opentype');
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Light-Trial.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-LightItalic-Trial.otf') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Regular-Trial.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-RegularItalic-Trial.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Medium-Trial.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-MediumItalic-Trial.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Bold-Trial.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-BoldItalic-Trial.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-Black-Trial.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Canela';
+  src: url('../fonts/CanelaText-BlackItalic-Trial.otf') format('opentype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
 
 /* ── Registered CSS Properties (enables animation of custom props) ── */
 @property --gradient-angle {
@@ -21,34 +107,48 @@
    DESIGN TOKENS
    ============================================================ */
 :root {
-  /* Lake Lugano Palette — OKLCH */
-  --color-bg:           oklch(11%  0.022 210);
-  --color-bg-alt:       oklch(14%  0.025 208);
-  --color-bg-card:      oklch(17%  0.030 207);
+  /* Divine Valley Palette — OKLCH */
+  /* Cosmic sky · Living valley stream · Divine energy */
+  --color-bg:           oklch(10%  0.026 230);
+  --color-bg-alt:       oklch(13%  0.030 228);
+  --color-bg-card:      oklch(16%  0.036 226);
 
-  --color-lake-deep:    oklch(44%  0.155 204);
-  --color-lake:         oklch(59%  0.160 200);
-  --color-lake-light:   oklch(73%  0.130 195);
-  --color-lake-mist:    oklch(59%  0.160 200 / 0.14);
-  --color-lake-glow:    oklch(59%  0.160 200 / 0.35);
+  /* Valley stream — richer, more saturated teal (the living water) */
+  --color-lake-deep:    oklch(44%  0.185 196);
+  --color-lake:         oklch(60%  0.200 192);
+  --color-lake-light:   oklch(74%  0.165 188);
+  --color-lake-mist:    oklch(60%  0.200 192 / 0.13);
+  --color-lake-glow:    oklch(60%  0.200 192 / 0.38);
 
-  --color-stone:        oklch(78%  0.030 75);
-  --color-stone-muted:  oklch(58%  0.025 78);
+  /* Electric blue — sword energy / divine power accent */
+  --color-sword:        oklch(62%  0.220 240);
+  --color-sword-glow:   oklch(62%  0.220 240 / 0.40);
 
-  --color-text:         oklch(91%  0.015 200);
-  --color-text-muted:   oklch(65%  0.020 207);
-  --color-text-subtle:  oklch(48%  0.018 210);
+  /* Valley green — emerald life force */
+  --color-valley:       oklch(52%  0.160 155);
+  --color-valley-mist:  oklch(52%  0.160 155 / 0.12);
 
-  --color-border:       oklch(59%  0.160 200 / 0.18);
-  --color-border-hover: oklch(59%  0.160 200 / 0.42);
-  --color-white:        oklch(99%  0.005 200);
+  --color-stone:        oklch(80%  0.018 230);
+  --color-stone-muted:  oklch(60%  0.015 228);
 
-  /* Theme toggle: white bg + dark-teal icon (dark mode, shows sun) */
+  --color-text:         oklch(92%  0.012 220);
+  --color-text-muted:   oklch(82%  0.014 222);
+  --color-text-subtle:  oklch(70%  0.012 224);
+
+  --color-border:       oklch(60%  0.200 192 / 0.18);
+  --color-border-hover: oklch(60%  0.200 192 / 0.42);
+  --color-white:        oklch(99%  0.004 220);
+
+  /* Theme toggle: white bg + deep-teal icon (dark mode, shows sun) */
   --toggle-bg:          var(--color-white);
   --toggle-icon-color:  var(--color-lake-deep);
 
   /* Typography */
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font: 'Canela', Georgia, serif;
+
+  /* Divine gold word-highlight (dark mode) — the halo */
+  --color-word-highlight:      oklch(87%  0.175 85);
+  --color-word-highlight-glow: oklch(84%  0.200 82 / 0.60);
 
   /* Spacing */
   --section-py: clamp(5rem, 10vw, 8rem);
@@ -67,7 +167,7 @@
 
   /* Shadows */
   --shadow-glow: 0 0 25px var(--color-lake-glow);
-  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.4);
+  --shadow-card: 0 8px 32px oklch(0% 0 0 / 0.45);
 }
 
 /* ============================================================
@@ -83,6 +183,7 @@ html {
   scroll-behavior: smooth;
   scroll-padding-top: 6rem;
   -webkit-text-size-adjust: 100%;
+  overflow-x: clip;
 }
 
 section[id] {
@@ -109,6 +210,18 @@ ul, ol { list-style: none; }
 .container {
   width: var(--container);
   margin-inline: auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .section {
@@ -233,7 +346,7 @@ ul, ol { list-style: none; }
   padding: 1rem 1.125rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, oklch(20% 0.04 205 / 0.95), oklch(18% 0.03 210 / 0.92));
+  background: linear-gradient(135deg, oklch(18% 0.042 228 / 0.95), oklch(16% 0.034 230 / 0.92));
   box-shadow: var(--shadow-card);
 }
 
@@ -266,7 +379,7 @@ ul, ol { list-style: none; }
   padding: 0.7rem 0.95rem;
   border-radius: 999px;
   border: 1px solid var(--color-border-hover);
-  background: oklch(16% 0.03 206 / 0.94);
+  background: oklch(15% 0.034 226 / 0.94);
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(12px);
 }
@@ -295,7 +408,7 @@ body.theme-light .coupon-banner__eyebrow {
 }
 
 body.theme-light .coupon-banner__text {
-  color: oklch(18% 0.024 210);
+  color: oklch(16% 0.028 228);
 }
 
 body.theme-light .coupon-indicator {
@@ -305,7 +418,7 @@ body.theme-light .coupon-indicator {
 }
 
 body.theme-light .coupon-indicator__label {
-  color: oklch(18% 0.024 210);
+  color: oklch(16% 0.028 228);
 }
 
 body.theme-light .coupon-indicator__remove {
@@ -313,12 +426,12 @@ body.theme-light .coupon-indicator__remove {
 }
 
 body.theme-light .coupon-price__old {
-  color: oklch(42% 0.02 210);
+  color: oklch(42% 0.022 228);
 }
 
 body.theme-light .coupon-price__note,
 body.theme-light .coupon-price__suffix {
-  color: oklch(44% 0.018 210);
+  color: oklch(44% 0.020 228);
 }
 
 @media (max-width: 48rem) {
@@ -339,9 +452,17 @@ body.theme-light .coupon-price__suffix {
   gap: 0.2rem;
 }
 
+/* Inside the pill badge, price + suffix must stay on one row */
+.step__amount .coupon-price {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .coupon-price--standard,
 .coupon-price--free,
 .coupon-price__new {
+  white-space: nowrap;
   color: var(--color-text);
 }
 
@@ -399,9 +520,14 @@ body.theme-light .coupon-price__suffix {
   cursor: pointer;
   border: none;
   transition:
-    transform 0.3s var(--ease),
-    box-shadow 0.3s var(--ease),
+    transform 1s var(--ease),
+    box-shadow 1s var(--ease),
     background 0.3s var(--ease);
+}
+
+.btn-primary.btn--focal {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 0 48px var(--color-lake-glow), 0 12px 32px oklch(0% 0 0 / 0.40);
 }
 
 .btn-primary {
@@ -442,14 +568,19 @@ body.theme-light .coupon-price__suffix {
   align-items: center;
   gap: 0.5rem;
   color: var(--color-lake-light);
-  font-size: 0.9375rem;
+  font-size: clamp(1rem, 4.5vw, 1.6875rem);
   font-weight: 500;
-  transition: gap 0.25s var(--ease), color 0.2s;
+  font-style: italic;
+  transition: gap 0.25s var(--ease), color 0.2s, transform 1s var(--ease);
 }
 
 .btn-arrow:hover {
   gap: 0.85rem;
   color: var(--color-lake);
+}
+
+.btn-arrow.btn--focal {
+  transform: scale(1.08);
 }
 
 .btn-arrow::after {
@@ -471,7 +602,7 @@ body.theme-light .coupon-price__suffix {
 }
 
 .nav.scrolled {
-  background: oklch(11% 0.022 210 / 0.85);
+  background: oklch(20% 0.034 222 / 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   padding: 0.875rem 0;
@@ -486,6 +617,10 @@ body.theme-light .coupon-price__suffix {
   margin-inline: auto;
 }
 
+.nav__logo span:not(.nav__logo-brand) {
+  color: var(--color-lake-light);
+}
+
 .nav__logo {
   font-size: 1.0625rem;
   font-weight: 600;
@@ -493,8 +628,22 @@ body.theme-light .coupon-price__suffix {
   color: var(--color-text);
 }
 
-.nav__logo span {
-  color: var(--color-lake-light);
+
+
+.nav__logo-brand {
+  font-family: 'Nunito', var(--font);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow:
+    0 0 8px  oklch(94% 0.16 85 / 0.80),
+    0 0 22px oklch(88% 0.20 82 / 0.45);
+}
+
+body.theme-light .nav__logo-brand {
+  color: var(--color-text);
+  text-shadow:
+    0 0 8px  color-mix(in oklab, var(--color-lake) 65%, transparent),
+    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
 }
 
 .nav__links {
@@ -558,7 +707,7 @@ body.theme-light .coupon-price__suffix {
   display: flex;          /* always flex — hidden via max-height, not display:none */
   flex-direction: column;
   gap: 0;
-  background: oklch(13% 0.025 209 / 0.97);
+  background: oklch(13% 0.030 228 / 0.97);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: none;
@@ -655,7 +804,7 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding-top: calc(50svh - 0.75rem);
+  padding-top: calc(30svh - 0.75rem);
   padding-bottom: 5rem;
   position: relative;
 }
@@ -667,7 +816,6 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   font-weight: 300;
   color: oklch(100% 0 0);
   letter-spacing: 0.04em;
-  margin-top: 5vh;
   margin-bottom: 1.25rem;
   text-shadow: 0 1px 10px oklch(0% 0 0 / 0.30);
 }
@@ -689,33 +837,33 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
 
 .hero__brand {
   display: block;
-  font-family: 'Nunito', var(--font);   /* round letterforms */
+  font-family: 'Nunito', var(--font);
   font-size: clamp(2.6rem, 9vw, 6.5rem);
   font-weight: 800;
   letter-spacing: 0.22em;
   padding-right: 0.22em;               /* prevent last char clipping from trailing letter-spacing */
   /* pure white — glow animation provides all the iridescence */
   color: #ffffff;
-  /* glow layers: sun-yellow (hue ~95), not orange */
+  /* glow layers: divine gold (hue ~85), the halo */
   text-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow 5s ease-in-out infinite;
 }
 
 @keyframes brand-glow {
   0%, 100% {
     text-shadow:
-      0 0 10px oklch(94% 0.14 95 / 0.80),
-      0 0 28px oklch(90% 0.18 95 / 0.45),
-      0 0 65px oklch(86% 0.20 95 / 0.22);
+      0 0 10px oklch(94% 0.16 85 / 0.80),
+      0 0 28px oklch(88% 0.20 82 / 0.45),
+      0 0 65px oklch(84% 0.22 80 / 0.22);
   }
   50% {
     text-shadow:
-      0 0 18px oklch(96% 0.12 95 / 0.95),
-      0 0 52px oklch(92% 0.17 95 / 0.65),
-      0 0 110px oklch(88% 0.19 95 / 0.40);
+      0 0 18px oklch(96% 0.14 87 / 0.95),
+      0 0 52px oklch(90% 0.19 83 / 0.65),
+      0 0 110px oklch(86% 0.21 80 / 0.40);
   }
 }
 
@@ -854,13 +1002,13 @@ body.theme-light .hero__brand {
   text-align: left;
   gap: 1.25rem;
   padding: 1.625rem 1.875rem;
-  background: oklch(17% 0.030 207 / 0.55);
+  background: oklch(16% 0.036 226 / 0.55);
   border: 1px solid var(--color-border);
-  border-left: 3px solid var(--color-lake-light);
+  border-left: 3px solid var(--color-word-highlight);
   border-radius: var(--radius-lg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: transform 0.18s var(--ease), box-shadow 0.18s, border-left-color 0.18s, background 0.18s;
+  transition: transform 1s var(--ease), box-shadow 1s, border-left-color 1s, background-color 1s;
 }
 
 /* Re-establish 3D base after .fade-up.is-visible resets transform to none.
@@ -870,19 +1018,28 @@ body.theme-light .hero__brand {
   transition-delay: 0s;
 }
 
-.who__card.is-visible:hover {
+.who__card.is-visible:hover,
+.who__card.is-visible.who__card--focal {
   transform: perspective(800px) translateZ(28px) translateY(-4px);
-  background: oklch(22% 0.072 200 / 0.78);
-  border-left-color: oklch(80% 0.125 193);
+  background-color: oklch(20% 0.080 220 / 0.78);
+  border-left-color: oklch(92% 0.175 87);
   box-shadow:
     0 24px 64px oklch(0% 0 0 / 0.50),
     0 6px 20px oklch(59% 0.160 200 / 0.22);
 }
 
 .who__check {
-  color: var(--color-lake-light);
+  color: var(--color-word-highlight);
   flex-shrink: 0;
   margin-top: 0.3rem;
+  filter:
+    drop-shadow(0 0 4px oklch(94% 0.16 85 / 0.80))
+    drop-shadow(0 0 12px oklch(88% 0.20 82 / 0.50));
+}
+
+body.theme-light .who__check {
+  color: var(--color-lake-light);
+  filter: none;
 }
 
 .who__card-content {
@@ -898,7 +1055,7 @@ body.theme-light .hero__brand {
 }
 
 .who__lead strong {
-  color: var(--color-lake-light);
+  /* color: var(--color-lake-light); */
   font-weight: 600;
 }
 
@@ -933,7 +1090,7 @@ body.theme-light .hero__brand {
   font-size: clamp(1.125rem, 2vw, 1.375rem);
   font-weight: 500;
   font-style: italic;
-  color: var(--color-lake-light);
+  color: var(--color-white);
   line-height: 1.65;
 }
 
@@ -941,7 +1098,7 @@ body.theme-light .hero__brand {
    GLASS CARD
    ============================================================ */
 .glass-card {
-  background: oklch(17% 0.030 207 / 0.7);
+  background: oklch(16% 0.036 226 / 0.7);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   padding: 2.25rem;
@@ -1104,6 +1261,7 @@ body.theme-light .hero__brand {
 
 .step__amount {
   display: inline-block;
+  white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -1123,9 +1281,8 @@ body.theme-light .hero__brand {
 }
 
 .step__body {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.7;
-  color: var(--color-text-muted);
 }
 
 .steps__footer {
@@ -1159,11 +1316,53 @@ body.theme-light .hero__brand {
   max-width: 50rem;
 }
 
+.investment__evenings-nudge {
+  margin-top: 2.5rem;
+  color: var(--color-text);
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.investment__evenings-nudge .btn-arrow {
+  color: var(--color-text) !important;
+  text-shadow: none !important;
+}
+
+.investment__evenings-nudge .btn-arrow:hover {
+  color: var(--color-text) !important;
+}
+
+/* ILLUMINATE Evenings inline brand style — shared across pages */
+.evenings-intro__brand {
+  font-family: 'Nunito', var(--font);
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow:
+    0 0 8px oklch(94% 0.16 85 / 0.80),
+    0 0 22px oklch(88% 0.20 82 / 0.45);
+}
+
+.evenings-intro__name {
+  color: var(--color-lake-light);
+  font-weight: 600;
+  letter-spacing: 0.015em;
+}
+
+body.theme-light .evenings-intro__brand {
+  color: var(--color-text);
+  text-shadow:
+    0 0 8px color-mix(in oklab, var(--color-lake) 65%, transparent),
+    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
+}
+
 .pricing-card {
   padding: 2.5rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.6);
+  background: oklch(16% 0.036 226 / 0.6);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   transition: border-color 0.3s, transform 0.35s var(--ease), box-shadow 0.35s;
@@ -1217,12 +1416,12 @@ body.theme-light .hero__brand {
   font-size: 1.125rem;
   font-weight: 500;
   letter-spacing: 0;
-  color: var(--color-text-muted);
+  /* color: var(--color-text-muted); */
 }
 
 .pricing-card__desc {
-  font-size: 0.9375rem;
-  color: var(--color-text-muted);
+  font-size: 1rem;
+  /* color: var(--color-text-muted); */
   margin-bottom: 2rem;
   line-height: 1.6;
 }
@@ -1247,10 +1446,19 @@ body.theme-light .hero__brand {
 
 .pricing-card__feature {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
+  justify-content: flex-start;
   gap: 0.75rem;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   color: var(--color-text-muted);
+}
+
+.pricing-card__feature span {
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+  font-size: 0.875rem;
 }
 
 .pricing-card__feature::before {
@@ -1263,7 +1471,7 @@ body.theme-light .hero__brand {
 
 .pricing-card--featured {
   border-color: var(--color-border-hover);
-  background: oklch(20% 0.035 207 / 0.75);
+  background: oklch(19% 0.040 225 / 0.75);
 }
 
 .pricing-card--featured:hover {
@@ -1287,7 +1495,7 @@ body.theme-light .hero__brand {
   padding: 3rem 3rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.5);
+  background: oklch(16% 0.036 226 / 0.5);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   margin-bottom: 2.5rem;
@@ -1301,7 +1509,7 @@ body.theme-light .hero__brand {
   font-size: 5rem;
   line-height: 1;
   color: var(--color-lake-mist);
-  font-family: Georgia, serif;
+  font-family: 'Canela', Georgia, serif;
 }
 
 .calm-mirror__text {
@@ -1366,7 +1574,7 @@ body.theme-light .hero__brand {
   padding: 2rem 1.5rem;
   border-radius: var(--radius-xl);
   border: 1px solid var(--color-border);
-  background: oklch(17% 0.030 207 / 0.20);
+  background: oklch(16% 0.036 226 / 0.20);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   margin-bottom: 2.5rem;
@@ -1380,7 +1588,7 @@ body.theme-light .hero__brand {
   font-size: 5rem;
   line-height: 1;
   color: var(--color-lake-mist);
-  font-family: Georgia, serif;
+  font-family: 'Canela', Georgia, serif;
 }
 
 .regret__text {
@@ -1393,7 +1601,6 @@ body.theme-light .hero__brand {
 .regret__text p + p { margin-top: 1rem; }
 
 .regret__right .btn-arrow {
-  font-size: var(--step-1);
   color: var(--color-lake-light);
 }
 
@@ -1457,11 +1664,10 @@ body.theme-light .hero__brand {
 
 .final__body p {
   font-size: clamp(1.25rem, 2.5vw, 1.75rem);
-  line-height: 1.75;
+  line-height: 1 ;
   color: var(--color-text-muted);
+  margin-top: 3rem;
 }
-
-.final__body p + p { margin-top: 0.5rem; }
 
 .final__step {
   font-size: clamp(1.125rem, 2vw, 1.375rem);
@@ -1473,7 +1679,7 @@ body.theme-light .hero__brand {
 }
 
 body.theme-light .final__step {
-  color: oklch(38% 0.148 200);
+  color: oklch(38% 0.175 188);
 }
 
 .final__actions {
@@ -1544,7 +1750,7 @@ body.theme-light .final__step {
 }
 
 .about-strip__content {
-  max-width: 60ch;
+  max-width: 55ch;
 }
 
 .about-strip__content .label {
@@ -1554,13 +1760,17 @@ body.theme-light .final__step {
 
 .about-accent {
   font-weight: 700;
-  color: var(--color-lake-light);
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.16  85 / 0.75),
+    0 0 18px oklch(88%  0.20  82 / 0.45),
+    0 0 40px oklch(84%  0.22  80 / 0.22);
 }
 
 .about-strip__text {
-  font-size: 1.0625rem;
+  font-size: 1.1625rem;
   line-height: 1.75;
-  color: var(--color-text-muted);
+  /* color: var(--color-text-muted); */
   margin-bottom: 1.75rem;
   /* text-align: justify; */
 }
@@ -1574,15 +1784,20 @@ body.theme-light .final__step {
 }
 
 .reviews-bubbles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: clamp(1rem, 2vw, 1.5rem);
   align-items: start;
 }
 
 .bubble-card {
-  margin-bottom: 0;
+  --bubble-max-w: 420px;
+  flex: 1 1 28%;
+  min-width: 220px;
+  max-width: var(--bubble-max-w);
 }
+
 
 .chat-messages {
   display: flex;
@@ -1592,8 +1807,8 @@ body.theme-light .final__step {
 }
 
 .bubble-msg {
-  background: oklch(20% 0.030 210);
-  border: 1px solid oklch(59% 0.160 200 / 0.22);
+  background: oklch(18% 0.034 228);
+  border: 1px solid oklch(60% 0.200 192 / 0.22);
   border-radius: 1.25rem;
   padding: 0.8125rem 1.125rem;
   font-size: 1rem;
@@ -1602,6 +1817,14 @@ body.theme-light .final__step {
   max-width: 100%;
   box-shadow: 0 2px 14px oklch(0% 0 0 / 0.20);
   position: relative;
+}
+
+.bubble-name {
+  font-size: 0.8125rem;
+  color: var(--color-text-subtle);
+  font-style: italic;
+  margin-top: 0.5rem;
+  padding-left: 0.875rem;
 }
 
 /* Last bubble in a group — pointed tail */
@@ -1616,45 +1839,67 @@ body.theme-light .final__step {
   left: -9px;
   width: 0;
   height: 0;
-  border-right: 10px solid oklch(20% 0.030 210);
+  border-right: 10px solid oklch(18% 0.034 228);
   border-top: 12px solid transparent;
+}
+
+/* Image-as-bubble: image sits inside the bubble with padding showing around it */
+.bubble-msg--media {
+  border-bottom-left-radius: 0.25rem;
+}
+
+.bubble-msg--media::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -9px;
+  width: 0;
+  height: 0;
+  border-right: 10px solid oklch(18% 0.034 228);
+  border-top: 12px solid transparent;
+}
+
+body.theme-light .bubble-msg--media::after {
+  border-right-color: oklch(99% 0.006 190);
 }
 
 /* Light mode bubbles */
 body.theme-light .bubble-msg {
-  background: oklch(99% 0.006 200);
-  color: oklch(14% 0.025 210);
+  background: oklch(99% 0.006 190);
+  color: oklch(13% 0.028 228);
   border-color: oklch(44% 0.152 200 / 0.18);
   box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
 }
 
 body.theme-light .bubble-card .bubble-msg:last-child::after {
-  border-right-color: oklch(99% 0.006 200);
+  border-right-color: oklch(99% 0.006 190);
 }
 
 /* Alternating bubble colour */
 .bubble-card:nth-child(even) .bubble-msg {
-  background: oklch(19% 0.055 200);
-  border-color: oklch(59% 0.160 200 / 0.32);
+  background: oklch(17% 0.060 215);
+  border-color: oklch(60% 0.200 192 / 0.32);
 }
 
 .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-  border-right-color: oklch(19% 0.055 200);
+  border-right-color: oklch(17% 0.060 215);
 }
 
 body.theme-light .bubble-card:nth-child(even) .bubble-msg {
-  background: oklch(95% 0.022 200);
+  background: oklch(95% 0.022 190);
   border-color: oklch(44% 0.152 200 / 0.22);
 }
 
 body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-  border-right-color: oklch(95% 0.022 200);
+  border-right-color: oklch(95% 0.022 190);
 }
 
-/* Keeps the later review-close section image styling unchanged. */
 .reviews__wrap {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: calc(var(--bubble-max-w, 420px) * 1.3);
+  margin: 2rem auto 0;
 }
 
 .reviews__img {
@@ -1664,8 +1909,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   display: block;
 }
 
-.reviews__img--single {
-  max-width: clamp(20rem, 55vw, 36rem);
+/* Image fills the bubble container; the wrap itself is capped at 1.3× bubble width */
+.reviews__wrap .reviews__img--single {
+  max-width: 100%;
 }
 
 /* ============================================================
@@ -1678,10 +1924,9 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 
 .footer__inner {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
   width: var(--container);
   margin-inline: auto;
 }
@@ -1761,8 +2006,8 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
   .calm-mirror__quote { padding: 2.25rem 1.75rem; }
   .calm-mirror__quote::before { left: 1.25rem; }
 
-  .reviews-bubbles {
-    grid-template-columns: repeat(2, 1fr);
+  .reviews-bubbles .bubble-card {
+    flex: 1 1 44%;
   }
 }
 
@@ -1770,49 +2015,50 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
 @media (min-width: 32.0625rem) and (max-width: 47.9375rem) {
   /* Reset cards that were B globally but should be A in 2-col (cards 4, 8…) */
   .bubble-card:nth-child(even) .bubble-msg {
-    background: oklch(20% 0.030 210);
-    border-color: oklch(59% 0.160 200 / 0.22);
+    background: oklch(18% 0.034 228);
+    border-color: oklch(60% 0.200 192 / 0.22);
     box-shadow: 0 2px 14px oklch(0% 0 0 / 0.20);
   }
   .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-    border-right-color: oklch(20% 0.030 210);
+    border-right-color: oklch(18% 0.034 228);
   }
 
   /* Apply B to 2-col checkerboard positions (cards 2, 3, 6, 7…) */
   .bubble-card:nth-child(4n+2) .bubble-msg,
   .bubble-card:nth-child(4n+3) .bubble-msg {
-    background: oklch(19% 0.055 200);
-    border-color: oklch(59% 0.160 200 / 0.32);
+    background: oklch(17% 0.060 215);
+    border-color: oklch(60% 0.200 192 / 0.32);
   }
   .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
   .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
-    border-right-color: oklch(19% 0.055 200);
+    border-right-color: oklch(17% 0.060 215);
   }
 
   /* Light mode */
   body.theme-light .bubble-card:nth-child(even) .bubble-msg {
-    background: oklch(99% 0.006 200);
+    background: oklch(99% 0.006 190);
     border-color: oklch(44% 0.152 200 / 0.18);
     box-shadow: 0 2px 14px oklch(59% 0.160 200 / 0.10);
   }
   body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
-    border-right-color: oklch(99% 0.006 200);
+    border-right-color: oklch(99% 0.006 190);
   }
   body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg,
   body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg {
-    background: oklch(95% 0.022 200);
+    background: oklch(95% 0.022 190);
     border-color: oklch(44% 0.152 200 / 0.22);
   }
   body.theme-light .bubble-card:nth-child(4n+2) .bubble-msg:last-child::after,
   body.theme-light .bubble-card:nth-child(4n+3) .bubble-msg:last-child::after {
-    border-right-color: oklch(95% 0.022 200);
+    border-right-color: oklch(95% 0.022 190);
   }
 }
 
 @media (max-width: 32rem) {
   .pricing-card { padding: 1.875rem 1.5rem; }
-  .reviews-bubbles {
-    grid-template-columns: 1fr;
+  .reviews-bubbles .bubble-card {
+    flex: 1 1 100%;
+    max-width: 100%;
   }
 }
 
@@ -1845,7 +2091,13 @@ body.theme-light .bubble-card:nth-child(even) .bubble-msg:last-child::after {
    ============================================================ */
 .text-center  { text-align: center; }
 .text-muted   { color: var(--color-text-muted); }
-.text-lake    { color: var(--color-lake-light); }
+.text-lake {
+  color: var(--color-word-highlight);
+  text-shadow:
+    0 0  6px oklch(94%  0.16  85 / 0.75),
+    0 0 18px oklch(88%  0.20  82 / 0.45),
+    0 0 40px oklch(84%  0.22  80 / 0.22);
+}
 .mt-sm        { margin-top: 1rem; }
 .mt-md        { margin-top: 1.75rem; }
 .mt-lg        { margin-top: 2.5rem; }
@@ -2013,30 +2265,30 @@ body.theme-light .theme-toggle .icon-sun {
    All components inherit from these via CSS custom properties
    ============================================================ */
 body.theme-light {
-  /* Backgrounds */
-  --color-bg:           oklch(96.5% 0.007 195);
-  --color-bg-alt:       oklch(93%   0.010 193);
-  --color-bg-card:      oklch(99%   0.005 195);
+  /* Backgrounds — warm pearl with a hint of valley green */
+  --color-bg:           oklch(96.5% 0.008 185);
+  --color-bg-alt:       oklch(93%   0.011 183);
+  --color-bg-card:      oklch(99%   0.005 190);
 
-  /* Lake — darker for readability on light bg */
-  --color-lake-deep:    oklch(36%   0.160 204);
-  --color-lake:         oklch(44%   0.152 200);
-  --color-lake-light:   oklch(38%   0.148 200);
-  --color-lake-mist:    oklch(44%   0.152 200 / 0.09);
-  --color-lake-glow:    oklch(44%   0.152 200 / 0.22);
+  /* Valley stream — darker for readability on light bg */
+  --color-lake-deep:    oklch(36%   0.185 196);
+  --color-lake:         oklch(44%   0.190 192);
+  --color-lake-light:   oklch(38%   0.175 188);
+  --color-lake-mist:    oklch(44%   0.190 192 / 0.09);
+  --color-lake-glow:    oklch(44%   0.190 192 / 0.22);
 
   /* Text — dark on light */
-  --color-text:         oklch(14%   0.025 210);
-  --color-text-muted:   oklch(36%   0.022 208);
-  --color-text-subtle:  oklch(55%   0.018 210);
+  --color-text:         oklch(13%   0.028 228);
+  --color-text-muted:   oklch(35%   0.022 226);
+  --color-text-subtle:  oklch(55%   0.018 224);
 
   /* Borders */
-  --color-border:       oklch(44%   0.152 200 / 0.14);
-  --color-border-hover: oklch(44%   0.152 200 / 0.34);
+  --color-border:       oklch(44%   0.190 192 / 0.14);
+  --color-border-hover: oklch(44%   0.190 192 / 0.34);
 
   /* Shadows */
-  --shadow-glow: 0 0 22px oklch(44% 0.152 200 / 0.18);
-  --shadow-card: 0 4px 24px oklch(14% 0.025 210 / 0.08), 0 1px 4px oklch(14% 0.025 210 / 0.06);
+  --shadow-glow: 0 0 22px oklch(44% 0.190 192 / 0.18);
+  --shadow-card: 0 4px 24px oklch(13% 0.028 228 / 0.08), 0 1px 4px oklch(13% 0.028 228 / 0.06);
 
   /* Theme toggle: dark-teal bg + white icon (light mode, shows moon) */
   --toggle-bg:          oklch(from var(--color-lake-deep) l c h / 0.7);
@@ -2046,7 +2298,7 @@ body.theme-light {
 /* ── Light body background: raw alpine lake image —
      each section controls its own overlay via background-color ── */
 body.theme-light {
-  background-color: oklch(96.5% 0.007 195);
+  background-color: oklch(96.5% 0.008 185);
 }
 
 /* Background image lives on its own fixed layer so we can
@@ -2055,6 +2307,29 @@ body.theme-light {
   position: fixed;
   inset: 0;
   z-index: -20;
+  pointer-events: none;
+}
+
+body:not(.theme-light) #bg-layer {
+  /* Solid navy — image hidden behind canvas animation on all pages */
+  background-color: oklch(10% 0.026 230);
+  background-image: none;
+}
+
+/* ── Dark mode: lake image only in #about and #reviews ── */
+/* Painted as a ::before so it sits within the section stacking context,
+   above the fixed canvas (z-index -10) but behind section content. */
+body:not(.theme-light) #about::before,
+body:not(.theme-light) #reviews::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(4, 12, 30, 0.65), rgba(6, 18, 40, 0.60)),
+    url('../img/alpine_lake_horizontal.png');
+  background-size: cover;
+  background-position: center 38%;
+  z-index: -1;
   pointer-events: none;
 }
 
@@ -2073,13 +2348,13 @@ body.theme-light #bg-layer.bg-grayscale {
 
 /* ── Light: Nav scrolled ── */
 body.theme-light .nav.scrolled {
-  background: oklch(96.5% 0.007 195 / 0.88);
+  background: oklch(96.5% 0.008 185 / 0.88);
   border-bottom-color: var(--color-border);
 }
 
 /* ── Light: Glass cards ── */
 body.theme-light .glass-card {
-  background: oklch(99% 0.005 195 / 0.72);
+  background: oklch(99% 0.005 190 / 0.72);
   box-shadow: 0 4px 20px oklch(14% 0.025 210 / 0.06);
 }
 
@@ -2089,18 +2364,19 @@ body.theme-light .glass-card:hover {
 
 /* ── Light: Who Is This For? cards — frosted glass, dark text ── */
 body.theme-light .who__card {
-  background: oklch(99% 0.008 195 / 0.58);
-  border-left-color: oklch(38% 0.148 200);
+  background: oklch(99% 0.008 190 / 0.58);
+  border-left-color: oklch(60% 0.175 80);
   box-shadow: 0 2px 14px oklch(14% 0.025 210 / 0.06);
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-lake-light:  oklch(38%  0.148 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-lake-light:  oklch(38%  0.175 188);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
-body.theme-light .who__card.is-visible:hover {
-  background: oklch(97% 0.014 195 / 0.76);
-  border-left-color: oklch(38% 0.160 200);
+body.theme-light .who__card.is-visible:hover,
+body.theme-light .who__card.is-visible.who__card--focal {
+  background-color: oklch(97% 0.014 195 / 0.76);
+  border-left-color: oklch(62% 0.175 80);
   box-shadow:
     0 24px 64px oklch(14% 0.025 210 / 0.20),
     0 6px 20px oklch(38% 0.148 200 / 0.20);
@@ -2122,10 +2398,10 @@ body.theme-light .pricing-card:hover {
 
 /* ── Light: Regret quote ── */
 body.theme-light .regret__quote {
-  background: oklch(99% 0.005 195 / 0.45);
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-lake-light:  oklch(38%  0.148 200);
+  background: oklch(99% 0.005 190 / 0.45);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-lake-light:  oklch(38%  0.175 188);
 }
 
 body.theme-light .regret__quote::before {
@@ -2188,7 +2464,7 @@ body.theme-light .footer {
 }
 
 body.theme-light .nav__mobile {
-  background: oklch(96.5% 0.007 195 / 0.95);
+  background: oklch(96.5% 0.008 185 / 0.95);
 }
 
 /* ============================================================
@@ -2199,10 +2475,11 @@ body.theme-light .nav__mobile {
 
 /* ── Dark mode: make section--alt "light" sections semi-transparent
      so canvas waves breathe through them ── */
-body:not(.theme-light) #not-this.section-in-view,
-body:not(.theme-light) #investment.section-in-view,
-body:not(.theme-light) #who-is-this.section-in-view {
-  background-color: oklch(14% 0.025 208 / 0.22);
+/* ── Dark mode: all sections transparent — divine rays visible everywhere ── */
+/* bg-layer is solid navy (no image); rays float above it through transparent sections */
+body:not(.theme-light) .section,
+body:not(.theme-light) .section--alt.section-in-view {
+  background-color: transparent;
 }
 
 /* ── Light mode: hero::after provides full-width bg for hero__content
@@ -2224,14 +2501,12 @@ body.theme-light #how-we-work.section-in-view {
   background-color: oklch(96.5% 0.007 195 / 0.82);
 }
 
-/* ── Light mode: calm mirror + review close — fully opaque, no lake showing through ── */
-body.theme-light #calm-mirror.section-in-view,
-body.theme-light #review-close.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 1.0);
+/* ── Light mode: calm mirror — fully opaque, no lake showing through ── */
+body.theme-light #calm-mirror.section-in-view {
+  background-color: oklch(96.5% 0.008 185 / 1.0);
 }
 
-/* review-close appears instantly — no fade, so #final's reveal is the dramatic moment ── */
-#review-close,
+/* about appears instantly — no fade, so #final's reveal is the dramatic moment ── */
 #about {
   transition: none;
 }
@@ -2243,11 +2518,11 @@ body.theme-light #who-is-this.section-in-view,
 body.theme-light #regret.section-in-view,
 body.theme-light #about.section-in-view,
 body.theme-light #reviews.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0.35);
+  background-color: oklch(96.5% 0.008 185 / 0.35);
   /* Override text tokens so everything in these sections reads white on the lake */
-  --color-text:        oklch(97%  0.008 200);
-  --color-text-muted:  oklch(90%  0.012 200);
-  --color-text-subtle: oklch(80%  0.010 200);
+  --color-text:        oklch(97%  0.008 220);
+  --color-text-muted:  oklch(90%  0.012 220);
+  --color-text-subtle: oklch(80%  0.010 220);
   --color-border:      oklch(100% 0    0   / 0.20);
   /* --color-lake-light / --color-lake: intentionally NOT overridden here —
      they inherit from body.theme-light (dark navy = same as "Clarity. Courage." gradient) */
@@ -2255,37 +2530,37 @@ body.theme-light #reviews.section-in-view {
 
 /* ── About: fully transparent — lake shines through completely ── */
 body.theme-light #about.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0);
+  background-color: oklch(96.5% 0.008 185 / 0);
 }
 
 /* ── Regret: near-opaque — building toward the final reveal ── */
 body.theme-light #regret.section-in-view {
-  background-color: oklch(96.5% 0.007 195 / 0.90);
+  background-color: oklch(96.5% 0.008 185 / 0.90);
 }
 
 /* Restore normal light-mode dark colors inside pricing cards
    (they have their own opaque background so dark text stays readable) */
 body.theme-light #investment .pricing-card {
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
 /* ── Light mode: final section — opaque overlay fades out on scroll ── */
 body.theme-light .final::before {
-  background: oklch(96.5% 0.007 195 / 1.0);
+  background: oklch(96.5% 0.008 185 / 1.0);
 }
 
 body.theme-light .final {
-  background-color: oklch(96.5% 0.007 195 / 0);
+  background-color: oklch(96.5% 0.008 185 / 0);
   --color-text:        oklch(100% 0     0  );
-  --color-text-muted:  oklch(93%  0.008 200);
-  --color-text-subtle: oklch(88%  0.008 200);
+  --color-text-muted:  oklch(93%  0.008 220);
+  --color-text-subtle: oklch(88%  0.008 220);
   --color-lake-light:  oklch(100% 0     0  );
-  --color-lake:        oklch(96%  0.010 200);
+  --color-lake:        oklch(96%  0.010 220);
 }
 
 /* ── Light mode: about + reviews glass box — same pattern as manifesto__box ── */
@@ -2294,11 +2569,11 @@ body.theme-light #reviews .container {
   background: oklch(97% 0.012 200 / 0.65);
   border-radius: 1.5rem;
   padding: 3.5rem 2.5rem;
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
@@ -2307,22 +2582,22 @@ body.theme-light #not-this .manifesto__box {
   background: oklch(97% 0.012 200 / 0.45);
   border-radius: 1.5rem;
   padding: 3.5rem 2.5rem;
-  --color-text:        oklch(14%  0.025 210);
-  --color-text-muted:  oklch(36%  0.022 208);
-  --color-text-subtle: oklch(55%  0.018 210);
-  --color-lake-light:  oklch(38%  0.148 200);
-  --color-lake:        oklch(44%  0.152 200);
+  --color-text:        oklch(13%  0.028 228);
+  --color-text-muted:  oklch(35%  0.022 226);
+  --color-text-subtle: oklch(55%  0.018 224);
+  --color-lake-light:  oklch(38%  0.175 188);
+  --color-lake:        oklch(44%  0.190 192);
   --color-border:      oklch(44%  0.152 200 / 0.14);
 }
 
 /* ── Light mode: regret — fix unreadable teal/green accents + strengthen body text ── */
 body.theme-light #regret {
   --color-lake-light: oklch(100% 0 0);
-  --color-lake:       oklch(95%  0.010 200);
+  --color-lake:       oklch(95%  0.010 220);
 }
 
 body.theme-light #regret .regret__right .btn-arrow {
-  color: oklch(38% 0.148 200);
+  color: oklch(38% 0.175 188);
 }
 
 
@@ -2330,6 +2605,11 @@ body.theme-light #regret .regret__right .btn-arrow {
 body.theme-light #not-this .manifesto__selflove-line {
   font-size: clamp(1.125rem, 1.8vw, 1.375rem);
   margin-top: 0.75rem;
+}
+
+.manifesto__selflove {
+    font-weight: 700;
+  font-size: 1.35em;
 }
 
 body.theme-light #not-this .manifesto__selflove {
@@ -2343,16 +2623,16 @@ body.theme-light #not-this .manifesto__selflove {
 
 /* ── "Clarity / Harmony is possible." — ILLUMINATE glow (dark mode) ── */
 .final__body p {
-  font-family: 'Poppins', var(--font);
+  font-family: 'Canela', var(--font);
   font-weight: 400;
   font-size: clamp(3.4rem, 4vw, 3.4rem);
   /* font-style: italic; */
   letter-spacing: 0.04em;
   color: oklch(100% 0 0);
   text-shadow:
-    0 0 12px oklch(94% 0.14 95 / 0.90),
-    0 0 36px oklch(90% 0.18 95 / 0.55),
-    0 0 80px oklch(86% 0.20 95 / 0.30);
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
   animation: brand-glow 5s ease-in-out infinite;
 }
 
@@ -2457,6 +2737,31 @@ body.theme-light .final__body p {
   display: inline-flex;
 }
 
+/* Photo + caption block (2nd about image) */
+.about-strip__photo-caption-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 3rem;
+}
+
+.about-strip__photo-caption-block .about-strip__photo-wrap {
+  align-self: auto;
+}
+
+.about-strip__photo-caption-block .about-strip__location {
+  width: clamp(21rem, 20vw, 14rem);
+  margin-top: 0.5rem;
+  padding-top: 0;
+  border-top: none;
+}
+
+.about-strip__photo-caption-block .about-strip__text {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: justify;
+}
+
 /* Switzerland location note */
 .about-strip__location {
   margin-top: 2rem;
@@ -2465,7 +2770,134 @@ body.theme-light .final__body p {
 }
 
 .about-strip__location .about-strip__text {
-  font-size: 0.9375rem;
+  font-size: 1.1rem;
   color: var(--color-text-muted);
   font-style: italic;
 }
+
+/* Light mode: revert word highlights to teal (no glow) */
+body.theme-light .about-accent,
+body.theme-light .text-lake {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+
+/* ── Dark mode: brand-glow CTA buttons (mirrors hero__brand glow) ── */
+:root .btn-primary {
+  background: linear-gradient(135deg, oklch(84% 0.20 83), oklch(92% 0.16 87));
+  color: oklch(16% 0.030 85);
+  border-color: transparent;
+  box-shadow:
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
+  animation: brand-glow-btn 5s ease-in-out infinite;
+}
+:root .btn-primary:hover {
+  background: linear-gradient(135deg, oklch(86% 0.20 84), oklch(94% 0.16 88));
+  box-shadow:
+    0 0 18px oklch(96% 0.14 87 / 0.95),
+    0 0 52px oklch(90% 0.19 83 / 0.65),
+    0 0 110px oklch(86% 0.21 80 / 0.40),
+    0 8px 24px oklch(0% 0 0 / 0.35);
+}
+
+@keyframes brand-glow-btn {
+  0%, 100% {
+    box-shadow:
+      0 0 10px oklch(94% 0.16 85 / 0.80),
+      0 0 28px oklch(88% 0.20 82 / 0.45),
+      0 0 65px oklch(84% 0.22 80 / 0.22);
+  }
+  50% {
+    box-shadow:
+      0 0 18px oklch(96% 0.14 87 / 0.95),
+      0 0 52px oklch(90% 0.19 83 / 0.65),
+      0 0 110px oklch(86% 0.21 80 / 0.40);
+  }
+}
+
+:root .btn-secondary {
+  color: var(--color-word-highlight);
+  border-color: oklch(87% 0.175 85 / 0.35);
+}
+:root .btn-secondary:hover {
+  border-color: oklch(87% 0.175 85 / 0.65);
+  background: oklch(87% 0.175 85 / 0.08);
+}
+
+/* ── Dark mode: divine-gold btn-arrow links ── */
+:root .btn-arrow {
+  color: oklch(96% 0.14 87);
+  text-shadow:
+    0 0  4px oklch(94% 0.16 85 / 0.55),
+    0 0 14px oklch(88% 0.20 82 / 0.30);
+}
+:root .btn-arrow:hover {
+  color: var(--color-word-highlight);
+}
+
+/* ── Dark mode: regret__glow — banana yellow glow ── */
+:root .regret__glow {
+  text-shadow:
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
+  animation: brand-glow 5s ease-in-out infinite;
+}
+
+/* ── Dark mode: calm-mirror question ── */
+:root .calm-mirror__question.about-accent {
+  text-shadow:
+    0 0  6px oklch(94% 0.14 95 / 0.75),
+    0 0 18px oklch(90% 0.18 92 / 0.45),
+    0 0 40px oklch(86% 0.20 90 / 0.22);
+}
+
+/* ── Dark mode: Israel discount banner button stays neutral ── */
+:root .coupon-banner .btn-secondary {
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+:root .coupon-banner .btn-secondary:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+}
+
+/* ── Light mode: revert CTAs and arrows to teal ── */
+body.theme-light .btn-primary {
+  background: linear-gradient(135deg, var(--color-lake-deep), var(--color-lake));
+  color: var(--color-white);
+  box-shadow: 0 0 20px var(--color-lake-glow);
+}
+body.theme-light .btn-primary:hover {
+  box-shadow: 0 0 38px var(--color-lake-glow), 0 8px 24px oklch(0% 0 0 / 0.35);
+}
+body.theme-light .btn-secondary {
+  color: var(--color-lake-light);
+  border-color: var(--color-border);
+}
+body.theme-light .btn-secondary:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-lake-mist);
+}
+body.theme-light .btn-arrow {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+body.theme-light .btn-arrow:hover {
+  color: var(--color-lake);
+}
+body.theme-light .regret__glow {
+  text-shadow:
+    0 0 12px oklch(42% 0.160 200 / 0.90),
+    0 0 36px oklch(42% 0.160 200 / 0.55),
+    0 0 80px oklch(42% 0.160 200 / 0.30);
+  animation: none;
+}
+body.theme-light .calm-mirror__question.about-accent {
+  color: var(--color-lake-light);
+  text-shadow: none;
+}
+

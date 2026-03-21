@@ -1,0 +1,148 @@
+/* ============================================================
+   ILLUMINATE — Legal page styles
+   Shared by privacy and terms pages.
+   ============================================================ */
+
+.legal-page {
+  padding-top: calc(var(--section-py) + 5rem);
+  padding-bottom: var(--section-py);
+}
+
+.legal-shell {
+  max-width: 50rem;
+  margin-inline: auto;
+}
+
+.legal-hero {
+  text-align: center;
+  margin-bottom: 2.75rem;
+}
+
+.legal-hero__eyebrow {
+  display: inline-flex;
+  margin-bottom: 1rem;
+}
+
+.legal-hero__title {
+  font-size: clamp(2.25rem, 5vw, 3.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--color-text);
+  margin-bottom: 0.875rem;
+}
+
+.legal-hero__subtitle {
+  max-width: 34rem;
+  margin-inline: auto;
+  font-size: clamp(1rem, 1.8vw, 1.125rem);
+  line-height: 1.75;
+  color: var(--color-text-muted);
+}
+
+.legal-card {
+  background:
+    linear-gradient(180deg, oklch(from var(--color-bg-card) l c h / 0.94), oklch(from var(--color-bg-alt) l c h / 0.96));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.legal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: center;
+  padding-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
+  font-size: 0.92rem;
+}
+
+.legal-meta strong {
+  color: var(--color-lake-light);
+  font-weight: 600;
+}
+
+.legal-prose {
+  display: grid;
+  gap: 1.75rem;
+}
+
+.legal-prose section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.legal-prose h2 {
+  font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.legal-prose p,
+.legal-prose li {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--color-text-muted);
+}
+
+.legal-prose ul {
+  list-style: disc;
+  padding-left: 1.35rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.legal-prose strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.legal-prose a {
+  color: var(--color-lake-light);
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.legal-prose a:hover {
+  color: var(--color-lake);
+}
+
+.legal-footer-note {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
+  font-size: 0.9rem;
+}
+
+body.theme-light .legal-card {
+  background:
+    linear-gradient(180deg, oklch(99% 0.006 190 / 0.9), oklch(96% 0.01 188 / 0.92));
+  border-color: oklch(44% 0.19 192 / 0.16);
+  box-shadow: 0 14px 36px oklch(14% 0.025 210 / 0.08);
+}
+
+body.theme-light .legal-meta strong,
+body.theme-light .legal-prose a {
+  color: var(--color-lake-deep);
+}
+
+body.theme-light .legal-prose a:hover {
+  color: var(--color-lake);
+}
+
+@media (max-width: 48rem) {
+  .legal-page {
+    padding-top: calc(var(--section-py) + 4.25rem);
+  }
+
+  .legal-card {
+    padding: 1.5rem 1.25rem;
+  }
+}

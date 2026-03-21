@@ -15,6 +15,16 @@ describe('Admin config overrides', () => {
       expect(svc.effective_mode).toBeTruthy();
       expect(svc.env_mode).toBeTruthy();
     }
+    expect(body.services).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'payments',
+        modes: expect.arrayContaining([
+          expect.objectContaining({ value: 'mock' }),
+          expect.objectContaining({ value: 'stripe_sandbox' }),
+          expect.objectContaining({ value: 'stripe' }),
+        ]),
+      }),
+    ]));
     expect(body.timing_delays).toEqual(expect.objectContaining({
       config_source: 'public.system_settings',
       domains: expect.arrayContaining(['admin', 'booking', 'event', 'payment', 'processing', 'reminder']),

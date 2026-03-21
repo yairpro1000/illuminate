@@ -39,13 +39,15 @@ function validateCoupon(code) {
 /* ── Slot availability ───────────────────────────────────── */
 
 /**
- * GET /api/slots?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...&type=intro|session
+ * GET /api/slots?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...&type=intro|session&offer_slug=...
  */
-function getSlots(from, to, type, tz = 'Europe/Zurich') {
+function getSlots(from, to, type, tz = 'Europe/Zurich', offerSlug = '', sessionTypeId = '') {
   // Always send a valid type; backend requires it.
   const slotType = type === 'session' ? 'session' : 'intro';
   const params = new URLSearchParams({ from, to, tz });
   params.set('type', slotType);
+  if (offerSlug) params.set('offer_slug', offerSlug);
+  if (sessionTypeId) params.set('session_type_id', sessionTypeId);
   return _get('/api/slots?' + params.toString());
 }
 

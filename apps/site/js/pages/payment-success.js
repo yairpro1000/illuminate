@@ -6,15 +6,11 @@
   const card = document.querySelector('.result-card');
   if (!card || !sessionId) return;
 
-  function renderCalendarSection(calendarEvent, syncPendingRetry) {
+  function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
     return `
       <div class="confirmation__calendar">
-        <p class="result-msg" style="margin:0 0 1rem">
-          ${syncPendingRetry
-            ? 'Google Calendar is still catching up right now. Add this booking manually below.'
-            : 'Add this booking to your calendar now.'}
-        </p>
+        <p class="result-msg" style="margin:0 0 1rem">Add this booking to your calendar.</p>
         ${buildAtcWidget(calendarEvent)}
       </div>
     `;
@@ -26,7 +22,7 @@
     const isConfirmed = data.status === 'CONFIRMED' || data.status === 'COMPLETED';
     const actionHref = data.next_action_url || data.manage_url || 'index.html';
     const actionText = data.next_action_label || (data.manage_url ? 'Manage booking' : '← Back to homepage');
-    const calendarHtml = renderCalendarSection(data.calendar_event, data.calendar_sync_pending_retry);
+    const calendarHtml = renderCalendarSection(data.calendar_event);
     card.innerHTML = `
       <div class="result-icon" aria-hidden="true">
         <svg viewBox="0 0 64 64" fill="none">
@@ -38,9 +34,7 @@
       <h1 class="result-title">${isConfirmed ? 'Payment confirmed!' : 'Payment received'}</h1>
       <p class="result-msg">
         ${isConfirmed
-          ? data.calendar_sync_pending_retry
-            ? 'Your booking is confirmed. Google Calendar is delayed right now, but you can add it manually below.'
-            : 'Your booking is confirmed. If your email is delayed, you can still continue from here.'
+          ? 'Your booking is confirmed. If your email is delayed, you can still continue from here.'
           : 'Your payment is being finalized. You can continue from here even if the confirmation email is delayed.'}
       </p>
       ${calendarHtml}

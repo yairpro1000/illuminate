@@ -91,15 +91,11 @@
     `;
   }
 
-  function renderCalendarSection(calendarEvent, syncPendingRetry) {
+  function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
     return `
       <div class="confirmation__calendar">
-        <p class="manage-subtitle" style="margin:0 0 1rem">
-          ${syncPendingRetry
-            ? 'Google Calendar is still catching up right now. Add this booking manually below.'
-            : 'Add this booking to your calendar now.'}
-        </p>
+        <p class="manage-subtitle" style="margin:0 0 1rem">Add this booking to your calendar.</p>
         ${buildAtcWidget(calendarEvent)}
       </div>
     `;
@@ -165,7 +161,7 @@
   const policyText = data.policy?.text || '';
   const lockedMessage = data.policy?.locked_message || '';
   const showLockedMessage = Boolean(data.policy && data.policy.can_self_serve_change === false);
-  const calendarHtml = renderCalendarSection(data.calendar_event, data.calendar_sync_pending_retry);
+  const calendarHtml = renderCalendarSection(data.calendar_event);
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],

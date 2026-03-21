@@ -3,6 +3,7 @@ import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
 import type {
   BookingCurrentStatus,
+  EventMarketingContent,
   EventUpdate,
   NewSystemSetting,
   PaymentStatus,
@@ -12,6 +13,7 @@ import type {
 } from '../types.js';
 import { ApiError, conflict, created, badRequest, notFound, ok } from '../lib/errors.js';
 import { requireAdminAccess } from '../lib/admin-access.js';
+import { normalizeEventMarketingContent } from '../lib/content-status.js';
 import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import {
   isPaymentContinuableOnline,
@@ -312,10 +314,22 @@ export async function handleAdminUpdateEvent(
   ctx: AppContext,
   params: Record<string, string>,
 ): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
     await requireAdminAccess(request, ctx.env);
     const eventId = params.eventId?.trim();
     if (!eventId) throw badRequest('eventId is required');
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_event_update_started',
+      message: 'Started admin event update request',
+      context: {
+        path,
+        event_id: eventId,
+        branch_taken: 'load_event_and_parse_patch',
+      },
+    });
 
     const event = await ctx.providers.repository.getEventById(eventId);
     if (!event) throw notFound('Event not found');
@@ -323,7 +337,7 @@ export async function handleAdminUpdateEvent(
     const body = await parseJsonBody(request);
     const updates: EventUpdate = {};
     const allowed: Array<keyof EventUpdate> = [
-      'slug', 'title', 'description', 'starts_at', 'ends_at', 'timezone',
+      'slug', 'title', 'description', 'marketing_content', 'starts_at', 'ends_at', 'timezone',
       'location_name', 'address_line', 'maps_url', 'is_paid', 'price_per_person',
       'currency', 'capacity', 'status', 'image_key', 'drive_file_id', 'image_alt',
       'whatsapp_group_invite_url',
@@ -332,11 +346,67 @@ export async function handleAdminUpdateEvent(
       if (f in body) (updates as Record<string, unknown>)[f] = body[f];
     }
 
+    const marketingContentInput = Object.prototype.hasOwnProperty.call(body, 'marketing_content')
+      ? coerceEventMarketingContent(body.marketing_content)
+      : undefined;
+    if (marketingContentInput !== undefined) updates.marketing_content = marketingContentInput;
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_event_update_patch_decision',
+      message: 'Evaluated admin event update payload',
+      context: {
+        path,
+        event_id: event.id,
+        changed_fields: Object.keys(updates),
+        has_marketing_content: marketingContentInput !== undefined,
+        marketing_has_subtitle: Boolean(marketingContentInput?.subtitle),
+        marketing_has_intro: Boolean(marketingContentInput?.intro),
+        marketing_what_to_expect_count: marketingContentInput?.what_to_expect?.length ?? 0,
+        marketing_takeaways_count: marketingContentInput?.takeaways?.length ?? 0,
+        branch_taken: 'apply_event_updates',
+        deny_reason: null,
+      },
+    });
+
     const updated = await ctx.providers.repository.updateEvent(eventId, updates);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_event_update_completed',
+      message: 'Completed admin event update request',
+      context: {
+        path,
+        event_id: updated.id,
+        changed_fields: Object.keys(updates),
+        marketing_content_present: Boolean(updated.marketing_content),
+        branch_taken: 'return_updated_event',
+        deny_reason: null,
+      },
+    });
     return ok({ event: updated });
   } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_event_update_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        event_id: params.eventId?.trim() || null,
+        branch_taken: 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof Error ? err.message : String(err),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
     throw err;
   }
+}
+
+function coerceEventMarketingContent(value: unknown): EventMarketingContent {
+  if (value === null) return {};
+  const normalized = normalizeEventMarketingContent(value);
+  if (normalized) return normalized;
+  if (value && typeof value === 'object' && !Array.isArray(value)) return {};
+  throw badRequest('marketing_content must be an object');
 }
 
 // GET /api/admin/bookings
@@ -539,7 +609,10 @@ export async function handleAdminUpdateBooking(
 
       if (typeof updates.price === 'number' && existingPayment && !isPaymentSettledStatus(existingPayment.status)) {
         let invoiceUpdate: {
-          provider_payment_id?: string;
+          stripe_customer_id?: string | null;
+          stripe_invoice_id?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_payment_link_id?: string | null;
           invoice_url?: string | null;
           raw_payload?: Record<string, unknown>;
         } = {};
@@ -551,14 +624,24 @@ export async function handleAdminUpdateBooking(
             currency: booking.currency,
             bookingId: booking.id,
             customerEmail: booking.client_email,
+            customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email,
+            existingStripeCustomerId: existingPayment.stripe_customer_id,
+            idempotencyKey: `booking:${booking.id}:admin-regenerate-invoice`,
+            metadata: {
+              booking_id: booking.id,
+              booking_kind: booking.event_id ? 'event' : 'session',
+              payment_kind: 'pay_later',
+            },
           });
           invoiceUpdate = {
-            provider_payment_id: invoice.invoiceId,
+            stripe_customer_id: invoice.customerId,
+            stripe_invoice_id: invoice.invoiceId,
+            stripe_payment_intent_id: invoice.paymentIntentId,
+            stripe_payment_link_id: invoice.paymentLinkId,
             invoice_url: invoice.invoiceUrl,
             raw_payload: {
               ...(existingPayment.raw_payload ?? {}),
-              invoice_id: invoice.invoiceId,
-              invoice_url: invoice.invoiceUrl,
+              invoice_response: invoice.rawPayload ?? null,
               regenerated_by: 'admin_booking_price_edit',
             },
           };
@@ -706,7 +789,8 @@ export async function handleAdminSettleBookingPayment(
     const note = coerceOptionalString(body.note);
     const invoiceUrl = coerceOptionalString(body.invoice_url) ?? payment.invoice_url;
     const invoiceId = coerceOptionalString(body.invoice_id)
-      ?? (typeof payment.raw_payload?.['invoice_id'] === 'string' ? payment.raw_payload['invoice_id'] as string : null);
+      ?? payment.stripe_invoice_id
+      ?? null;
     const settledAt = coerceOptionalString(body.paid_at);
 
     const denyReason = isPaymentSettledStatus(payment.status)

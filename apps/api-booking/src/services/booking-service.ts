@@ -21,7 +21,7 @@ import type {
 } from '../types.js';
 import { RetryableCalendarWriteError, isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
 import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
-import { badRequest, conflict, gone, notFound } from '../lib/errors.js';
+import { ApiError, badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
@@ -44,6 +44,11 @@ import {
 import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
 import { computePaymentDueReminderTime } from './reminder-service.js';
 import { recordSideEffectAttempts } from './side-effect-attempts.js';
+import {
+  assertSessionTypeWeekCapacityAvailable,
+  localWeekRangeForSlot,
+  resolvePublicSessionTypeForBooking,
+} from './session-availability.js';
 
 const CRON_MANAGED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set([
   'SEND_PAYMENT_LINK',
@@ -63,6 +68,9 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'CREATE_STRIPE_CHECKOUT',
   'CREATE_STRIPE_REFUND',
 ]);
+const MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK = 2;
+const MAX_INTRO_SESSIONS_PER_CLIENT = 1;
+const INTRO_SESSION_REBOOK_EXCLUDED_STATUSES: readonly BookingCurrentStatus[] = ['CANCELED', 'EXPIRED', 'NO_SHOW'];
 
 export interface BookingContext {
   providers: Providers;
@@ -116,7 +124,11 @@ function resolveSettlementInvoiceDetails(
   }
 
   const isMockSettlement = env.PAYMENTS_MODE === 'mock'
-    || (input.payment.provider_payment_id ?? '').startsWith('mock_');
+    || hasMockStripeIdentifier([
+      input.payment.stripe_checkout_session_id,
+      input.payment.stripe_payment_intent_id,
+      input.payment.stripe_invoice_id,
+    ]);
 
   if (!isMockSettlement) {
     return {
@@ -127,7 +139,9 @@ function resolveSettlementInvoiceDetails(
     };
   }
 
-  const invoiceId = input.invoiceId ?? `mock_inv_${input.payment.provider_payment_id ?? input.payment.id}`;
+  const invoiceId = input.invoiceId
+    ?? input.payment.stripe_invoice_id
+    ?? `mock_inv_${input.payment.stripe_checkout_session_id ?? input.payment.id}`;
   return {
     invoiceId,
     invoiceUrl: `${env.SITE_URL}/mock-invoice/${invoiceId}.pdf`,
@@ -255,7 +269,15 @@ export interface ContinuePaymentActionInfo {
 }
 
 interface PaymentSettlementInput {
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>;
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >;
   settlementSource: 'WEBHOOK' | 'ADMIN_UI' | 'SYSTEM';
   settledAt?: string;
   paymentIntentId?: string | null;
@@ -314,6 +336,49 @@ function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'
   return payment?.checkout_url ?? null;
 }
 
+function hasMockStripeIdentifier(values: Array<string | null | undefined>): boolean {
+  return values.some((value) => typeof value === 'string' && value.startsWith('mock_'));
+}
+
+function buildCheckoutSuccessUrl(siteUrl: string, bookingId: string): string {
+  return `${siteUrl}/payment-success.html?booking_id=${encodeURIComponent(bookingId)}&session_id={CHECKOUT_SESSION_ID}`;
+}
+
+function buildCheckoutCancelUrl(siteUrl: string, bookingId: string): string {
+  return `${siteUrl}/payment-cancel.html?booking_id=${encodeURIComponent(bookingId)}`;
+}
+
+function paymentEmailUrl(
+  input: {
+    booking: Pick<Booking, 'booking_type' | 'current_status' | 'id'>;
+    payment: Pick<Payment, 'invoice_url' | 'checkout_url' | 'status'> | null | undefined;
+    siteUrl: string;
+  },
+): { invoiceUrl: string | null; payUrl: string | null } {
+  const invoiceUrl = input.payment?.invoice_url ?? null;
+  if (invoiceUrl) {
+    return { invoiceUrl, payUrl: null };
+  }
+
+  const checkoutUrl = input.payment?.checkout_url ?? null;
+  if (checkoutUrl) {
+    return { invoiceUrl: null, payUrl: checkoutUrl };
+  }
+
+  if (
+    input.booking.booking_type === 'PAY_LATER'
+    && input.booking.current_status === 'CONFIRMED'
+    && isPaymentContinuableOnline(input.payment?.status ?? null)
+  ) {
+    return {
+      invoiceUrl: null,
+      payUrl: buildContinuePaymentUrl(input.siteUrl, input.booking as Booking),
+    };
+  }
+
+  return { invoiceUrl: null, payUrl: null };
+}
+
 function canContinuePayLaterPayment(
   booking: Pick<Booking, 'booking_type' | 'current_status'>,
   paymentStatus: Payment['status'] | null | undefined,
@@ -321,6 +386,151 @@ function canContinuePayLaterPayment(
   return booking.booking_type === 'PAY_LATER'
     && booking.current_status === 'CONFIRMED'
     && isPaymentContinuableOnline(paymentStatus ?? null);
+}
+
+async function assertClientWithinWeeklySessionLimit(
+  input: {
+    clientId: string;
+    slotStart: string;
+    timezone: string;
+    sessionType: 'intro' | 'session';
+    sessionTypeId: string;
+    sessionTypeSlug: string;
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  const weekRange = localWeekRangeForSlot(input.slotStart, input.timezone);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'client_weekly_session_limit_check_started',
+    message: 'Checking per-client weekly 1:1 session limit',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: input.sessionType,
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      weekly_limit: MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK,
+      week_start_date: weekRange.weekStartDate,
+      week_end_exclusive_date: weekRange.weekEndExclusiveDate,
+      week_start_inclusive_iso: weekRange.startInclusiveIso,
+      week_end_exclusive_iso: weekRange.endExclusiveIso,
+      branch_taken: 'count_client_sessions_for_local_week',
+      deny_reason: null,
+    },
+  });
+
+  const existingCount = await ctx.providers.repository.countClientActiveSessionBookingsInRange(
+    input.clientId,
+    weekRange.startInclusiveIso,
+    weekRange.endExclusiveIso,
+  );
+  const wouldExceedLimit = existingCount >= MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK;
+  const logEntry = {
+    source: 'backend' as const,
+    eventType: 'client_weekly_session_limit_check_completed',
+    message: 'Completed per-client weekly 1:1 session limit check',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: input.sessionType,
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      weekly_limit: MAX_ACTIVE_CLIENT_SESSIONS_PER_WEEK,
+      existing_active_session_count: existingCount,
+      attempted_session_count: existingCount + 1,
+      week_start_date: weekRange.weekStartDate,
+      week_end_exclusive_date: weekRange.weekEndExclusiveDate,
+      week_start_inclusive_iso: weekRange.startInclusiveIso,
+      week_end_exclusive_iso: weekRange.endExclusiveIso,
+      branch_taken: wouldExceedLimit
+        ? 'deny_client_weekly_session_limit_reached'
+        : 'allow_client_weekly_session_limit',
+      deny_reason: wouldExceedLimit ? 'max_2_sessions_per_local_week_reached' : null,
+    },
+  };
+
+  if (wouldExceedLimit) {
+    ctx.logger.logWarn?.(logEntry);
+    throw new ApiError(
+      409,
+      'CLIENT_WEEKLY_SESSION_LIMIT_REACHED',
+      'A client can have at most 2 active 1:1 sessions in the same week.',
+    );
+  }
+
+  ctx.logger.logInfo?.(logEntry);
+}
+
+async function assertClientCanBookIntroSession(
+  input: {
+    clientId: string;
+    slotStart: string;
+    timezone: string;
+    sessionTypeId: string;
+    sessionTypeSlug: string;
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'client_intro_session_limit_check_started',
+    message: 'Checking per-client intro session booking limit',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: 'intro',
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      intro_limit: MAX_INTRO_SESSIONS_PER_CLIENT,
+      excluded_statuses: [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+      branch_taken: 'count_client_intro_bookings',
+      deny_reason: null,
+    },
+  });
+
+  const existingCount = await ctx.providers.repository.countClientBookingsBySessionType(
+    input.clientId,
+    input.sessionTypeId,
+    [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+  );
+  const wouldExceedLimit = existingCount >= MAX_INTRO_SESSIONS_PER_CLIENT;
+  const logEntry = {
+    source: 'backend' as const,
+    eventType: 'client_intro_session_limit_check_completed',
+    message: 'Completed per-client intro session booking limit check',
+    context: {
+      client_id: input.clientId,
+      requested_slot_start: input.slotStart,
+      timezone: input.timezone,
+      session_type: 'intro',
+      session_type_id: input.sessionTypeId,
+      session_type_slug: input.sessionTypeSlug,
+      intro_limit: MAX_INTRO_SESSIONS_PER_CLIENT,
+      excluded_statuses: [...INTRO_SESSION_REBOOK_EXCLUDED_STATUSES],
+      existing_intro_booking_count: existingCount,
+      attempted_intro_booking_count: existingCount + 1,
+      branch_taken: wouldExceedLimit
+        ? 'deny_client_intro_session_limit_reached'
+        : 'allow_client_intro_session_limit',
+      deny_reason: wouldExceedLimit ? 'client_already_has_non_rebookable_intro_booking' : null,
+    },
+  };
+
+  if (wouldExceedLimit) {
+    ctx.logger.logWarn?.(logEntry);
+    throw new ApiError(
+      409,
+      'CLIENT_INTRO_SESSION_LIMIT_REACHED',
+      'You can only book one intro session. If you need help with an existing intro booking, please contact me.',
+    );
+  }
+
+  ctx.logger.logInfo?.(logEntry);
 }
 
 // ── Session flow: Pay Now ──────────────────────────────────────────────────
@@ -344,7 +554,25 @@ export async function createPayNowBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind('session', providers, input.offerSlug ?? null);
+  const sessionType = await resolvePublicSessionTypeForBooking(providers.repository, {
+    kind: 'session',
+    offerSlug: input.offerSlug ?? null,
+  });
+  await assertSessionTypeWeekCapacityAvailable(
+    providers.repository,
+    sessionType,
+    input.slotStart,
+    sessionType.availability_timezone?.trim() || input.timezone || env.TIMEZONE,
+    ctx.logger,
+  );
+  await assertClientWithinWeeklySessionLimit({
+    clientId: client.id,
+    slotStart: input.slotStart,
+    timezone: input.timezone,
+    sessionType: input.sessionType,
+    sessionTypeId: sessionType.id,
+    sessionTypeSlug: sessionType.slug,
+  }, ctx);
   const commercialTerms = await resolveCommercialTerms({
     basePrice: sessionType.price,
     couponCode: input.couponCode,
@@ -389,6 +617,8 @@ export async function createPayNowBooking(
     title: sessionType.title,
     price: commercialTerms.finalPrice,
     currency: commercialTerms.currency,
+    clientEmail: client.email,
+    clientName: [client.first_name, client.last_name].filter(Boolean).join(' ') || client.email,
   }, bookingCtx);
   await markCheckoutSideEffectAttempt(transitioned.sideEffects, checkout.effectApiLogId, 'SUCCESS', null, bookingCtx);
 
@@ -416,7 +646,34 @@ export async function createPayLaterBooking(
     providers,
   );
 
-  const sessionType = await resolveSessionTypeForKind(input.sessionType, providers, input.offerSlug ?? null);
+  const sessionType = await resolvePublicSessionTypeForBooking(providers.repository, {
+    kind: input.sessionType,
+    offerSlug: input.offerSlug ?? null,
+  });
+  await assertSessionTypeWeekCapacityAvailable(
+    providers.repository,
+    sessionType,
+    input.slotStart,
+    sessionType.availability_timezone?.trim() || input.timezone || env.TIMEZONE,
+    ctx.logger,
+  );
+  if (input.sessionType === 'intro') {
+    await assertClientCanBookIntroSession({
+      clientId: client.id,
+      slotStart: input.slotStart,
+      timezone: input.timezone,
+      sessionTypeId: sessionType.id,
+      sessionTypeSlug: sessionType.slug,
+    }, ctx);
+  }
+  await assertClientWithinWeeklySessionLimit({
+    clientId: client.id,
+    slotStart: input.slotStart,
+    timezone: input.timezone,
+    sessionType: input.sessionType,
+    sessionTypeId: sessionType.id,
+    sessionTypeSlug: sessionType.slug,
+  }, ctx);
   const commercialTerms = await resolveCommercialTerms({
     basePrice: sessionType.price,
     couponCode: input.couponCode,
@@ -597,6 +854,8 @@ async function createEventBookingInternal(
       title: input.event.title,
       price: commercialTerms.finalPrice,
       currency: commercialTerms.currency,
+      clientEmail: client.email,
+      clientName: [client.first_name, client.last_name].filter(Boolean).join(' ') || client.email,
     },
     bookingCtx,
   );
@@ -680,50 +939,18 @@ export async function confirmBookingEmail(
     throw gone('This confirmation link is no longer valid');
   }
 
-  let finalizedBooking = booking;
-  if (booking.booking_type === 'FREE') {
-    finalizedBooking = await bookingCtx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
-    if (!finalizedBooking.event_id) {
-      const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
-      finalizedBooking = syncResult.booking;
-      if (!syncResult.calendarSynced && submissionWithToken) {
-        await queueCalendarRetrySideEffectAfterConfirmationFailure(
-          submissionWithToken.id,
-          syncResult.failureReason ?? 'calendar_sync_failed',
-          syncResult.retryableFailure,
-          policy.processingMaxAttempts,
-          finalizedBooking.id,
-          bookingCtx,
-        );
-      }
-    }
-    await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
-  } else {
-    finalizedBooking = await bookingCtx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
-
+  const verificationOutcome = await completePendingEmailVerificationEffects(submissionWithToken.id, booking, bookingCtx);
+  let finalizedBooking = verificationOutcome.bookingAfterVerification;
+  if (booking.booking_type !== 'FREE') {
     const bootstrappedPayment = await ensurePayLaterInvoiceForBooking(finalizedBooking, bookingCtx, {
       bootstrapSource: 'booking_email_confirmation',
       allowProviderFailure: true,
     });
+    finalizedBooking = bootstrappedPayment
+      ? await bookingCtx.providers.repository.getBookingById(finalizedBooking.id) ?? finalizedBooking
+      : finalizedBooking;
 
-    if (!finalizedBooking.event_id) {
-      const syncResult = await retryCalendarSyncForBooking(finalizedBooking, 'create', bookingCtx);
-      finalizedBooking = syncResult.booking;
-      if (!syncResult.calendarSynced && submissionWithToken) {
-        await queueCalendarRetrySideEffectAfterConfirmationFailure(
-          submissionWithToken.id,
-          syncResult.failureReason ?? 'calendar_sync_failed',
-          syncResult.retryableFailure,
-          policy.processingMaxAttempts,
-          finalizedBooking.id,
-          bookingCtx,
-        );
-      }
-    }
-
-    if (submissionWithToken) {
-      await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
-    }
+    await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
 
     bookingCtx.logger.logInfo?.({
       source: 'backend',
@@ -742,9 +969,15 @@ export async function confirmBookingEmail(
         deny_reason: bootstrappedPayment?.invoice_url ? null : 'invoice_bootstrap_failed_or_not_available',
       },
     });
-
-    await sendBookingFinalConfirmation(finalizedBooking, bookingCtx);
   }
+
+  finalizedBooking = await applyImmediateReservationForTransition({
+    transitionEventType: 'BOOKING_FORM_SUBMITTED',
+    sourceOperation: 'confirm_booking_email_verification',
+    bookingBeforeTransition: booking,
+    bookingAfterTransition: finalizedBooking,
+    transitionSideEffects: verificationOutcome.downstreamSideEffects,
+  }, bookingCtx);
 
   bookingCtx.logger.logInfo?.({
     source: 'backend',
@@ -771,8 +1004,21 @@ export async function confirmBookingEmail(
 // ── Payment success (webhook/dev) ──────────────────────────────────────────
 
 export async function confirmBookingPayment(
-  payment: { id: string; booking_id: string; provider_payment_id: string | null; status: PaymentStatus },
-  stripeData: { paymentIntentId: string | null; invoiceId: string | null; invoiceUrl: string | null },
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >,
+  stripeData: {
+    paymentIntentId: string | null;
+    invoiceId: string | null;
+    invoiceUrl: string | null;
+    rawPayload?: Record<string, unknown> | null;
+  },
   ctx: BookingContext,
 ): Promise<void> {
   await settleBookingPayment(
@@ -782,13 +1028,22 @@ export async function confirmBookingPayment(
       paymentIntentId: stripeData.paymentIntentId,
       invoiceId: stripeData.invoiceId,
       invoiceUrl: stripeData.invoiceUrl,
+      rawPayload: stripeData.rawPayload ?? null,
     },
     ctx,
   );
 }
 
 export async function settleBookingPaymentManually(
-  payment: Pick<Payment, 'id' | 'booking_id' | 'provider_payment_id' | 'status'>,
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >,
   input: {
     invoiceUrl?: string | null;
     invoiceId?: string | null;
@@ -828,7 +1083,9 @@ async function settleBookingPayment(
     context: {
       booking_id: input.payment.booking_id,
       payment_id: input.payment.id,
-      provider_payment_id: input.payment.provider_payment_id,
+      stripe_checkout_session_id: input.payment.stripe_checkout_session_id,
+      stripe_payment_intent_id: input.payment.stripe_payment_intent_id,
+      stripe_invoice_id: input.payment.stripe_invoice_id,
       payments_mode: ctx.env.PAYMENTS_MODE ?? null,
       invoice_id_from_input: input.invoiceId ?? null,
       invoice_url_from_input_present: Boolean(input.invoiceUrl),
@@ -843,12 +1100,11 @@ async function settleBookingPayment(
     status: 'SUCCEEDED',
     paid_at: settledAt,
     invoice_url: resolvedInvoice.invoiceUrl,
+    stripe_payment_intent_id: input.paymentIntentId ?? input.payment.stripe_payment_intent_id ?? null,
+    stripe_invoice_id: resolvedInvoice.invoiceId ?? input.payment.stripe_invoice_id ?? null,
     raw_payload: {
-      payment_intent_id: input.paymentIntentId ?? null,
-      invoice_id: resolvedInvoice.invoiceId,
-      provider_payment_id: input.payment.provider_payment_id,
-      settlement_source: input.settlementSource,
       ...(input.rawPayload ?? {}),
+      settlement_source: input.settlementSource,
     },
   });
 
@@ -1183,6 +1439,19 @@ export async function rescheduleBooking(
   await assertSlotAvailable(input.newStart, input.newEnd, ctx.providers, {
     ignoreInterval: { start: booking.starts_at, end: booking.ends_at },
   });
+  if (booking.session_type_id) {
+    const sessionType = await ctx.providers.repository.getSessionTypeById(booking.session_type_id);
+    if (sessionType) {
+      await assertSessionTypeWeekCapacityAvailable(
+        ctx.providers.repository,
+        sessionType,
+        input.newStart,
+        sessionType.availability_timezone?.trim() || input.timezone || ctx.env.TIMEZONE,
+        ctx.logger,
+        { excludeBookingId: booking.id },
+      );
+    }
+  }
 
   const updated = await ctx.providers.repository.updateBooking(booking.id, {
     starts_at: input.newStart,
@@ -1277,36 +1546,100 @@ async function retryCalendarSyncForConfirmedBookingIfMissing(
   return syncResult.booking;
 }
 
-async function queueCalendarRetrySideEffectAfterConfirmationFailure(
+async function completePendingEmailVerificationEffects(
   bookingEventId: string,
-  failureReason: string,
-  retryableFailure: boolean,
-  processingMaxAttempts: number,
-  bookingId: string,
+  booking: Booking,
   ctx: BookingContext,
-): Promise<void> {
-  const createdEffects = await ctx.providers.repository.createBookingSideEffects([{
-    booking_event_id: bookingEventId,
-    entity: inferEntityFromIntent('RESERVE_CALENDAR_SLOT'),
-    effect_intent: 'RESERVE_CALENDAR_SLOT',
-    status: 'PENDING',
-    expires_at: null,
-    max_attempts: maxAttemptsForEffectIntent('RESERVE_CALENDAR_SLOT', processingMaxAttempts),
-  }]);
-  const createdEffect = createdEffects[0];
-  if (!createdEffect) {
-    throw new Error('calendar_retry_side_effect_create_failed');
+): Promise<{
+  bookingAfterVerification: Booking;
+  downstreamSideEffects: BookingSideEffect[];
+}> {
+  const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(bookingEventId);
+  const pendingVerificationEffects = sideEffects.filter((effect) =>
+    effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION' && effect.status !== 'SUCCESS',
+  );
+  const existingDownstreamSideEffects = sideEffects.filter((effect) =>
+    effect.effect_intent === 'RESERVE_CALENDAR_SLOT' || effect.effect_intent === 'SEND_BOOKING_CONFIRMATION',
+  );
+  const desiredDownstreamIntents: BookingEffectIntent[] = booking.event_id
+    ? ['SEND_BOOKING_CONFIRMATION']
+    : ['RESERVE_CALENDAR_SLOT', 'SEND_BOOKING_CONFIRMATION'];
+  const policy = await loadBookingPolicy(ctx);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_verification_effects_decision',
+    message: 'Evaluated pending email-verification side effects during confirmation',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      verification_side_effect_ids: pendingVerificationEffects.map((effect) => effect.id),
+      verification_side_effect_statuses_before: pendingVerificationEffects.map((effect) => effect.status),
+      existing_downstream_side_effect_ids: existingDownstreamSideEffects.map((effect) => effect.id),
+      existing_downstream_side_effect_intents: existingDownstreamSideEffects.map((effect) => effect.effect_intent),
+      desired_downstream_side_effect_intents: desiredDownstreamIntents,
+      should_mark_verification_effects_success: pendingVerificationEffects.length > 0,
+      branch_taken: pendingVerificationEffects.length > 0
+        ? 'mark_pending_email_verification_effects_success'
+        : 'no_pending_email_verification_effects_to_complete',
+      deny_reason: pendingVerificationEffects.length > 0 ? null : 'email_verification_effect_already_completed_or_missing',
+    },
+  });
+
+  let bookingAfterVerification = booking;
+  if (booking.current_status === 'PENDING') {
+    bookingAfterVerification = await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
   }
 
-  await recordSideEffectAttempts([createdEffect], {
-    status: 'FAILED',
-    errorMessage: failureReason,
-    apiLogId: consumeLatestProviderApiLogId(ctx.operation),
-    ctx,
-    bookingId,
-    logSource: 'backend',
-    enableCalendarBackoff: retryableFailure,
+  if (pendingVerificationEffects.length > 0) {
+    await recordSideEffectAttempts(pendingVerificationEffects, {
+      status: 'SUCCESS',
+      errorMessage: null,
+      apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+      ctx,
+      bookingId: booking.id,
+      logSource: 'backend',
+    });
+  }
+
+  const existingIntentSet = new Set(existingDownstreamSideEffects.map((effect) => effect.effect_intent));
+  const missingDownstreamIntents = desiredDownstreamIntents.filter((intent) => !existingIntentSet.has(intent));
+  const createdDownstreamSideEffects = missingDownstreamIntents.length > 0
+    ? await ctx.providers.repository.createBookingSideEffects(
+      missingDownstreamIntents.map((intent) => ({
+        booking_event_id: bookingEventId,
+        entity: inferEntityFromIntent(intent),
+        effect_intent: intent,
+        status: 'PENDING',
+        expires_at: null,
+        max_attempts: maxAttemptsForEffectIntent(intent, policy.processingMaxAttempts),
+      })),
+    )
+    : [];
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_downstream_side_effects_decision',
+    message: 'Evaluated downstream side effects after successful email confirmation verification',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: bookingEventId,
+      booking_status_after_verification: bookingAfterVerification.current_status,
+      created_downstream_side_effect_ids: createdDownstreamSideEffects.map((effect) => effect.id),
+      created_downstream_side_effect_intents: createdDownstreamSideEffects.map((effect) => effect.effect_intent),
+      reused_downstream_side_effect_ids: existingDownstreamSideEffects.map((effect) => effect.id),
+      reused_downstream_side_effect_intents: existingDownstreamSideEffects.map((effect) => effect.effect_intent),
+      branch_taken: createdDownstreamSideEffects.length > 0
+        ? 'create_missing_downstream_side_effects_after_verification'
+        : 'reuse_existing_downstream_side_effects_after_verification',
+      deny_reason: createdDownstreamSideEffects.length > 0 ? null : 'downstream_side_effects_already_exist',
+    },
   });
+
+  return {
+    bookingAfterVerification,
+    downstreamSideEffects: [...existingDownstreamSideEffects, ...createdDownstreamSideEffects],
+  };
 }
 
 export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingContext): Promise<void> {
@@ -1417,10 +1750,11 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
   const paymentSettledForEmail = isPaymentSettledStatus(payment?.status ?? null);
-  const payUrl = paymentMode === 'pay_later' && canContinuePayLaterPayment(booking, payment?.status ?? null)
-    ? buildContinuePaymentUrl(ctx.env.SITE_URL, booking)
-    : null;
-  const invoiceUrl = payment?.invoice_url ?? null;
+  const paymentEmailLinks = paymentMode === 'pay_later'
+    ? paymentEmailUrl({ booking, payment, siteUrl: ctx.env.SITE_URL })
+    : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
+  const payUrl = paymentEmailLinks.payUrl;
+  const invoiceUrl = paymentEmailLinks.invoiceUrl;
   const paymentDueAt = isPayLaterPendingConfirmation
     ? getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours)
     : null;
@@ -1618,7 +1952,7 @@ export async function getBookingPublicActionInfoByPaymentSession(
   sessionId: string,
   ctx: BookingContext,
 ): Promise<BookingPublicActionInfo> {
-  const payment = await ctx.providers.repository.getPaymentByStripeSessionId(sessionId);
+  const payment = await ctx.providers.repository.getPaymentByStripeCheckoutSessionId(sessionId);
   if (!payment) throw notFound('Payment session not found');
 
   const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
@@ -1778,7 +2112,7 @@ export async function buildManageUrl(siteUrl: string, booking: Booking): Promise
 }
 
 export function buildPublicCalendarEventInfo(
-  booking: Pick<Booking, 'current_status' | 'event_id' | 'starts_at' | 'ends_at' | 'timezone' | 'address_line'>,
+  booking: Pick<Booking, 'current_status' | 'event_id' | 'starts_at' | 'ends_at' | 'timezone' | 'address_line' | 'meeting_link' | 'session_type_title'>,
   event: Pick<Event, 'title' | 'starts_at' | 'ends_at'> | null,
 ): PublicCalendarEventInfo | null {
   if (booking.current_status !== 'CONFIRMED' && booking.current_status !== 'COMPLETED') {
@@ -1787,23 +2121,31 @@ export function buildPublicCalendarEventInfo(
 
   if (booking.event_id) {
     const eventTitle = event?.title?.trim() || 'ILLUMINATE Evening';
+    const eventDescription = [
+      'ILLUMINATE Evening with Yair Benharroch.',
+      booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+    ].filter((line): line is string => Boolean(line)).join('\n');
     return {
       title: `${eventTitle} — ILLUMINATE Evening`,
       start: event?.starts_at ?? booking.starts_at,
       end: event?.ends_at ?? booking.ends_at,
       timezone: booking.timezone,
       location: booking.address_line || '',
-      description: 'ILLUMINATE Evening with Yair Benharroch.',
+      description: eventDescription,
     };
   }
 
+  const sessionDescription = [
+    '1:1 Clarity Session with Yair Benharroch.',
+    booking.meeting_link ? `Google Meet: ${booking.meeting_link}` : null,
+  ].filter((line): line is string => Boolean(line)).join('\n');
   return {
-    title: 'Clarity Session — ILLUMINATE by Yair Benharroch',
+    title: booking.session_type_title?.trim() || 'Clarity Session',
     start: booking.starts_at,
     end: booking.ends_at,
     timezone: booking.timezone,
     location: booking.address_line || '',
-    description: '1:1 Clarity Session with Yair Benharroch.',
+    description: sessionDescription,
   };
 }
 
@@ -1955,13 +2297,17 @@ function fullClientName(booking: Booking): string {
   return [booking.client_first_name ?? '', booking.client_last_name ?? ''].join(' ').trim() || 'Unknown Client';
 }
 
+function sessionCalendarTitle(booking: Pick<Booking, 'session_type_title'>): string {
+  return booking.session_type_title?.trim() || '1:1 Session';
+}
+
 function buildSessionCalendarEventPayload(booking: Booking, requestId: string): CalendarEvent {
   const durationMinutes = Math.max(1, Math.round(
     (new Date(booking.ends_at).getTime() - new Date(booking.starts_at).getTime()) / 60000,
   ));
 
   const descriptionLines = [
-    'ILLUMINATE 1:1 session',
+    sessionCalendarTitle(booking),
     `Client: ${fullClientName(booking)}`,
     `Email: ${booking.client_email ?? 'n/a'}`,
     `Phone: ${booking.client_phone ?? 'n/a'}`,
@@ -1969,11 +2315,12 @@ function buildSessionCalendarEventPayload(booking: Booking, requestId: string): 
     `Current status: ${booking.current_status}`,
     `Duration: ${durationMinutes} minutes`,
     `Timezone: ${booking.timezone}`,
+    booking.notes ? `Notes: ${booking.notes}` : null,
   ];
 
   return {
-    title: `ILLUMINATE 1:1 Session — ${fullClientName(booking)}`,
-    description: descriptionLines.join('\n'),
+    title: sessionCalendarTitle(booking),
+    description: descriptionLines.filter((line): line is string => Boolean(line)).join('\n'),
     startIso: booking.starts_at,
     endIso: booking.ends_at,
     timezone: booking.timezone,
@@ -2851,31 +3198,6 @@ function toSyncFailureReason(error: unknown): string {
   return String(error);
 }
 
-async function resolveSessionTypeForKind(
-  kind: 'intro' | 'session',
-  providers: Providers,
-  offerSlug: string | null = null,
-): Promise<SessionTypeRecord> {
-  const all = await providers.repository.getPublicSessionTypes();
-  if (all.length === 0) {
-    throw badRequest('No active session types configured');
-  }
-
-  const introCandidate = all.find((row) => row.slug.includes('intro') || row.price === 0);
-  const explicitOffer = offerSlug && kind === 'session'
-    ? all.find((row) => row.slug === offerSlug)
-    : null;
-  const paidCandidate = all.find((row) => row.id !== introCandidate?.id) ?? all[0];
-
-  const selected = kind === 'intro'
-    ? (introCandidate ?? all[0])
-    : (explicitOffer ?? paidCandidate ?? all[0]);
-  if (!selected) {
-    throw badRequest('Unable to resolve session type');
-  }
-  return selected;
-}
-
 async function inferPaymentModeForBooking(
   bookingId: string,
   repository: Providers['repository'],
@@ -2971,7 +3293,6 @@ async function ensurePayLaterPendingPaymentRecord(
   return ctx.providers.repository.createPayment({
     booking_id: booking.id,
     provider: 'stripe',
-    provider_payment_id: null,
     amount: Math.max(0, booking.price),
     currency: booking.currency || 'CHF',
     status: 'PENDING',
@@ -2981,6 +3302,11 @@ async function ensurePayLaterPendingPaymentRecord(
       bootstrap_source: bootstrapSource,
     },
     paid_at: null,
+    stripe_customer_id: null,
+    stripe_checkout_session_id: null,
+    stripe_payment_intent_id: null,
+    stripe_invoice_id: null,
+    stripe_payment_link_id: null,
   });
 }
 
@@ -3050,19 +3376,30 @@ async function ensurePayLaterInvoiceForBooking(
       currency: chargeable.currency || 'CHF',
       bookingId: booking.id,
       customerEmail: booking.client_email ?? '',
+      customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
+      existingStripeCustomerId: payment.stripe_customer_id,
+      dueDateIso: getPaymentDueAtIso(booking.starts_at, (await loadBookingPolicy(ctx)).paymentDueBeforeStartHours),
+      idempotencyKey: `booking:${booking.id}:pay-later-invoice`,
+      metadata: {
+        booking_id: booking.id,
+        booking_kind: booking.event_id ? 'event' : 'session',
+        payment_kind: 'pay_later',
+      },
     });
 
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
-      provider_payment_id: invoice.invoiceId,
       amount: invoice.amount,
       currency: invoice.currency,
       status: 'INVOICE_SENT',
       checkout_url: null,
       invoice_url: invoice.invoiceUrl,
+      stripe_customer_id: invoice.customerId,
+      stripe_payment_intent_id: invoice.paymentIntentId,
+      stripe_invoice_id: invoice.invoiceId,
+      stripe_payment_link_id: invoice.paymentLinkId,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
-        invoice_id: invoice.invoiceId,
-        invoice_url: invoice.invoiceUrl,
+        invoice_response: invoice.rawPayload ?? null,
         bootstrap_source: options.bootstrapSource,
         settlement_source: payment.raw_payload?.['settlement_source'] ?? null,
       },
@@ -3078,7 +3415,8 @@ async function ensurePayLaterInvoiceForBooking(
         session_type_id: booking.session_type_id,
         bootstrap_source: options.bootstrapSource,
         invoice_url_present: Boolean(invoice.invoiceUrl),
-        provider_payment_id: invoice.invoiceId,
+        stripe_invoice_id: invoice.invoiceId,
+        stripe_customer_id: invoice.customerId,
         payment_status_after: updatedPayment.status,
         branch_taken: 'created_invoice_for_pay_later_flow',
       },
@@ -3148,20 +3486,31 @@ async function ensureContinuePaymentUrlForBooking(
         },
       ],
       bookingId: booking.id,
-      successUrl: `${ctx.env.SITE_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${ctx.env.SITE_URL}/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+      customerEmail: booking.client_email ?? '',
+      customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
+      existingStripeCustomerId: payment.stripe_customer_id,
+      successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
+      cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+      idempotencyKey: `booking:${booking.id}:continue-payment-checkout`,
+      metadata: {
+        booking_id: booking.id,
+        booking_kind: booking.event_id ? 'event' : 'session',
+        payment_kind: 'pay_later_recovery',
+      },
     });
 
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
-      provider_payment_id: session.sessionId,
       amount: session.amount,
       currency: session.currency,
       status: 'PENDING',
       checkout_url: session.checkoutUrl,
       invoice_url: payment.invoice_url ?? null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
-        checkout_session_id: session.sessionId,
+        checkout_session_response: session.rawPayload ?? null,
         bootstrap_source: 'continue_payment',
         prior_payment_status: payment.status,
       },
@@ -3176,7 +3525,7 @@ async function ensureContinuePaymentUrlForBooking(
         payment_id: updatedPayment.id,
         prior_payment_status: payment.status,
         payment_status_after: updatedPayment.status,
-        provider_payment_id: updatedPayment.provider_payment_id,
+        stripe_checkout_session_id: updatedPayment.stripe_checkout_session_id,
         has_checkout_url: Boolean(updatedPayment.checkout_url),
         has_invoice_url: Boolean(updatedPayment.invoice_url),
         branch_taken: 'continue_payment_checkout_created',
@@ -3204,7 +3553,10 @@ async function ensureContinuePaymentUrlForBooking(
 
 async function ensureCheckoutForBooking(
   booking: Booking,
-  chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'>,
+  chargeable: Pick<SessionTypeRecord, 'title' | 'price' | 'currency'> & {
+    clientEmail: string;
+    clientName?: string | null;
+  },
   ctx: BookingContext,
 ): Promise<{ checkoutUrl: string; expiresAt: string; effectApiLogId: string | null }> {
   const policy = await loadBookingPolicy(ctx);
@@ -3232,22 +3584,56 @@ async function ensureCheckoutForBooking(
       },
     ],
     bookingId: booking.id,
-    successUrl: `${ctx.env.SITE_URL}/payment-success.html?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${ctx.env.SITE_URL}/payment-cancel.html?session_id={CHECKOUT_SESSION_ID}`,
+    customerEmail: chargeable.clientEmail,
+    customerName: chargeable.clientName ?? null,
+    existingStripeCustomerId: existing?.stripe_customer_id ?? null,
+    successUrl: buildCheckoutSuccessUrl(ctx.env.SITE_URL, booking.id),
+    cancelUrl: buildCheckoutCancelUrl(ctx.env.SITE_URL, booking.id),
+    idempotencyKey: `booking:${booking.id}:pay-now-checkout`,
+    metadata: {
+      booking_id: booking.id,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      payment_kind: 'pay_now',
+    },
   });
 
-  await ctx.providers.repository.createPayment({
-    booking_id: booking.id,
-    provider: 'stripe',
-    provider_payment_id: session.sessionId,
-    amount: session.amount,
-    currency: session.currency,
-    status: 'PENDING',
-    checkout_url: session.checkoutUrl,
-    invoice_url: null,
-    raw_payload: null,
-    paid_at: null,
-  });
+  if (existing) {
+    await ctx.providers.repository.updatePayment(existing.id, {
+      amount: session.amount,
+      currency: session.currency,
+      status: 'PENDING',
+      checkout_url: session.checkoutUrl,
+      invoice_url: null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
+      stripe_invoice_id: null,
+      stripe_payment_link_id: null,
+      raw_payload: {
+        ...(existing.raw_payload ?? {}),
+        checkout_session_response: session.rawPayload ?? null,
+      },
+    });
+  } else {
+    await ctx.providers.repository.createPayment({
+      booking_id: booking.id,
+      provider: 'stripe',
+      amount: session.amount,
+      currency: session.currency,
+      status: 'PENDING',
+      checkout_url: session.checkoutUrl,
+      invoice_url: null,
+      raw_payload: {
+        checkout_session_response: session.rawPayload ?? null,
+      },
+      paid_at: null,
+      stripe_customer_id: session.customerId,
+      stripe_checkout_session_id: session.sessionId,
+      stripe_payment_intent_id: session.paymentIntentId,
+      stripe_invoice_id: null,
+      stripe_payment_link_id: null,
+    });
+  }
 
   const latestEvent = await ctx.providers.repository.getLatestBookingEvent(booking.id);
   const expiresAt = latestEvent

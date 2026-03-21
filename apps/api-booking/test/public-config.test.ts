@@ -7,12 +7,14 @@ import {
   getBookingPolicyConfig,
   resetBookingPolicyForTests,
 } from '../src/domain/booking-effect-policy.js';
+import { clearOverride, setOverride } from '../src/lib/config-overrides.js';
 import { MockRepository } from '../src/providers/repository/mock.js';
 import { makeCtx } from './admin-helpers.js';
 
 describe('public config endpoint diagnostics', () => {
   afterEach(() => {
     resetBookingPolicyForTests();
+    clearOverride('antibot');
   });
 
   it('returns public booking policy from backend source-of-truth with decision logs', async () => {
@@ -45,7 +47,7 @@ describe('public config endpoint diagnostics', () => {
             pass: 'site-key-pass',
             fail: 'site-key-fail',
           },
-          env: {
+          env: expect.objectContaining({
             ANTIBOT_MODE: 'mock',
             TURNSTILE_SITE_KEY: 'site-key-live',
             TURNSTILE_TEST_SITE_KEY_PASS: 'site-key-pass',
@@ -53,7 +55,7 @@ describe('public config endpoint diagnostics', () => {
             TURNSTILE_SECRET_KEY_present: true,
             TURNSTILE_TEST_SECRET_KEY_PASS_present: true,
             TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL_present: true,
-          },
+          }),
         },
       },
     });
@@ -187,6 +189,50 @@ describe('public config endpoint diagnostics', () => {
         }),
       }),
       booking_policy_text: expect.stringContaining('up to 12 hours before the session'),
+    }));
+  });
+
+  it('uses the effective antibot override in the public config payload and logs', async () => {
+    setOverride('antibot', 'mock');
+    const ctx = makeCtx({
+      env: {
+        ANTIBOT_MODE: 'turnstile',
+      } as any,
+    });
+    const req = new Request('https://api.local/api/config');
+
+    const res = await handleGetPublicConfig(req, ctx);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      antibot: expect.objectContaining({
+        mode: 'mock',
+        turnstile: expect.objectContaining({
+          enabled: false,
+          env: expect.objectContaining({
+            ANTIBOT_MODE: 'mock',
+            ANTIBOT_MODE_ENV: 'turnstile',
+            ANTIBOT_MODE_OVERRIDE: 'mock',
+          }),
+        }),
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_config_request_started',
+      context: expect.objectContaining({
+        antibot_mode_env: 'turnstile',
+        antibot_mode_override: 'mock',
+        antibot_mode_effective: 'mock',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_config_response_ready',
+      context: expect.objectContaining({
+        antibot_mode_env: 'turnstile',
+        antibot_mode_override: 'mock',
+        antibot_mode_effective: 'mock',
+        turnstile_enabled: false,
+      }),
     }));
   });
 });

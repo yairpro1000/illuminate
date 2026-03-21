@@ -36,7 +36,7 @@
           ${buildCouponSuggestion()}
           ${!isFinal ? `
             <header class="booking-header">
-              <h1 class="booking-title">${isEvent ? 'Register' : 'Book a Session'}</h1>
+              <h1 class="booking-title">${isEvent ? 'Register' : isIntroFlow() ? 'Book a free intro conversation' : state.selectedSessionType ? 'Book ' + escHtml(state.selectedSessionType.title) : 'Book a Session'}</h1>
               ${isEvent ? buildEventBanner() : ''}
               ${buildProgress(totalSteps)}
             </header>
