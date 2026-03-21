@@ -53,6 +53,10 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     form.set('metadata[booking_id]', params.bookingId);
     form.set('metadata[payment_flow]', 'pay_now');
     form.set('metadata[site_url]', siteUrl);
+    form.set('invoice_creation[enabled]', 'true');
+    form.set('invoice_creation[invoice_data][metadata][booking_id]', params.bookingId);
+    form.set('invoice_creation[invoice_data][metadata][payment_flow]', 'pay_now');
+    form.set('invoice_creation[invoice_data][metadata][site_url]', siteUrl);
     form.set('payment_intent_data[metadata][booking_id]', params.bookingId);
     form.set('payment_intent_data[metadata][payment_flow]', 'pay_now');
     form.set('payment_intent_data[metadata][site_url]', siteUrl);

@@ -112,6 +112,8 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
 
     const checkoutCall = fetchMock.mock.calls[2];
     expect(checkoutCall?.[0]).toBe('https://api.stripe.com/v1/checkout/sessions');
+    expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('invoice_creation%5Benabled%5D=true');
+    expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('invoice_creation%5Binvoice_data%5D%5Bmetadata%5D%5Bbooking_id%5D=booking_123');
     expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent_data%5Bmetadata%5D%5Bbooking_id%5D=booking_123');
     expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent_data%5Bmetadata%5D%5Bpayment_kind%5D=pay_now');
   });

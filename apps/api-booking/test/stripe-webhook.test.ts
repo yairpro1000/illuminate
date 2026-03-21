@@ -150,6 +150,119 @@ describe('Stripe webhook handling', () => {
     }));
   });
 
+  it('backfills invoice artifacts for a settled sandbox pay-now payment when invoice.paid arrives later', async () => {
+    const ctx = makeCtx();
+    ctx.env.PAYMENTS_MODE = 'stripe_sandbox';
+    ctx.providers.payments.createCheckoutSession = vi.fn().mockResolvedValue({
+      sessionId: 'cs_test_checkout_invoice_123',
+      checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_checkout_invoice_123',
+      amount: 150,
+      currency: 'CHF',
+      customerId: 'cus_test_invoice_123',
+      paymentIntentId: null,
+      rawPayload: { id: 'cs_test_checkout_invoice_123' },
+    });
+
+    const created = await createPayNowBooking({
+      slotStart: '2026-03-26T12:00:00.000Z',
+      slotEnd: '2026-03-26T13:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Webhook Backfill',
+      clientEmail: 'webhook-backfill@example.com',
+      clientPhone: '+41000000079',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+
+    ctx.providers.payments.parseWebhookEvent = vi.fn()
+      .mockResolvedValueOnce({
+        eventType: 'checkout.session.completed',
+        checkoutSessionId: payment!.stripe_checkout_session_id,
+        paymentIntentId: 'pi_test_checkout_invoice_123',
+        invoiceId: null,
+        invoiceUrl: null,
+        paymentLinkId: null,
+        amount: payment!.amount,
+        currency: payment!.currency,
+        bookingId: created.bookingId,
+        customerId: payment!.stripe_customer_id,
+        siteUrl: null,
+        rawPayload: { type: 'checkout.session.completed' },
+      })
+      .mockResolvedValueOnce({
+        eventType: 'invoice.paid',
+        checkoutSessionId: null,
+        paymentIntentId: 'pi_test_checkout_invoice_123',
+        invoiceId: 'in_test_checkout_invoice_123',
+        invoiceUrl: 'https://invoice.example/in_test_checkout_invoice_123',
+        paymentLinkId: null,
+        amount: payment!.amount,
+        currency: payment!.currency,
+        bookingId: created.bookingId,
+        customerId: payment!.stripe_customer_id,
+        siteUrl: null,
+        rawPayload: { type: 'invoice.paid' },
+      });
+
+    const makeWebhookRequest = () => new Request('https://api.local/api/stripe/webhook', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'mock' },
+      body: '{}',
+    });
+
+    const firstResponse = await handleStripeWebhook(makeWebhookRequest(), ctx);
+    expect(firstResponse.status).toBe(200);
+
+    const afterCheckoutSettlement = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(afterCheckoutSettlement?.status).toBe('SUCCEEDED');
+    expect(afterCheckoutSettlement?.invoice_url).toBeNull();
+
+    const paymentSettledEventsBeforeBackfill = mockState.bookingEvents.filter(
+      (event) => event.booking_id === created.bookingId && event.event_type === 'PAYMENT_SETTLED',
+    );
+    const confirmationEmailsBeforeBackfill = mockState.sentEmails.filter(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'webhook-backfill@example.com',
+    );
+
+    const secondResponse = await handleStripeWebhook(makeWebhookRequest(), ctx);
+    expect(secondResponse.status).toBe(200);
+
+    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(refreshedPayment?.status).toBe('SUCCEEDED');
+    expect(refreshedPayment?.stripe_payment_intent_id).toBe('pi_test_checkout_invoice_123');
+    expect(refreshedPayment?.stripe_invoice_id).toBe('in_test_checkout_invoice_123');
+    expect(refreshedPayment?.invoice_url).toBe('https://invoice.example/in_test_checkout_invoice_123');
+    expect(
+      mockState.bookingEvents.filter(
+        (event) => event.booking_id === created.bookingId && event.event_type === 'PAYMENT_SETTLED',
+      ),
+    ).toHaveLength(paymentSettledEventsBeforeBackfill.length);
+    expect(
+      mockState.sentEmails.filter(
+        (email) => email.kind === 'booking_confirmation' && email.to === 'webhook-backfill@example.com',
+      ),
+    ).toHaveLength(confirmationEmailsBeforeBackfill.length);
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'payment_succeeded_artifact_backfill_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'reuse_upstream_invoice_url',
+        resolved_invoice_url_present: true,
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'stripe_webhook_request_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'backfilled_invoice_artifacts_for_succeeded_payment',
+      }),
+    }));
+  });
+
   it('settles pay-later bookings via invoice reconciliation', async () => {
     const ctx = makeCtx();
     const created = await createPayLaterBooking({

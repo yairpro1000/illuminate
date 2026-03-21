@@ -3,6 +3,14 @@ import type { Logger } from './logger.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const PREVIEW_SUFFIX = '.pages.dev';
+const ADMIN_PREVIEW_SITE_URL = 'https://illuminate-tw9.pages.dev';
+
+function isAdminPreviewHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'admin.letsilluminate.co'
+    || host === 'admin.yairb.ch'
+    || (host.endsWith(PREVIEW_SUFFIX) && host.startsWith('admin'));
+}
 
 function sanitizeSiteUrl(value: string): string {
   return String(value || '').trim().replace(/\/+$/g, '');
@@ -10,7 +18,7 @@ function sanitizeSiteUrl(value: string): string {
 
 function canonicalSiteUrlForHost(hostname: string, protocol: string): string | null {
   const host = hostname.toLowerCase();
-  if (host === 'admin.letsilluminate.co') return `${protocol}//letsilluminate.co`;
+  if (isAdminPreviewHost(host)) return sanitizeSiteUrl(ADMIN_PREVIEW_SITE_URL);
   if (
     host === 'letsilluminate.co'
     || host === 'www.letsilluminate.co'

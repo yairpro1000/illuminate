@@ -1040,6 +1040,109 @@ export async function confirmBookingPayment(
   );
 }
 
+export async function backfillSettledPaymentArtifacts(
+  payment: Pick<
+    Payment,
+    | 'id'
+    | 'booking_id'
+    | 'status'
+    | 'invoice_url'
+    | 'stripe_checkout_session_id'
+    | 'stripe_payment_intent_id'
+    | 'stripe_invoice_id'
+  >,
+  stripeData: {
+    paymentIntentId: string | null;
+    invoiceId: string | null;
+    invoiceUrl: string | null;
+    rawPayload?: Record<string, unknown> | null;
+  },
+  ctx: BookingContext,
+): Promise<{ updated: boolean; branchTaken: string; denyReason: string | null }> {
+  const { providers, logger } = ctx;
+  const resolvedInvoice = payment.invoice_url
+    ? {
+        invoiceId: payment.stripe_invoice_id ?? stripeData.invoiceId ?? null,
+        invoiceUrl: payment.invoice_url,
+        branchTaken: 'reuse_existing_payment_invoice_url',
+        denyReason: null,
+      }
+    : resolveSettlementInvoiceDetails(
+        {
+          payment,
+          invoiceId: stripeData.invoiceId,
+          invoiceUrl: stripeData.invoiceUrl,
+        },
+        ctx.env,
+        bookingSiteUrl(ctx),
+      );
+  const nextPaymentIntentId = stripeData.paymentIntentId ?? payment.stripe_payment_intent_id ?? null;
+  const nextInvoiceId = resolvedInvoice.invoiceId ?? payment.stripe_invoice_id ?? null;
+  const nextInvoiceUrl = resolvedInvoice.invoiceUrl ?? payment.invoice_url ?? null;
+  const hasArtifactDelta = nextPaymentIntentId !== (payment.stripe_payment_intent_id ?? null)
+    || nextInvoiceId !== (payment.stripe_invoice_id ?? null)
+    || nextInvoiceUrl !== (payment.invoice_url ?? null);
+  const branchTaken = hasArtifactDelta
+    ? resolvedInvoice.branchTaken
+    : 'skip_succeeded_payment_artifact_backfill_no_delta';
+  const denyReason = hasArtifactDelta
+    ? resolvedInvoice.denyReason
+    : 'succeeded_payment_artifacts_already_current_or_missing';
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'payment_succeeded_artifact_backfill_decision',
+    message: 'Evaluated invoice artifact backfill for already-settled payment',
+    context: {
+      booking_id: payment.booking_id,
+      payment_id: payment.id,
+      payment_status: payment.status,
+      stripe_checkout_session_id: payment.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment.stripe_payment_intent_id,
+      stripe_invoice_id: payment.stripe_invoice_id,
+      existing_invoice_url_present: Boolean(payment.invoice_url),
+      invoice_id_from_input: stripeData.invoiceId,
+      invoice_url_from_input_present: Boolean(stripeData.invoiceUrl),
+      payment_intent_id_from_input: stripeData.paymentIntentId,
+      resolved_invoice_id: nextInvoiceId,
+      resolved_invoice_url_present: Boolean(nextInvoiceUrl),
+      branch_taken: branchTaken,
+      deny_reason: denyReason,
+    },
+  });
+
+  if (!hasArtifactDelta) {
+    return { updated: false, branchTaken, denyReason };
+  }
+
+  await providers.repository.updatePayment(payment.id, {
+    invoice_url: nextInvoiceUrl,
+    stripe_payment_intent_id: nextPaymentIntentId,
+    stripe_invoice_id: nextInvoiceId,
+    raw_payload: {
+      ...(stripeData.rawPayload ?? {}),
+      settlement_source: 'WEBHOOK',
+      artifact_backfill: true,
+    },
+  });
+
+  logger.logInfo?.({
+    source: 'backend',
+    eventType: 'payment_succeeded_artifact_backfill_completed',
+    message: 'Persisted invoice artifact backfill for already-settled payment',
+    context: {
+      booking_id: payment.booking_id,
+      payment_id: payment.id,
+      resolved_invoice_id: nextInvoiceId,
+      resolved_invoice_url_present: Boolean(nextInvoiceUrl),
+      branch_taken: branchTaken,
+      deny_reason: resolvedInvoice.denyReason,
+    },
+  });
+
+  return { updated: true, branchTaken, denyReason: resolvedInvoice.denyReason };
+}
+
 export async function settleBookingPaymentManually(
   payment: Pick<
     Payment,

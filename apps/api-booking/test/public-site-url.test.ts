@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { resolvePublicSiteUrl } from '../src/lib/public-site-url.js';
+import { handleAdminCreateBookingManageLink } from '../src/handlers/admin.js';
 import { handleRequest } from '../src/router.js';
 import { makeCtx, makeEnv, makeLogger } from './admin-helpers.js';
 
@@ -48,6 +49,31 @@ describe('public site URL resolution', () => {
         resolved_site_url: 'https://letsilluminate.co',
         branch_taken: 'fallback_env_site_url',
         deny_reason: 'request_site_host_not_supported',
+      }),
+    }));
+  });
+
+  it('maps admin-site origins to the temporary public Pages host', () => {
+    const logger = makeLogger();
+    const siteUrl = resolvePublicSiteUrl(
+      new Request('https://api.local/api/admin/bookings/123/manage-link', {
+        headers: {
+          Origin: 'https://admin.letsilluminate.co',
+        },
+      }),
+      makeEnv({ SITE_URL: 'https://letsilluminate.co' }),
+      logger,
+    );
+
+    expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_site_url_resolution_completed',
+      context: expect.objectContaining({
+        resolved_site_url: 'https://illuminate-tw9.pages.dev',
+        matched_header: 'origin',
+        matched_host: 'admin.letsilluminate.co',
+        branch_taken: 'use_origin_header_site_url',
+        deny_reason: null,
       }),
     }));
   });
@@ -111,6 +137,56 @@ describe('public site URL resolution', () => {
         resolved_site_url: 'https://yairb.ch',
         branch_taken: 'use_origin_header_site_url',
       }),
+    }));
+  });
+
+  it('returns temporary public Pages links for admin-share manage links', async () => {
+    const bookingId = '00000000-0000-4000-8000-000000000111';
+    const ctx = makeCtx({
+      siteUrl: 'https://illuminate-tw9.pages.dev',
+      env: {
+        SITE_URL: 'https://letsilluminate.co',
+      } as any,
+      providers: {
+        repository: {
+          getBookingById: vi.fn().mockResolvedValue({
+            id: bookingId,
+            client_id: 'client-1',
+            event_id: null,
+            session_type_id: 'session-type-1',
+            starts_at: '2026-03-22T10:00:00.000Z',
+            ends_at: '2026-03-22T11:00:00.000Z',
+            timezone: 'Europe/Zurich',
+            google_event_id: null,
+            address_line: 'Somewhere 1, Zurich',
+            maps_url: 'https://maps.example',
+            current_status: 'CONFIRMED',
+            notes: null,
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+          }),
+        },
+      } as any,
+    });
+    ctx.env.JOB_SECRET = 'test-secret';
+
+    const response = await handleAdminCreateBookingManageLink(
+      new Request(`https://api.local/api/admin/bookings/${bookingId}/manage-link`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cf-Access-Authenticated-User-Email': 'admin@example.com',
+        },
+        body: '{}',
+      }),
+      ctx,
+      { bookingId },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      booking_id: bookingId,
+      url: expect.stringContaining('https://illuminate-tw9.pages.dev/manage.html?token=m1.'),
     }));
   });
 });

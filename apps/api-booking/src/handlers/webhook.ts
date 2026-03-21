@@ -3,7 +3,7 @@ import { ok } from '../lib/errors.js';
 import type { StripePaymentEvent } from '../providers/payments/interface.js';
 import { resolveStripeRuntimeConfig } from '../providers/payments/runtime-config.js';
 import type { Payment } from '../types.js';
-import { confirmBookingPayment } from '../services/booking-service.js';
+import { backfillSettledPaymentArtifacts, confirmBookingPayment } from '../services/booking-service.js';
 
 // POST /api/stripe/webhook
 export async function handleStripeWebhook(request: Request, ctx: AppContext): Promise<Response> {
@@ -78,20 +78,57 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
   }
 
   if (payment.status === 'SUCCEEDED') {
+    const artifactBackfill = await backfillSettledPaymentArtifacts(
+      {
+        id: payment.id,
+        booking_id: payment.booking_id,
+        status: payment.status,
+        invoice_url: payment.invoice_url,
+        stripe_checkout_session_id: payment.stripe_checkout_session_id,
+        stripe_payment_intent_id: payment.stripe_payment_intent_id,
+        stripe_invoice_id: payment.stripe_invoice_id,
+      },
+      {
+        paymentIntentId: event.paymentIntentId,
+        invoiceId: event.invoiceId,
+        invoiceUrl: event.invoiceUrl,
+        rawPayload: event.rawPayload,
+      },
+      {
+        providers: ctx.providers,
+        env: ctx.env,
+        logger: ctx.logger,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
+        siteUrl: event.siteUrl ?? ctx.siteUrl,
+      },
+    );
+
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'stripe_webhook_request_completed',
-      message: 'Stripe webhook event was idempotent because payment is already settled',
+      message: artifactBackfill.updated
+        ? 'Stripe webhook event backfilled invoice artifacts for an already-settled payment'
+        : 'Stripe webhook event was idempotent because payment is already settled',
       context: {
         payment_id: payment.id,
         booking_id: payment.booking_id,
         stripe_event_type: event.eventType,
         matched_branch: paymentMatch.branchTaken,
-        branch_taken: 'idempotent_already_succeeded',
-        deny_reason: null,
+        artifact_backfill_branch: artifactBackfill.branchTaken,
+        branch_taken: artifactBackfill.updated
+          ? 'backfilled_invoice_artifacts_for_succeeded_payment'
+          : 'idempotent_already_succeeded',
+        deny_reason: artifactBackfill.updated ? null : artifactBackfill.denyReason,
       },
     });
-    return ok({ received: true, handled: true, idempotent: true });
+    return ok({
+      received: true,
+      handled: true,
+      idempotent: !artifactBackfill.updated,
+      artifacts_backfilled: artifactBackfill.updated,
+    });
   }
 
   const settledSiteUrl = event.siteUrl ?? ctx.siteUrl;
