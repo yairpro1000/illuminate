@@ -1,6 +1,33 @@
-const rawBase = (import.meta as any).env?.VITE_API_BASE ?? "/api";
+const DEFAULT_PREVIEW_API_BASE = "https://pa-api.yairpro.workers.dev/api";
 
-export const API_BASE = String(rawBase).trim().replace(/\/+$/g, "");
+function sanitizeBase(value: string): string {
+  return String(value).trim().replace(/\/+$/g, "");
+}
+
+export function resolvePaApiBase(input: {
+  hostname?: string | null;
+  envBase?: string | null;
+  previewEnvBase?: string | null;
+}): string {
+  const envBase = sanitizeBase(input.envBase ?? "");
+  if (envBase) return envBase;
+
+  const hostname = String(input.hostname ?? "").trim().toLowerCase();
+  if (hostname.endsWith(".pages.dev")) {
+    const previewBase = sanitizeBase(input.previewEnvBase ?? "");
+    return previewBase || DEFAULT_PREVIEW_API_BASE;
+  }
+
+  return "/api";
+}
+
+const rawBase = resolvePaApiBase({
+  hostname: typeof window !== "undefined" ? window.location.hostname : "",
+  envBase: (import.meta as any).env?.VITE_API_BASE ?? "",
+  previewEnvBase: (import.meta as any).env?.VITE_PA_PREVIEW_API_BASE ?? "",
+});
+
+export const API_BASE = sanitizeBase(rawBase);
 export const FRONTEND_OBSERVABILITY_ENDPOINT = `${API_BASE}/observability/frontend`;
 export const PA_LOGOUT_URL =
   String((import.meta as any).env?.VITE_CLOUDFLARE_ACCESS_LOGOUT_URL ?? "").trim() ||

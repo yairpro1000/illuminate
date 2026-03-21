@@ -12,6 +12,7 @@ import { parseTranscriptWithDebug, canonicalizeActionTargets, refineUpdateDelete
 import { TranslateLangZ, translateWithOpenAI, refineTranslationWithOpenAI, TranslationPayloadZ } from "./llm/translate";
 import { attachObservability, getLogger, getRequestId, persistFrontendLog } from "./observability";
 import { headerByteLength, instrumentFetch } from "../../shared/observability/backend.js";
+import { getRequestHost, isAllowedCorsOrigin } from "./request-origin";
 
 function extractErrorDetails(e: any): { message: string; details: string } {
   const message = typeof e?.message === "string" && e.message.trim() ? e.message.trim() : "Internal Server Error";
@@ -48,35 +49,6 @@ function xlsxSheetName(raw: string) {
 
 const app = new Hono<{ Bindings: Env }>().basePath("/api");
 
-function parseConfiguredOrigins(raw: string | undefined): Set<string> {
-  if (!raw) return new Set();
-  return new Set(
-    raw
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-      .map((v) => v.replace(/\/+$/g, "")),
-  );
-}
-
-function isAllowedCorsOrigin(env: Env, origin: string | null): origin is string {
-  if (!origin) return false;
-  let parsed: URL;
-  try {
-    parsed = new URL(origin);
-  } catch {
-    return false;
-  }
-  const normalized = parsed.origin.replace(/\/+$/g, "");
-  const host = parsed.hostname.toLowerCase();
-
-  if (host === "letsilluminate.co" || host.endsWith(".letsilluminate.co")) return true;
-  if (host === "localhost" || host === "127.0.0.1") return true;
-
-  const configured = parseConfiguredOrigins(env.API_ALLOWED_ORIGINS);
-  return configured.has(normalized);
-}
-
 function applyCorsHeaders(c: any, origin: string): void {
   c.header("Access-Control-Allow-Origin", origin);
   c.header("Access-Control-Allow-Credentials", "true");
@@ -90,17 +62,50 @@ function applyCorsHeaders(c: any, origin: string): void {
 
 app.use("/*", async (c, next) => {
   const origin = c.req.header("origin") ?? null;
+  const requestHost = getRequestHost(c);
+  const { logger } = attachObservability(c);
+  const corsAllowed = isAllowedCorsOrigin(c.env, origin);
+
+  logger.logMilestone("cors_evaluated", {
+    cors_origin: origin,
+    cors_request_host: requestHost,
+    cors_allowed: corsAllowed,
+    cors_method: c.req.method,
+    cors_branch: corsAllowed ? "allow_configured_origin" : "deny_origin",
+  });
 
   if (c.req.method === "OPTIONS") {
-    if (isAllowedCorsOrigin(c.env, origin)) {
+    if (corsAllowed && origin) {
       applyCorsHeaders(c, origin);
+      logger.logMilestone("cors_preflight_result", {
+        cors_origin: origin,
+        cors_request_host: requestHost,
+        cors_branch: "allow_configured_origin",
+      });
       return c.body(null, 204);
     }
-    return c.body(null, 403);
+    logger.logWarn({
+      eventType: "cors_denied",
+      message: "CORS preflight denied.",
+      context: {
+        cors_origin: origin,
+        cors_request_host: requestHost,
+        cors_branch: "deny_origin",
+        cors_deny_reason: "origin_not_allowed",
+      },
+    });
+    return c.json(
+      {
+        error: "forbidden",
+        details: `CORS origin denied: origin=${origin ?? "missing"}; host=${requestHost}`,
+        requestId: getRequestId(c),
+      },
+      403,
+    );
   }
 
   await next();
-  if (isAllowedCorsOrigin(c.env, origin)) {
+  if (corsAllowed && origin) {
     applyCorsHeaders(c, origin);
   }
 });

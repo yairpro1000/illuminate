@@ -15,7 +15,8 @@
     "PA_LOG_LLM_TEXT": "1",
     "PA_LOG_CONSOLE_MAX": "20000",
     "SUPABASE_URL": "https://ljblpufziablobrhtpfz.supabase.co",
-    "API_ALLOWED_ORIGINS": "https://pa.letsilluminate.co"
+    "API_ALLOWED_ORIGINS": "https://pa.letsilluminate.co,https://yairpa.pages.dev",
+    "PA_PREVIEW_DEV_EMAIL": "yairpro@gmail.com"
   },
   "ai": { "binding": "AI" },
   "observability": {
@@ -40,5 +41,6 @@
   // Secrets (set via `wrangler secret put`):
   // - SUPABASE_SECRET_KEY
   // - PA_DEV_EMAIL (optional localhost-only Access bypass for `wrangler dev`)
+  // - PA_PREVIEW_DEV_EMAIL (optional Pages preview -> workers.dev auth bypass)
   // - OPENAI_API_KEY (optional)
 }

@@ -25,3 +25,10 @@ It owns only `pa.letsilluminate.co/api/*`, including:
 - `POST /api/speak`
 
 It does not own public booking routes or organizer/admin booking routes.
+
+Preview support:
+
+- `workers.dev` health/debug URL: `https://pa-api.yairpro.workers.dev/api/health`
+- `API_ALLOWED_ORIGINS` can include Pages preview origins such as `https://yairpa.pages.dev`
+- `PA_PREVIEW_DEV_EMAIL` allows `*.pages.dev -> *.workers.dev` preview access without Cloudflare Access
+- production `pa.letsilluminate.co/api/*` continues to rely on Cloudflare Access headers

@@ -183,6 +183,13 @@ export function makeRequestId(): string {
 }
 
 export function attachObservability(c: Context, source: LogSource = "backend"): ApiObservabilityContext {
+  const existingLogger = (c as any)[OBSERVABILITY_CTX_KEY] as ObservabilityLogger | undefined;
+  const existingRequestId = (c as any).requestId as string | undefined;
+  const existingCorrelationId = (c as any).correlationId as string | undefined;
+  if (existingLogger && existingRequestId && existingCorrelationId) {
+    return { logger: existingLogger, requestId: existingRequestId, correlationId: existingCorrelationId };
+  }
+
   const requestId = c.req.header("x-request-id")?.trim() || makeRequestId();
   const correlationId = c.req.header("x-correlation-id")?.trim() || requestId;
 

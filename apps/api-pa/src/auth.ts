@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { Db } from "./repo/supabase";
 import { getLogger } from "./observability";
+import { getRequestHost, getRequestOrigin, isAllowedPreviewOrigin, isPagesDevHost, isWorkersDevHost, parseOrigin } from "./request-origin";
 
 function normalizeEmailLike(raw: string): string {
   let s = String(raw ?? "").trim();
@@ -34,36 +35,52 @@ type AccessDecision =
   | {
       allowed: true;
       email: string;
-      branch: "cf_access_header" | "localhost_dev_email";
+      branch: "cf_access_header" | "localhost_dev_email" | "preview_dev_email";
       host: string;
+      origin: string | null;
       devEmailConfigured: boolean;
+      previewEmailConfigured: boolean;
+      previewOriginAllowed: boolean;
+      workersDevRequest: boolean;
     }
   | {
       allowed: false;
-      denyReason: "missing_access_header_and_no_local_bypass" | "non_localhost_request_for_dev_bypass";
+      denyReason:
+        | "missing_access_header_and_no_local_bypass"
+        | "non_localhost_request_for_dev_bypass"
+        | "preview_origin_not_allowed"
+        | "preview_bypass_requires_workers_dev_host";
       branch: "deny";
       host: string;
+      origin: string | null;
       devEmailConfigured: boolean;
+      previewEmailConfigured: boolean;
+      previewOriginAllowed: boolean;
+      workersDevRequest: boolean;
     };
 
 function resolveAccessDecision(c: Context): AccessDecision {
-  const host = (() => {
-    try {
-      return new URL(c.req.url).hostname.toLowerCase();
-    } catch {
-      return "unknown_host";
-    }
-  })();
+  const host = getRequestHost(c);
+  const origin = getRequestOrigin(c);
+  const originHost = parseOrigin(origin).host;
   const fromAccess =
     headerValue(c, "cf-access-authenticated-user-email") ??
     headerValue(c, "Cf-Access-Authenticated-User-Email");
+  const previewEmail = (c as any)?.env?.PA_PREVIEW_DEV_EMAIL;
+  const previewEmailConfigured = typeof previewEmail === "string" && Boolean(previewEmail.trim());
+  const previewOriginAllowed = isAllowedPreviewOrigin((c as any).env, origin);
+  const workersDevRequest = isWorkersDevHost(host);
   if (fromAccess) {
     return {
       allowed: true,
       email: normalizeEmailLike(fromAccess),
       branch: "cf_access_header",
       host,
+      origin,
       devEmailConfigured: Boolean((c as any)?.env?.PA_DEV_EMAIL),
+      previewEmailConfigured,
+      previewOriginAllowed,
+      workersDevRequest,
     };
   }
 
@@ -77,7 +94,11 @@ function resolveAccessDecision(c: Context): AccessDecision {
       email: normalizeEmailLike(devEmail),
       branch: "localhost_dev_email",
       host,
+      origin,
       devEmailConfigured: true,
+      previewEmailConfigured,
+      previewOriginAllowed,
+      workersDevRequest,
     };
   }
 
@@ -87,7 +108,53 @@ function resolveAccessDecision(c: Context): AccessDecision {
       branch: "deny",
       denyReason: "non_localhost_request_for_dev_bypass",
       host,
+      origin,
       devEmailConfigured: true,
+      previewEmailConfigured,
+      previewOriginAllowed,
+      workersDevRequest,
+    };
+  }
+
+  if (previewEmailConfigured && workersDevRequest && previewOriginAllowed) {
+    return {
+      allowed: true,
+      email: normalizeEmailLike(previewEmail),
+      branch: "preview_dev_email",
+      host,
+      origin,
+      devEmailConfigured,
+      previewEmailConfigured: true,
+      previewOriginAllowed: true,
+      workersDevRequest: true,
+    };
+  }
+
+  if (previewEmailConfigured && workersDevRequest) {
+    return {
+      allowed: false,
+      branch: "deny",
+      denyReason: "preview_origin_not_allowed",
+      host,
+      origin,
+      devEmailConfigured,
+      previewEmailConfigured: true,
+      previewOriginAllowed: false,
+      workersDevRequest: true,
+    };
+  }
+
+  if (previewEmailConfigured && isPagesDevHost(originHost)) {
+    return {
+      allowed: false,
+      branch: "deny",
+      denyReason: "preview_bypass_requires_workers_dev_host",
+      host,
+      origin,
+      devEmailConfigured,
+      previewEmailConfigured: true,
+      previewOriginAllowed,
+      workersDevRequest,
     };
   }
 
@@ -96,7 +163,11 @@ function resolveAccessDecision(c: Context): AccessDecision {
     branch: "deny",
     denyReason: "missing_access_header_and_no_local_bypass",
     host,
+    origin,
     devEmailConfigured,
+    previewEmailConfigured,
+    previewOriginAllowed,
+    workersDevRequest,
   };
 }
 
@@ -112,7 +183,11 @@ export function requireAccess(c: Context): { email: string } {
     auth_branch: decision.branch,
     auth_allowed: decision.allowed,
     auth_host: decision.host,
+    auth_origin: decision.origin,
     auth_dev_email_configured: decision.devEmailConfigured,
+    auth_preview_email_configured: decision.previewEmailConfigured,
+    auth_preview_origin_allowed: decision.previewOriginAllowed,
+    auth_workers_dev_request: decision.workersDevRequest,
     auth_deny_reason: decision.allowed ? null : decision.denyReason,
   });
   if (!decision.allowed) {
@@ -125,7 +200,11 @@ export function requireAccess(c: Context): { email: string } {
       context: {
         auth_branch: decision.branch,
         auth_host: decision.host,
+        auth_origin: decision.origin,
         auth_dev_email_configured: decision.devEmailConfigured,
+        auth_preview_email_configured: decision.previewEmailConfigured,
+        auth_preview_origin_allowed: decision.previewOriginAllowed,
+        auth_workers_dev_request: decision.workersDevRequest,
         auth_deny_reason: decision.denyReason,
       },
     });
@@ -134,7 +213,11 @@ export function requireAccess(c: Context): { email: string } {
   logger.logMilestone("auth_access_granted", {
     auth_branch: decision.branch,
     auth_host: decision.host,
+    auth_origin: decision.origin,
     auth_dev_email_configured: decision.devEmailConfigured,
+    auth_preview_email_configured: decision.previewEmailConfigured,
+    auth_preview_origin_allowed: decision.previewOriginAllowed,
+    auth_workers_dev_request: decision.workersDevRequest,
   });
   return { email: decision.email };
 }

@@ -9,6 +9,8 @@ export type Env = {
   ADMIN_ALLOWED_EMAILS?: string;
   // Local dev helper: if set, allows bypassing Cloudflare Access on localhost only.
   PA_DEV_EMAIL?: string;
+  // Preview helper: if set, allows Pages preview origins to call the workers.dev host without Access.
+  PA_PREVIEW_DEV_EMAIL?: string;
   PA_LLM_PROVIDER?: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;
