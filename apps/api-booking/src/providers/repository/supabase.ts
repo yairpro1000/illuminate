@@ -367,13 +367,34 @@ export class SupabaseRepository implements IRepository {
           booking_id: data.booking_id,
           event_type: data.event_type,
           source: data.source,
+          status: 'PENDING',
           payload: data.payload ?? {},
+          error_message: null,
+          completed_at: null,
         })
         .select('*')
         .single(),
       'Failed to persist booking event',
     );
     return row;
+  }
+
+  async updateBookingEvent(
+    id: string,
+    updates: Partial<Pick<BookingEventRecord, 'status' | 'error_message' | 'completed_at' | 'updated_at'>>,
+  ): Promise<BookingEventRecord> {
+    return requireSingle<BookingEventRecord>(
+      this.db
+        .from('booking_events')
+        .update({
+          ...updates,
+          updated_at: updates.updated_at ?? nowIso(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
+      `Failed to update booking event ${id}`,
+    );
   }
 
   async listBookingEvents(bookingId: string): Promise<BookingEventRecord[]> {
@@ -530,6 +551,24 @@ export class SupabaseRepository implements IRepository {
       'Failed to create booking side effect attempt',
     );
     return row;
+  }
+
+  async updateBookingSideEffectAttempt(
+    id: string,
+    updates: Partial<Pick<BookingSideEffectAttempt, 'api_log_id' | 'status' | 'error_message' | 'updated_at' | 'completed_at'>>,
+  ): Promise<BookingSideEffectAttempt> {
+    return requireSingle<BookingSideEffectAttempt>(
+      this.db
+        .from('booking_side_effect_attempts')
+        .update({
+          ...updates,
+          updated_at: updates.updated_at ?? nowIso(),
+        })
+        .eq('id', id)
+        .select('*')
+        .single(),
+      `Failed to update booking side effect attempt ${id}`,
+    );
   }
 
   async listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]> {

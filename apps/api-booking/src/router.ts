@@ -10,6 +10,7 @@ import { handleValidateCoupon } from './handlers/coupons.js';
 import { handlePayNow, handlePayLater } from './handlers/bookings.js';
 import { handleConfirm } from './handlers/confirm.js';
 import { handleContinuePayment } from './handlers/continue-payment.js';
+import { handleBookingEventStatus } from './handlers/booking-event-status.js';
 import { handlePaymentStatus } from './handlers/payment-status.js';
 import { handleManageInfo } from './handlers/manage-info.js';
 import { handleManageCancel } from './handlers/manage-cancel.js';
@@ -115,6 +116,7 @@ const ROUTES: Route[] = [
   route('POST', '/api/bookings/pay-later', handlePayLater, 'booking'),
   route('GET', '/api/bookings/confirm', handleConfirm, 'booking'),
   route('GET', '/api/bookings/continue-payment', handleContinuePayment, 'booking'),
+  route('GET', '/api/bookings/event-status', handleBookingEventStatus, 'booking'),
   route('GET', '/api/bookings/payment-status', handlePaymentStatus, 'booking'),
   route('GET', '/api/bookings/manage', handleManageInfo, 'booking'),
   route('POST', '/api/bookings/cancel', handleManageCancel, 'booking'),

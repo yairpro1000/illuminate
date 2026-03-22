@@ -20,12 +20,13 @@ export type BookingEventType =
   | 'REFUND_COMPLETED';
 
 export type BookingEventSource = 'PUBLIC_UI' | 'ADMIN_UI' | 'SYSTEM' | 'WEBHOOK';
+export type BookingEventStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
 
 export type BookingSideEffectEntity = 'EMAIL' | 'CALENDAR' | 'PAYMENT' | 'WHATSAPP' | 'SYSTEM';
 
 export type BookingSideEffectStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'DEAD';
 
-export type BookingSideEffectAttemptStatus = 'SUCCESS' | 'FAILED';
+export type BookingSideEffectAttemptStatus = 'PROCESSING' | 'SUCCESS' | 'FAILED';
 
 export type BookingEffectIntent =
   | 'SEND_BOOKING_CONFIRMATION_REQUEST'
@@ -100,8 +101,12 @@ export interface BookingEventRecord {
   booking_id: string;
   event_type: BookingEventType;
   source: BookingEventSource;
+  status: BookingEventStatus;
   payload: Record<string, unknown>;
+  error_message: string | null;
+  completed_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface BookingSideEffect {
@@ -124,6 +129,8 @@ export interface BookingSideEffectAttempt {
   status: BookingSideEffectAttemptStatus;
   error_message: string | null;
   created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 export interface Event {
@@ -453,9 +460,9 @@ export type NewBooking = Omit<
   | 'session_type_title'
 >;
 
-export type NewBookingEvent = Omit<BookingEventRecord, 'id' | 'created_at'>;
+export type NewBookingEvent = Omit<BookingEventRecord, 'id' | 'created_at' | 'updated_at'>;
 export type NewBookingSideEffect = Omit<BookingSideEffect, 'id' | 'created_at' | 'updated_at'>;
-export type NewBookingSideEffectAttempt = Omit<BookingSideEffectAttempt, 'id' | 'created_at'>;
+export type NewBookingSideEffectAttempt = Omit<BookingSideEffectAttempt, 'id' | 'created_at' | 'updated_at'>;
 
 export type NewPayment = Omit<Payment, 'id' | 'created_at' | 'updated_at'>;
 export type NewContactMessage = Omit<ContactMessage, 'id' | 'created_at' | 'updated_at'>;

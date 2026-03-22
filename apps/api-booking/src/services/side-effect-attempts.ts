@@ -45,6 +45,7 @@ export async function recordSideEffectAttempts(
       api_log_id: input.apiLogId,
       status: input.status,
       error_message: input.errorMessage,
+      completed_at: new Date().toISOString(),
     });
 
     if (input.ctx.operation) {

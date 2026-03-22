@@ -94,6 +94,15 @@ export async function appendBookingEventWithEffects(
     ? await ctx.providers.repository.createBookingSideEffects(mapEffectsToRows(event.id, effectSpecs))
     : [];
 
+  const finalizedEvent = sideEffects.length > 0
+    ? event
+    : await ctx.providers.repository.updateBookingEvent(event.id, {
+      status: 'SUCCESS',
+      error_message: null,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
   const nextStatus = currentStatusForEvent(
     eventType,
     booking.current_status,
@@ -114,6 +123,7 @@ export async function appendBookingEventWithEffects(
       payment_status: payment?.status ?? null,
       current_status_before: booking.current_status,
       current_status_after: updatedBooking.current_status,
+      booking_event_status_after: finalizedEvent.status,
       side_effect_count: sideEffects.length,
       side_effect_intents: sideEffects.map((sideEffect) => sideEffect.effect_intent),
       branch_taken: sideEffects.length > 0 ? 'event_and_side_effects_created' : 'event_created_no_side_effects',
@@ -123,7 +133,7 @@ export async function appendBookingEventWithEffects(
 
   return {
     booking: updatedBooking,
-    event,
+    event: finalizedEvent,
     sideEffects,
   };
 }

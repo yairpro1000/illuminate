@@ -9,6 +9,25 @@ afterEach(() => {
 
 function makeCtx(overrides: any = {}) {
   const policyRepository = new MockRepository();
+  const basePayment = {
+    id: 'p1',
+    booking_id: 'b1',
+    provider: 'stripe',
+    amount: 150,
+    currency: 'CHF',
+    status: 'PENDING',
+    checkout_url: 'https://checkout.local',
+    invoice_url: null,
+    raw_payload: null,
+    paid_at: null,
+    created_at: '2026-03-01T00:00:00.000Z',
+    updated_at: '2026-03-01T00:00:00.000Z',
+    stripe_customer_id: 'cus_test_123',
+    stripe_checkout_session_id: 'cs_test_123',
+    stripe_payment_intent_id: null,
+    stripe_invoice_id: null,
+    stripe_payment_link_id: null,
+  };
   const bookingRow = {
     id: 'b1',
     client_id: 'c1',
@@ -36,76 +55,70 @@ function makeCtx(overrides: any = {}) {
     getPendingBookingSideEffects: vi.fn().mockResolvedValue([]),
     deleteBookingSideEffect: vi.fn().mockResolvedValue(undefined),
     updateBookingSideEffect: vi.fn().mockResolvedValue(undefined),
-    getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue(null),
-    createBookingSideEffectAttempt: vi.fn().mockResolvedValue(undefined),
-    getBookingById: vi.fn().mockResolvedValue(bookingRow),
-    getBookingEventById: vi.fn().mockResolvedValue({ payload: {} }),
-    getPaymentByBookingId: vi.fn().mockResolvedValue({
-      id: 'p1',
+    updateBookingEvent: vi.fn().mockImplementation(async (id, updates) => ({
+      id,
       booking_id: 'b1',
-      provider: 'stripe',
-      amount: 150,
-      currency: 'CHF',
-      status: 'PENDING',
-      checkout_url: 'https://checkout.local',
-      invoice_url: null,
-      raw_payload: null,
-      paid_at: null,
+      event_type: 'REFUND_COMPLETED',
+      source: 'SYSTEM',
+      status: 'SUCCESS',
+      payload: {},
+      error_message: null,
+      completed_at: '2026-03-01T00:00:00.000Z',
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T00:00:00.000Z',
-      stripe_customer_id: 'cus_test_123',
-      stripe_checkout_session_id: 'cs_test_123',
-      stripe_payment_intent_id: null,
-      stripe_invoice_id: null,
-      stripe_payment_link_id: null,
+      ...updates,
+    })),
+    getLastBookingSideEffectAttempt: vi.fn().mockResolvedValue(null),
+    createBookingSideEffectAttempt: vi.fn().mockResolvedValue({
+      id: 'attempt-1',
+      booking_side_effect_id: 'se1',
+      attempt_num: 1,
+      api_log_id: null,
+      status: 'PROCESSING',
+      error_message: null,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+      completed_at: null,
+    }),
+    updateBookingSideEffectAttempt: vi.fn().mockResolvedValue(undefined),
+    getBookingById: vi.fn().mockResolvedValue(bookingRow),
+    getBookingEventById: vi.fn().mockResolvedValue({
+      id: 'be1',
+      booking_id: 'b1',
+      event_type: 'BOOKING_FORM_SUBMITTED',
+      source: 'PUBLIC_UI',
+      status: 'PENDING',
+      payload: {},
+      error_message: null,
+      completed_at: null,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
+    }),
+    getPaymentByBookingId: vi.fn().mockResolvedValue({
+      ...basePayment,
     }),
     createPayment: vi.fn().mockResolvedValue({
-      id: 'p1',
-      booking_id: 'b1',
-      provider: 'stripe',
-      amount: 150,
-      currency: 'CHF',
-      status: 'PENDING',
-      checkout_url: 'https://checkout.local',
-      invoice_url: null,
-      raw_payload: null,
-      paid_at: null,
-      created_at: '2026-03-01T00:00:00.000Z',
-      updated_at: '2026-03-01T00:00:00.000Z',
-      stripe_customer_id: 'cus_test_123',
-      stripe_checkout_session_id: 'cs_test_123',
-      stripe_payment_intent_id: null,
-      stripe_invoice_id: null,
-      stripe_payment_link_id: null,
+      ...basePayment,
     }),
-    updatePayment: vi.fn().mockResolvedValue({
-      id: 'p1',
-      booking_id: 'b1',
-      provider: 'stripe',
-      amount: 150,
-      currency: 'CHF',
-      status: 'PENDING',
-      checkout_url: 'https://checkout.local',
-      invoice_url: null,
-      raw_payload: null,
-      paid_at: null,
-      created_at: '2026-03-01T00:00:00.000Z',
+    updatePayment: vi.fn().mockImplementation(async (_id, updates) => ({
+      ...basePayment,
+      ...updates,
       updated_at: '2026-03-01T00:00:00.000Z',
-      stripe_customer_id: 'cus_test_123',
-      stripe_checkout_session_id: 'cs_test_123',
-      stripe_payment_intent_id: null,
-      stripe_invoice_id: null,
-      stripe_payment_link_id: null,
-    }),
+    })),
     createBookingEvent: vi.fn().mockResolvedValue({
       id: 'be_new',
       booking_id: 'b1',
       event_type: 'PAYMENT_SETTLED',
       source: 'SYSTEM',
+      status: 'PENDING',
       payload: {},
+      error_message: null,
+      completed_at: null,
       created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:00:00.000Z',
     }),
     createBookingSideEffects: vi.fn().mockResolvedValue([]),
+    listBookingSideEffectsForEvent: vi.fn().mockResolvedValue([]),
     updateBooking: vi.fn().mockResolvedValue(bookingRow),
     getEventById: vi.fn().mockResolvedValue(null),
     listBookingEvents: vi.fn().mockResolvedValue([]),
@@ -223,7 +236,11 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendBookingPaymentReminder).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'SUCCESS', attempt_num: 1 }),
+      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'PROCESSING', attempt_num: 1 }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
     expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
       'se1',
@@ -349,7 +366,11 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: 'SUCCESS' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: 'PROCESSING' }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
   });
 
@@ -422,7 +443,11 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.payments.createRefund).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-refund-create-1', status: 'SUCCESS' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-create-1', status: 'PROCESSING' }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
   });
 
@@ -515,7 +540,11 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendRefundConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-refund-email-1', status: 'SUCCESS' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-email-1', status: 'PROCESSING' }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
   });
 
@@ -605,7 +634,11 @@ describe('jobs and side-effect dispatcher', () => {
     await expect(runSideEffectsOutbox(ctx)).resolves.toBeUndefined();
 
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-calendar-retry-1', status: 'FAILED', attempt_num: 2 }),
+      expect.objectContaining({ booking_side_effect_id: 'se-calendar-retry-1', status: 'PROCESSING', attempt_num: 2 }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'FAILED' }),
     );
     expect(ctx.providers.repository.updateBookingSideEffect).toHaveBeenCalledWith(
       'se-calendar-retry-1',
@@ -652,7 +685,11 @@ describe('jobs and side-effect dispatcher', () => {
     );
     expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-expired-1', status: 'SUCCESS' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-expired-1', status: 'PROCESSING' }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
   });
 
@@ -705,8 +742,12 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_side_effect_id: 'se-confirm-missing-cal-1',
-        status: 'SUCCESS',
+        status: 'PROCESSING',
       }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({ status: 'SUCCESS' }),
     );
   });
 
@@ -793,6 +834,12 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_side_effect_id: 'se-cancel-event-missing-1',
+        status: 'PROCESSING',
+      }),
+    );
+    expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
+      'attempt-1',
+      expect.objectContaining({
         status: 'FAILED',
         error_message: 'event_not_found_for_cancellation_email',
       }),

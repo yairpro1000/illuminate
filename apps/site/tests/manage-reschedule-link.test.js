@@ -35,6 +35,7 @@ describe('manage page reschedule link type', () => {
     }
     window.buildAtcWidget = (event) => `<div class="atc-widget" data-atc-title="${event.title}">Add to calendar</div>`
     window.initAddToCalendar = () => {}
+    window.pollBookingEventStatus = async () => ({ is_terminal: true })
     window.history.replaceState({}, '', '/manage.html?token=tok-123')
     evalCode(mockEmailPreviewCode)
   })
@@ -175,6 +176,65 @@ describe('manage page reschedule link type', () => {
     expect(links).toContain('View credit note')
     expect(links).toContain('View receipt')
     expect(links).toContain('View invoice')
+  })
+
+  it('polls booking-event status after cancel when the backend returns a booking event id', async () => {
+    let callCount = 0
+    window.siteClient.requestJson = async (_path, init) => {
+      callCount += 1
+      if (callCount === 1) {
+        return {
+          source: 'session',
+          booking_id: 'booking-8',
+          status: 'CONFIRMED',
+          starts_at: '2026-03-20T09:00:00.000Z',
+          ends_at: '2026-03-20T10:30:00.000Z',
+          title: 'Refundable Session',
+          client: { first_name: 'A', last_name: 'B' },
+          actions: { can_reschedule: false, can_cancel: true },
+          policy: {},
+        }
+      }
+      expect(init.method).toBe('POST')
+      return {
+        booking_id: 'booking-8',
+        status: 'CANCELED',
+        result_code: 'CANCELED',
+        message: 'Booking cancellation started.',
+        booking_event: {
+          id: 'be_cancel_8',
+          type: 'BOOKING_CANCELED',
+          status: 'PROCESSING',
+        },
+      }
+    }
+    window.pollBookingEventStatus = async (bookingEvent, token) => {
+      expect(bookingEvent.id).toBe('be_cancel_8')
+      expect(token).toBe('tok-123')
+      return {
+        booking_event_id: 'be_cancel_8',
+        booking_event_status: 'SUCCESS',
+        is_terminal: true,
+        message: 'Booking cancelled and refund processed.',
+        refund: {
+          status: 'SUCCEEDED',
+          creditNoteUrl: 'https://example.com/mock-credit-note/cn_456',
+          receiptUrl: 'https://example.com/mock-receipt/ch_456',
+          invoiceUrl: 'https://example.com/mock-invoice/in_456',
+        },
+      }
+    }
+
+    evalCode(managePageCode)
+    await flush()
+
+    document.getElementById('cancel-btn').click()
+    document.getElementById('cancel-yes').click()
+    await flush()
+    await flush()
+
+    expect(document.querySelector('.manage-subtitle')?.textContent).toContain('refund processed')
+    expect(Array.from(document.querySelectorAll('#manage-card a')).map((link) => link.textContent.trim())).toContain('View receipt')
   })
 
   it('renders add-to-calendar for confirmed bookings on manage page', async () => {

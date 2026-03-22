@@ -131,6 +131,13 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       status: result.booking.current_status,
       result_code: result.code,
       message: result.message,
+      ...(result.bookingEvent ? {
+        booking_event: {
+          id: result.bookingEvent.id,
+          type: result.bookingEvent.type,
+          status: result.bookingEvent.status,
+        },
+      } : {}),
       ...(result.refund ? { refund: result.refund } : {}),
       ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
     });

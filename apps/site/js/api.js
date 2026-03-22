@@ -77,6 +77,28 @@ function bookingReschedule(payload) {
   return _post('/api/bookings/reschedule', payload);
 }
 
+async function pollBookingEventStatus(bookingEvent, token, adminToken, options) {
+  const eventId = bookingEvent && bookingEvent.id ? String(bookingEvent.id) : '';
+  if (!eventId || !token) throw new Error('booking_event_id and token are required');
+  const intervalMs = options && Number.isFinite(options.intervalMs) ? Math.max(100, Number(options.intervalMs)) : 500;
+  const timeoutMs = options && Number.isFinite(options.timeoutMs) ? Math.max(intervalMs, Number(options.timeoutMs)) : 12_000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    const params = new URLSearchParams({
+      booking_event_id: eventId,
+      token: String(token),
+    });
+    if (adminToken) params.set('admin_token', String(adminToken));
+
+    const snapshot = await requestJson('GET', '/api/bookings/event-status?' + params.toString());
+    if (snapshot.is_terminal) return snapshot;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  throw Object.assign(new Error('BOOKING_EVENT_STATUS_TIMEOUT'), { code: 'BOOKING_EVENT_STATUS_TIMEOUT' });
+}
+
 /* ── Event bookings ──────────────────────────────────────── */
 
 /**
@@ -242,3 +264,5 @@ async function parseApiResponseBody(res) {
     { status: res.status, data: { message: text.slice(0, 180) } },
   );
 }
+
+window.pollBookingEventStatus = pollBookingEventStatus;

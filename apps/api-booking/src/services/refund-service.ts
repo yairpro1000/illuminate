@@ -736,6 +736,7 @@ async function appendRefundCompletedEventIfNeeded(
   );
   const { applyImmediateNonCronSideEffectsForTransition } = await import('./booking-service.js');
   await applyImmediateNonCronSideEffectsForTransition({
+    transitionEvent: transition.event,
     transitionEventType: 'REFUND_COMPLETED',
     sourceOperation: source === 'WEBHOOK' ? 'refund_webhook_reconciliation' : 'refund_completion',
     bookingBeforeTransition: booking,

@@ -259,11 +259,30 @@ export class MockRepository implements IRepository {
       booking_id: data.booking_id,
       event_type: data.event_type,
       source: data.source,
+      status: 'PENDING',
       payload: data.payload ?? {},
+      error_message: null,
+      completed_at: null,
       created_at: now(),
+      updated_at: now(),
     };
     mockState.bookingEvents.push(event);
     return event;
+  }
+
+  async updateBookingEvent(
+    id: string,
+    updates: Partial<Pick<BookingEventRecord, 'status' | 'error_message' | 'completed_at' | 'updated_at'>>,
+  ): Promise<BookingEventRecord> {
+    const index = mockState.bookingEvents.findIndex((event) => event.id === id);
+    if (index < 0) throw new Error(`Booking event ${id} not found`);
+    const updated: BookingEventRecord = {
+      ...mockState.bookingEvents[index]!,
+      ...updates,
+      updated_at: updates.updated_at ?? now(),
+    };
+    mockState.bookingEvents[index] = updated;
+    return updated;
   }
 
   async listBookingEvents(bookingId: string): Promise<BookingEventRecord[]> {
@@ -389,9 +408,26 @@ export class MockRepository implements IRepository {
       status: data.status,
       error_message: data.error_message,
       created_at: now(),
+      updated_at: now(),
+      completed_at: data.completed_at,
     };
     mockState.sideEffectAttempts.push(attempt);
     return attempt;
+  }
+
+  async updateBookingSideEffectAttempt(
+    id: string,
+    updates: Partial<Pick<BookingSideEffectAttempt, 'api_log_id' | 'status' | 'error_message' | 'updated_at' | 'completed_at'>>,
+  ): Promise<BookingSideEffectAttempt> {
+    const index = mockState.sideEffectAttempts.findIndex((attempt) => attempt.id === id);
+    if (index < 0) throw new Error(`Booking side effect attempt ${id} not found`);
+    const updated: BookingSideEffectAttempt = {
+      ...mockState.sideEffectAttempts[index]!,
+      ...updates,
+      updated_at: updates.updated_at ?? now(),
+    };
+    mockState.sideEffectAttempts[index] = updated;
+    return updated;
   }
 
   async listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]> {

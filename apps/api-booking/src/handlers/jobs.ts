@@ -10,10 +10,10 @@ import { consumeLatestProviderApiLogId, extendOperationContext, type OperationCo
 import { ok, unauthorized } from '../lib/errors.js';
 import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import {
-  applyImmediateNonCronSideEffectsForTransition,
   buildContinuePaymentUrl,
   buildConfirmUrl,
   buildManageUrl,
+  executeBookingSideEffectAction,
   expireBooking,
   retryCalendarSyncForBooking,
   send24hBookingReminder,
@@ -24,7 +24,11 @@ import {
   initiateAutomaticCancellationRefund,
   sendRefundConfirmationEmailForBooking,
 } from '../services/refund-service.js';
-import { recordSideEffectAttempts } from '../services/side-effect-attempts.js';
+import {
+  expireBookingSideEffectWithoutExecution,
+  finalizeBookingEventStatus,
+  runBookingEventEffects,
+} from '../services/booking-event-workflow.js';
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
 import { isRetryableCalendarWriteError, RetryableCalendarWriteError } from '../providers/calendar/interface.js';
 import type { BookingCurrentStatus, BookingEffectIntent, BookingSideEffect } from '../types.js';
@@ -99,6 +103,18 @@ const CRON_OWNED_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> = new Set
 
 function jobLogSource(ctx: JobContext): 'cron' | 'worker' {
   return ctx.triggerSource === 'cron' ? 'cron' : 'worker';
+}
+
+function toBookingContext(ctx: JobContext) {
+  return {
+    providers: ctx.providers,
+    env: ctx.env,
+    logger: ctx.logger,
+    requestId: ctx.requestId,
+    correlationId: ctx.correlationId,
+    operation: ctx.operation,
+    siteUrl: ctx.siteUrl,
+  };
 }
 
 // ── HTTP handler (manual trigger) ───────────────────────────────────────────
@@ -529,6 +545,7 @@ async function dispatchSideEffect(
 
   if (!relevance.shouldProcess) {
     await ctx.providers.repository.deleteBookingSideEffect(effect.id);
+    await finalizeBookingEventStatus(effect.booking_event_id, toBookingContext(ctx));
     ctx.logger.logInfo({
       source: jobLogSource(ctx),
       eventType: 'side_effect_irrelevant_discarded',
@@ -546,8 +563,6 @@ async function dispatchSideEffect(
     return 'skipped';
   }
 
-  const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
-  const apiLogId = null;
   if (ctx.operation) {
     extendOperationContext(ctx.operation, {
       bookingId: effect.booking_id,
@@ -556,47 +571,43 @@ async function dispatchSideEffect(
     });
   }
 
+  const booking = await ctx.providers.repository.getBookingById(effect.booking_id);
+  if (!booking) {
+    throw new Error(`booking_not_found:${effect.booking_id}`);
+  }
+  const bookingEvent = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
+  if (!bookingEvent) {
+    throw new Error(`booking_event_not_found:${effect.booking_event_id}`);
+  }
+  const bookingCtx = toBookingContext(ctx);
+
   if (timing === 'expired') {
-    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
-      booking_side_effect_id: effect.id,
-      attempt_num: attemptNum,
-      api_log_id: apiLogId,
-      status: 'FAILED',
-      error_message: 'expired_without_execution',
-    });
-    if (ctx.operation) {
-      extendOperationContext(ctx.operation, {
-        sideEffectId: effect.id,
-        sideEffectAttemptId: createdAttempt.id,
-      });
-    }
-    await syncApiLogOperationReferences(ctx.env, apiLogId, ctx.operation);
-    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'DEAD', updated_at: nowIso });
+    await expireBookingSideEffectWithoutExecution(
+      {
+        booking,
+        event: bookingEvent,
+        effect,
+        sourceOperation: `run_side_effects_outbox:${effect.effect_intent}`,
+        triggerSource: 'cron',
+        errorMessage: 'expired_without_execution',
+      },
+      bookingCtx,
+    );
     return 'processed';
   }
 
-  await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'PROCESSING', updated_at: nowIso });
-
   try {
-    await executeSideEffect(effect, ctx);
-    const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation);
-
-    const createdAttempt = await ctx.providers.repository.createBookingSideEffectAttempt({
-      booking_side_effect_id: effect.id,
-      attempt_num: attemptNum,
-      api_log_id: providerApiLogId ?? apiLogId,
-      status: 'SUCCESS',
-      error_message: null,
-    });
-    if (ctx.operation) {
-      extendOperationContext(ctx.operation, {
-        sideEffectId: effect.id,
-        sideEffectAttemptId: createdAttempt.id,
-      });
-    }
-    await syncApiLogOperationReferences(ctx.env, providerApiLogId ?? apiLogId, ctx.operation);
-
-    await ctx.providers.repository.updateBookingSideEffect(effect.id, { status: 'SUCCESS', updated_at: new Date().toISOString() });
+    await runBookingEventEffects(
+      {
+        booking,
+        event: bookingEvent,
+        sideEffects: [effect],
+        sourceOperation: `run_side_effects_outbox:${effect.effect_intent}`,
+        triggerSource: 'cron',
+        executeEffect: executeBookingSideEffectAction,
+      },
+      bookingCtx,
+    );
     return 'processed';
   } catch (error) {
     const errorMessage = error instanceof Error && error.message
@@ -608,6 +619,10 @@ async function dispatchSideEffect(
       || errorMessage === 'Error: irrelevant_payment_link_manual_arrangement'
     ) {
       await ctx.providers.repository.deleteBookingSideEffect(effect.id);
+      await finalizeBookingEventStatus(effect.booking_event_id, bookingCtx, {
+        startedExecution: true,
+        failureMessage: null,
+      });
       ctx.logger.logInfo({
         source: jobLogSource(ctx),
         eventType: 'side_effect_irrelevant_discarded',
@@ -625,17 +640,6 @@ async function dispatchSideEffect(
       });
       return 'skipped';
     }
-
-    const providerApiLogId = consumeLatestProviderApiLogId(ctx.operation) ?? apiLogId;
-    await recordSideEffectAttempts([effect], {
-      status: 'FAILED',
-      errorMessage,
-      apiLogId: providerApiLogId,
-      ctx,
-      bookingId: effect.booking_id,
-      logSource: jobLogSource(ctx),
-      enableCalendarBackoff: isRetryableCalendarWriteError(error),
-    });
     throw error;
   }
 }
@@ -805,256 +809,4 @@ function sideEffectTiming(
     default:
       return nowAfterExpiry ? 'expired' : 'run';
   }
-}
-
-async function executeSideEffect(
-  effect: BookingSideEffect & { booking_id: string },
-  ctx: JobContext,
-): Promise<void> {
-  const booking = await ctx.providers.repository.getBookingById(effect.booking_id);
-  if (!booking) {
-    throw new Error(`booking_not_found:${effect.booking_id}`);
-  }
-
-  const bookingCtx = {
-    providers: ctx.providers,
-    env: ctx.env,
-    logger: ctx.logger,
-    requestId: ctx.requestId,
-    correlationId: ctx.correlationId,
-    operation: ctx.operation,
-    siteUrl: ctx.siteUrl,
-  };
-  const bookingSiteUrl = String(ctx.siteUrl || ctx.env.SITE_URL || '').replace(/\/+$/g, '');
-
-  switch (effect.effect_intent) {
-    case 'SEND_BOOKING_CONFIRMATION_REQUEST': {
-      const bookingEvent = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
-      const confirmToken = typeof bookingEvent?.payload?.['confirm_token'] === 'string'
-        ? bookingEvent.payload['confirm_token'] as string
-        : null;
-      if (!confirmToken) {
-        throw new Error('confirm_token_missing');
-      }
-
-      const confirmUrl = buildConfirmUrl(bookingSiteUrl, confirmToken);
-      const policy = await getBookingPolicyConfig(ctx.providers.repository);
-      if (booking.event_id) {
-        const event = await ctx.providers.repository.getEventById(booking.event_id);
-        if (!event) throw new Error('event_not_found');
-        await ctx.providers.email.sendEventConfirmRequest(
-          booking,
-          event,
-          confirmUrl,
-          policy.nonPaidConfirmationWindowMinutes,
-        );
-      } else {
-        await ctx.providers.email.sendBookingConfirmRequest(
-          booking,
-          confirmUrl,
-          policy.nonPaidConfirmationWindowMinutes,
-        );
-      }
-      return;
-    }
-
-    case 'SEND_PAYMENT_REMINDER': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.invoice_url
-        ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(bookingSiteUrl, booking);
-      if (!payUrl) throw new Error('checkout_url_missing');
-
-      if (!booking.event_id) {
-        await ctx.providers.email.sendBookingPaymentReminder(booking, payUrl);
-      } else {
-        const event = await ctx.providers.repository.getEventById(booking.event_id);
-        if (!event) throw new Error('event_not_found');
-        await ctx.providers.email.sendEventFollowup(booking, event, payUrl);
-      }
-
-      return;
-    }
-
-    case 'SEND_EVENT_REMINDER': {
-      await send24hBookingReminder(booking, bookingCtx);
-      return;
-    }
-
-    case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(bookingSiteUrl, booking));
-      return;
-    }
-
-    case 'SEND_BOOKING_CANCELLATION_CONFIRMATION': {
-      await sendBookingCancellationConfirmation(booking, bookingCtx);
-      return;
-    }
-
-    case 'SEND_BOOKING_CONFIRMATION': {
-      await sendBookingFinalConfirmation(booking, bookingCtx);
-      return;
-    }
-
-    case 'SEND_BOOKING_REFUND_CONFIRMATION': {
-      await sendRefundConfirmationEmailForBooking(booking, effect, bookingCtx);
-      return;
-    }
-
-    case 'RESERVE_CALENDAR_SLOT': {
-      const result = await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return;
-    }
-
-    case 'UPDATE_CALENDAR_SLOT': {
-      const result = await retryCalendarSyncForBooking(booking, 'update', bookingCtx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return;
-    }
-
-    case 'CANCEL_CALENDAR_SLOT': {
-      const result = await retryCalendarSyncForBooking(booking, 'delete', bookingCtx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return;
-    }
-
-    case 'CREATE_STRIPE_CHECKOUT': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      if (!payment?.checkout_url) {
-        throw new Error('checkout_not_initialized');
-      }
-      return;
-    }
-
-    case 'CREATE_STRIPE_REFUND': {
-      await initiateAutomaticCancellationRefund(booking, bookingCtx);
-      return;
-    }
-
-    case 'VERIFY_STRIPE_PAYMENT': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      if (isPaymentSettledStatus(payment?.status)) {
-        const settledPayment = payment!;
-        await appendBookingEventWithEffects(
-          booking.id,
-          'PAYMENT_SETTLED',
-          'SYSTEM',
-          {
-            side_effect_id: effect.id,
-            stripe_checkout_session_id: settledPayment.stripe_checkout_session_id,
-            stripe_payment_intent_id: settledPayment.stripe_payment_intent_id,
-            stripe_invoice_id: settledPayment.stripe_invoice_id,
-          },
-          bookingCtx,
-        );
-        return;
-      }
-      if (isPaymentExpiryTrackedStatus(payment?.status ?? null)) {
-        await expireBooking(booking, bookingCtx);
-      }
-      return;
-    }
-
-    case 'SEND_PAYMENT_LINK': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.invoice_url
-        ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(bookingSiteUrl, booking);
-      if (!payUrl) throw new Error('checkout_url_missing');
-      const alreadySettled = isPaymentSettledStatus(payment?.status);
-      const manualArrangement = isPaymentManualArrangementStatus(payment?.status);
-      ctx.logger.logInfo({
-        source: jobLogSource(ctx),
-        eventType: 'checkout_followup_payment_link_decision',
-        message: 'Evaluated checkout follow-up payment link delivery',
-        context: {
-          booking_id: booking.id,
-          side_effect_id: effect.id,
-          payment_status: payment?.status ?? null,
-          has_payment_url: Boolean(payUrl),
-          should_send_payment_link: !alreadySettled && !manualArrangement,
-          branch_taken: alreadySettled
-            ? 'skip_payment_link_already_settled'
-            : manualArrangement
-              ? 'skip_payment_link_manual_arrangement'
-              : 'send_payment_link_email',
-          deny_reason: alreadySettled
-            ? 'payment_already_settled'
-            : manualArrangement
-              ? 'manual_payment_arrangement_active'
-              : null,
-        },
-      });
-
-      if (alreadySettled) {
-        throw new Error('irrelevant_payment_link_already_settled');
-      }
-      if (manualArrangement) {
-        throw new Error('irrelevant_payment_link_manual_arrangement');
-      }
-
-      const manageUrl = await buildManageUrl(bookingSiteUrl, booking);
-      const policy = await getBookingPolicyConfig(ctx.providers.repository);
-      await ctx.providers.email.sendBookingPaymentDue(
-        booking,
-        payUrl,
-        manageUrl,
-        new Date(
-          new Date(booking.starts_at).getTime() - policy.paymentDueBeforeStartHours * 60 * 60 * 1000,
-        ).toISOString(),
-      );
-      ctx.logger.logInfo({
-        source: jobLogSource(ctx),
-        eventType: 'checkout_followup_payment_link_sent',
-        message: 'Checkout follow-up payment link sent',
-        context: {
-          booking_id: booking.id,
-          side_effect_id: effect.id,
-          payment_status: payment?.status ?? null,
-          branch_taken: 'payment_link_sent',
-        },
-      });
-      return;
-    }
-
-    case 'VERIFY_EMAIL_CONFIRMATION': {
-      if (booking.current_status === 'PENDING') {
-        await expireBooking(booking, bookingCtx);
-      }
-      return;
-    }
-
-    default:
-      throw new Error(`unknown_effect_intent:${effect.effect_intent}`);
-  }
-}
-
-function buildStartNewBookingUrl(siteUrl: string, booking: { event_id: string | null }): string {
-  const base = siteUrl.replace(/\/+$/g, '');
-  return booking.event_id ? `${base}/evenings.html` : `${base}/sessions.html`;
 }

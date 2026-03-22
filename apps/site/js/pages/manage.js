@@ -232,11 +232,17 @@
           method: 'POST',
           body: JSON.stringify(adminToken ? { token, admin_token: adminToken } : { token }),
         });
+        const cancelSnapshot = cancelResult.booking_event && typeof window.pollBookingEventStatus === 'function'
+          ? await window.pollBookingEventStatus(cancelResult.booking_event, token, adminToken, {
+            intervalMs: 500,
+            timeoutMs: 12_000,
+          })
+          : cancelResult;
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
-          <p class="manage-subtitle">${escapeHtml(cancelResult.message || `Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.`)}</p>
-          ${renderRefundLinks(cancelResult.refund || null)}
+          <p class="manage-subtitle">${escapeHtml(cancelSnapshot.message || cancelResult.message || `Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.`)}</p>
+          ${renderRefundLinks(cancelSnapshot.refund || cancelResult.refund || null)}
           <a href="${homepageHref}" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {

@@ -110,6 +110,10 @@ export interface IRepository {
     source: BookingEventSource;
     payload?: Record<string, unknown>;
   }): Promise<BookingEventRecord>;
+  updateBookingEvent(
+    id: string,
+    updates: Partial<Pick<BookingEventRecord, 'status' | 'error_message' | 'completed_at' | 'updated_at'>>,
+  ): Promise<BookingEventRecord>;
 
   listBookingEvents(bookingId: string): Promise<BookingEventRecord[]>;
   getBookingEventById(eventId: string): Promise<BookingEventRecord | null>;
@@ -139,6 +143,10 @@ export interface IRepository {
   // ── Booking side effect attempts ────────────────────────────────────────
 
   createBookingSideEffectAttempt(data: NewBookingSideEffectAttempt): Promise<BookingSideEffectAttempt>;
+  updateBookingSideEffectAttempt(
+    id: string,
+    updates: Partial<Pick<BookingSideEffectAttempt, 'api_log_id' | 'status' | 'error_message' | 'updated_at' | 'completed_at'>>,
+  ): Promise<BookingSideEffectAttempt>;
   listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]>;
   getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null>;
 

@@ -179,4 +179,68 @@ describe('Manage booking token diagnostics', () => {
       }),
     }));
   });
+
+  it('returns booking-event status snapshots for tokenized polling clients', async () => {
+    const ctx = makeCtx({
+      providers: {
+        antibot: {
+          verify: vi.fn().mockResolvedValue(undefined),
+        },
+        calendar: {
+          getBusyTimes: vi.fn().mockResolvedValue([]),
+          createEvent: vi.fn().mockResolvedValue({
+            eventId: 'g-event-status',
+            meetingProvider: 'google_meet',
+            meetingLink: 'https://meet.google.com/event-status',
+          }),
+          updateEvent: vi.fn().mockResolvedValue(undefined),
+          deleteEvent: vi.fn().mockResolvedValue(undefined),
+        },
+        payments: {
+          createCheckoutSession: vi.fn(),
+        },
+        email: {
+          sendBookingConfirmRequest: vi.fn().mockResolvedValue({ messageId: 'msg-confirm' }),
+          sendBookingConfirmation: vi.fn().mockResolvedValue({ messageId: 'msg-booking-confirmed' }),
+          sendBookingPaymentDue: vi.fn().mockResolvedValue({ messageId: 'msg-pay-due' }),
+        },
+      } as any,
+    });
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-21T10:00:00.000Z',
+      slotEnd: '2026-03-21T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Event Status',
+      clientEmail: 'event-status@example.com',
+      clientPhone: '+41000000062',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx as any);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+
+    const res = await handleRequest(
+      new Request(`https://api.local/api/bookings/event-status?booking_event_id=${submission?.id}&token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      booking_event_id: submission?.id,
+      booking_event_type: 'BOOKING_FORM_SUBMITTED',
+      booking_id: created.bookingId,
+      booking_status: 'PENDING',
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_event_status_request_completed',
+      context: expect.objectContaining({
+        booking_event_id: submission?.id,
+        booking_id: created.bookingId,
+      }),
+    }));
+  });
 });
