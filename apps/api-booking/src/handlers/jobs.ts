@@ -20,6 +20,10 @@ import {
   sendBookingCancellationConfirmation,
   sendBookingFinalConfirmation,
 } from '../services/booking-service.js';
+import {
+  initiateAutomaticCancellationRefund,
+  sendRefundConfirmationEmailForBooking,
+} from '../services/refund-service.js';
 import { recordSideEffectAttempts } from '../services/side-effect-attempts.js';
 import { appendBookingEventWithEffects } from '../services/booking-transition.js';
 import { isRetryableCalendarWriteError, RetryableCalendarWriteError } from '../providers/calendar/interface.js';
@@ -892,6 +896,11 @@ async function executeSideEffect(
       return;
     }
 
+    case 'SEND_BOOKING_REFUND_CONFIRMATION': {
+      await sendRefundConfirmationEmailForBooking(booking, effect, bookingCtx);
+      return;
+    }
+
     case 'RESERVE_CALENDAR_SLOT': {
       const result = await retryCalendarSyncForBooking(booking, 'create', bookingCtx);
       if (!result.calendarSynced) {
@@ -939,6 +948,11 @@ async function executeSideEffect(
       if (!payment?.checkout_url) {
         throw new Error('checkout_not_initialized');
       }
+      return;
+    }
+
+    case 'CREATE_STRIPE_REFUND': {
+      await initiateAutomaticCancellationRefund(booking, bookingCtx);
       return;
     }
 

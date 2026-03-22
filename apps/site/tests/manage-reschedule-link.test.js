@@ -130,6 +130,53 @@ describe('manage page reschedule link type', () => {
     expect(document.querySelector('.manage-subtitle')?.textContent).toContain('If a refund applies')
   })
 
+  it('renders refund document links after a refunded cancellation succeeds', async () => {
+    let callCount = 0
+    window.siteClient.requestJson = async (_path, init) => {
+      callCount += 1
+      if (callCount === 1) {
+        return {
+          source: 'session',
+          booking_id: 'booking-7',
+          status: 'CONFIRMED',
+          starts_at: '2026-03-20T09:00:00.000Z',
+          ends_at: '2026-03-20T10:30:00.000Z',
+          title: 'Refundable Session',
+          client: { first_name: 'A', last_name: 'B' },
+          actions: { can_reschedule: false, can_cancel: true },
+          policy: {},
+        }
+      }
+      expect(init.method).toBe('POST')
+      return {
+        booking_id: 'booking-7',
+        status: 'CANCELED',
+        result_code: 'CANCELED_AND_REFUNDED',
+        message: 'Booking cancelled and refund processed. Your refund documents are ready below, and you\'ll receive a separate confirmation email.',
+        refund: {
+          status: 'SUCCEEDED',
+          creditNoteUrl: 'https://example.com/mock-credit-note/cn_123',
+          receiptUrl: 'https://example.com/mock-receipt/ch_123',
+          invoiceUrl: 'https://example.com/mock-invoice/in_123',
+        },
+      }
+    }
+
+    evalCode(managePageCode)
+    await flush()
+
+    document.getElementById('cancel-btn').click()
+    document.getElementById('cancel-yes').click()
+    await flush()
+    await flush()
+
+    const links = Array.from(document.querySelectorAll('#manage-card a')).map((link) => link.textContent.trim())
+    expect(document.querySelector('.manage-subtitle')?.textContent).toContain('refund processed')
+    expect(links).toContain('View credit note')
+    expect(links).toContain('View receipt')
+    expect(links).toContain('View invoice')
+  })
+
   it('renders add-to-calendar for confirmed bookings on manage page', async () => {
     window.siteClient.requestJson = async () => ({
       source: 'session',

@@ -96,6 +96,17 @@
     `;
   }
 
+  function renderRefundLinks(refund) {
+    if (!refund || refund.status !== 'SUCCEEDED') return '';
+    const links = [
+      refund.creditNoteUrl ? `<a href="${escapeHtml(refund.creditNoteUrl)}" class="btn btn-ghost">View credit note</a>` : '',
+      refund.receiptUrl ? `<a href="${escapeHtml(refund.receiptUrl)}" class="btn btn-ghost">View receipt</a>` : '',
+      refund.invoiceUrl ? `<a href="${escapeHtml(refund.invoiceUrl)}" class="btn btn-ghost">View invoice</a>` : '',
+    ].filter(Boolean).join('');
+    if (!links) return '';
+    return `<div class="manage-actions" style="margin-top:1rem">${links}</div>`;
+  }
+
   function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
     return `
@@ -225,6 +236,7 @@
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
           <p class="manage-subtitle">${escapeHtml(cancelResult.message || `Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.`)}</p>
+          ${renderRefundLinks(cancelResult.refund || null)}
           <a href="${homepageHref}" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {

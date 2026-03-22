@@ -167,6 +167,20 @@ function makeCtx(overrides: any = {}) {
           sessionId: 'cs_test_123',
           expiresAt: '2026-04-10T09:00:00.000Z',
         }),
+        createRefund: vi.fn().mockResolvedValue({
+          refundPath: 'credit_note',
+          refundStatus: 'SUCCEEDED',
+          refundId: 're_test_123',
+          creditNoteId: 'cn_test_123',
+          creditNoteNumber: 'CN-TEST-123',
+          creditNoteDocumentUrl: 'https://example.com/credit-note/cn_test_123',
+          receiptUrl: 'https://example.com/receipt/re_test_123',
+          invoiceId: 'in_test_123',
+          paymentIntentId: 'pi_test_123',
+          amount: 150,
+          currency: 'CHF',
+        }),
+        ...((overrides.providers && overrides.providers.payments) || {}),
       },
     },
     env: { SITE_URL: 'https://example.com' },
@@ -336,6 +350,172 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: 'SUCCESS' }),
+    );
+  });
+
+  it('dispatches stale recovered refund creation effects through the shared refund path', async () => {
+    const effect = {
+      id: 'se-refund-create-1',
+      booking_id: 'b1',
+      booking_event_id: 'be-refund-create-1',
+      effect_intent: 'CREATE_STRIPE_REFUND',
+      entity: 'PAYMENT',
+      status: 'PENDING',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          listBookingEvents: vi.fn().mockResolvedValue([]),
+          getPaymentByBookingId: vi.fn().mockResolvedValue({
+            id: 'p1',
+            booking_id: 'b1',
+            provider: 'stripe',
+            amount: 150,
+            currency: 'CHF',
+            status: 'SUCCEEDED',
+            checkout_url: 'https://checkout.local',
+            invoice_url: 'https://example.com/invoice/in_123',
+            raw_payload: null,
+            paid_at: '2026-03-01T00:00:00.000Z',
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+            stripe_customer_id: 'cus_test_123',
+            stripe_checkout_session_id: 'cs_test_123',
+            stripe_payment_intent_id: 'pi_test_123',
+            stripe_invoice_id: 'in_123',
+            stripe_payment_link_id: null,
+            refund_status: 'NONE',
+            refund_amount: null,
+            refund_currency: null,
+            stripe_refund_id: null,
+            stripe_credit_note_id: null,
+            stripe_receipt_url: null,
+            stripe_credit_note_url: null,
+            refunded_at: null,
+            refund_reason: null,
+          }),
+        },
+        payments: {
+          createRefund: vi.fn().mockResolvedValue({
+            refundPath: 'credit_note',
+            refundStatus: 'SUCCEEDED',
+            refundId: 're_123',
+            creditNoteId: 'cn_123',
+            creditNoteNumber: 'CN-123',
+            creditNoteDocumentUrl: 'https://example.com/credit-note/cn_123',
+            receiptUrl: 'https://example.com/receipt/re_123',
+            invoiceId: 'in_123',
+            paymentIntentId: 'pi_test_123',
+            amount: 150,
+            currency: 'CHF',
+          }),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.payments.createRefund).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-create-1', status: 'SUCCESS' }),
+    );
+  });
+
+  it('dispatches stale recovered refund email effects through the shared refund email path', async () => {
+    const effect = {
+      id: 'se-refund-email-1',
+      booking_id: 'b1',
+      booking_event_id: 'be-refund-email-1',
+      effect_intent: 'SEND_BOOKING_REFUND_CONFIRMATION',
+      entity: 'EMAIL',
+      status: 'PENDING',
+      expires_at: null,
+      max_attempts: 5,
+      created_at: '2026-03-01T00:00:00.000Z',
+      updated_at: '2026-03-01T00:20:00.000Z',
+    };
+    const ctx = makeCtx({
+      providers: {
+        repository: {
+          getPendingBookingSideEffects: vi.fn().mockResolvedValue([effect]),
+          getBookingById: vi.fn().mockResolvedValue({
+            id: 'b1',
+            client_id: 'c1',
+            event_id: null,
+            session_type_id: 's1',
+            session_type_title: 'Refundable Session',
+            booking_type: 'PAY_LATER',
+            starts_at: '2026-04-10T10:00:00.000Z',
+            ends_at: '2026-04-10T11:00:00.000Z',
+            timezone: 'Europe/Zurich',
+            google_event_id: 'g1',
+            address_line: 'Somewhere 1, Zurich',
+            maps_url: 'https://maps.example',
+            current_status: 'CANCELED',
+            notes: null,
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+            client_first_name: 'Test',
+            client_last_name: 'User',
+            client_email: 'test@example.com',
+            client_phone: '+41000000000',
+          }),
+          getBookingEventById: vi.fn().mockResolvedValue({
+            id: 'be-refund-email-1',
+            payload: {
+              refund_path: 'credit_note',
+              refund_amount: 150,
+              refund_currency: 'CHF',
+              invoice_id: 'in_123',
+              stripe_refund_id: 're_123',
+              stripe_credit_note_id: 'cn_123',
+              credit_note_number: 'CN-123',
+              credit_note_url: 'https://example.com/credit-note/cn_123',
+              receipt_url: 'https://example.com/receipt/re_123',
+            },
+          }),
+          getPaymentByBookingId: vi.fn().mockResolvedValue({
+            id: 'p1',
+            booking_id: 'b1',
+            provider: 'stripe',
+            amount: 150,
+            currency: 'CHF',
+            status: 'REFUNDED',
+            checkout_url: 'https://checkout.local',
+            invoice_url: 'https://example.com/invoice/in_123',
+            raw_payload: null,
+            paid_at: '2026-03-01T00:00:00.000Z',
+            created_at: '2026-03-01T00:00:00.000Z',
+            updated_at: '2026-03-01T00:00:00.000Z',
+            stripe_customer_id: 'cus_test_123',
+            stripe_checkout_session_id: 'cs_test_123',
+            stripe_payment_intent_id: 'pi_test_123',
+            stripe_invoice_id: 'in_123',
+            stripe_payment_link_id: null,
+            refund_status: 'SUCCEEDED',
+            refund_amount: 150,
+            refund_currency: 'CHF',
+            stripe_refund_id: 're_123',
+            stripe_credit_note_id: 'cn_123',
+            stripe_receipt_url: 'https://example.com/receipt/re_123',
+            stripe_credit_note_url: 'https://example.com/credit-note/cn_123',
+            refunded_at: '2026-03-02T00:00:00.000Z',
+            refund_reason: 'Client canceled in refundable window.',
+          }),
+        },
+      },
+    });
+
+    await runSideEffectsOutbox(ctx);
+
+    expect(ctx.providers.email.sendRefundConfirmation).toHaveBeenCalledTimes(1);
+    expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-email-1', status: 'SUCCESS' }),
     );
   });
 

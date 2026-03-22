@@ -1324,7 +1324,12 @@ describe('booking domain model', () => {
 
     expect(canceled.ok).toBe(true);
     expect(canceled.code).toBe('CANCELED_AND_REFUNDED');
-    expect(canceled.message).toContain('If a refund applies, you\'ll receive a separate confirmation email.');
+    expect(canceled.message).toContain('refund processed');
+    expect(canceled.refund).toEqual(expect.objectContaining({
+      status: 'SUCCEEDED',
+      creditNoteUrl: expect.stringContaining('/mock-credit-note/'),
+      receiptUrl: expect.stringContaining('/mock-receipt/'),
+    }));
 
     const refundedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(refundedPayment?.status).toBe('REFUNDED');

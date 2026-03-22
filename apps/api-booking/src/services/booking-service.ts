@@ -45,6 +45,7 @@ import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './
 import { computePaymentDueReminderTime } from './reminder-service.js';
 import { recordSideEffectAttempts } from './side-effect-attempts.js';
 import {
+  effectiveRefundStatus,
   evaluateCancellationRefundNoticeDecision,
   initiateAutomaticCancellationRefund,
   sendRefundConfirmationEmailForBooking,
@@ -352,6 +353,12 @@ export interface BookingActionResult {
   code: string;
   message: string;
   booking: Booking;
+  refund?: {
+    status: string;
+    invoiceUrl: string | null;
+    receiptUrl: string | null;
+    creditNoteUrl: string | null;
+  } | null;
 }
 
 export interface CalendarSyncResult {
@@ -1565,14 +1572,26 @@ export async function cancelBooking(
   });
   const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
+  const refundStatus = effectiveRefundStatus(refreshedPayment);
+  const refundArtifacts = refundStatus !== 'NONE'
+    ? {
+        status: refundStatus,
+        invoiceUrl: refreshedPayment?.invoice_url ?? null,
+        receiptUrl: refreshedPayment?.stripe_receipt_url ?? null,
+        creditNoteUrl: refreshedPayment?.stripe_credit_note_url ?? null,
+      }
+    : null;
 
   return {
     ok: true,
     code: refreshedPayment?.status === 'REFUNDED' ? 'CANCELED_AND_REFUNDED' : 'CANCELED',
-    message: includeRefundNotice
-      ? 'Booking cancelled. If a refund applies, you\'ll receive a separate confirmation email.'
-      : 'Booking cancelled.',
+    message: refundStatus === 'SUCCEEDED'
+      ? 'Booking cancelled and refund processed. Your refund documents are ready below, and you\'ll receive a separate confirmation email.'
+      : includeRefundNotice
+        ? 'Booking cancelled. If a refund applies, you\'ll receive a separate confirmation email.'
+        : 'Booking cancelled.',
     booking: finalBooking,
+    refund: refundArtifacts,
   };
 }
 
