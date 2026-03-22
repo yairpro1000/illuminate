@@ -72,10 +72,6 @@
     return text.length <= limit ? text : text.slice(0, limit) + '…';
   }
 
-  function getObservabilityEndpoint() {
-    return getApiBase() + '/api/observability/frontend';
-  }
-
   function createSiteObservability() {
     const sessionId = getSessionId();
     let currentFlowId = makeRequestId().replace(/^rid_/, 'cid_');
@@ -96,33 +92,6 @@
         apiFailure: payload.apiFailure || undefined,
         error: payload.error || undefined,
       };
-
-      if (shouldSendObsLevel(level)) {
-        const payloadText = JSON.stringify(event);
-        try {
-          if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-            const queued = navigator.sendBeacon(
-              getObservabilityEndpoint(),
-              new Blob([payloadText], { type: 'text/plain;charset=UTF-8' }),
-            );
-            if (!queued) {
-              fetch(getObservabilityEndpoint(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-                body: payloadText,
-                keepalive: true,
-              }).catch(function () {});
-            }
-          } else {
-            fetch(getObservabilityEndpoint(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-              body: payloadText,
-              keepalive: true,
-            }).catch(function () {});
-          }
-        } catch (_) {}
-      }
 
       const line = JSON.stringify(event);
       if (shouldSendObsLevel(level)) {

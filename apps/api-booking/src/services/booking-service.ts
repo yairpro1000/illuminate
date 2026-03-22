@@ -7,7 +7,6 @@ import {
   loggerForOperation,
   type OperationContext,
 } from '../lib/execution.js';
-import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import type {
   Booking,
   BookingCurrentStatus,

@@ -24,7 +24,6 @@ import {
 import { handleContact } from './handlers/contact.js';
 import { handleTurnstileVerify } from './handlers/turnstile.js';
 import { handleAdminUploadImage } from './handlers/upload.js';
-import { handleFrontendObservability } from './handlers/observability.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
 import { handleJobTrigger } from './handlers/jobs.js';
 import {
@@ -108,7 +107,6 @@ const ROUTES: Route[] = [
   route('GET', '/api/health', handleHealth),
   route('GET', '/api/config', handleGetPublicConfig),
   route('POST', '/api/coupons/validate', handleValidateCoupon),
-  route('POST', '/api/observability/frontend', handleFrontendObservability),
   route('GET', '/api/slots', handleGetSlots, 'booking'),
 
   route('POST', '/api/bookings/pay-now', handlePayNow, 'booking'),
@@ -170,7 +168,6 @@ const ROUTES: Route[] = [
 export async function handleRequest(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const isAdminEventsPath = url.pathname === '/api/admin/events';
-  const isFrontendObservabilityPath = url.pathname === '/api/observability/frontend';
   const devMode = !!ctx.env.ADMIN_DEV_EMAIL;
   const siteUrl = ctx.siteUrl || resolvePublicSiteUrl(request, ctx.env, ctx.logger);
   const pagesDevOriginsAllowed = allowPagesDevOrigins(ctx.env.API_ALLOW_PAGES_DEV_ORIGINS);
@@ -294,12 +291,10 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     return finalRes;
   }
 
-  if (!isFrontendObservabilityPath) {
-    ctx.logger.logMilestone('incoming_request_received', {
-      method: request.method,
-      path: url.pathname,
-    });
-  }
+  ctx.logger.logMilestone('incoming_request_received', {
+    method: request.method,
+    path: url.pathname,
+  });
 
   let patternMatched = false;
   for (const r of ROUTES) {
@@ -316,19 +311,17 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
 
     try {
       const res = await executeObservedRoute(request, { ...ctx, siteUrl }, params, r.handler, r.executionLayer);
-      if (!isFrontendObservabilityPath || res.status >= 400) {
-        ctx.logger.logRequest?.({
-          method: request.method,
-          url: request.url,
-          path: url.pathname,
-          statusCode: res.status,
-          durationMs: Date.now() - startedAt,
-          success: res.status < 500,
-          requestSizeBytes,
-          responseSizeBytes: headerByteLength(res.headers),
-        });
-      }
-      if (res.status < 500 && !isFrontendObservabilityPath) {
+      ctx.logger.logRequest?.({
+        method: request.method,
+        url: request.url,
+        path: url.pathname,
+        statusCode: res.status,
+        durationMs: Date.now() - startedAt,
+        success: res.status < 500,
+        requestSizeBytes,
+        responseSizeBytes: headerByteLength(res.headers),
+      });
+      if (res.status < 500) {
         ctx.logger.logMilestone?.('response_completed', {
           status_code: res.status,
           path: url.pathname,
@@ -430,7 +423,7 @@ async function executeObservedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname;
   const isBookingRoute = executionLayer === 'booking';
-  const shouldSuppressSuccessLifecycleLogs = path === '/api/observability/frontend';
+  const shouldSuppressSuccessLifecycleLogs = false;
   const routeCtx: AppContext = {
     ...ctx,
     operation: ctx.operation,

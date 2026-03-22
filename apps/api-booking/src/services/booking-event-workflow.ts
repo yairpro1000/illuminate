@@ -1,5 +1,4 @@
 import { consumeLatestProviderApiLogId, extendOperationContext } from '../lib/execution.js';
-import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import { resolveSideEffectAttemptOutcome } from '../domain/booking-effect-policy.js';
 import { getBookingPolicyConfig } from '../config/booking-policy.js';
 import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
@@ -490,7 +489,6 @@ async function finishBookingSideEffectAttempt(
     completed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
-  await syncApiLogOperationReferences(ctx.env, input.apiLogId, ctx.operation);
   await ctx.providers.repository.updateBookingSideEffect(input.effect.id, {
     status: outcome.nextStatus,
     expires_at: outcome.expiresAt,

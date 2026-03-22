@@ -79,6 +79,27 @@ async function insertCompletedApiLog(
   return inserted?.id ?? null;
 }
 
+export async function recordCompletedApiLog(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  input: {
+    operation: OperationContext;
+    direction: 'inbound' | 'outbound';
+    provider?: string | null;
+    method: string;
+    url: string;
+    requestHeaders?: HeadersInit | null;
+    requestBody?: unknown;
+    responseStatus?: number | null;
+    responseHeaders?: HeadersInit | null;
+    responseBody?: unknown;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    startedAtMs: number;
+  },
+): Promise<string | null> {
+  return insertCompletedApiLog(env, input);
+}
+
 export async function finalizeApiLog(
   env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
   apiLogId: string | null,

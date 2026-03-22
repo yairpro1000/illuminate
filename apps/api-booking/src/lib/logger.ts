@@ -3,7 +3,6 @@ import {
   errorMessage,
   errorToDetails,
   sanitizeContext,
-  safePathname,
   type JsonValue,
   type LogSource,
 } from '../../../shared/observability/backend.js';
@@ -58,18 +57,6 @@ export interface WorkerObservabilityContext {
   logger: Logger;
   requestId: string;
   correlationId: string;
-}
-
-export interface FrontendLogPayload {
-  level?: string;
-  eventType?: string;
-  message?: string | null;
-  errorCode?: string | null;
-  requestId?: string | null;
-  correlationId?: string | null;
-  sessionId?: string | null;
-  route?: string | null;
-  context?: Record<string, JsonValue>;
 }
 
 function pickRequestId(request: Request): string {
@@ -235,24 +222,4 @@ export function createCronObservability(
     requestId,
     correlationId: requestId,
   };
-}
-
-export async function persistFrontendLog(
-  _env: Env,
-  payload: FrontendLogPayload,
-  request: Request,
-  _executionCtx?: ExecutionContext | null,
-): Promise<void> {
-  const level = payload.level === 'warn' || payload.level === 'error' ? payload.level : 'info';
-  const entry = {
-    level,
-    source: 'frontend',
-    event_type: payload.eventType ?? 'frontend_event',
-    message: payload.message ?? null,
-    request_id: payload.requestId ?? null,
-    correlation_id: payload.correlationId ?? null,
-    route: payload.route ?? safePathname(request.url),
-    context: sanitizeContext(payload.context ?? {}),
-  };
-  consoleMethod(level)('[frontend-observability]', JSON.stringify(entry));
 }

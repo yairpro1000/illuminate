@@ -21,7 +21,6 @@ function shouldIgnoreUrl(url: string): boolean {
     url.startsWith('data:') ||
     url.startsWith('blob:') ||
     url.includes('/favicon.ico') ||
-    url.includes('/api/observability/frontend') ||
     url.includes('https://letsilluminate.co/img/')
   );
 }
