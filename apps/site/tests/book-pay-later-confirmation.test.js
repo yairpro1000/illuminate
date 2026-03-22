@@ -9,6 +9,9 @@ function evalCode(code) {
 describe('book pay-later confirmation UI', () => {
   beforeEach(() => {
     document.body.innerHTML = ''
+    window.siteClient = {
+      resolveHomepageHref: () => new URL('/index.html', window.location.origin).toString(),
+    }
     evalCode(bookViewsCode)
   })
 
@@ -57,6 +60,7 @@ describe('book pay-later confirmation UI', () => {
     expect(html).not.toContain('Complete payment')
     expect(html).not.toContain('/continue-payment.html?token=m1.test')
     expect(html).toContain('← Back to homepage')
+    expect(html).toContain(`href="${window.location.origin}/index.html"`)
   })
 
   it('renders the hold-window note on the pay-later review step before confirmation', () => {

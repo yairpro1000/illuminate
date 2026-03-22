@@ -5,6 +5,11 @@
   const token = params.get('token');
   const adminToken = params.get('admin_token');
   const card = document.getElementById('continue-payment-card');
+  const homepageHref = siteClient && typeof siteClient.resolveHomepageHref === 'function'
+    ? siteClient.resolveHomepageHref()
+    : (function () {
+        try { return new URL('/index.html', window.location.origin).toString(); } catch (_) { return 'index.html'; }
+      }());
 
   function renderFallback(title, message) {
     if (!card) return;
@@ -13,7 +18,7 @@
       <p class="result-msg">${message}</p>
       <div class="result-actions">
         <a href="contact.html" class="btn btn-primary">Contact Yair</a>
-        <a href="index.html" class="btn btn-ghost">← Homepage</a>
+        <a href="${homepageHref}" class="btn btn-ghost">← Homepage</a>
       </div>
     `;
   }

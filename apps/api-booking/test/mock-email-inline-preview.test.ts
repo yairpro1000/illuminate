@@ -350,6 +350,40 @@ describe('mock email inline preview contract', () => {
     expect(statusData.mock_email_preview.email_id).not.toBe(bookingEmailId(payNowB.booking_id, 'booking_confirmation'));
   });
 
+  it('loads booking policy only once across the pay-later confirm request path', async () => {
+    const ctx = makeCtx();
+    const listSystemSettingsSpy = vi.spyOn(ctx.providers.repository, 'listSystemSettings');
+
+    const createResponse = await handleRequest(jsonRequest('/api/bookings/pay-later', {
+      slot_start: '2026-03-28T10:00:00.000Z',
+      slot_end: '2026-03-28T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      type: 'session',
+      first_name: 'Cache',
+      last_name: 'Confirm',
+      client_email: 'cache-confirm@example.test',
+      client_phone: '+41790000012',
+      turnstile_token: 'ok',
+    }), ctx);
+    expect(createResponse.status).toBe(200);
+
+    const bookingData = await createResponse.json() as { booking_id: string };
+    const submission = mockState.bookingEvents.find((event) =>
+      event.booking_id === bookingData.booking_id && event.event_type === 'BOOKING_FORM_SUBMITTED',
+    );
+    const confirmToken = String(submission?.payload?.['confirm_token'] ?? '');
+
+    listSystemSettingsSpy.mockClear();
+
+    const confirmResponse = await handleRequest(
+      jsonRequest(`/api/bookings/confirm?token=${encodeURIComponent(confirmToken)}`),
+      ctx,
+    );
+
+    expect(confirmResponse.status).toBe(200);
+    expect(listSystemSettingsSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('includes a preview on manage cancel and skips it on manage reschedule', async () => {
     const ctx = makeCtx();
     const createResponse = await handleRequest(jsonRequest('/api/bookings/pay-later', {

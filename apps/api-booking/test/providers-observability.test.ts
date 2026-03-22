@@ -141,6 +141,16 @@ describe('provider observability wrapper', () => {
         provider: 'email',
         provider_operation: 'sendContactMessage',
         branch_taken: 'execute_provider_call_via_shared_wrapper',
+        outbound_api_log_write_mode: 'insert_completed_row_after_provider_call',
+      }),
+    }));
+    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'provider_wrapper_completed',
+      context: expect.objectContaining({
+        provider: 'email',
+        provider_operation: 'sendContactMessage',
+        branch_taken: 'provider_call_succeeded',
+        api_log_id: 'api-log-1',
       }),
     }));
     expect(operation.latestProviderApiLogId).toBe('api-log-1');
@@ -150,8 +160,9 @@ describe('provider observability wrapper', () => {
       booking_event_id: 'event-1',
       side_effect_id: 'side-effect-1',
       direction: 'outbound',
+      response_status: 200,
     }));
-    expect(updateEq).toHaveBeenCalledWith('id', 'api-log-1');
+    expect(updateEq).not.toHaveBeenCalled();
   });
 
   it('writes app_area on exception log inserts from the wrapper context', async () => {

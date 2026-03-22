@@ -272,6 +272,32 @@
     } catch (_) {}
   }
 
+  function resolveHomepageHref() {
+    try {
+      return new URL('/index.html', window.location.origin).toString();
+    } catch (_) {
+      return 'index.html';
+    }
+  }
+
+  function normalizeActionLabel(rawValue) {
+    return String(rawValue || '')
+      .replace(/[←→]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function isHomepageActionLabel(rawValue) {
+    const label = normalizeActionLabel(rawValue);
+    return label === 'back to homepage' || label === 'homepage';
+  }
+
+  function resolveSiteActionHref(href, label) {
+    if (isHomepageActionLabel(label)) return resolveHomepageHref();
+    return href || resolveHomepageHref();
+  }
+
   async function requestJson(path, init) {
     const method = String((init && init.method) || 'GET').toUpperCase();
     const apiBase = getApiBase();
@@ -338,6 +364,9 @@
     requestJson: requestJson,
     detectUiTestMode: detectUiTestMode,
     maybeRenderMockEmailPreview: maybeRenderMockEmailPreview,
+    resolveHomepageHref: resolveHomepageHref,
+    resolveSiteActionHref: resolveSiteActionHref,
+    isHomepageActionLabel: isHomepageActionLabel,
     config: DEFAULT_CONFIG,
   };
 

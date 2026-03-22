@@ -26,6 +26,7 @@ describe('manage page reschedule link type', () => {
     window.siteClient = {
       requestJson: async () => ({}),
       detectUiTestMode: () => 'playwright',
+      resolveHomepageHref: () => new URL('/index.html', window.location.origin).toString(),
       maybeRenderMockEmailPreview: async (data) => {
         if (data && data.mock_email_preview) {
           window.IlluminateMockEmailPreview.render({ preview: data.mock_email_preview })
@@ -155,5 +156,26 @@ describe('manage page reschedule link type', () => {
     await flush()
 
     expect(document.querySelector('#manage-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
+  })
+
+  it('renders homepage links against the current origin', async () => {
+    window.siteClient.requestJson = async () => ({
+      source: 'session',
+      booking_id: 'booking-5',
+      status: 'CONFIRMED',
+      starts_at: '2026-03-20T09:00:00.000Z',
+      ends_at: '2026-03-20T10:30:00.000Z',
+      title: 'First Clarity Session',
+      client: { first_name: 'A', last_name: 'B' },
+      actions: { can_reschedule: false, can_cancel: false },
+      policy: {},
+    })
+
+    evalCode(managePageCode)
+    await flush()
+
+    const homepageLink = Array.from(document.querySelectorAll('.manage-actions a'))
+      .find((link) => link.textContent.includes('Homepage'))
+    expect(homepageLink?.getAttribute('href')).toBe(`${window.location.origin}/index.html`)
   })
 })

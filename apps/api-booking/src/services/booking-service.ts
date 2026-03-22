@@ -86,10 +86,20 @@ export interface BookingContext {
   correlationId?: string;
   operation?: OperationContext;
   siteUrl?: string;
+  bookingPolicyConfig?: Awaited<ReturnType<typeof getBookingPolicyConfig>>;
+  bookingPolicyConfigPromise?: Promise<Awaited<ReturnType<typeof getBookingPolicyConfig>>>;
 }
 
 async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
-  return getBookingPolicyConfig(ctx.providers.repository);
+  const cached = ctx as BookingContext;
+  if (cached.bookingPolicyConfig) return cached.bookingPolicyConfig;
+  if (!cached.bookingPolicyConfigPromise) {
+    cached.bookingPolicyConfigPromise = getBookingPolicyConfig(ctx.providers.repository).then((policy) => {
+      cached.bookingPolicyConfig = policy;
+      return policy;
+    });
+  }
+  return cached.bookingPolicyConfigPromise;
 }
 
 function bookingSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
@@ -1051,9 +1061,6 @@ export async function confirmBookingEmail(
       bootstrapSource: 'booking_email_confirmation',
       allowProviderFailure: true,
     });
-    finalizedBooking = bootstrappedPayment
-      ? await bookingCtx.providers.repository.getBookingById(finalizedBooking.id) ?? finalizedBooking
-      : finalizedBooking;
 
     await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
 
@@ -1994,7 +2001,13 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const policy = await loadBookingPolicy(ctx);
   const siteUrl = bookingSiteUrl(ctx);
   const manageUrl = await buildManageUrl(siteUrl, booking);
-  const paymentMode = await inferPaymentModeForBooking(booking.id, ctx.providers.repository);
+  const paymentMode = booking.booking_type === 'FREE'
+    ? 'free'
+    : booking.booking_type === 'PAY_NOW'
+      ? 'pay_now'
+      : booking.booking_type === 'PAY_LATER'
+        ? 'pay_later'
+        : null;
   let payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
 

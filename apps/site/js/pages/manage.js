@@ -7,12 +7,17 @@
   const adminToken = params.get('admin_token');
   const card   = document.getElementById('manage-card');
   const contactHref = siteConfig.contactHref || 'contact.html';
+  const homepageHref = siteClient && typeof siteClient.resolveHomepageHref === 'function'
+    ? siteClient.resolveHomepageHref()
+    : (function () {
+        try { return new URL('/index.html', window.location.origin).toString(); } catch (_) { return 'index.html'; }
+      }());
 
   function renderLoadError(title, message) {
     card.innerHTML = `
       <h1 class="manage-title">${title}</h1>
       <p class="manage-subtitle">${message}</p>
-      <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
+      <a href="${homepageHref}" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
     `;
   }
 
@@ -190,7 +195,7 @@
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
       <a href="${contactHref}" class="btn btn-ghost">Contact Yair</a>
-      <a href="index.html" class="btn btn-ghost">← Homepage</a>
+      <a href="${homepageHref}" class="btn btn-ghost">← Homepage</a>
     </div>
   `;
   if (typeof initAddToCalendar === 'function') initAddToCalendar(card);
@@ -218,7 +223,7 @@
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
           <p class="manage-subtitle">${escapeHtml(cancelResult.message || `Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.`)}</p>
-          <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
+          <a href="${homepageHref}" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {
         document.getElementById('cancel-yes').textContent = 'Yes, cancel booking';

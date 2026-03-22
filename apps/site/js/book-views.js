@@ -1,6 +1,17 @@
 'use strict';
 
 (function initBookPageViews(global) {
+  function resolveHomepageHref() {
+    if (global.siteClient && typeof global.siteClient.resolveHomepageHref === 'function') {
+      return global.siteClient.resolveHomepageHref();
+    }
+    try {
+      return new URL('/index.html', global.location.origin).toString();
+    } catch (_) {
+      return 'index.html';
+    }
+  }
+
   function createBookPageViews(deps) {
     const {
       ctx,
@@ -588,6 +599,7 @@
       const isEvent = ctx.source === 'evening';
       const isReschedule = ctx.mode === 'reschedule';
       const isPaid = isEvent ? ctx.isPaid : isSessionPayNowFlow();
+      const homepageHref = resolveHomepageHref();
 
       if (isReschedule) {
         const startsAt = state.rescheduleUpdated?.starts_at || state.selectedSlot?.start || state.currentBooking?.starts_at;
@@ -604,7 +616,7 @@
             <p class="confirmation__message">
               Your new session time is <strong>${startsAt ? `${escHtml(formatDateLong(startsAt))} · ${escHtml(formatTime(startsAt))}` : 'saved'}</strong>.
             </p>
-            <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
+            <a href="${homepageHref}" class="btn btn-ghost confirmation__back">← Back to homepage</a>
           </div>
         `;
       }
@@ -633,7 +645,7 @@
                 A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.
                 Please confirm your booking there first. After that, payment is due 24 hours before your session.
               </p>
-              <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
+              <a href="${homepageHref}" class="btn btn-ghost confirmation__back">← Back to homepage</a>
             </div>
           `;
         }
@@ -664,7 +676,7 @@
               }
             </p>
             ${widget ? `<div class="confirmation__calendar">${widget}</div>` : ''}
-            <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
+            <a href="${homepageHref}" class="btn btn-ghost confirmation__back">← Back to homepage</a>
           </div>
         `;
       }

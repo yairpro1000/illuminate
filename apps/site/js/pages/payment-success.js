@@ -4,6 +4,11 @@
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id');
   const card = document.querySelector('.result-card');
+  const homepageHref = siteClient && typeof siteClient.resolveHomepageHref === 'function'
+    ? siteClient.resolveHomepageHref()
+    : (function () {
+        try { return new URL('/index.html', window.location.origin).toString(); } catch (_) { return 'index.html'; }
+      }());
   if (!card || !sessionId) return;
 
   function renderCalendarSection(calendarEvent) {
@@ -20,7 +25,9 @@
     const data = await siteClient.requestJson(`/api/bookings/payment-status?session_id=${encodeURIComponent(sessionId)}`);
 
     const isConfirmed = data.status === 'CONFIRMED' || data.status === 'COMPLETED';
-    const actionHref = data.next_action_url || data.manage_url || 'index.html';
+    const actionHref = siteClient && typeof siteClient.resolveSiteActionHref === 'function'
+      ? siteClient.resolveSiteActionHref(data.next_action_url || data.manage_url || null, data.next_action_label || null)
+      : (data.next_action_url || data.manage_url || homepageHref);
     const actionText = data.next_action_label || (data.manage_url ? 'Manage booking' : '← Back to homepage');
     const calendarHtml = renderCalendarSection(data.calendar_event);
     card.innerHTML = `

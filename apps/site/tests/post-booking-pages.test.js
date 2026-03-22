@@ -19,6 +19,18 @@ describe('post-booking pages', () => {
     window.siteClient = {
       requestJson: async () => ({}),
       detectUiTestMode: () => 'playwright',
+      resolveHomepageHref: () => new URL('/index.html', window.location.origin).toString(),
+      resolveSiteActionHref: (href, label) => {
+        const normalizedLabel = String(label || '')
+          .replace(/[←→]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase()
+        if (normalizedLabel === 'back to homepage' || normalizedLabel === 'homepage') {
+          return new URL('/index.html', window.location.origin).toString()
+        }
+        return href || new URL('/index.html', window.location.origin).toString()
+      },
       maybeRenderMockEmailPreview: async (data) => {
         if (data && data.mock_email_preview) {
           window.IlluminateMockEmailPreview.render({ preview: data.mock_email_preview })
@@ -57,7 +69,7 @@ describe('post-booking pages', () => {
     expect(document.querySelector('#confirm-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
     const links = Array.from(document.querySelectorAll('#confirm-card a'))
     expect(links[0]?.getAttribute('href')).toBe('/continue-payment.html?token=tok-123')
-    expect(links[1]?.getAttribute('href')).toBe('index.html')
+    expect(links[1]?.getAttribute('href')).toBe(`${window.location.origin}/index.html`)
   })
 
   it('payment success page treats uppercase CONFIRMED as confirmed', async () => {
@@ -83,6 +95,25 @@ describe('post-booking pages', () => {
     expect(document.querySelector('.result-title')?.textContent).toContain('Payment confirmed')
     expect(document.querySelector('.result-card a')?.getAttribute('href')).toBe('/manage.html?token=tok-123')
     expect(document.querySelector('.result-card .atc-widget')?.getAttribute('data-atc-title')).toBe('Clarity Session — ILLUMINATE by Yair Benharroch')
+  })
+
+  it('confirm page rewrites homepage actions to the current origin', async () => {
+    document.body.innerHTML = '<div id="confirm-card"></div>'
+    window.history.replaceState({}, '', '/confirm.html?token=tok-home')
+    window.siteClient.requestJson = async () => ({
+      source: 'session',
+      status: 'CONFIRMED',
+      next_action_url: 'https://letsilluminate.co/index.html',
+      next_action_label: '← Back to homepage',
+    })
+
+    evalCode(confirmPageCode)
+    await flush()
+
+    expect(document.querySelector('#confirm-card a.btn.btn-primary')?.getAttribute('href'))
+      .toBe(`${window.location.origin}/index.html`)
+    expect(document.querySelector('#confirm-card a.btn.btn-ghost')?.getAttribute('href'))
+      .toBe(`${window.location.origin}/index.html`)
   })
 
   it('confirm page renders the captured email iframe when mock preview metadata is present', async () => {

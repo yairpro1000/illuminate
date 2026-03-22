@@ -188,6 +188,46 @@ export async function startApiLog(
   return inserted?.id ?? null;
 }
 
+async function insertCompletedApiLog(
+  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  input: {
+    operation: OperationContext;
+    direction: 'inbound' | 'outbound';
+    provider?: string | null;
+    method: string;
+    url: string;
+    requestHeaders?: HeadersInit | null;
+    requestBody?: unknown;
+    responseStatus?: number | null;
+    responseHeaders?: HeadersInit | null;
+    responseBody?: unknown;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    startedAtMs: number;
+  },
+): Promise<string | null> {
+  const inserted = await safeInsert(env, 'api_logs', {
+    app_area: input.operation.appArea,
+    request_id: input.operation.requestId,
+    correlation_id: input.operation.correlationId,
+    ...operationReferenceFields(input.operation),
+    direction: input.direction,
+    provider: input.provider ?? null,
+    method: input.method,
+    url: input.url,
+    request_headers_redacted: sanitizeHeaders(input.requestHeaders) ?? {},
+    request_body_preview: sanitizeBody(input.requestBody),
+    completed_at: new Date().toISOString(),
+    response_status: input.responseStatus ?? null,
+    response_headers_redacted: sanitizeHeaders(input.responseHeaders) ?? {},
+    response_body_preview: sanitizeBody(input.responseBody),
+    duration_ms: Math.max(0, Date.now() - input.startedAtMs),
+    error_code: input.errorCode ?? null,
+    error_message: input.errorMessage ?? null,
+  });
+  return inserted?.id ?? null;
+}
+
 export async function finalizeApiLog(
   env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
   apiLogId: string | null,
@@ -249,15 +289,6 @@ export async function withOutboundProviderCall<T>(
 ): Promise<T> {
   const startedAtMs = Date.now();
   const url = `provider://${input.provider}/${input.operationName}`;
-  const apiLogId = await startApiLog(env, {
-    operation,
-    direction: 'outbound',
-    provider: input.provider,
-    method: input.operationName,
-    url,
-    requestBody: { args: input.args },
-  });
-  operation.latestProviderApiLogId = apiLogId;
 
   logger.logInfo({
     source: 'provider',
@@ -266,35 +297,75 @@ export async function withOutboundProviderCall<T>(
     context: {
       provider: input.provider,
       provider_operation: input.operationName,
-      api_log_id: apiLogId,
       branch_taken: 'execute_provider_call_via_shared_wrapper',
+      outbound_api_log_write_mode: 'insert_completed_row_after_provider_call',
     },
   });
 
   try {
     const result = await run();
-    await finalizeApiLog(env, apiLogId, {
+    const apiLogId = await insertCompletedApiLog(env, {
       operation,
+      direction: 'outbound',
+      provider: input.provider,
+      method: input.operationName,
+      url,
+      requestBody: { args: input.args },
       responseStatus: 200,
       responseBody: result,
       startedAtMs,
     });
     operation.latestProviderApiLogId = apiLogId;
+    logger.logInfo({
+      source: 'provider',
+      eventType: 'provider_wrapper_completed',
+      message: 'Provider call completed through shared outbound wrapper',
+      context: {
+        provider: input.provider,
+        provider_operation: input.operationName,
+        api_log_id: apiLogId,
+        status_code: 200,
+        branch_taken: 'provider_call_succeeded',
+        deny_reason: null,
+      },
+    });
     return result;
   } catch (error) {
-    await finalizeApiLog(env, apiLogId, {
+    const statusCode = typeof (error as { status?: unknown })?.status === 'number'
+      ? (error as { status: number }).status
+      : null;
+    const errorCode = typeof (error as { code?: unknown })?.code === 'string'
+      ? (error as { code: string }).code
+      : null;
+    const errorText = errorMessage(error);
+    const apiLogId = await insertCompletedApiLog(env, {
       operation,
-      responseStatus: typeof (error as { status?: unknown })?.status === 'number'
-        ? (error as { status: number }).status
-        : null,
+      direction: 'outbound',
+      provider: input.provider,
+      method: input.operationName,
+      url,
+      requestBody: { args: input.args },
+      responseStatus: statusCode,
       responseBody: null,
-      errorCode: typeof (error as { code?: unknown })?.code === 'string'
-        ? (error as { code: string }).code
-        : null,
-      errorMessage: errorMessage(error),
+      errorCode,
+      errorMessage: errorText,
       startedAtMs,
     });
     operation.latestProviderApiLogId = apiLogId;
+    logger.logWarn({
+      source: 'provider',
+      eventType: 'provider_wrapper_failed',
+      message: 'Provider call failed in shared outbound wrapper',
+      context: {
+        provider: input.provider,
+        provider_operation: input.operationName,
+        api_log_id: apiLogId,
+        status_code: statusCode,
+        error_code: errorCode,
+        branch_taken: 'provider_call_failed',
+        deny_reason: errorText,
+      },
+    });
     throw error;
   }
 }

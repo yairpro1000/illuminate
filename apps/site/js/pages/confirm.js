@@ -4,6 +4,11 @@
   const params  = new URLSearchParams(window.location.search);
   const token   = params.get('token');
   const card    = document.getElementById('confirm-card');
+  const homepageHref = siteClient && typeof siteClient.resolveHomepageHref === 'function'
+    ? siteClient.resolveHomepageHref()
+    : (function () {
+        try { return new URL('/index.html', window.location.origin).toString(); } catch (_) { return 'index.html'; }
+      }());
 
   function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
@@ -40,7 +45,7 @@
   </svg>`;
 
   if (!token) {
-    show(warnSvg, 'Invalid link', 'This confirmation link is missing required information.', 'index.html', '← Homepage');
+    show(warnSvg, 'Invalid link', 'This confirmation link is missing required information.', homepageHref, '← Homepage');
     return;
   }
 
@@ -57,9 +62,11 @@
         : (awaitsPayment
           ? 'Your booking is confirmed and awaiting payment.'
           : 'Your booking is confirmed.'),
-      data.next_action_url || 'index.html',
+      siteClient && typeof siteClient.resolveSiteActionHref === 'function'
+        ? siteClient.resolveSiteActionHref(data.next_action_url || null, data.next_action_label || null)
+        : (data.next_action_url || homepageHref),
       data.next_action_label || '← Back to homepage',
-      'index.html',
+      homepageHref,
       '← Back to homepage',
       calendarHtml,
     );
@@ -72,11 +79,11 @@
         expired
           ? 'This confirmation link has expired. Please make a new booking.'
           : (err.message || 'Something went wrong. Please try again or contact us.'),
-        'index.html',
+        homepageHref,
         '← Homepage',
       );
       return;
     }
-    show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', 'index.html', '← Homepage');
+    show(warnSvg, 'Connection error', 'Could not reach the server. Please check your connection and try again.', homepageHref, '← Homepage');
   }
 })();
