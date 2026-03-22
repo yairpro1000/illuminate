@@ -257,9 +257,38 @@ describe('mock email inline preview contract', () => {
       email_id: bookingEmailId(pendingAData.booking_id, 'booking_confirmation'),
     }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirm_request_started',
+      context: expect.objectContaining({
+        has_token: true,
+        branch_taken: 'evaluate_confirm_token',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirm_token_redemption_completed',
+      context: expect.objectContaining({
+        booking_id: pendingAData.booking_id,
+        branch_taken: 'booking_confirmation_redeemed',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirm_public_action_resolution_completed',
+      context: expect.objectContaining({
+        booking_id: pendingAData.booking_id,
+        branch_taken: 'return_complete_payment_action',
+        has_checkout_url: true,
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'booking_confirm_mock_email_preview_decision',
       context: expect.objectContaining({
         branch_taken: 'include_mock_email_preview',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirm_request_completed',
+      context: expect.objectContaining({
+        booking_id: pendingAData.booking_id,
+        branch_taken: 'return_booking_confirmation_response',
       }),
     }));
 
@@ -391,6 +420,26 @@ describe('mock email inline preview contract', () => {
     expect(cancelData.mock_email_preview).toEqual(expect.objectContaining({
       email_id: bookingEmailId(bookData.booking_id, 'event_cancellation'),
       html_content: expect.stringContaining(freeEvent!.title),
+    }));
+  });
+
+  it('logs the deny branch when confirm is called without a token', async () => {
+    const ctx = makeCtx();
+
+    const response = await handleRequest(jsonRequest('/api/bookings/confirm'), ctx);
+    const data = await response.json() as Record<string, unknown>;
+
+    expect(response.status).toBe(400);
+    expect(data).toEqual(expect.objectContaining({
+      error: 'BAD_REQUEST',
+      message: 'token is required',
+    }));
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_confirm_request_denied',
+      context: expect.objectContaining({
+        branch_taken: 'deny_missing_confirm_token',
+        deny_reason: 'confirm_token_missing',
+      }),
     }));
   });
 });

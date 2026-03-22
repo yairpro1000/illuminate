@@ -7,8 +7,46 @@ import { confirmBookingEmail, getBookingPublicActionInfo } from '../services/boo
 export async function handleConfirm(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get('token');
-  if (!token) throw badRequest('token is required');
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_request_started',
+    message: 'Started booking confirmation request handling',
+    context: {
+      method: request.method,
+      path: url.pathname,
+      has_token: Boolean(token),
+      branch_taken: 'evaluate_confirm_token',
+      deny_reason: null,
+    },
+  });
+  if (!token) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'booking_confirm_request_denied',
+      message: 'Denied booking confirmation request because token is missing',
+      context: {
+        method: request.method,
+        path: url.pathname,
+        has_token: false,
+        branch_taken: 'deny_missing_confirm_token',
+        deny_reason: 'confirm_token_missing',
+      },
+    });
+    throw badRequest('token is required');
+  }
 
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_token_redemption_started',
+    message: 'Started booking confirmation token redemption',
+    context: {
+      method: request.method,
+      path: url.pathname,
+      has_token: true,
+      branch_taken: 'redeem_confirm_token',
+      deny_reason: null,
+    },
+  });
   const booking = await confirmBookingEmail(token, {
     providers: ctx.providers,
     env: ctx.env,
@@ -18,6 +56,32 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     operation: ctx.operation,
     siteUrl: ctx.siteUrl,
   });
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_token_redemption_completed',
+    message: 'Completed booking confirmation token redemption',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      booking_type: booking.booking_type,
+      branch_taken: 'booking_confirmation_redeemed',
+      deny_reason: null,
+    },
+  });
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_public_action_resolution_started',
+    message: 'Started booking confirmation next-action resolution',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      branch_taken: 'resolve_public_next_action',
+      deny_reason: null,
+    },
+  });
   const actionInfo = await getBookingPublicActionInfo(booking, {
     providers: ctx.providers,
     env: ctx.env,
@@ -26,6 +90,27 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     correlationId: ctx.correlationId,
     operation: ctx.operation,
     siteUrl: ctx.siteUrl,
+  });
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_public_action_resolution_completed',
+    message: 'Completed booking confirmation next-action resolution',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      has_checkout_url: Boolean(actionInfo.checkoutUrl),
+      has_manage_url: Boolean(actionInfo.manageUrl),
+      has_next_action_url: Boolean(actionInfo.nextActionUrl),
+      next_action_label: actionInfo.nextActionLabel,
+      calendar_sync_pending_retry: actionInfo.calendarSyncPendingRetry,
+      branch_taken: actionInfo.checkoutUrl
+        ? 'return_complete_payment_action'
+        : actionInfo.manageUrl
+          ? 'return_manage_booking_action'
+          : 'return_confirmed_without_followup_action',
+      deny_reason: actionInfo.checkoutUrl || actionInfo.manageUrl ? null : 'no_public_followup_action_available',
+    },
   });
   const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
   const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
@@ -42,6 +127,22 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
       email_kind: emailDispatch?.emailKind ?? null,
       branch_taken: emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
       deny_reason: emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
+    },
+  });
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_request_completed',
+    message: 'Completed booking confirmation request handling',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      has_checkout_url: Boolean(actionInfo.checkoutUrl),
+      has_manage_url: Boolean(actionInfo.manageUrl),
+      has_mock_email_preview: Boolean(mockEmailPreview),
+      branch_taken: 'return_booking_confirmation_response',
+      deny_reason: null,
     },
   });
 
