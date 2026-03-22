@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 
-export const SITE_BASE_URL = process.env.E2E_SITE_BASE_URL || 'https://letsilluminate.co';
-export const ADMIN_BASE_URL = process.env.E2E_ADMIN_BASE_URL || 'https://admin.letsilluminate.co';
-export const API_BASE_URL = process.env.E2E_API_BASE_URL || 'https://api.letsilluminate.co';
+export const SITE_BASE_URL = process.env.E2E_SITE_BASE_URL || 'https://illuminate-tw9.pages.dev';
+export const ADMIN_BASE_URL = process.env.E2E_ADMIN_BASE_URL || 'https://illuminateadmin.pages.dev';
+export const API_BASE_URL = process.env.E2E_API_BASE_URL || 'https://illuminate.yairpro.workers.dev';
 
 type ServiceKey = 'repository' | 'email' | 'calendar' | 'payments' | 'antibot';
 

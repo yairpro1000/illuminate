@@ -18,8 +18,8 @@ PA apps still exist in the repo, but they are intentionally out of scope for the
 - technical companion: [docs/technical_companion.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/technical_companion.md)
 - frozen user scenarios: [docs/expected_user_scenarios_freeze_illuminate_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/expected_user_scenarios_freeze_illuminate_2026-03-15.md)
 - pay-later refinement: [docs/pay_later_refined_flow_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/pay_later_refined_flow_2026-03-15.md)
-- live schema snapshot: [docs/public_schema_snapshot_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-15.sql)
-- editor-ready DDL: [docs/public_schema_editor_ddl_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-15.sql)
+- live schema snapshot: [docs/public_schema_snapshot_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-22.sql)
+- editor-ready DDL: [docs/public_schema_editor_ddl_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-22.sql)
 - manual testing companion: [docs/test-plans/manual_testing_companion.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/manual_testing_companion.md)
 - E2E UI matrix: [docs/test-plans/e2e_ui_test_matrix.xlsx](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/e2e_ui_test_matrix.xlsx)
 

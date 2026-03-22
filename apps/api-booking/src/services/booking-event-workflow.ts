@@ -37,6 +37,11 @@ export interface BookingSideEffectExecutorInput {
 export interface BookingSideEffectExecutorResult {
   booking: Booking;
   metadata?: Record<string, unknown> | null;
+  nextSideEffects?: BookingSideEffect[];
+  handledFailure?: {
+    errorMessage: string;
+    enableCalendarBackoff?: boolean;
+  } | null;
 }
 
 interface StartedAttempt {
@@ -78,8 +83,10 @@ export async function runBookingEventEffects(
 ): Promise<BookingEventExecutionResult> {
   let currentBooking = input.booking;
   const effectResults: BookingEventEffectResult[] = [];
+  const pendingEffects = [...input.sideEffects];
+  const queuedEffectIds = new Set(input.sideEffects.map((effect) => effect.id));
 
-  if (input.sideEffects.length === 0) {
+  if (pendingEffects.length === 0) {
     const finalizedEvent = await finalizeBookingEventStatus(input.event.id, ctx);
     return {
       booking: currentBooking,
@@ -96,7 +103,9 @@ export async function runBookingEventEffects(
     updated_at: new Date().toISOString(),
   });
 
-  for (const effect of input.sideEffects) {
+  while (pendingEffects.length > 0) {
+    const effect = pendingEffects.shift();
+    if (!effect) break;
     const result = await executeBookingSideEffectLifecycle(
       {
         booking: currentBooking,
@@ -110,6 +119,11 @@ export async function runBookingEventEffects(
     );
     currentBooking = result.booking;
     effectResults.push(result.effectResult);
+    for (const nextEffect of result.nextSideEffects) {
+      if (queuedEffectIds.has(nextEffect.id)) continue;
+      queuedEffectIds.add(nextEffect.id);
+      pendingEffects.push(nextEffect);
+    }
   }
 
   const finalizedEvent = await finalizeBookingEventStatus(input.event.id, ctx, { startedExecution: true });
@@ -170,7 +184,7 @@ async function executeBookingSideEffectLifecycle(
     executeEffect: (input: BookingSideEffectExecutorInput) => Promise<BookingSideEffectExecutorResult>;
   },
   ctx: BookingContext,
-): Promise<{ booking: Booking; effectResult: BookingEventEffectResult }> {
+): Promise<{ booking: Booking; effectResult: BookingEventEffectResult; nextSideEffects: BookingSideEffect[] }> {
   const startedAttempt = await startBookingSideEffectAttempt(input.effect, input.booking, input.event, ctx);
   try {
     const executed = await input.executeEffect({
@@ -181,6 +195,32 @@ async function executeBookingSideEffectLifecycle(
       sourceOperation: input.sourceOperation,
       triggerSource: input.triggerSource,
     });
+    if (executed.handledFailure) {
+      await finishBookingSideEffectAttempt(
+        {
+          effect: input.effect,
+          booking: executed.booking,
+          attempt: startedAttempt,
+          status: 'FAILED',
+          errorMessage: executed.handledFailure.errorMessage,
+          apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+          enableCalendarBackoff: Boolean(executed.handledFailure.enableCalendarBackoff),
+          logSource: input.triggerSource === 'cron' ? 'cron' : 'backend',
+        },
+        ctx,
+      );
+      return {
+        booking: executed.booking,
+        effectResult: {
+          effectId: input.effect.id,
+          effectIntent: input.effect.effect_intent,
+          booking: executed.booking,
+          metadata: executed.metadata ?? null,
+          outcome: 'FAILED',
+        },
+        nextSideEffects: executed.nextSideEffects ?? [],
+      };
+    }
     const apiLogId = consumeLatestProviderApiLogId(ctx.operation);
     await finishBookingSideEffectAttempt(
       {
@@ -204,6 +244,7 @@ async function executeBookingSideEffectLifecycle(
         metadata: executed.metadata ?? null,
         outcome: 'SUCCESS',
       },
+      nextSideEffects: executed.nextSideEffects ?? [],
     };
   } catch (error) {
     const errorMessage = error instanceof Error && error.message ? error.message : String(error);

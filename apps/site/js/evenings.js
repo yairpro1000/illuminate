@@ -51,8 +51,8 @@
     };
   }
 
-  const R2_PRIMARY_BASE = 'https://images.letsilluminate.co';
-  const R2_FALLBACK_BASE = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
+  const R2_PRIMARY_BASE = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
+  const R2_FALLBACK_BASE = 'https://images.letsilluminate.co';
 
   function escapeHtml(value) {
     return String(value ?? '')

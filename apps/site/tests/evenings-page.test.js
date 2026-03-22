@@ -164,12 +164,12 @@ describe('evenings page', () => {
 
     const image = document.querySelector('.event-card__img')
     expect(image).not.toBeNull()
-    expect(image.getAttribute('src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
-    expect(image.getAttribute('data-fallback-src')).toBe('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/events/abc123-body.jpg')
+    expect(image.getAttribute('src')).toBe('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/events/abc123-body.jpg')
+    expect(image.getAttribute('data-fallback-src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
     expect(image.getAttribute('alt')).toBe('Body Evening')
   })
 
-  it('falls back to the public r2.dev host when the primary image host fails', async () => {
+  it('falls back to the legacy images host when the primary r2.dev image host fails', async () => {
     window.siteClient.requestJson.mockResolvedValue({
       events: [
         {
@@ -197,7 +197,7 @@ describe('evenings page', () => {
     const image = document.querySelector('.event-card__img')
     image.dispatchEvent(new Event('error'))
 
-    expect(image.getAttribute('src')).toBe('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/events/abc123-body.jpg')
+    expect(image.getAttribute('src')).toBe('https://images.letsilluminate.co/events/abc123-body.jpg')
     expect(image.getAttribute('data-fallback-applied')).toBe('true')
   })
 

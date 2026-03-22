@@ -1,6 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
-import { resolveBookingManageAccess, rescheduleBooking } from '../services/booking-service.js';
+import { rescheduleBooking } from '../services/booking-service.js';
+import { resolveBookingManageAccess } from '../services/booking-access-service.js';
 
 // POST /api/bookings/reschedule
 // Body: { token: string, new_start: string, new_end: string, timezone?: string }

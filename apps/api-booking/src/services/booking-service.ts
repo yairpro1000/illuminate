@@ -13,6 +13,7 @@ import type {
   BookingCurrentStatus,
   BookingEffectIntent,
   BookingEventRecord,
+  BookingEventStatus,
   BookingEventType,
   BookingSideEffect,
   Event,
@@ -20,8 +21,8 @@ import type {
   PaymentStatus,
   SessionTypeRecord,
 } from '../types.js';
-import { RetryableCalendarWriteError, isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
-import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
+import { isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
+import { createAdminManageToken, generateToken, hashToken } from './token-service.js';
 import { ApiError, badRequest, conflict, gone, notFound } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
@@ -35,9 +36,6 @@ import {
 } from '../domain/booking-effect-policy.js';
 import {
   isPaymentContinuableOnline,
-  isPaymentDueTrackedStatus,
-  isPaymentExpiryTrackedStatus,
-  isPaymentManualArrangementStatus,
   isPaymentSettledStatus,
 } from '../domain/payment-status.js';
 import {
@@ -45,13 +43,14 @@ import {
 } from '../providers/repository/interface.js';
 import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './coupon-service.js';
 import { computePaymentDueReminderTime } from './reminder-service.js';
-import { recordSideEffectAttempts } from './side-effect-attempts.js';
 import {
   runBookingEventEffects,
   type BookingEventExecutionResult,
-  type BookingSideEffectExecutorInput,
   finalizeBookingEventStatus,
 } from './booking-event-workflow.js';
+import { createBookingSideEffectExecutor } from './booking-side-effect-executor.js';
+import { resolveBookingManageAccess } from './booking-access-service.js';
+import { evaluateManageBookingPolicy } from './booking-public-action-service.js';
 import {
   effectiveRefundStatus,
   evaluateCancellationRefundNoticeDecision,
@@ -111,7 +110,7 @@ async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
   return cached.bookingPolicyConfigPromise;
 }
 
-function bookingSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
+export function bookingSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
   return String(ctx.siteUrl || ctx.env.SITE_URL || '').replace(/\/+$/g, '');
 }
 
@@ -412,6 +411,10 @@ export interface ContinuePaymentActionInfo {
   denyReason: string | null;
 }
 
+export type BookingEventStatusSelector =
+  | { mode: 'by_id'; bookingEventId: string }
+  | { mode: 'latest_of_type'; bookingId: string; eventType: BookingEventType };
+
 interface PaymentSettlementInput {
   payment: Pick<
     Payment,
@@ -473,7 +476,7 @@ async function resolveCommercialTerms(
   };
 }
 
-function paymentProviderUrl(payment: Pick<Payment, 'invoice_url' | 'checkout_url'> | null | undefined): string | null {
+export function paymentProviderUrl(payment: Pick<Payment, 'invoice_url' | 'checkout_url'> | null | undefined): string | null {
   return payment?.checkout_url ?? payment?.invoice_url ?? null;
 }
 
@@ -482,7 +485,7 @@ function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'
 }
 
 function buildCheckoutSuccessUrl(siteUrl: string, bookingId: string): string {
-  return `${siteUrl}/payment-success.html?booking_id=${encodeURIComponent(bookingId)}&session_id={CHECKOUT_SESSION_ID}`;
+  return `${siteUrl}/payment-success.html?booking_id=${encodeURIComponent(bookingId)}&token=${encodeURIComponent(buildStableManageToken(bookingId))}&booking_event_type=PAYMENT_SETTLED&session_id={CHECKOUT_SESSION_ID}`;
 }
 
 function buildCheckoutCancelUrl(siteUrl: string, bookingId: string): string {
@@ -520,7 +523,7 @@ function hasReusableContinuePaymentCheckout(
   return Boolean(payment?.checkout_url) && isPaymentContinuableOnline(payment?.status ?? null);
 }
 
-function canContinuePayLaterPayment(
+export function canContinuePayLaterPayment(
   booking: Pick<Booking, 'booking_type' | 'current_status'>,
   paymentStatus: Payment['status'] | null | undefined,
 ): boolean {
@@ -861,14 +864,14 @@ export async function createPayLaterBooking(
     bookingCtx,
   );
 
-  const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
+  const finalizedBooking = (await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
     transitionEventType: 'BOOKING_FORM_SUBMITTED',
     sourceOperation: 'create_pay_later_booking',
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, bookingCtx);
+  }, bookingCtx)).booking;
 
   return {
     bookingId: finalizedBooking.id,
@@ -960,14 +963,14 @@ async function createEventBookingInternal(
       },
       bookingCtx,
     );
-    const createdWithImmediateEffects = await applyImmediateNonCronSideEffectsForTransition({
+    const createdWithImmediateEffects = (await runImmediateBookingEventWorkflow({
       transitionEvent: created.event,
       transitionEventType: 'BOOKING_FORM_SUBMITTED',
       sourceOperation: options.viaLateAccess ? 'create_event_booking_with_access' : 'create_event_booking',
       bookingBeforeTransition: booking,
       bookingAfterTransition: created.booking,
       transitionSideEffects: created.sideEffects,
-    }, bookingCtx);
+    }, bookingCtx)).booking;
 
     if (options.viaLateAccess) {
       const confirmed = await bookingCtx.providers.repository.updateBooking(booking.id, {
@@ -1079,8 +1082,34 @@ export async function confirmBookingEmail(
     throw gone('This confirmation link is no longer valid');
   }
 
-  const verificationOutcome = await completePendingEmailVerificationEffects(submissionWithToken.id, booking, bookingCtx);
-  let finalizedBooking = verificationOutcome.bookingAfterVerification;
+  const verificationEffects = await listPendingEmailVerificationEffects(submissionWithToken.id, bookingCtx);
+  bookingCtx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_email_confirmation_verification_effects_decision',
+    message: 'Evaluated pending email-verification side effects during confirmation',
+    context: {
+      booking_id: booking.id,
+      booking_event_id: submissionWithToken.id,
+      verification_side_effect_ids: verificationEffects.map((effect) => effect.id),
+      verification_side_effect_statuses_before: verificationEffects.map((effect) => effect.status),
+      should_execute_verification_workflow: verificationEffects.length > 0,
+      branch_taken: verificationEffects.length > 0
+        ? 'run_verification_effect_through_shared_event_engine'
+        : 'verification_effect_already_completed_or_missing',
+      deny_reason: verificationEffects.length > 0 ? null : 'email_verification_effect_already_completed_or_missing',
+    },
+  });
+  let finalizedBooking = (await runBookingEventEffects(
+    {
+      booking,
+      event: submissionWithToken,
+      sideEffects: verificationEffects,
+      sourceOperation: 'confirm_booking_email_verification',
+      triggerSource: 'realtime',
+      executeEffect: executeBookingSideEffectAction,
+    },
+    bookingCtx,
+  )).booking;
   if (booking.booking_type !== 'FREE') {
     const payment = await ensurePayLaterPendingPaymentRecord(
       finalizedBooking,
@@ -1107,14 +1136,6 @@ export async function confirmBookingEmail(
       },
     });
   }
-
-  finalizedBooking = await applyImmediateReservationForTransition({
-    transitionEventType: 'BOOKING_FORM_SUBMITTED',
-    sourceOperation: 'confirm_booking_email_verification',
-    bookingBeforeTransition: booking,
-    bookingAfterTransition: finalizedBooking,
-    transitionSideEffects: verificationOutcome.downstreamSideEffects,
-  }, bookingCtx);
 
   bookingCtx.logger.logInfo?.({
     source: 'backend',
@@ -1423,7 +1444,8 @@ async function settleBookingPayment(
     bookingCtx,
   );
 
-  await applyImmediateReservationForTransition({
+  await runImmediateBookingEventWorkflow({
+    transitionEvent: transitioned.event,
     transitionEventType: 'PAYMENT_SETTLED',
     sourceOperation: input.settlementSource === 'ADMIN_UI'
       ? 'admin_manual_payment_settlement'
@@ -1434,121 +1456,7 @@ async function settleBookingPayment(
   }, bookingCtx);
 }
 
-// ── Manage-token resolution ────────────────────────────────────────────────
-
-export async function resolveBookingByManageToken(
-  rawToken: string,
-  repository: Providers['repository'],
-): Promise<Booking> {
-  const parsed = parseStableManageToken(rawToken);
-  const bookingId = parsed?.bookingId ?? rawToken;
-  if (!isUuidLike(bookingId)) {
-    throw badRequest('Invalid manage token');
-  }
-
-  const booking = await repository.getBookingById(bookingId);
-  if (!booking) throw notFound('Booking not found');
-  return booking;
-}
-
-export async function resolveBookingManageAccess(
-  rawToken: string,
-  rawAdminToken: string | null,
-  ctx: BookingContext,
-): Promise<{ booking: Booking; actorSource: 'PUBLIC_UI' | 'ADMIN_UI'; bypassPolicyWindow: boolean }> {
-  const booking = await resolveBookingByManageToken(rawToken, ctx.providers.repository);
-  if (!rawAdminToken) {
-    return { booking, actorSource: 'PUBLIC_UI', bypassPolicyWindow: false };
-  }
-  const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
-  if (!secret) {
-    return { booking, actorSource: 'PUBLIC_UI', bypassPolicyWindow: false };
-  }
-  const verified = await verifyAdminManageToken(rawAdminToken, secret);
-  if (!verified || verified.bookingId !== booking.id) {
-    return { booking, actorSource: 'PUBLIC_UI', bypassPolicyWindow: false };
-  }
-  return { booking, actorSource: 'ADMIN_UI', bypassPolicyWindow: true };
-}
-
-export async function resolveBookingEventAccess(
-  bookingEventId: string,
-  rawToken: string,
-  rawAdminToken: string | null,
-  ctx: BookingContext,
-): Promise<{ booking: Booking; event: BookingEventRecord }> {
-  const event = await ctx.providers.repository.getBookingEventById(bookingEventId);
-  if (!event) throw notFound('Booking event not found');
-
-  try {
-    const access = await resolveBookingManageAccess(rawToken, rawAdminToken, ctx);
-    if (access.booking.id === event.booking_id) {
-      return { booking: access.booking, event };
-    }
-  } catch {
-    // Fall through to confirmation-token access.
-  }
-
-  const tokenHash = await hashToken(rawToken);
-  const booking = await ctx.providers.repository.getBookingByConfirmTokenHash(tokenHash);
-  if (booking?.id === event.booking_id) {
-    return { booking, event };
-  }
-
-  throw notFound('Booking event not found');
-}
-
-export async function getBookingEventStatusSnapshot(
-  bookingEventId: string,
-  rawToken: string,
-  rawAdminToken: string | null,
-  ctx: BookingContext,
-): Promise<{
-  event: BookingEventRecord;
-  booking: Booking;
-  isTerminal: boolean;
-  message: string;
-  checkoutUrl: string | null;
-  refund: {
-    status: string;
-    invoiceUrl: string | null;
-    receiptUrl: string | null;
-    creditNoteUrl: string | null;
-  } | null;
-}> {
-  const { booking, event } = await resolveBookingEventAccess(bookingEventId, rawToken, rawAdminToken, ctx);
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-  const refundStatus = effectiveRefundStatus(payment);
-  const refund = refundStatus !== 'NONE'
-    ? {
-      status: refundStatus,
-      invoiceUrl: payment?.invoice_url ?? null,
-      receiptUrl: payment?.stripe_receipt_url ?? null,
-      creditNoteUrl: payment?.stripe_credit_note_url ?? null,
-    }
-    : null;
-  const checkoutUrl = payment?.checkout_url ?? null;
-  const message = event.event_type === 'BOOKING_CANCELED'
-    ? refundStatus === 'SUCCEEDED'
-      ? 'Booking cancelled and refund processed.'
-      : 'Booking cancelled.'
-    : event.event_type === 'BOOKING_RESCHEDULED'
-      ? 'Booking rescheduled.'
-      : event.event_type === 'BOOKING_FORM_SUBMITTED' && checkoutUrl
-        ? 'Payment checkout is ready.'
-        : event.status === 'FAILED'
-          ? 'This action could not be completed.'
-          : 'This action is still processing.';
-
-  return {
-    event,
-    booking,
-    isTerminal: event.status === 'SUCCESS' || event.status === 'FAILED',
-    message,
-    checkoutUrl,
-    refund,
-  };
-}
+// ── Access and public-action owners were moved to dedicated services ───────
 
 export async function buildAdminManageUrl(
   booking: Booking,
@@ -1634,14 +1542,14 @@ export async function cancelBooking(
     ctx,
   );
 
-  let finalBooking = await applyImmediateNonCronSideEffectsForTransition({
+  let finalBooking = (await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
     transitionEventType: 'BOOKING_CANCELED',
     sourceOperation: 'cancel_booking',
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx);
+  }, ctx)).booking;
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   ctx.logger.logInfo?.({
@@ -1705,14 +1613,14 @@ export async function expireBooking(
     ctx,
   );
 
-  const finalizedBooking = await applyImmediateNonCronSideEffectsForTransition({
+  const finalizedBooking = (await runImmediateBookingEventWorkflow({
     transitionEvent: result.event,
     transitionEventType: 'BOOKING_EXPIRED',
     sourceOperation: 'expire_booking_verification',
     bookingBeforeTransition: booking,
     bookingAfterTransition: result.booking,
     transitionSideEffects: result.sideEffects,
-  }, ctx);
+  }, ctx)).booking;
 
   const expiryNotificationEffects = result.sideEffects
     .filter((effect) => effect.effect_intent === 'SEND_BOOKING_EXPIRATION_NOTIFICATION');
@@ -1834,14 +1742,14 @@ export async function rescheduleBooking(
     ctx,
   );
 
-  const finalBooking = await applyImmediateNonCronSideEffectsForTransition({
+  const finalBooking = (await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
     transitionEventType: 'BOOKING_RESCHEDULED',
     sourceOperation: 'reschedule_booking',
     bookingBeforeTransition: updated,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx);
+  }, ctx)).booking;
   const finalizedEvent = await ctx.providers.repository.getBookingEventById(transitioned.event.id);
   return {
     ok: true,
@@ -1917,18 +1825,25 @@ async function retryCalendarSyncForConfirmedBookingIfMissing(
   return syncResult.booking;
 }
 
-async function completePendingEmailVerificationEffects(
+async function listPendingEmailVerificationEffects(
+  bookingEventId: string,
+  ctx: BookingContext,
+): Promise<BookingSideEffect[]> {
+  const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(bookingEventId);
+  return sideEffects.filter((effect) =>
+    effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION' && effect.status !== 'SUCCESS',
+  );
+}
+
+async function completeEmailVerificationWithinEvent(
   bookingEventId: string,
   booking: Booking,
   ctx: BookingContext,
 ): Promise<{
-  bookingAfterVerification: Booking;
-  downstreamSideEffects: BookingSideEffect[];
+  booking: Booking;
+  nextSideEffects: BookingSideEffect[];
 }> {
   const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(bookingEventId);
-  const pendingVerificationEffects = sideEffects.filter((effect) =>
-    effect.effect_intent === 'VERIFY_EMAIL_CONFIRMATION' && effect.status !== 'SUCCESS',
-  );
   const existingDownstreamSideEffects = sideEffects.filter((effect) =>
     effect.effect_intent === 'RESERVE_CALENDAR_SLOT' || effect.effect_intent === 'SEND_BOOKING_CONFIRMATION',
   );
@@ -1936,43 +1851,16 @@ async function completePendingEmailVerificationEffects(
     ? ['SEND_BOOKING_CONFIRMATION']
     : ['RESERVE_CALENDAR_SLOT', 'SEND_BOOKING_CONFIRMATION'];
   const policy = await loadBookingPolicy(ctx);
-
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_email_confirmation_verification_effects_decision',
-    message: 'Evaluated pending email-verification side effects during confirmation',
-    context: {
-      booking_id: booking.id,
-      booking_event_id: bookingEventId,
-      verification_side_effect_ids: pendingVerificationEffects.map((effect) => effect.id),
-      verification_side_effect_statuses_before: pendingVerificationEffects.map((effect) => effect.status),
-      existing_downstream_side_effect_ids: existingDownstreamSideEffects.map((effect) => effect.id),
-      existing_downstream_side_effect_intents: existingDownstreamSideEffects.map((effect) => effect.effect_intent),
-      desired_downstream_side_effect_intents: desiredDownstreamIntents,
-      should_mark_verification_effects_success: pendingVerificationEffects.length > 0,
-      branch_taken: pendingVerificationEffects.length > 0
-        ? 'mark_pending_email_verification_effects_success'
-        : 'no_pending_email_verification_effects_to_complete',
-      deny_reason: pendingVerificationEffects.length > 0 ? null : 'email_verification_effect_already_completed_or_missing',
-    },
-  });
-
-  let bookingAfterVerification = booking;
-  if (booking.current_status === 'PENDING') {
-    bookingAfterVerification = await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' });
-  }
-
-  if (pendingVerificationEffects.length > 0) {
-    await recordSideEffectAttempts(pendingVerificationEffects, {
-      status: 'SUCCESS',
-      errorMessage: null,
-      apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+  const bookingAfterVerification = booking.current_status === 'PENDING'
+    ? await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' })
+    : booking;
+  if (bookingAfterVerification.booking_type !== 'FREE') {
+    await ensurePayLaterPendingPaymentRecord(
+      bookingAfterVerification,
       ctx,
-      bookingId: booking.id,
-      logSource: 'backend',
-    });
+      'confirm_booking_email_verification',
+    );
   }
-
   const existingIntentSet = new Set(existingDownstreamSideEffects.map((effect) => effect.effect_intent));
   const missingDownstreamIntents = desiredDownstreamIntents.filter((intent) => !existingIntentSet.has(intent));
   const createdDownstreamSideEffects = missingDownstreamIntents.length > 0
@@ -1991,7 +1879,7 @@ async function completePendingEmailVerificationEffects(
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_email_confirmation_downstream_side_effects_decision',
-    message: 'Evaluated downstream side effects after successful email confirmation verification',
+    message: 'Completed email confirmation verification and resolved downstream side effects',
     context: {
       booking_id: booking.id,
       booking_event_id: bookingEventId,
@@ -2008,8 +1896,8 @@ async function completePendingEmailVerificationEffects(
   });
 
   return {
-    bookingAfterVerification,
-    downstreamSideEffects: [...existingDownstreamSideEffects, ...createdDownstreamSideEffects],
+    booking: bookingAfterVerification,
+    nextSideEffects: [...existingDownstreamSideEffects, ...createdDownstreamSideEffects],
   };
 }
 
@@ -2305,79 +2193,6 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   });
 }
 
-export async function getBookingPublicActionInfo(
-  booking: Booking,
-  ctx: BookingContext,
-): Promise<BookingPublicActionInfo> {
-  const event = booking.event_id
-    ? await ctx.providers.repository.getEventById(booking.event_id)
-    : null;
-  const manageUrl = isTerminalStatus(booking.current_status)
-    ? null
-    : await buildManageUrl(bookingSiteUrl(ctx), booking);
-
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-  const checkoutUrl = payment && canContinuePayLaterPayment(booking, payment.status)
-    ? buildContinuePaymentUrl(bookingSiteUrl(ctx), booking)
-    : payment
-      && !isTerminalStatus(booking.current_status)
-      && booking.booking_type !== 'PAY_LATER'
-      && isPaymentContinuableOnline(payment.status)
-      && Boolean(paymentProviderUrl(payment))
-      ? buildContinuePaymentUrl(bookingSiteUrl(ctx), booking)
-      : null;
-
-  if (checkoutUrl) {
-    return {
-      booking,
-      checkoutUrl,
-      manageUrl,
-      nextActionUrl: checkoutUrl,
-      nextActionLabel: 'Complete Payment',
-      calendarEvent: buildPublicCalendarEventInfo(booking, event),
-      calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
-    };
-  }
-
-  return {
-    booking,
-    checkoutUrl,
-    manageUrl,
-    nextActionUrl: manageUrl,
-    nextActionLabel: manageUrl ? 'Manage Booking' : null,
-    calendarEvent: buildPublicCalendarEventInfo(booking, event),
-    calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
-  };
-}
-
-export function evaluateManageBookingPolicy(startsAtIso: string, selfServiceLockWindowHours: number): {
-  canSelfServeChange: boolean;
-  hoursBeforeStart: number;
-  policyText: string;
-} {
-  const nowMs = Date.now();
-  const startsAtMs = new Date(startsAtIso).getTime();
-  const hoursBeforeStart = (startsAtMs - nowMs) / 3_600_000;
-  return {
-    canSelfServeChange: hoursBeforeStart >= selfServiceLockWindowHours,
-    hoursBeforeStart,
-    policyText: getBookingPolicyText(selfServiceLockWindowHours),
-  };
-}
-
-export async function getBookingPublicActionInfoByPaymentSession(
-  sessionId: string,
-  ctx: BookingContext,
-): Promise<BookingPublicActionInfo> {
-  const payment = await ctx.providers.repository.getPaymentByStripeCheckoutSessionId(sessionId);
-  if (!payment) throw notFound('Payment session not found');
-
-  const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
-  if (!booking) throw notFound('Booking not found');
-
-  return getBookingPublicActionInfo(booking, ctx);
-}
-
 export async function getContinuePaymentActionInfo(
   rawToken: string,
   rawAdminToken: string | null,
@@ -2586,22 +2401,6 @@ function buildStableManageToken(bookingId: string): string {
 function buildStartNewBookingUrl(siteUrl: string, booking: Booking): string {
   const base = siteUrl.replace(/\/+$/g, '');
   return booking.event_id ? `${base}/evenings.html` : `${base}/sessions.html`;
-}
-
-function parseStableManageToken(rawToken: string): { bookingId: string } | null {
-  const parts = rawToken.split('.');
-  if (parts.length === 2 && parts[0] === 'm1' && parts[1]) {
-    return { bookingId: parts[1] };
-  }
-  if (parts.length === 3 && parts[0] === 'm1' && parts[1]) {
-    // Backward compatibility with old signed shape: m1.<bookingId>.<signature>
-    return { bookingId: parts[1] };
-  }
-  return null;
-}
-
-function isUuidLike(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: BookingContext): Promise<void> {
@@ -3170,252 +2969,26 @@ export async function runImmediateBookingEventWorkflow(
   );
 }
 
-export async function applyImmediateNonCronSideEffectsForTransition(
-  input: {
-    transitionEvent: BookingEventRecord;
-    transitionEventType: BookingEventType;
-    sourceOperation: string;
-    bookingBeforeTransition: Booking;
-    bookingAfterTransition: Booking;
-    transitionSideEffects: BookingSideEffect[];
+export const executeBookingSideEffectAction = createBookingSideEffectExecutor({
+  buildConfirmUrl,
+  buildContinuePaymentUrl,
+  buildManageUrl,
+  bookingSiteUrl,
+  buildStartNewBookingUrl,
+  sendEmailConfirmation,
+  sendBookingCancellationConfirmation,
+  sendBookingFinalConfirmation,
+  send24hBookingReminder,
+  sendRefundConfirmationEmailForBooking: async (booking, effect, ctx) => {
+    await sendRefundConfirmationEmailForBooking(booking, effect, ctx);
   },
-  ctx: BookingContext,
-): Promise<Booking> {
-  const execution = await runImmediateBookingEventWorkflow(input, ctx);
-  return execution.booking;
-}
-
-export async function executeBookingSideEffectAction(
-  input: BookingSideEffectExecutorInput,
-): Promise<{ booking: Booking; metadata?: Record<string, unknown> | null }> {
-  const { effect, booking, event, ctx, sourceOperation, triggerSource } = input;
-  const bookingSite = bookingSiteUrl(ctx);
-  switch (effect.effect_intent) {
-    case 'SEND_BOOKING_CONFIRMATION_REQUEST': {
-      const confirmToken = typeof event.payload?.['confirm_token'] === 'string'
-        ? event.payload['confirm_token'] as string
-        : null;
-
-      if (!confirmToken) {
-        const viaLateAccess = event.payload?.['via_late_access'] === true;
-        if (viaLateAccess) {
-          ctx.logger.logInfo?.({
-            source: 'backend',
-            eventType: 'realtime_side_effect_noop',
-            message: 'Skipped confirmation email for late-access booking',
-            context: {
-              booking_id: booking.id,
-              transition_event_type: event.event_type,
-              source_operation: sourceOperation,
-              side_effect_id: effect.id,
-              side_effect_intent: effect.effect_intent,
-              branch_taken: 'skip_confirmation_email_late_access_flow',
-              deny_reason: 'late_access_booking_has_no_confirm_token',
-            },
-          });
-          return { booking };
-        }
-        throw new Error('confirm_token_missing');
-      }
-
-      const confirmUrl = buildConfirmUrl(bookingSite, confirmToken);
-      await sendEmailConfirmation(booking, confirmUrl, ctx);
-      return { booking };
-    }
-
-    case 'SEND_PAYMENT_LINK': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.invoice_url
-        ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(bookingSite, booking);
-      if (!payUrl) throw new Error('checkout_url_missing');
-      const alreadySettled = isPaymentSettledStatus(payment?.status);
-      const manualArrangement = isPaymentManualArrangementStatus(payment?.status);
-      if (alreadySettled) throw new Error('irrelevant_payment_link_already_settled');
-      if (manualArrangement) throw new Error('irrelevant_payment_link_manual_arrangement');
-
-      const manageUrl = await buildManageUrl(bookingSite, booking);
-      const policy = await getBookingPolicyConfig(ctx.providers.repository);
-      await ctx.providers.email.sendBookingPaymentDue(
-        booking,
-        payUrl,
-        manageUrl,
-        new Date(
-          new Date(booking.starts_at).getTime() - policy.paymentDueBeforeStartHours * 60 * 60 * 1000,
-        ).toISOString(),
-      );
-      return { booking };
-    }
-
-    case 'SEND_PAYMENT_REMINDER': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      const payUrl = payment?.invoice_url
-        ?? payment?.checkout_url
-        ?? buildContinuePaymentUrl(bookingSite, booking);
-      if (!payUrl) throw new Error('checkout_url_missing');
-
-      if (!booking.event_id) {
-        await ctx.providers.email.sendBookingPaymentReminder(booking, payUrl);
-      } else {
-        const eventRecord = await ctx.providers.repository.getEventById(booking.event_id);
-        if (!eventRecord) throw new Error('event_not_found');
-        await ctx.providers.email.sendEventFollowup(booking, eventRecord, payUrl);
-      }
-
-      return { booking };
-    }
-
-    case 'RESERVE_CALENDAR_SLOT': {
-      const operation: 'create' | 'update' = booking.google_event_id ? 'update' : 'create';
-      const result = await retryCalendarSyncForBooking(booking, operation, ctx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return { booking: result.booking };
-    }
-
-    case 'UPDATE_CALENDAR_SLOT': {
-      const result = await retryCalendarSyncForBooking(booking, 'update', ctx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return { booking: result.booking };
-    }
-
-    case 'CANCEL_CALENDAR_SLOT': {
-      const result = await retryCalendarSyncForBooking(booking, 'delete', ctx);
-      if (!result.calendarSynced) {
-        if (result.retryableFailure) {
-          throw new RetryableCalendarWriteError(
-            result.failureReason ?? 'calendar_sync_failed',
-            { statusCode: null, reason: result.retryableFailureReason },
-          );
-        }
-        throw new Error(result.failureReason ?? 'calendar_sync_failed');
-      }
-      return { booking: result.booking };
-    }
-
-    case 'SEND_BOOKING_EXPIRATION_NOTIFICATION': {
-      await ctx.providers.email.sendBookingExpired(booking, buildStartNewBookingUrl(bookingSite, booking));
-      return { booking };
-    }
-
-    case 'SEND_BOOKING_CANCELLATION_CONFIRMATION': {
-      await sendBookingCancellationConfirmation(booking, ctx);
-      return { booking };
-    }
-
-    case 'SEND_BOOKING_CONFIRMATION': {
-      await sendBookingFinalConfirmation(booking, ctx);
-      return { booking };
-    }
-
-    case 'SEND_BOOKING_REFUND_CONFIRMATION': {
-      await sendRefundConfirmationEmailForBooking(booking, effect, ctx);
-      return { booking };
-    }
-
-    case 'SEND_EVENT_REMINDER': {
-      await send24hBookingReminder(booking, ctx);
-      return { booking };
-    }
-
-    case 'CREATE_STRIPE_CHECKOUT': {
-      const checkout = await ensureCheckoutForBooking(booking, ctx);
-      return {
-        booking,
-        metadata: {
-          checkout_url: checkout.checkoutUrl,
-          checkout_hold_expires_at: checkout.expiresAt,
-        },
-      };
-    }
-
-    case 'CREATE_STRIPE_REFUND': {
-      await initiateAutomaticCancellationRefund(booking, ctx);
-      return { booking };
-    }
-
-    case 'VERIFY_EMAIL_CONFIRMATION': {
-      if (booking.current_status === 'PENDING') {
-        return { booking: await expireBooking(booking, ctx) };
-      }
-      return { booking };
-    }
-
-    case 'VERIFY_STRIPE_PAYMENT': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      if (isPaymentSettledStatus(payment?.status)) {
-        const transition = await appendBookingEventWithEffects(
-          booking.id,
-          'PAYMENT_SETTLED',
-          triggerSource === 'cron' ? 'SYSTEM' : 'WEBHOOK',
-          {
-            side_effect_id: effect.id,
-            stripe_checkout_session_id: payment?.stripe_checkout_session_id,
-            stripe_payment_intent_id: payment?.stripe_payment_intent_id,
-            stripe_invoice_id: payment?.stripe_invoice_id,
-          },
-          ctx,
-        );
-        const executed = await runImmediateBookingEventWorkflow({
-          transitionEvent: transition.event,
-          transitionEventType: 'PAYMENT_SETTLED',
-          sourceOperation: `${sourceOperation}:payment_settled`,
-          bookingBeforeTransition: booking,
-          bookingAfterTransition: transition.booking,
-          transitionSideEffects: transition.sideEffects,
-        }, ctx);
-        return { booking: executed.booking };
-      }
-      if (isPaymentExpiryTrackedStatus(payment?.status ?? null)) {
-        return { booking: await expireBooking(booking, ctx) };
-      }
-      return { booking };
-    }
-
-    default:
-      throw new Error(`unknown_effect_intent:${effect.effect_intent}`);
-  }
-}
-
-async function applyImmediateReservationForTransition(
-  input: {
-    transitionEventType: BookingEventType;
-    sourceOperation: string;
-    bookingBeforeTransition: Booking;
-    bookingAfterTransition: Booking;
-    transitionSideEffects: BookingSideEffect[];
-  },
-  ctx: BookingContext,
-): Promise<Booking> {
-  const eventId = input.transitionSideEffects[0]?.booking_event_id ?? null;
-  if (!eventId) return input.bookingAfterTransition;
-  const event = await ctx.providers.repository.getBookingEventById(eventId);
-  if (!event) throw new Error(`booking_event_not_found:${eventId}`);
-  const executed = await runImmediateBookingEventWorkflow({
-    transitionEvent: event,
-    transitionEventType: input.transitionEventType,
-    sourceOperation: input.sourceOperation,
-    bookingBeforeTransition: input.bookingBeforeTransition,
-    bookingAfterTransition: input.bookingAfterTransition,
-    transitionSideEffects: input.transitionSideEffects,
-  }, ctx);
-  return executed.booking;
-}
+  retryCalendarSyncForBooking,
+  ensureCheckoutForBooking,
+  initiateAutomaticCancellationRefund,
+  completeEmailVerificationWithinEvent,
+  expireBooking,
+  runImmediateBookingEventWorkflow,
+});
 
 async function sendCalendarReservationFailureAlert(
   input: {

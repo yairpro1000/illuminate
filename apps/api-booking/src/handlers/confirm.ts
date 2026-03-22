@@ -1,7 +1,8 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
 import { consumeLatestEmailDispatch } from '../lib/execution.js';
-import { confirmBookingEmail, getBookingPublicActionInfo } from '../services/booking-service.js';
+import { confirmBookingEmail } from '../services/booking-service.js';
+import { getBookingPublicActionInfo } from '../services/booking-public-action-service.js';
 
 // GET /api/bookings/confirm?token=<raw>
 export async function handleConfirm(request: Request, ctx: AppContext): Promise<Response> {

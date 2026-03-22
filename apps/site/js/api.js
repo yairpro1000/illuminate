@@ -77,16 +77,42 @@ function bookingReschedule(payload) {
   return _post('/api/bookings/reschedule', payload);
 }
 
+function normalizeBookingEventPollTarget(target) {
+  const eventId = target && target.id ? String(target.id) : '';
+  if (eventId) {
+    return {
+      mode: 'by_id',
+      params: {
+        booking_event_id: eventId,
+      },
+    };
+  }
+
+  const bookingId = target && (target.bookingId || target.booking_id) ? String(target.bookingId || target.booking_id) : '';
+  const eventType = target && (target.eventType || target.booking_event_type) ? String(target.eventType || target.booking_event_type) : '';
+  if (bookingId && eventType) {
+    return {
+      mode: 'latest_of_type',
+      params: {
+        booking_id: bookingId,
+        booking_event_type: eventType,
+      },
+    };
+  }
+
+  throw new Error('booking_event_id or booking_id plus booking_event_type are required');
+}
+
 async function pollBookingEventStatus(bookingEvent, token, adminToken, options) {
-  const eventId = bookingEvent && bookingEvent.id ? String(bookingEvent.id) : '';
-  if (!eventId || !token) throw new Error('booking_event_id and token are required');
+  if (!token) throw new Error('booking event token is required');
+  const target = normalizeBookingEventPollTarget(bookingEvent);
   const intervalMs = options && Number.isFinite(options.intervalMs) ? Math.max(100, Number(options.intervalMs)) : 500;
   const timeoutMs = options && Number.isFinite(options.timeoutMs) ? Math.max(intervalMs, Number(options.timeoutMs)) : 12_000;
   const startedAt = Date.now();
 
   while (Date.now() - startedAt <= timeoutMs) {
     const params = new URLSearchParams({
-      booking_event_id: eventId,
+      ...target.params,
       token: String(token),
     });
     if (adminToken) params.set('admin_token', String(adminToken));

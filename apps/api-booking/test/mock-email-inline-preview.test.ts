@@ -224,7 +224,7 @@ describe('mock email inline preview contract', () => {
     }));
   });
 
-  it('includes a preview on confirm and resolves payment-status previews by booking linkage', async () => {
+  it('includes a preview on confirm and resolves payment-settled previews through booking-event status linkage', async () => {
     const ctx = makeCtx();
     const email = 'same-recipient@example.test';
 
@@ -304,7 +304,6 @@ describe('mock email inline preview contract', () => {
       turnstile_token: 'ok',
     }), ctx);
     const payNowA = await payNowAResponse.json() as { booking_id: string; checkout_url: string };
-    const sessionIdA = new URL(payNowA.checkout_url).searchParams.get('session_id');
     const paymentA = await ctx.providers.repository.getPaymentByBookingId(payNowA.booking_id);
     await confirmBookingPayment(paymentA!, {
       paymentIntentId: `pi_${payNowA.booking_id}`,
@@ -331,11 +330,12 @@ describe('mock email inline preview contract', () => {
       invoiceUrl: `https://example.com/invoice/${payNowB.booking_id}.pdf`,
     }, ctx);
 
-    const statusResponse = await handleRequest(
-      jsonRequest(`/api/bookings/payment-status?session_id=${encodeURIComponent(String(sessionIdA))}`),
-      ctx,
-    );
+    const statusResponse = await handleRequest(jsonRequest(
+      `/api/bookings/event-status?booking_id=${encodeURIComponent(payNowA.booking_id)}&booking_event_type=PAYMENT_SETTLED&token=${encodeURIComponent(`m1.${payNowA.booking_id}`)}`,
+    ), ctx);
     const statusData = await statusResponse.json() as Record<string, any>;
+    expect(statusResponse.status).toBe(200);
+    expect(statusData.booking_event_type).toBe('PAYMENT_SETTLED');
     expect(statusData.calendar_event).toEqual(expect.objectContaining({
       title: expect.any(String),
       start: '2026-03-24T10:00:00.000Z',
@@ -348,6 +348,14 @@ describe('mock email inline preview contract', () => {
       email_id: bookingEmailId(payNowA.booking_id, 'booking_confirmation'),
     }));
     expect(statusData.mock_email_preview.email_id).not.toBe(bookingEmailId(payNowB.booking_id, 'booking_confirmation'));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_event_status_mock_email_preview_decision',
+      context: expect.objectContaining({
+        booking_id: payNowA.booking_id,
+        booking_event_type: 'PAYMENT_SETTLED',
+        branch_taken: 'include_mock_email_preview',
+      }),
+    }));
   });
 
   it('loads booking policy only once across the pay-later confirm request path', async () => {

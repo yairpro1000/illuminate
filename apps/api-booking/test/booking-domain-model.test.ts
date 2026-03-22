@@ -1380,7 +1380,7 @@ describe('booking domain model', () => {
     }));
   });
 
-  it('keeps refunded cancellations successful when refund side-effect attempt persistence fails after business success', async () => {
+  it('fails fast before refund execution when refund side-effect attempt persistence cannot start', async () => {
     const ctx = makeCtx();
 
     const created = await createPayLaterBooking({
@@ -1435,29 +1435,21 @@ describe('booking domain model', () => {
     });
 
     const confirmedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
-    const canceled = await cancelBooking(confirmedBooking!, ctx);
+    await expect(cancelBooking(confirmedBooking!, ctx)).rejects.toThrow('forced_attempt_persistence_failure:CREATE_STRIPE_REFUND');
 
-    expect(canceled.ok).toBe(true);
-    expect(canceled.code).toBe('CANCELED_AND_REFUNDED');
     const refundEffect = mockState.sideEffects.find((effect) =>
       effect.booking_id === created.bookingId && effect.effect_intent === 'CREATE_STRIPE_REFUND',
     );
     const refundEmailEffect = mockState.sideEffects.find((effect) =>
       effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_BOOKING_REFUND_CONFIRMATION',
     );
-    expect(refundEffect?.status).toBe('SUCCESS');
-    expect(refundEmailEffect?.status).toBe('SUCCESS');
+    expect(refundEffect?.status).toBe('PENDING');
+    expect(refundEmailEffect).toBeUndefined();
     expect(mockState.sideEffectAttempts.some((attempt) => attempt.booking_side_effect_id === refundEffect?.id)).toBe(false);
-    expect(mockState.sideEffectAttempts.some((attempt) => attempt.booking_side_effect_id === refundEmailEffect?.id)).toBe(false);
-    expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'realtime_side_effect_attempt_record_failed',
-      context: expect.objectContaining({
-        deny_reason: 'side_effect_attempt_persistence_failed',
-      }),
-    }));
-    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'realtime_side_effect_attempt_persistence_recovered',
-    }));
+    expect(
+      mockState.sideEffectAttempts.some((attempt) => refundEmailEffect && attempt.booking_side_effect_id === refundEmailEffect.id),
+    ).toBe(false);
+    expect(mockState.sentEmails.some((email) => email.kind === 'refund_confirmation' && email.to === 'persist-retry@example.com')).toBe(false);
   });
 
   it('sends event-specific cancellation copy for canceled event bookings', async () => {

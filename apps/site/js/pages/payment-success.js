@@ -3,6 +3,10 @@
   const siteClient = window.siteClient || null;
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id');
+  const bookingId = params.get('booking_id');
+  const token = params.get('token');
+  const adminToken = params.get('admin_token');
+  const bookingEventType = params.get('booking_event_type') || 'PAYMENT_SETTLED';
   const card = document.querySelector('.result-card');
   const homepageHref = siteClient && typeof siteClient.resolveHomepageHref === 'function'
     ? siteClient.resolveHomepageHref()
@@ -22,7 +26,19 @@
   }
 
   try {
-    const data = await siteClient.requestJson(`/api/bookings/payment-status?session_id=${encodeURIComponent(sessionId)}`);
+    if (!bookingId || !token || typeof window.pollBookingEventStatus !== 'function') {
+      throw new Error('payment_success_status_selector_missing');
+    }
+    const data = await window.pollBookingEventStatus({
+      booking_id: bookingId,
+      booking_event_type: bookingEventType,
+    }, token, adminToken, {
+      intervalMs: 500,
+      timeoutMs: 12_000,
+    });
+    if (siteClient && typeof siteClient.maybeRenderMockEmailPreview === 'function') {
+      await siteClient.maybeRenderMockEmailPreview(data);
+    }
 
     const isConfirmed = data.status === 'CONFIRMED' || data.status === 'COMPLETED';
     const actionHref = siteClient && typeof siteClient.resolveSiteActionHref === 'function'

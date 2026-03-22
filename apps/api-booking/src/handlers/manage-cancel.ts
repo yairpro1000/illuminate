@@ -1,7 +1,8 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
 import { consumeLatestEmailDispatch } from '../lib/execution.js';
-import { cancelBooking, resolveBookingManageAccess } from '../services/booking-service.js';
+import { cancelBooking } from '../services/booking-service.js';
+import { resolveBookingManageAccess } from '../services/booking-access-service.js';
 
 // POST /api/bookings/cancel
 // Body: { token: string }

@@ -734,8 +734,8 @@ async function appendRefundCompletedEventIfNeeded(
     payload as unknown as Record<string, unknown>,
     ctx,
   );
-  const { applyImmediateNonCronSideEffectsForTransition } = await import('./booking-service.js');
-  await applyImmediateNonCronSideEffectsForTransition({
+  const { runImmediateBookingEventWorkflow } = await import('./booking-service.js');
+  await runImmediateBookingEventWorkflow({
     transitionEvent: transition.event,
     transitionEventType: 'REFUND_COMPLETED',
     sourceOperation: source === 'WEBHOOK' ? 'refund_webhook_reconciliation' : 'refund_completion',

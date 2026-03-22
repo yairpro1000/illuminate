@@ -4,6 +4,8 @@
   const params     = new URLSearchParams(window.location.search);
   const sessionId  = params.get('session_id');
   const bookingId  = params.get('booking_id');
+  const token = params.get('token');
+  const bookingEventType = params.get('booking_event_type');
   const amount     = params.get('amount');
   const currency   = (params.get('currency') || 'CHF').toUpperCase();
 
@@ -32,6 +34,8 @@
       if (result === 'success') {
         const successParams = new URLSearchParams({ session_id: sessionId });
         if (bookingId) successParams.set('booking_id', bookingId);
+        if (token) successParams.set('token', token);
+        if (bookingEventType) successParams.set('booking_event_type', bookingEventType);
         window.location.href = 'payment-success?' + successParams.toString();
       } else {
         const cancelParams = new URLSearchParams();

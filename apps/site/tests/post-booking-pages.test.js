@@ -37,6 +37,7 @@ describe('post-booking pages', () => {
         }
       },
     }
+    window.pollBookingEventStatus = async () => ({})
     window.buildAtcWidget = (event) => `<div class="atc-widget" data-atc-title="${event.title}">Add to calendar</div>`
     window.initAddToCalendar = () => {}
     window.history.replaceState({}, '', '/')
@@ -74,8 +75,8 @@ describe('post-booking pages', () => {
 
   it('payment success page treats uppercase CONFIRMED as confirmed', async () => {
     document.body.innerHTML = '<div class="result-card"></div>'
-    window.history.replaceState({}, '', '/payment-success.html?session_id=sess-123')
-    window.siteClient.requestJson = async () => ({
+    window.history.replaceState({}, '', '/payment-success.html?session_id=sess-123&booking_id=booking-123&token=m1.booking-123&booking_event_type=PAYMENT_SETTLED')
+    window.pollBookingEventStatus = async () => ({
       status: 'CONFIRMED',
       manage_url: '/manage.html?token=tok-123',
       calendar_event: {
@@ -145,8 +146,8 @@ describe('post-booking pages', () => {
 
   it('payment success page renders the captured email iframe when mock preview metadata is present', async () => {
     document.body.innerHTML = '<div class="result-card"></div>'
-    window.history.replaceState({}, '', '/payment-success.html?session_id=sess-preview')
-    window.siteClient.requestJson = async () => {
+    window.history.replaceState({}, '', '/payment-success.html?session_id=sess-preview&booking_id=booking-preview&token=m1.booking-preview&booking_event_type=PAYMENT_SETTLED')
+    window.pollBookingEventStatus = async () => {
       const response = {
         status: 'CONFIRMED',
         manage_url: '/manage.html?token=tok-preview',

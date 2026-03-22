@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const siteBaseUrl = process.env.E2E_SITE_BASE_URL || 'https://letsilluminate.co';
-const adminBaseUrl = process.env.E2E_ADMIN_BASE_URL || 'https://admin.letsilluminate.co';
-const apiBaseUrl = process.env.E2E_API_BASE_URL || 'https://api.letsilluminate.co';
+const siteBaseUrl = process.env.E2E_SITE_BASE_URL || 'https://illuminate-tw9.pages.dev';
+const adminBaseUrl = process.env.E2E_ADMIN_BASE_URL || 'https://illuminateadmin.pages.dev';
+const apiBaseUrl = process.env.E2E_API_BASE_URL || 'https://illuminate.yairpro.workers.dev';
 
 export default defineConfig({
   testDir: './e2e',

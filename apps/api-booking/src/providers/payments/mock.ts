@@ -20,8 +20,19 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
     const amount = params.lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
     const currency = params.lineItems[0]?.currency ?? 'CHF';
+    const successUrl = new URL(params.successUrl);
+    const checkoutParams = new URLSearchParams({
+      session_id: sessionId,
+      booking_id: params.bookingId,
+      amount: String(amount),
+      currency,
+    });
+    const successToken = successUrl.searchParams.get('token');
+    const successEventType = successUrl.searchParams.get('booking_event_type');
+    if (successToken) checkoutParams.set('token', successToken);
+    if (successEventType) checkoutParams.set('booking_event_type', successEventType);
 
-    const checkoutUrl = `${siteUrl}/dev-pay?session_id=${sessionId}&booking_id=${params.bookingId}&amount=${amount}&currency=${currency}`;
+    const checkoutUrl = `${siteUrl}/dev-pay?${checkoutParams.toString()}`;
 
     console.log(`[payments:mock] createCheckoutSession → ${sessionId}`, {
       bookingId: params.bookingId,
