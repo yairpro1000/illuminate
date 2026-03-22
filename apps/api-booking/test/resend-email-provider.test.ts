@@ -52,7 +52,7 @@ describe('Resend payment-due email payload', () => {
     );
   });
 
-  it('renders confirmed-but-unpaid confirmation content with invoice row and confirmed subject', async () => {
+  it('renders confirmed-but-unpaid confirmation content without invoice row and with continue-payment CTA', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
 
@@ -68,7 +68,7 @@ describe('Resend payment-due email payload', () => {
       address_line: 'Via Example 1, Lugano',
     } as any,
     'https://letsilluminate.co/manage.html?token=m1.test',
-    'https://letsilluminate.co/mock-invoice/in_123',
+    null,
     'https://letsilluminate.co/continue-payment.html?token=m1.test',
     '',
     {
@@ -80,12 +80,11 @@ describe('Resend payment-due email payload', () => {
     const payload = sendMock.mock.calls[0][0] as Record<string, string>;
     expect(payload.subject).toBe('Your session on Mar 19 is confirmed');
     expect(payload.text).toContain('payment is still pending');
-    expect(payload.text).toContain('Invoice: https://letsilluminate.co/mock-invoice/in_123');
+    expect(payload.text).not.toContain('Invoice:');
     expect(payload.text).toContain('Complete payment: https://letsilluminate.co/continue-payment.html?token=m1.test');
     expect(payload.text).toContain('For online sessions, a video conference link will be sent at the day of the session.');
     expect(payload.html).toContain('Payment due');
-    expect(payload.html).toContain('Invoice');
-    expect(payload.html).toContain('Click here');
+    expect(payload.html).not.toContain('Invoice');
     expect(payload.html).toContain('Complete payment');
     expect(payload.html).toContain('For online sessions, a video conference link will be sent at the day of the session.');
   });

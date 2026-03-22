@@ -1,10 +1,36 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleRequest } from '../src/router.js';
+import { confirmBookingEmail, createPayLaterBooking } from '../src/services/booking-service.js';
+import { mockState } from '../src/providers/mock-state.js';
 import { makeCtx } from './admin-helpers.js';
 
 describe('Manage booking token diagnostics', () => {
   it('returns 400 when token is missing and logs explicit deny reason', async () => {
-    const ctx = makeCtx();
+    const ctx = makeCtx({
+      providers: {
+        antibot: {
+          verify: vi.fn().mockResolvedValue(undefined),
+        },
+        calendar: {
+          getBusyTimes: vi.fn().mockResolvedValue([]),
+          createEvent: vi.fn().mockResolvedValue({
+            eventId: 'g-manage-flow',
+            meetingProvider: 'google_meet',
+            meetingLink: 'https://meet.google.com/manage-flow',
+          }),
+          updateEvent: vi.fn().mockResolvedValue(undefined),
+          deleteEvent: vi.fn().mockResolvedValue(undefined),
+        },
+        payments: {
+          createCheckoutSession: vi.fn(),
+        },
+        email: {
+          sendBookingConfirmRequest: vi.fn().mockResolvedValue({ messageId: 'msg-confirm' }),
+          sendBookingConfirmation: vi.fn().mockResolvedValue({ messageId: 'msg-booking-confirmed' }),
+          sendBookingPaymentDue: vi.fn().mockResolvedValue({ messageId: 'msg-pay-due' }),
+        },
+      } as any,
+    });
     const req = new Request('https://api.local/api/bookings/manage', { method: 'GET' });
 
     const res = await handleRequest(req, ctx);
@@ -84,5 +110,73 @@ describe('Manage booking token diagnostics', () => {
       message: 'Invalid manage token',
       request_id: 'req-1',
     });
+  });
+
+  it('returns continue-payment actions for confirmed unpaid pay-later bookings', async () => {
+    const ctx = makeCtx({
+      providers: {
+        antibot: {
+          verify: vi.fn().mockResolvedValue(undefined),
+        },
+        calendar: {
+          getBusyTimes: vi.fn().mockResolvedValue([]),
+          createEvent: vi.fn().mockResolvedValue({
+            eventId: 'g-manage-flow',
+            meetingProvider: 'google_meet',
+            meetingLink: 'https://meet.google.com/manage-flow',
+          }),
+          updateEvent: vi.fn().mockResolvedValue(undefined),
+          deleteEvent: vi.fn().mockResolvedValue(undefined),
+        },
+        payments: {
+          createCheckoutSession: vi.fn(),
+        },
+        email: {
+          sendBookingConfirmRequest: vi.fn().mockResolvedValue({ messageId: 'msg-confirm' }),
+          sendBookingConfirmation: vi.fn().mockResolvedValue({ messageId: 'msg-booking-confirmed' }),
+          sendBookingPaymentDue: vi.fn().mockResolvedValue({ messageId: 'msg-pay-due' }),
+        },
+      } as any,
+    });
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-20T10:00:00.000Z',
+      slotEnd: '2026-03-20T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Manage Flow',
+      clientEmail: 'manage-flow@example.com',
+      clientPhone: '+41000000061',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx as any);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    await confirmBookingEmail(String(submission?.payload?.confirm_token ?? ''), ctx as any);
+
+    const res = await handleRequest(
+      new Request(`https://api.local/api/bookings/manage?token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      booking_id: created.bookingId,
+      payment_status: 'PENDING',
+      actions: expect.objectContaining({
+        can_complete_payment: true,
+        continue_payment_url: expect.stringContaining(`/continue-payment.html?token=m1.${created.bookingId}`),
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'manage_booking_actions_gate_decision',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        can_complete_payment: true,
+        has_continue_payment_url: true,
+      }),
+    }));
   });
 });

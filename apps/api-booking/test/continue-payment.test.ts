@@ -40,7 +40,7 @@ describe('Continue payment public guard', () => {
     }));
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(payment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
-    expect(payment?.invoice_url).toContain('/mock-invoice/');
+    expect(payment?.invoice_url).toBeNull();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
@@ -88,7 +88,7 @@ describe('Continue payment public guard', () => {
     }));
     const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(refreshedPayment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
-    expect(refreshedPayment?.invoice_url).toContain('/mock-invoice/');
+    expect(refreshedPayment?.invoice_url).toBeNull();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
@@ -136,7 +136,7 @@ describe('Continue payment public guard', () => {
     }));
     const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(refreshedPayment?.checkout_url).toContain('/dev-pay?session_id=mock_cs_');
-    expect(refreshedPayment?.invoice_url).toContain('/mock-invoice/');
+    expect(refreshedPayment?.invoice_url).toBeNull();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'continue_payment_request_decision',
       context: expect.objectContaining({
@@ -147,9 +147,8 @@ describe('Continue payment public guard', () => {
     }));
   });
 
-  it('bootstraps a checkout session when confirmation created a payment row but no invoice URL', async () => {
+  it('bootstraps a checkout session from the pending payment row created at confirmation', async () => {
     const ctx = makeBookingCtx();
-    ctx.providers.payments.createInvoice = vi.fn().mockRejectedValue(new Error('stripe_invoice_failed'));
 
     const created = await createPayLaterBooking({
       slotStart: '2026-03-22T10:00:00.000Z',
@@ -274,15 +273,6 @@ function makeBookingCtx() {
             checkoutUrl: `https://example.com/dev-pay?session_id=mock_cs_${checkoutCounter}&booking_id=${bookingId}`,
             amount: 150,
             currency: 'CHF',
-          };
-        }),
-        createInvoice: vi.fn().mockImplementation(async ({ bookingId, amount, currency, customerEmail }) => {
-          checkoutCounter += 1;
-          return {
-            invoiceId: `mock_in_${checkoutCounter}`,
-            invoiceUrl: `https://example.com/mock-invoice/mock_in_${checkoutCounter}?booking_id=${bookingId}&amount=${amount}&currency=${currency}&email=${encodeURIComponent(customerEmail)}`,
-            amount,
-            currency,
           };
         }),
       },

@@ -848,16 +848,25 @@ describe('booking domain model', () => {
 
     expect(confirmed.current_status).toBe('CONFIRMED');
     expect(confirmed.google_event_id).toBeTruthy();
-    expect(payment?.status).toBe('INVOICE_SENT');
-    expect(payment?.invoice_url).toContain('/mock-invoice/');
-    expect(payment?.checkout_url).toContain('/dev-pay?session_id=');
+    expect(payment?.status).toBe('PENDING');
+    expect(payment?.invoice_url).toBeNull();
+    expect(payment?.checkout_url).toBeNull();
     expect(confirmationEmail?.subject).toBe('Your session on Mar 19 is confirmed');
     expect(confirmationEmail?.body).toContain('payment is still pending for');
     expect(confirmationEmail?.body).toContain('Payment due:');
-    expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/');
-    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/dev-pay?session_id=');
+    expect(confirmationEmail?.body).not.toContain('Invoice:');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=m1.');
     expect(confirmationEmail?.body).toContain('For online sessions, a video conference link will be sent at the day of the session.');
     expect(confirmationEmail?.body).not.toContain('confirmed and paid');
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pay_later_confirmation_payment_bootstrap_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'confirmation_skipped_stripe_bootstrap_until_continue_payment',
+        has_invoice_url: false,
+        has_checkout_url: false,
+      }),
+    }));
 
     const reminderEffect = mockState.sideEffects.find(
       (effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_PAYMENT_REMINDER',
@@ -869,10 +878,8 @@ describe('booking domain model', () => {
     expect(verifyEffect?.expires_at).toBeTruthy();
   });
 
-  it('keeps pay-later confirmation successful when invoice bootstrap fails and omits the invoice line', async () => {
+  it('keeps pay-later confirmation Stripe-free and omits the invoice line', async () => {
     const ctx = makeCtx();
-    ctx.providers.payments.createInvoice = vi.fn().mockRejectedValue(new Error('stripe_invoice_failed'));
-
     const created = await createPayLaterBooking({
       slotStart: '2026-03-22T10:00:00.000Z',
       slotEnd: '2026-03-22T11:00:00.000Z',
@@ -901,16 +908,16 @@ describe('booking domain model', () => {
     expect(confirmed.current_status).toBe('CONFIRMED');
     expect(payment?.status).toBe('PENDING');
     expect(payment?.invoice_url).toBeNull();
+    expect(payment?.checkout_url).toBeNull();
     expect(confirmationEmail?.subject).toBe('Your session on Mar 22 is confirmed');
-    expect(payment?.checkout_url).toContain('/dev-pay?session_id=');
-    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/dev-pay?session_id=');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=m1.');
     expect(confirmationEmail?.body).not.toContain('Invoice:');
-    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'pay_later_invoice_failed',
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pay_later_confirmation_payment_bootstrap_completed',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'keep_pending_payment_without_invoice',
-        deny_reason: 'invoice_bootstrap_failed',
+        branch_taken: 'confirmation_skipped_stripe_bootstrap_until_continue_payment',
+        deny_reason: null,
       }),
     }));
   });

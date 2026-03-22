@@ -4,6 +4,7 @@ import { getBookingPolicyConfig } from '../domain/booking-effect-policy.js';
 import { isPaymentSettledStatus } from '../domain/payment-status.js';
 import {
   buildPublicCalendarEventInfo,
+  buildContinuePaymentUrl,
   evaluateManageBookingPolicy,
   isSessionCalendarSyncPendingRetry,
   resolveBookingManageAccess,
@@ -67,6 +68,12 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       && !blockedStatuses.includes(booking.current_status);
     const canCancel = (access.bypassPolicyWindow || policy.canSelfServeChange)
       && !blockedStatuses.includes(booking.current_status);
+    const canCompletePayment = booking.booking_type === 'PAY_LATER'
+      && !paid
+      && !blockedStatuses.includes(booking.current_status);
+    const continuePaymentUrl = canCompletePayment
+      ? buildContinuePaymentUrl(ctx.siteUrl, booking)
+      : null;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_actions_gate_decision',
@@ -83,6 +90,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         policy_bypass_applied: access.bypassPolicyWindow,
         can_reschedule: canReschedule,
         can_cancel: canCancel,
+        can_complete_payment: canCompletePayment,
+        has_continue_payment_url: Boolean(continuePaymentUrl),
         has_calendar_event: Boolean(buildPublicCalendarEventInfo(booking, event)),
         calendar_sync_pending_retry: isSessionCalendarSyncPendingRetry(booking),
         branch_taken: 'return_manage_booking_payload',
@@ -109,6 +118,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       actions: {
         can_reschedule: canReschedule,
         can_cancel: canCancel,
+        can_complete_payment: canCompletePayment,
+        continue_payment_url: continuePaymentUrl,
       },
       is_paid: paid,
       payment_status: payment?.status ?? null,

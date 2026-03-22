@@ -168,7 +168,7 @@ export function getEffectsForEvent(
   const shouldSendSettlementConfirmationForAlreadyConfirmedBooking = input.eventType === 'PAYMENT_SETTLED'
     && previousStatus === 'CONFIRMED'
     && nextStatus === 'CONFIRMED'
-    && input.eventSource === 'ADMIN_UI'
+    && (input.eventSource === 'ADMIN_UI' || input.eventSource === 'WEBHOOK')
     && !isPaymentSettledStatus(priorPaymentStatus);
 
   switch (input.eventType) {

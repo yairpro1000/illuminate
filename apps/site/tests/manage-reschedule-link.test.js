@@ -178,4 +178,30 @@ describe('manage page reschedule link type', () => {
       .find((link) => link.textContent.includes('Homepage'))
     expect(homepageLink?.getAttribute('href')).toBe(`${window.location.origin}/index.html`)
   })
+
+  it('renders a complete payment action when the backend exposes it for unpaid bookings', async () => {
+    window.siteClient.requestJson = async () => ({
+      source: 'session',
+      booking_id: 'booking-6',
+      status: 'CONFIRMED',
+      starts_at: '2026-03-20T09:00:00.000Z',
+      ends_at: '2026-03-20T10:30:00.000Z',
+      title: 'Cycle Session',
+      client: { first_name: 'A', last_name: 'B' },
+      actions: {
+        can_reschedule: false,
+        can_cancel: false,
+        can_complete_payment: true,
+        continue_payment_url: '/continue-payment.html?token=m1.booking-6',
+      },
+      policy: {},
+    })
+
+    evalCode(managePageCode)
+    await flush()
+
+    const paymentLink = Array.from(document.querySelectorAll('.manage-actions a'))
+      .find((link) => link.textContent.includes('Complete payment'))
+    expect(paymentLink?.getAttribute('href')).toBe('/continue-payment.html?token=m1.booking-6')
+  })
 })

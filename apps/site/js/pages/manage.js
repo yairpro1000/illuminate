@@ -148,6 +148,7 @@
   const isBooking = data.source === 'session';
   const cancellable = Boolean(data.actions && data.actions.can_cancel);
   const reschedulable = Boolean(data.actions && data.actions.can_reschedule);
+  const completablePayment = Boolean(data.actions && data.actions.can_complete_payment && data.actions.continue_payment_url);
   const rescheduleType = resolveRescheduleSlotType(data);
   console.info('[Manage] Reschedule slot type resolved', {
     booking_id: data.booking_id || null,
@@ -193,6 +194,7 @@
     ${calendarHtml}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
+      ${completablePayment ? `<a href="${escapeHtml(data.actions.continue_payment_url)}" class="btn btn-primary">Complete payment</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
       <a href="${contactHref}" class="btn btn-ghost">Contact Yair</a>
       <a href="${homepageHref}" class="btn btn-ghost">← Homepage</a>

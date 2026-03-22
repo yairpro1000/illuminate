@@ -641,7 +641,7 @@ describe('Stripe webhook handling', () => {
     expect(refreshedPayment?.stripe_credit_note_url).toBe('https://stripe.example/cn_succeeded_123.pdf');
   });
 
-  it('settles pay-later bookings via invoice reconciliation', async () => {
+  it('settles pay-later bookings via checkout reconciliation and sends the paid confirmation email', async () => {
     const ctx = makeCtx();
     const created = await createPayLaterBooking({
       slotStart: '2026-03-22T10:00:00.000Z',
@@ -657,16 +657,22 @@ describe('Stripe webhook handling', () => {
       remoteIp: null,
     }, ctx);
     await confirmBookingEmail(getConfirmToken(created.bookingId), ctx);
+    const paymentBeforeContinue = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    await ctx.providers.repository.updatePayment(paymentBeforeContinue!.id, {
+      checkout_url: 'https://example.com/dev-pay?session_id=mock_cs_pay_later_123',
+      stripe_checkout_session_id: 'mock_cs_pay_later_123',
+      stripe_customer_id: 'cus_pay_later_123',
+    });
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     ctx.providers.payments.parseWebhookEvent = vi.fn().mockResolvedValue({
       eventCategory: 'payment',
-      eventType: 'invoice.paid',
-      checkoutSessionId: null,
-      paymentIntentId: 'pi_invoice_123',
-      invoiceId: payment!.stripe_invoice_id,
-      invoiceUrl: payment!.invoice_url,
+      eventType: 'checkout.session.completed',
+      checkoutSessionId: payment!.stripe_checkout_session_id,
+      paymentIntentId: 'pi_checkout_pay_later_123',
+      invoiceId: null,
+      invoiceUrl: null,
       paymentLinkId: null,
-      receiptUrl: 'https://pay.stripe.com/receipts/ch_invoice_123',
+      receiptUrl: null,
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,
@@ -687,14 +693,22 @@ describe('Stripe webhook handling', () => {
     expect(response.status).toBe(200);
     const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     const refreshedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const paidConfirmationEmail = mockState.sentEmails
+      .filter((email) => email.kind === 'booking_confirmation' && email.to === 'webhook-pay-later@example.com')
+      .at(-1);
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
-    expect(refreshedPayment?.stripe_payment_intent_id).toBe('pi_invoice_123');
-    expect(refreshedPayment?.stripe_receipt_url).toBe('https://pay.stripe.com/receipts/ch_invoice_123');
+    expect(refreshedPayment?.stripe_payment_intent_id).toBe('pi_checkout_pay_later_123');
+    expect(refreshedPayment?.invoice_url).toBe('https://example.com/mock-invoice/mock_inv_pi_checkout_pay_later_123.pdf');
+    expect(refreshedPayment?.stripe_receipt_url).toBe('https://example.com/mock-receipt/mock_ch_pi_checkout_pay_later_123.html');
     expect(refreshedBooking?.current_status).toBe('CONFIRMED');
+    expect(paidConfirmationEmail?.subject).toBe('Your session on Mar 22 is confirmed and paid');
+    expect(paidConfirmationEmail?.text).toContain('Invoice: https://example.com/mock-invoice/mock_inv_pi_checkout_pay_later_123.pdf');
+    expect(paidConfirmationEmail?.text).toContain('Receipt: https://example.com/mock-receipt/mock_ch_pi_checkout_pay_later_123.html');
+    expect(paidConfirmationEmail?.text).not.toContain('Complete payment:');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'stripe_webhook_request_completed',
       context: expect.objectContaining({
-        stripe_event_type: 'invoice.paid',
+        stripe_event_type: 'checkout.session.completed',
         branch_taken: 'payment_settled_via_shared_path',
       }),
     }));
@@ -758,64 +772,6 @@ describe('Stripe webhook handling', () => {
     }));
   });
 
-  it('uses invoice id as the primary pay-later match before payment intent fallback', async () => {
-    const ctx = makeCtx();
-    const created = await createPayLaterBooking({
-      slotStart: '2026-03-28T10:00:00.000Z',
-      slotEnd: '2026-03-28T11:00:00.000Z',
-      timezone: 'Europe/Zurich',
-      sessionType: 'session',
-      clientName: 'Webhook PI Pay Later',
-      clientEmail: 'webhook-pi-pay-later@example.com',
-      clientPhone: '+41000000074',
-      reminderEmailOptIn: true,
-      reminderWhatsappOptIn: false,
-      turnstileToken: 'ok',
-      remoteIp: null,
-    }, ctx);
-    await confirmBookingEmail(getConfirmToken(created.bookingId), ctx);
-    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    expect(payment?.stripe_payment_intent_id).toBeNull();
-    ctx.providers.payments.parseWebhookEvent = vi.fn().mockResolvedValue({
-      eventCategory: 'payment',
-      eventType: 'payment_intent.succeeded',
-      checkoutSessionId: null,
-      paymentIntentId: 'pi_invoice_primary_123',
-      invoiceId: payment!.stripe_invoice_id,
-      invoiceUrl: payment!.invoice_url,
-      paymentLinkId: null,
-      receiptUrl: 'https://pay.stripe.com/receipts/ch_invoice_primary_123',
-      amount: payment!.amount,
-      currency: payment!.currency,
-      bookingId: created.bookingId,
-      customerId: payment!.stripe_customer_id,
-      siteUrl: null,
-      rawPayload: { type: 'payment_intent.succeeded' },
-    });
-
-    const response = await handleStripeWebhook(
-      new Request('https://api.local/api/stripe/webhook', {
-        method: 'POST',
-        headers: { 'stripe-signature': 'mock' },
-        body: '{}',
-      }),
-      ctx,
-    );
-
-    expect(response.status).toBe(200);
-    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    const refreshedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
-    expect(refreshedPayment?.status).toBe('SUCCEEDED');
-    expect(refreshedPayment?.stripe_payment_intent_id).toBe('pi_invoice_primary_123');
-    expect(refreshedBooking?.current_status).toBe('CONFIRMED');
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'stripe_webhook_payment_lookup_completed',
-      context: expect.objectContaining({
-        payment_id: payment!.id,
-        branch_taken: 'match_invoice_primary_for_payment_intent',
-      }),
-    }));
-  });
 
   it('uses webhook metadata site URL for post-payment confirmation emails', async () => {
     const ctx = makeCtx();

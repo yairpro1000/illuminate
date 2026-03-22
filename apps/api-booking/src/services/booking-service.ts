@@ -454,7 +454,7 @@ async function resolveCommercialTerms(
 }
 
 function paymentProviderUrl(payment: Pick<Payment, 'invoice_url' | 'checkout_url'> | null | undefined): string | null {
-  return payment?.invoice_url ?? payment?.checkout_url ?? null;
+  return payment?.checkout_url ?? payment?.invoice_url ?? null;
 }
 
 function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'> | null | undefined): string | null {
@@ -492,6 +492,12 @@ function paymentEmailUrl(
         : null
     ),
   };
+}
+
+function hasReusableContinuePaymentCheckout(
+  payment: Pick<Payment, 'checkout_url' | 'status'> | null | undefined,
+): boolean {
+  return Boolean(payment?.checkout_url) && isPaymentContinuableOnline(payment?.status ?? null);
 }
 
 function canContinuePayLaterPayment(
@@ -1057,28 +1063,28 @@ export async function confirmBookingEmail(
   const verificationOutcome = await completePendingEmailVerificationEffects(submissionWithToken.id, booking, bookingCtx);
   let finalizedBooking = verificationOutcome.bookingAfterVerification;
   if (booking.booking_type !== 'FREE') {
-    const bootstrappedPayment = await ensurePayLaterInvoiceForBooking(finalizedBooking, bookingCtx, {
-      bootstrapSource: 'booking_email_confirmation',
-      allowProviderFailure: true,
-    });
+    const payment = await ensurePayLaterPendingPaymentRecord(
+      finalizedBooking,
+      bookingCtx,
+      'booking_email_confirmation',
+    );
 
     await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
 
     bookingCtx.logger.logInfo?.({
       source: 'backend',
       eventType: 'pay_later_confirmation_payment_bootstrap_completed',
-      message: 'Completed pay-later confirmation payment bootstrap',
+      message: 'Confirmed pay-later booking without contacting Stripe',
       context: {
         booking_id: finalizedBooking.id,
         booking_status: finalizedBooking.current_status,
-        payment_id: bootstrappedPayment?.id ?? null,
-        payment_status: bootstrappedPayment?.status ?? null,
-        has_payment_url: Boolean(paymentProviderUrl(bootstrappedPayment)),
-        has_invoice_url: Boolean(bootstrappedPayment?.invoice_url),
-        branch_taken: bootstrappedPayment?.invoice_url
-          ? 'confirmation_created_invoice_before_email'
-          : 'confirmation_kept_pending_payment_without_invoice',
-        deny_reason: bootstrappedPayment?.invoice_url ? null : 'invoice_bootstrap_failed_or_not_available',
+        payment_id: payment.id,
+        payment_status: payment.status,
+        has_payment_url: Boolean(paymentProviderUrl(payment)),
+        has_invoice_url: Boolean(payment.invoice_url),
+        has_checkout_url: Boolean(payment.checkout_url),
+        branch_taken: 'confirmation_skipped_stripe_bootstrap_until_continue_payment',
+        deny_reason: null,
       },
     });
   }
@@ -2012,11 +2018,10 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
 
   if (paymentMode === 'pay_later' && payment && !isPaymentSettledStatus(payment.status)) {
-    const shouldBootstrapCheckoutLink = isPaymentContinuableOnline(payment.status) && !payment.checkout_url;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'booking_confirmation_payment_link_bootstrap_decision',
-      message: 'Evaluated pay-later checkout link readiness for confirmation email',
+      message: 'Deferred pay-later Stripe bootstrap until continue-payment is requested',
       context: {
         booking_id: booking.id,
         booking_kind: bookingKind,
@@ -2025,40 +2030,11 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
         payment_status: payment.status,
         has_invoice_url: Boolean(payment.invoice_url),
         has_checkout_url: Boolean(payment.checkout_url),
-        should_bootstrap_checkout_link: shouldBootstrapCheckoutLink,
-        branch_taken: shouldBootstrapCheckoutLink
-          ? 'bootstrap_checkout_link_before_confirmation_email'
-          : 'reuse_existing_payment_links_for_confirmation_email',
-        deny_reason: shouldBootstrapCheckoutLink ? null : 'checkout_link_not_required',
+        should_bootstrap_checkout_link: false,
+        branch_taken: 'skip_stripe_bootstrap_until_continue_payment',
+        deny_reason: 'confirmation_email_does_not_create_payment_session',
       },
     });
-
-    if (shouldBootstrapCheckoutLink) {
-      try {
-        const bootstrappedPayment = await ensureContinuePaymentUrlForBooking(booking, payment, ctx);
-        if (bootstrappedPayment) {
-          payment = bootstrappedPayment;
-        }
-      } catch (error) {
-        ctx.logger.logWarn?.({
-          source: 'backend',
-          eventType: 'booking_confirmation_payment_link_bootstrap_failed',
-          message: 'Proceeding with confirmation email after checkout link bootstrap failure',
-          context: {
-            booking_id: booking.id,
-            booking_kind: bookingKind,
-            booking_status: booking.current_status,
-            payment_id: payment.id,
-            payment_status: payment.status,
-            has_invoice_url: Boolean(payment.invoice_url),
-            has_checkout_url: Boolean(payment.checkout_url),
-            branch_taken: 'continue_with_fallback_payment_link',
-            deny_reason: 'checkout_link_bootstrap_failed',
-            failure_reason: error instanceof Error ? error.message : String(error),
-          },
-        });
-      }
-    }
   }
 
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
@@ -2066,7 +2042,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const paymentEmailLinks = paymentMode === 'pay_later'
     ? paymentEmailUrl({ booking, payment, siteUrl })
     : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
-  const payUrl = paymentEmailLinks.payUrl;
+  const payUrl = paymentSettledForEmail ? null : paymentEmailLinks.payUrl;
   const invoiceUrl = paymentEmailLinks.invoiceUrl;
   const receiptUrl = paymentSettledForEmail ? payment?.stripe_receipt_url ?? null : null;
   const paymentDueAt = isPayLaterPendingConfirmation
@@ -3630,154 +3606,30 @@ async function ensurePayLaterPendingPaymentRecord(
   });
 }
 
-async function ensurePayLaterInvoiceForBooking(
-  booking: Booking,
-  ctx: BookingContext,
-  options: {
-    bootstrapSource: string;
-    allowProviderFailure?: boolean;
-  },
-): Promise<Payment | null> {
-  const { logger } = ctx;
-  const payment = await ensurePayLaterPendingPaymentRecord(booking, ctx, options.bootstrapSource);
-  const existingPaymentUrl = paymentProviderUrl(payment);
-
-  logger.logInfo?.({
-    source: 'backend',
-    eventType: 'pay_later_invoice_decision',
-    message: 'Evaluated pay-later invoice readiness',
-    context: {
-      booking_id: booking.id,
-      booking_kind: booking.event_id ? 'event' : 'session',
-      session_type_id: booking.session_type_id,
-      payment_id: payment.id,
-      payment_status: payment.status,
-      has_invoice_url: Boolean(payment.invoice_url),
-      has_checkout_url: Boolean(payment.checkout_url),
-      bootstrap_source: options.bootstrapSource,
-      branch_taken: existingPaymentUrl
-        ? 'reuse_existing_invoice_url'
-        : booking.event_id
-          ? 'skip_event_booking_no_pay_later_invoice'
-          : 'evaluate_invoice_creation',
-      deny_reason: existingPaymentUrl
-        ? null
-        : booking.event_id
-          ? 'event_bookings_do_not_use_pay_later_invoice'
-          : null,
-    },
-  });
-
-  if (existingPaymentUrl) return payment;
-  if (booking.event_id) return payment;
-
-  const chargeable = await resolveChargeableForBooking(booking, ctx.providers.repository);
-  if (chargeable.price <= 0) {
-    logger.logInfo?.({
-      source: 'backend',
-      eventType: 'pay_later_invoice_not_required',
-      message: 'Skipped pay-later invoice for free session type',
-      context: {
-        booking_id: booking.id,
-        session_type_id: booking.session_type_id,
-        session_price: booking.price,
-        bootstrap_source: options.bootstrapSource,
-        branch_taken: 'free_session_no_invoice',
-        deny_reason: 'session_price_is_zero',
-      },
-    });
-    return payment;
-  }
-
-  try {
-    const invoice = await ctx.providers.payments.createInvoice({
-      title: chargeable.title,
-      amount: chargeable.price,
-      currency: chargeable.currency || 'CHF',
-      bookingId: booking.id,
-      siteUrl: bookingSiteUrl(ctx),
-      customerEmail: booking.client_email ?? '',
-      customerName: [booking.client_first_name, booking.client_last_name].filter(Boolean).join(' ') || booking.client_email || null,
-      existingStripeCustomerId: payment.stripe_customer_id,
-      dueDateIso: getPaymentDueAtIso(booking.starts_at, (await loadBookingPolicy(ctx)).paymentDueBeforeStartHours),
-      idempotencyKey: `booking:${booking.id}:pay-later-invoice`,
-      metadata: {
-        booking_id: booking.id,
-        booking_kind: booking.event_id ? 'event' : 'session',
-        payment_kind: 'pay_later',
-      },
-    });
-
-    const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
-      amount: invoice.amount,
-      currency: invoice.currency,
-      status: 'INVOICE_SENT',
-      checkout_url: null,
-      invoice_url: invoice.invoiceUrl,
-      stripe_customer_id: invoice.customerId,
-      stripe_payment_intent_id: invoice.paymentIntentId,
-      stripe_invoice_id: invoice.invoiceId,
-      stripe_payment_link_id: invoice.paymentLinkId,
-      raw_payload: {
-        ...(payment.raw_payload ?? {}),
-        invoice_response: invoice.rawPayload ?? null,
-        bootstrap_source: options.bootstrapSource,
-        settlement_source: payment.raw_payload?.['settlement_source'] ?? null,
-      },
-    });
-
-    logger.logInfo?.({
-      source: 'backend',
-      eventType: 'pay_later_invoice_created',
-      message: 'Created pay-later invoice',
-      context: {
-        booking_id: booking.id,
-        payment_id: updatedPayment.id,
-        session_type_id: booking.session_type_id,
-        bootstrap_source: options.bootstrapSource,
-        invoice_url_present: Boolean(invoice.invoiceUrl),
-        stripe_invoice_id: invoice.invoiceId,
-        stripe_customer_id: invoice.customerId,
-        payment_status_after: updatedPayment.status,
-        branch_taken: 'created_invoice_for_pay_later_flow',
-      },
-    });
-    return updatedPayment;
-  } catch (error) {
-    logger.logWarn?.({
-      source: 'backend',
-      eventType: 'pay_later_invoice_failed',
-      message: 'Pay-later invoice bootstrap failed; payment row retained',
-      context: {
-        booking_id: booking.id,
-        payment_id: payment.id,
-        bootstrap_source: options.bootstrapSource,
-        payment_status_before: payment.status,
-        branch_taken: 'keep_pending_payment_without_invoice',
-        deny_reason: 'invoice_bootstrap_failed',
-        failure_reason: error instanceof Error ? error.message : String(error),
-      },
-    });
-
-    if (!options.allowProviderFailure) {
-      throw error;
-    }
-
-    return ctx.providers.repository.updatePayment(payment.id, {
-      status: 'PENDING',
-      raw_payload: {
-        ...(payment.raw_payload ?? {}),
-        bootstrap_source: options.bootstrapSource,
-      },
-    });
-  }
-}
-
 async function ensureContinuePaymentUrlForBooking(
   booking: Booking,
   payment: Payment,
   ctx: BookingContext,
 ): Promise<Payment | null> {
+  if (hasReusableContinuePaymentCheckout(payment)) {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'continue_payment_bootstrap_decision',
+      message: 'Reused existing continue-payment checkout session from local payment state',
+      context: {
+        booking_id: booking.id,
+        payment_id: payment.id,
+        booking_status: booking.current_status,
+        payment_status: payment.status,
+        has_checkout_url: Boolean(payment.checkout_url),
+        has_invoice_url: Boolean(payment.invoice_url),
+        branch_taken: 'reuse_existing_checkout_session',
+        deny_reason: null,
+      },
+    });
+    return payment;
+  }
+
   const chargeable = await resolveChargeableForBooking(booking, ctx.providers.repository);
 
   ctx.logger.logInfo?.({
@@ -3791,7 +3643,7 @@ async function ensureContinuePaymentUrlForBooking(
       payment_status: payment.status,
       has_checkout_url: Boolean(payment.checkout_url),
       has_invoice_url: Boolean(payment.invoice_url),
-      branch_taken: 'create_checkout_session_for_missing_checkout_url',
+      branch_taken: 'create_checkout_session_for_missing_or_unusable_checkout_url',
       deny_reason: null,
     },
   });
@@ -3817,19 +3669,21 @@ async function ensureContinuePaymentUrlForBooking(
       metadata: {
         booking_id: booking.id,
         booking_kind: booking.event_id ? 'event' : 'session',
-        payment_kind: 'pay_later_recovery',
+        payment_kind: 'pay_later_continue_payment',
       },
     });
 
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
       amount: session.amount,
       currency: session.currency,
-      status: payment.invoice_url ? payment.status : 'PENDING',
+      status: 'PENDING',
       checkout_url: session.checkoutUrl,
-      invoice_url: payment.invoice_url ?? null,
+      invoice_url: null,
       stripe_customer_id: session.customerId,
       stripe_checkout_session_id: session.sessionId,
       stripe_payment_intent_id: session.paymentIntentId,
+      stripe_invoice_id: null,
+      stripe_payment_link_id: null,
       raw_payload: {
         ...(payment.raw_payload ?? {}),
         checkout_session_response: session.rawPayload ?? null,

@@ -79,7 +79,7 @@ describe('booking effect policy', () => {
     ]);
   });
 
-  it('does not re-confirm an already confirmed pay-later booking on later payment settlement', async () => {
+  it('does not re-confirm an already confirmed pay-later booking on system-side payment verification', async () => {
     const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({
       booking: {
@@ -114,6 +114,30 @@ describe('booking effect policy', () => {
       paymentStatus: 'SUCCEEDED',
       eventPayload: {
         prior_payment_status: 'CASH_OK',
+      },
+    }, policy);
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'SEND_BOOKING_CONFIRMATION',
+    ]);
+  });
+
+  it('sends the settled confirmation email when a webhook settles an already confirmed unsettled booking', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b6',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'CONFIRMED',
+        booking_type: 'PAY_LATER',
+      },
+      eventType: 'PAYMENT_SETTLED',
+      eventSource: 'WEBHOOK',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+      paymentStatus: 'SUCCEEDED',
+      eventPayload: {
+        prior_payment_status: 'PENDING',
       },
     }, policy);
 
