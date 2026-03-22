@@ -19,9 +19,13 @@ vi.mock('../src/repo/supabase.js', () => ({
           };
         }),
         update: vi.fn((row: Record<string, unknown>) => ({
-          eq: vi.fn(async (_column: string, id: string) => {
+          eq: vi.fn((_column: string, id: string) => {
             updateCalls.push({ schema: schemaName, table, id, row });
-            return { error: null };
+            return {
+              select: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: { id }, error: null })),
+              })),
+            };
           }),
         })),
       })),

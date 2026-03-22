@@ -12,7 +12,7 @@ describe('book pay-later confirmation UI', () => {
     evalCode(bookViewsCode)
   })
 
-  it('renders complete-payment and homepage actions after pay-later submit', () => {
+  it('renders only the homepage action after pay-later submit', () => {
     const views = window.BookPageViews.createBookPageViews({
       ctx: {
         source: '1_on_1',
@@ -54,8 +54,8 @@ describe('book pay-later confirmation UI', () => {
     const html = views.buildShell().replace(/\s+/g, ' ')
     expect(html).toContain('Booking received!')
     expect(html).toContain('Please confirm your booking there first')
-    expect(html).toContain('Complete payment')
-    expect(html).toContain('/continue-payment.html?token=m1.test')
+    expect(html).not.toContain('Complete payment')
+    expect(html).not.toContain('/continue-payment.html?token=m1.test')
     expect(html).toContain('← Back to homepage')
   })
 

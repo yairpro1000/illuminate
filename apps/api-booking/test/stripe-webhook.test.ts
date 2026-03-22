@@ -119,6 +119,7 @@ describe('Stripe webhook handling', () => {
       invoiceId: null,
       invoiceUrl: null,
       paymentLinkId: null,
+      receiptUrl: null,
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,
@@ -154,6 +155,15 @@ describe('Stripe webhook handling', () => {
   it('backfills invoice artifacts for a settled sandbox pay-now payment when invoice.paid arrives later', async () => {
     const ctx = makeCtx();
     ctx.env.PAYMENTS_MODE = 'stripe_sandbox';
+    ctx.providers.payments.getPaymentArtifactDetails = vi.fn().mockResolvedValue({
+      invoiceId: null,
+      invoiceUrl: null,
+      paymentIntentId: null,
+      paymentLinkId: null,
+      chargeId: null,
+      receiptUrl: null,
+      rawPayload: null,
+    });
     ctx.providers.payments.createCheckoutSession = vi.fn().mockResolvedValue({
       sessionId: 'cs_test_checkout_invoice_123',
       checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_checkout_invoice_123',
@@ -188,6 +198,7 @@ describe('Stripe webhook handling', () => {
         invoiceId: null,
         invoiceUrl: null,
         paymentLinkId: null,
+        receiptUrl: null,
         amount: payment!.amount,
         currency: payment!.currency,
         bookingId: created.bookingId,
@@ -202,6 +213,7 @@ describe('Stripe webhook handling', () => {
         creditNoteId: null,
         creditNoteNumber: null,
         creditNoteDocumentUrl: null,
+        receiptUrl: null,
         paymentIntentId: 'pi_test_checkout_invoice_123',
         invoiceId: null,
         refundStatus: 'SUCCEEDED',
@@ -218,6 +230,7 @@ describe('Stripe webhook handling', () => {
         invoiceId: 'in_test_checkout_invoice_123',
         invoiceUrl: 'https://invoice.example/in_test_checkout_invoice_123',
         paymentLinkId: null,
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_test_checkout_invoice_123',
         amount: payment!.amount,
         currency: payment!.currency,
         bookingId: created.bookingId,
@@ -281,6 +294,7 @@ describe('Stripe webhook handling', () => {
     const invoiceBackfilledPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
     expect(invoiceBackfilledPayment?.stripe_invoice_id).toBe('in_test_checkout_invoice_123');
     expect(invoiceBackfilledPayment?.invoice_url).toBe('https://invoice.example/in_test_checkout_invoice_123');
+    expect(invoiceBackfilledPayment?.stripe_receipt_url).toBe('https://pay.stripe.com/receipts/ch_test_checkout_invoice_123');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'payment_succeeded_artifact_backfill_completed',
       context: expect.objectContaining({
@@ -324,6 +338,7 @@ describe('Stripe webhook handling', () => {
         invoiceId: null,
         invoiceUrl: null,
         paymentLinkId: null,
+        receiptUrl: null,
         amount: payment!.amount,
         currency: payment!.currency,
         bookingId: created.bookingId,
@@ -338,6 +353,7 @@ describe('Stripe webhook handling', () => {
         creditNoteId: null,
         creditNoteNumber: null,
         creditNoteDocumentUrl: null,
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_local_refund_123',
         paymentIntentId: 'pi_refund_webhook_123',
         invoiceId: null,
         refundStatus: 'SUCCEEDED',
@@ -353,6 +369,7 @@ describe('Stripe webhook handling', () => {
         creditNoteId: null,
         creditNoteNumber: null,
         creditNoteDocumentUrl: null,
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_local_refund_123',
         paymentIntentId: 'pi_refund_webhook_123',
         invoiceId: null,
         refundStatus: 'SUCCEEDED',
@@ -383,6 +400,7 @@ describe('Stripe webhook handling', () => {
     expect(refundedPayment?.status).toBe('REFUNDED');
     expect(refundedPayment?.refund_status).toBe('SUCCEEDED');
     expect(refundedPayment?.stripe_refund_id).toBe('re_local_refund_123');
+    expect(refundedPayment?.stripe_receipt_url).toBe('https://pay.stripe.com/receipts/ch_local_refund_123');
     expect(mockState.bookingEvents.some(
       (event) => event.booking_id === created.bookingId && event.event_type === 'REFUND_COMPLETED',
     )).toBe(true);
@@ -392,6 +410,7 @@ describe('Stripe webhook handling', () => {
     expect(refundEmail?.subject).toContain('Your refund for');
     expect(refundEmail?.text).toContain('Your refund has been processed.');
     expect(refundEmail?.text).toContain('Amount: CHF 150.00');
+    expect(refundEmail?.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_local_refund_123');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'stripe_webhook_request_completed',
       context: expect.objectContaining({
@@ -461,6 +480,7 @@ describe('Stripe webhook handling', () => {
       creditNoteId: refundedPayment!.stripe_credit_note_id,
       creditNoteNumber: 'CN-2026-0004',
       creditNoteDocumentUrl: 'https://stripe.example/cn_immediate_refund_123.pdf',
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_immediate_refund_123',
       paymentIntentId: 'pi_immediate_refund_123',
       invoiceId: refundedPayment!.stripe_invoice_id,
       refundStatus: 'SUCCEEDED',
@@ -523,6 +543,7 @@ describe('Stripe webhook handling', () => {
       creditNoteId: 'cn_pending_credit_note_123',
       creditNoteNumber: 'CN-2026-0002',
       creditNoteDocumentUrl: 'https://stripe.example/cn_pending_credit_note_123.pdf',
+      receiptUrl: null,
       paymentIntentId: null,
       invoiceId: payment!.stripe_invoice_id,
       refundStatus: null,
@@ -546,6 +567,7 @@ describe('Stripe webhook handling', () => {
     expect(refreshedPayment?.refund_status).toBe('PENDING');
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
     expect(refreshedPayment?.stripe_credit_note_id).toBe('cn_pending_credit_note_123');
+    expect(refreshedPayment?.stripe_credit_note_url).toBe('https://stripe.example/cn_pending_credit_note_123.pdf');
     expect(
       mockState.bookingEvents.some(
         (event) => event.booking_id === created.bookingId && event.event_type === 'REFUND_COMPLETED',
@@ -592,6 +614,7 @@ describe('Stripe webhook handling', () => {
       creditNoteId: 'cn_succeeded_123',
       creditNoteNumber: 'CN-2026-0003',
       creditNoteDocumentUrl: 'https://stripe.example/cn_succeeded_123.pdf',
+      receiptUrl: null,
       paymentIntentId: null,
       invoiceId: payment!.stripe_invoice_id,
       refundStatus: 'CANCELED',
@@ -615,6 +638,7 @@ describe('Stripe webhook handling', () => {
     expect(refreshedPayment?.refund_status).toBe('SUCCEEDED');
     expect(refreshedPayment?.status).toBe('REFUNDED');
     expect(refreshedPayment?.stripe_credit_note_id).toBe('cn_succeeded_123');
+    expect(refreshedPayment?.stripe_credit_note_url).toBe('https://stripe.example/cn_succeeded_123.pdf');
   });
 
   it('settles pay-later bookings via invoice reconciliation', async () => {
@@ -642,6 +666,7 @@ describe('Stripe webhook handling', () => {
       invoiceId: payment!.stripe_invoice_id,
       invoiceUrl: payment!.invoice_url,
       paymentLinkId: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_invoice_123',
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,
@@ -664,6 +689,7 @@ describe('Stripe webhook handling', () => {
     const refreshedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
     expect(refreshedPayment?.stripe_payment_intent_id).toBe('pi_invoice_123');
+    expect(refreshedPayment?.stripe_receipt_url).toBe('https://pay.stripe.com/receipts/ch_invoice_123');
     expect(refreshedBooking?.current_status).toBe('CONFIRMED');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'stripe_webhook_request_completed',
@@ -699,6 +725,7 @@ describe('Stripe webhook handling', () => {
       invoiceId: null,
       invoiceUrl: null,
       paymentLinkId: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_checkout_fallback_123',
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,
@@ -757,6 +784,7 @@ describe('Stripe webhook handling', () => {
       invoiceId: payment!.stripe_invoice_id,
       invoiceUrl: payment!.invoice_url,
       paymentLinkId: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_invoice_primary_123',
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,
@@ -813,6 +841,7 @@ describe('Stripe webhook handling', () => {
       invoiceId: null,
       invoiceUrl: null,
       paymentLinkId: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_checkout_site_url_123',
       amount: payment!.amount,
       currency: payment!.currency,
       bookingId: created.bookingId,

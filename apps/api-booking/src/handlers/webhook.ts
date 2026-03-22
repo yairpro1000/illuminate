@@ -134,6 +134,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
         booking_id: payment.booking_id,
         status: payment.status,
         invoice_url: payment.invoice_url,
+        stripe_receipt_url: payment.stripe_receipt_url,
         stripe_checkout_session_id: payment.stripe_checkout_session_id,
         stripe_payment_intent_id: payment.stripe_payment_intent_id,
         stripe_invoice_id: payment.stripe_invoice_id,
@@ -142,6 +143,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
         paymentIntentId: event.paymentIntentId,
         invoiceId: event.invoiceId,
         invoiceUrl: event.invoiceUrl,
+        receiptUrl: event.receiptUrl,
         rawPayload: event.rawPayload,
       },
       {
@@ -213,6 +215,7 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
       paymentIntentId: event.paymentIntentId,
       invoiceId: event.invoiceId,
       invoiceUrl: event.invoiceUrl,
+      receiptUrl: event.receiptUrl,
       rawPayload: event.rawPayload,
     },
     {

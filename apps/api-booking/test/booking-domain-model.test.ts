@@ -850,11 +850,13 @@ describe('booking domain model', () => {
     expect(confirmed.google_event_id).toBeTruthy();
     expect(payment?.status).toBe('INVOICE_SENT');
     expect(payment?.invoice_url).toContain('/mock-invoice/');
+    expect(payment?.checkout_url).toContain('/dev-pay?session_id=');
     expect(confirmationEmail?.subject).toBe('Your session on Mar 19 is confirmed');
     expect(confirmationEmail?.body).toContain('payment is still pending for');
     expect(confirmationEmail?.body).toContain('Payment due:');
     expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/');
-    expect(confirmationEmail?.body).not.toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/dev-pay?session_id=');
+    expect(confirmationEmail?.body).toContain('For online sessions, a video conference link will be sent at the day of the session.');
     expect(confirmationEmail?.body).not.toContain('confirmed and paid');
 
     const reminderEffect = mockState.sideEffects.find(
@@ -900,7 +902,8 @@ describe('booking domain model', () => {
     expect(payment?.status).toBe('PENDING');
     expect(payment?.invoice_url).toBeNull();
     expect(confirmationEmail?.subject).toBe('Your session on Mar 22 is confirmed');
-    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/continue-payment.html?token=');
+    expect(payment?.checkout_url).toContain('/dev-pay?session_id=');
+    expect(confirmationEmail?.body).toContain('Complete payment: https://example.com/dev-pay?session_id=');
     expect(confirmationEmail?.body).not.toContain('Invoice:');
     expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'pay_later_invoice_failed',
@@ -940,16 +943,71 @@ describe('booking domain model', () => {
     }, {
       paymentIntentId: 'pi_123',
       invoiceId: 'in_123',
-      invoiceUrl: 'https://invoice.example/in_123',
+      invoiceUrl: null,
     }, ctx);
 
     const updated = await ctx.providers.repository.getBookingById(created.bookingId);
     const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_confirmation' && email.to === 'paid@example.com',
+    );
     expect(updated?.current_status).toBe('CONFIRMED');
     expect(updated?.google_event_id).toBeTruthy();
     expect(updated?.meeting_provider).toBe('google_meet');
     expect(updated?.meeting_link).toContain('https://meet.google.com/');
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
+    expect(refreshedPayment?.invoice_url).toBe('https://example.com/mock-invoice/in_123.pdf');
+    expect(refreshedPayment?.stripe_receipt_url).toBe('https://example.com/mock-receipt/mock_ch_pi_123.html');
+    expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/in_123.pdf');
+    expect(confirmationEmail?.body).toContain('Receipt: https://example.com/mock-receipt/mock_ch_pi_123.html');
+    expect(confirmationEmail?.body).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+    expect(confirmationEmail?.html).toContain('View invoice');
+    expect(confirmationEmail?.html).toContain('View receipt');
+  });
+
+  it('includes the invoice URL in paid event confirmation emails when settlement can resolve it', async () => {
+    const ctx = makeCtx();
+    const paidEvent = [...mockState.events.values()].find((event) => event.is_paid)!;
+
+    const created = await createEventBooking({
+      event: paidEvent,
+      firstName: 'Paid',
+      lastName: 'Event',
+      email: 'paid-event@example.com',
+      phone: '+41000000019',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    await confirmBookingPayment({
+      id: payment!.id,
+      booking_id: payment!.booking_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
+    }, {
+      paymentIntentId: 'pi_event_paid_123',
+      invoiceId: 'in_event_paid_123',
+      invoiceUrl: null,
+    }, ctx);
+
+    const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    const confirmationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'event_confirmation' && email.to === 'paid-event@example.com',
+    );
+
+    expect(refreshedPayment?.status).toBe('SUCCEEDED');
+    expect(refreshedPayment?.invoice_url).toBe('https://example.com/mock-invoice/in_event_paid_123.pdf');
+    expect(refreshedPayment?.stripe_receipt_url).toBe('https://example.com/mock-receipt/mock_ch_pi_event_paid_123.html');
+    expect(confirmationEmail?.body).toContain('Invoice: https://example.com/mock-invoice/in_event_paid_123.pdf');
+    expect(confirmationEmail?.body).toContain('Receipt: https://example.com/mock-receipt/mock_ch_pi_event_paid_123.html');
+    expect(confirmationEmail?.body).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+    expect(confirmationEmail?.html).toContain('View invoice');
+    expect(confirmationEmail?.html).toContain('View receipt');
   });
 
   it('still sends the pay-now confirmation email when calendar reservation is retryable and queued', async () => {
@@ -1048,16 +1106,18 @@ describe('booking domain model', () => {
 
     expect(refreshedPayment?.status).toBe('SUCCEEDED');
     expect(refreshedPayment?.invoice_url).toBe(
-      `https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
+      'https://example.com/mock-invoice/mock_inv_pi_456.pdf',
     );
+    expect(refreshedPayment?.stripe_receipt_url).toBe('https://example.com/mock-receipt/mock_ch_pi_456.html');
     expect(confirmationEmail?.body).toContain(
-      `Invoice: https://example.com/mock-invoice/mock_inv_${payment!.stripe_checkout_session_id}.pdf`,
+      'Invoice: https://example.com/mock-invoice/mock_inv_pi_456.pdf',
     );
+    expect(confirmationEmail?.body).toContain('Receipt: https://example.com/mock-receipt/mock_ch_pi_456.html');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'payment_settlement_invoice_resolution_completed',
       context: expect.objectContaining({
         booking_id: created.bookingId,
-        branch_taken: 'generated_mock_invoice_url_for_settlement',
+        branch_taken: 'fetched_invoice_url_from_provider',
         resolved_invoice_url_present: true,
       }),
     }));
@@ -1265,7 +1325,9 @@ describe('booking domain model', () => {
     expect(refundedPayment?.refund_amount).toBe(150);
     expect(refundedPayment?.refund_currency).toBe('CHF');
     expect(refundedPayment?.stripe_credit_note_id).toBeTruthy();
+    expect(refundedPayment?.stripe_credit_note_url).toContain('/mock-credit-note/');
     expect(refundedPayment?.stripe_refund_id).toBeTruthy();
+    expect(refundedPayment?.stripe_receipt_url).toContain('/mock-receipt/');
     expect(refundedPayment?.refund_reason).toContain('Full refund initiated because');
     expect(refundedPayment?.refunded_at).toBeTruthy();
 
@@ -1286,6 +1348,8 @@ describe('booking domain model', () => {
     expect(refundEmail?.text).toContain('Your refund has been processed and a credit note was created.');
     expect(refundEmail?.text).toContain('Amount: CHF 150.00');
     expect(refundEmail?.text).toContain('Credit note:');
+    expect(refundEmail?.text).toContain('Credit note link:');
+    expect(refundEmail?.text).toContain('Receipt: https://example.com/mock-receipt/');
 
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'cancellation_refund_provider_call_completed',

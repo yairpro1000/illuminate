@@ -3,8 +3,10 @@ import type {
   CreateCheckoutParams,
   CreateInvoiceParams,
   CreateRefundParams,
+  InvoiceDetails,
   InvoiceRecord,
   IPaymentsProvider,
+  PaymentArtifactDetails,
   RefundRecord,
   StripeWebhookEvent,
 } from './interface.js';
@@ -152,6 +154,81 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails> {
+    const invoice = await this.getJson<StripeObject>(`/invoices/${encodeURIComponent(invoiceId)}`);
+    return {
+      invoiceId: asString(invoice['id']),
+      invoiceUrl: asNullableString(invoice['hosted_invoice_url']),
+      paymentIntentId: expandId(invoice['payment_intent']),
+      paymentLinkId: expandId(invoice['payment_link']),
+      amount: fromMinorAmount(
+        asNumber(invoice['amount_paid'] ?? invoice['amount_due'] ?? invoice['amount_remaining'] ?? 0),
+        asString(invoice['currency'], 'CHF'),
+      ),
+      currency: normalizeCurrency(asString(invoice['currency'], 'CHF')),
+      rawPayload: invoice,
+    };
+  }
+
+  async getPaymentArtifactDetails(input: {
+    paymentIntentId?: string | null;
+    invoiceId?: string | null;
+    chargeId?: string | null;
+  }): Promise<PaymentArtifactDetails> {
+    let invoiceId = input.invoiceId ?? null;
+    let invoiceUrl: string | null = null;
+    let paymentIntentId = input.paymentIntentId ?? null;
+    let paymentLinkId: string | null = null;
+    let chargeId = input.chargeId ?? null;
+    let receiptUrl: string | null = null;
+    let invoicePayload: StripeObject | null = null;
+    let paymentIntentPayload: StripeObject | null = null;
+    let chargePayload: StripeObject | null = null;
+
+    if (invoiceId) {
+      invoicePayload = await this.getJson<StripeObject>(
+        `/invoices/${encodeURIComponent(invoiceId)}?expand[]=charge&expand[]=payment_intent&expand[]=payment_intent.latest_charge`,
+      );
+      invoiceId = asNullableString(invoicePayload['id']) ?? invoiceId;
+      invoiceUrl = asNullableString(invoicePayload['hosted_invoice_url']);
+      paymentIntentId = expandId(invoicePayload['payment_intent']) ?? paymentIntentId;
+      paymentLinkId = expandId(invoicePayload['payment_link']);
+      chargeId = expandId(invoicePayload['charge']) ?? chargeId;
+      receiptUrl = extractChargeReceiptUrl(invoicePayload['charge'])
+        ?? extractPaymentIntentReceiptUrl(invoicePayload['payment_intent'])
+        ?? receiptUrl;
+    }
+
+    if (!receiptUrl && chargeId) {
+      chargePayload = await this.getJson<StripeObject>(`/charges/${encodeURIComponent(chargeId)}`);
+      chargeId = asNullableString(chargePayload['id']) ?? chargeId;
+      receiptUrl = asNullableString(chargePayload['receipt_url']);
+    }
+
+    if (!receiptUrl && paymentIntentId) {
+      paymentIntentPayload = await this.getJson<StripeObject>(
+        `/payment_intents/${encodeURIComponent(paymentIntentId)}?expand[]=latest_charge`,
+      );
+      paymentIntentId = asNullableString(paymentIntentPayload['id']) ?? paymentIntentId;
+      chargeId = expandId(paymentIntentPayload['latest_charge']) ?? chargeId;
+      receiptUrl = extractPaymentIntentReceiptUrl(paymentIntentPayload) ?? receiptUrl;
+    }
+
+    return {
+      invoiceId,
+      invoiceUrl,
+      paymentIntentId,
+      paymentLinkId,
+      chargeId,
+      receiptUrl,
+      rawPayload: {
+        invoice: invoicePayload,
+        payment_intent: paymentIntentPayload,
+        charge: chargePayload,
+      },
+    };
+  }
+
   async createRefund(params: CreateRefundParams): Promise<RefundRecord> {
     if (params.stripeInvoiceId) {
       const creditNoteForm = new URLSearchParams();
@@ -178,6 +255,10 @@ export class StripePaymentsProvider implements IPaymentsProvider {
       const fetchedRefund = nestedRefundId
         ? await this.getJson<StripeObject>(`/refunds/${encodeURIComponent(nestedRefundId)}`)
         : null;
+      const paymentArtifacts = await this.getPaymentArtifactDetails({
+        paymentIntentId: expandId(fetchedRefund?.['payment_intent']) ?? params.stripePaymentIntentId ?? null,
+        chargeId: expandId(fetchedRefund?.['charge']) ?? null,
+      });
 
       return {
         refundPath: 'credit_note',
@@ -186,8 +267,9 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         creditNoteId,
         creditNoteNumber,
         creditNoteDocumentUrl,
+        receiptUrl: paymentArtifacts.receiptUrl,
         invoiceId: params.stripeInvoiceId,
-        paymentIntentId: asNullableString(fetchedRefund?.['payment_intent']) ?? params.stripePaymentIntentId ?? null,
+        paymentIntentId: expandId(fetchedRefund?.['payment_intent']) ?? params.stripePaymentIntentId ?? null,
         amount: fromMinorAmount(
           asNumber(fetchedRefund?.['amount'] ?? creditNote['amount'] ?? 0),
           asString(fetchedRefund?.['currency'] ?? creditNote['currency'], params.currency),
@@ -217,6 +299,10 @@ export class StripePaymentsProvider implements IPaymentsProvider {
       refundForm,
       params.idempotencyKey ? `${params.idempotencyKey}:refund` : undefined,
     );
+    const paymentArtifacts = await this.getPaymentArtifactDetails({
+      paymentIntentId: expandId(refund['payment_intent']) ?? params.stripePaymentIntentId,
+      chargeId: expandId(refund['charge']) ?? null,
+    });
 
     return {
       refundPath: 'direct_refund',
@@ -225,8 +311,9 @@ export class StripePaymentsProvider implements IPaymentsProvider {
       creditNoteId: null,
       creditNoteNumber: null,
       creditNoteDocumentUrl: null,
-      invoiceId: params.stripeInvoiceId ?? asNullableString(refund['invoice']),
-      paymentIntentId: asNullableString(refund['payment_intent']) ?? params.stripePaymentIntentId,
+      receiptUrl: paymentArtifacts.receiptUrl,
+      invoiceId: params.stripeInvoiceId ?? expandId(refund['invoice']),
+      paymentIntentId: expandId(refund['payment_intent']) ?? params.stripePaymentIntentId,
       amount: fromMinorAmount(asNumber(refund['amount'] ?? 0), asString(refund['currency'], params.currency)),
       currency: normalizeCurrency(asString(refund['currency'], params.currency)),
       rawPayload: refund,
@@ -257,10 +344,11 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         eventCategory: 'payment',
         eventType,
         checkoutSessionId: asNullableString(eventObject['id']),
-        paymentIntentId: asNullableString(eventObject['payment_intent']),
-        invoiceId: asNullableString(eventObject['invoice']),
+        paymentIntentId: expandId(eventObject['payment_intent']),
+        invoiceId: expandId(eventObject['invoice']),
         invoiceUrl: null,
-        paymentLinkId: asNullableString(eventObject['payment_link']),
+        paymentLinkId: expandId(eventObject['payment_link']),
+        receiptUrl: extractPaymentIntentReceiptUrl(eventObject['payment_intent']),
         amount: fromMinorAmount(asNumber(eventObject['amount_total'] ?? 0), asString(eventObject['currency'], 'CHF')),
         currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
         bookingId,
@@ -275,10 +363,12 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         eventCategory: 'payment',
         eventType,
         checkoutSessionId: null,
-        paymentIntentId: asNullableString(eventObject['payment_intent']),
+        paymentIntentId: expandId(eventObject['payment_intent']),
         invoiceId: asNullableString(eventObject['id']),
         invoiceUrl: asNullableString(eventObject['hosted_invoice_url']),
-        paymentLinkId: asNullableString(eventObject['payment_link']),
+        paymentLinkId: expandId(eventObject['payment_link']),
+        receiptUrl: extractChargeReceiptUrl(eventObject['charge'])
+          ?? extractPaymentIntentReceiptUrl(eventObject['payment_intent']),
         amount: fromMinorAmount(
           asNumber(eventObject['amount_paid'] ?? eventObject['amount_due'] ?? 0),
           asString(eventObject['currency'], 'CHF'),
@@ -297,9 +387,10 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         eventType,
         checkoutSessionId: null,
         paymentIntentId: asNullableString(eventObject['id']),
-        invoiceId: asNullableString(eventObject['invoice']),
+        invoiceId: expandId(eventObject['invoice']),
         invoiceUrl: null,
         paymentLinkId: null,
+        receiptUrl: extractPaymentIntentReceiptUrl(eventObject),
         amount: fromMinorAmount(
           asNumber(eventObject['amount_received'] ?? eventObject['amount'] ?? 0),
           asString(eventObject['currency'], 'CHF'),
@@ -320,7 +411,8 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         creditNoteId: null,
         creditNoteNumber: null,
         creditNoteDocumentUrl: null,
-        paymentIntentId: asNullableString(eventObject['payment_intent']),
+        receiptUrl: extractChargeReceiptUrl(eventObject['charge']),
+        paymentIntentId: expandId(eventObject['payment_intent']),
         invoiceId: asNullableString(metadata['invoice_id']),
         refundStatus: mapStripeRefundStatus(asNullableString(eventObject['status'])),
         amount: fromMinorAmount(asNumber(eventObject['amount'] ?? 0), asString(eventObject['currency'], 'CHF')),
@@ -338,6 +430,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         creditNoteId: asNullableString(eventObject['id']),
         creditNoteNumber: asNullableString(eventObject['number']) ?? asNullableString(eventObject['id']),
         creditNoteDocumentUrl: asNullableString(eventObject['pdf']),
+        receiptUrl: null,
         paymentIntentId: asNullableString(metadata['payment_intent_id']),
         invoiceId: asNullableString(eventObject['invoice']) ?? asNullableString(metadata['invoice_id']),
         refundStatus: eventType === 'credit_note.voided' ? 'CANCELED' : null,
@@ -484,6 +577,22 @@ function extractCreditNoteRefundId(creditNote: StripeObject): string | null {
   const firstRefund = refunds[0];
   if (!isRecord(firstRefund)) return asNullableString(creditNote['refund']);
   return asNullableString(firstRefund['refund']) ?? asNullableString(firstRefund['id']) ?? asNullableString(creditNote['refund']);
+}
+
+function expandId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (!isRecord(value)) return null;
+  return asNullableString(value['id']);
+}
+
+function extractChargeReceiptUrl(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  return asNullableString(value['receipt_url']);
+}
+
+function extractPaymentIntentReceiptUrl(value: unknown): string | null {
+  if (!isRecord(value)) return null;
+  return extractChargeReceiptUrl(value['latest_charge']);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

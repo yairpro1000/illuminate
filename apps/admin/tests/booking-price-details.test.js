@@ -70,4 +70,68 @@ describe('admin booking pricing details', () => {
     expect(details).toContain('Amount')
     expect(details).toContain('112.5 CHF')
   })
+
+  it('renders refund document links only when the stored Stripe URLs exist', async () => {
+    document.documentElement.innerHTML = adminBookingsHtml
+    window.adminClient = {
+      requestJson: vi.fn(async (path) => {
+        if (path === '/admin/events') return { events: [] }
+        if (path.startsWith('/admin/bookings?')) {
+          return {
+            rows: [
+              {
+                booking_id: 'b2',
+                client_id: 'c2',
+                client_first_name: 'Lea',
+                client_last_name: 'Meyer',
+                client_email: 'lea@example.com',
+                starts_at: '2026-03-18T09:00:00.000Z',
+                ends_at: '2026-03-18T10:00:00.000Z',
+                timezone: 'Europe/Zurich',
+                current_status: 'CANCELED',
+                session_type_title: 'Clarity Session',
+                address_line: 'Lugano',
+                maps_url: 'https://maps.example.com/booking',
+                booking_price: 150,
+                booking_currency: 'CHF',
+                payment_amount: 150,
+                payment_currency: 'CHF',
+                payment_status: 'REFUNDED',
+                payment_refund_status: 'SUCCEEDED',
+                payment_refund_amount: 150,
+                payment_refund_currency: 'CHF',
+                payment_stripe_refund_id: 're_123',
+                payment_stripe_credit_note_id: 'cn_123',
+                payment_stripe_receipt_url: 'https://stripe.example/receipt/ch_123',
+                payment_stripe_credit_note_url: 'https://stripe.example/credit-note/cn_123.pdf',
+              },
+            ],
+          }
+        }
+        throw new Error(`Unexpected path: ${path}`)
+      }),
+    }
+
+    evalCode(adminBookingsCode)
+    await flush()
+    await flush()
+
+    const sourceSelect = document.getElementById('source')
+    sourceSelect.value = 'session'
+    sourceSelect.dispatchEvent(new Event('change'))
+    await flush()
+
+    const row = document.querySelector('#rowsBody tr.clickable')
+    row.click()
+    await flush()
+
+    const modalHtml = document.getElementById('editReadonlyDetails').innerHTML
+    expect(modalHtml).toContain('Refund status')
+    expect(modalHtml).toContain('SUCCEEDED')
+    expect(modalHtml).toContain('Stripe refund')
+    expect(modalHtml).toContain('re_123')
+    expect(modalHtml).toContain('View receipt')
+    expect(modalHtml).toContain('View credit note')
+    expect(modalHtml).not.toContain('Open checkout')
+  })
 })

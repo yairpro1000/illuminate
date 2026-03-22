@@ -121,44 +121,146 @@ function withBookingOperationContext(ctx: BookingContext, bookingId: string): Bo
   };
 }
 
-function resolveSettlementInvoiceDetails(
-  input: Pick<PaymentSettlementInput, 'payment' | 'invoiceId' | 'invoiceUrl'>,
-  env: Pick<Env, 'PAYMENTS_MODE'>,
-  siteUrl: string,
-): { invoiceId: string | null; invoiceUrl: string | null; branchTaken: string; denyReason: string | null } {
-  if (input.invoiceUrl) {
+async function resolveSettlementPaymentArtifacts(
+  input: Pick<PaymentSettlementInput, 'payment' | 'paymentIntentId' | 'invoiceId' | 'invoiceUrl' | 'receiptUrl'>,
+  ctx: Pick<BookingContext, 'providers' | 'env' | 'logger'>,
+): Promise<{
+  paymentIntentId: string | null;
+  invoiceId: string | null;
+  invoiceUrl: string | null;
+  receiptUrl: string | null;
+  branchTaken: string;
+  denyReason: string | null;
+}> {
+  const paymentIntentId = input.paymentIntentId ?? input.payment.stripe_payment_intent_id ?? null;
+  const invoiceId = input.invoiceId ?? input.payment.stripe_invoice_id ?? null;
+  const existingInvoiceUrl = input.invoiceUrl ?? input.payment.invoice_url ?? null;
+  const existingReceiptUrl = input.receiptUrl ?? input.payment.stripe_receipt_url ?? null;
+
+  if (existingInvoiceUrl && existingReceiptUrl) {
     return {
-      invoiceId: input.invoiceId ?? null,
-      invoiceUrl: input.invoiceUrl,
-      branchTaken: 'reuse_upstream_invoice_url',
+      paymentIntentId,
+      invoiceId,
+      invoiceUrl: existingInvoiceUrl,
+      receiptUrl: existingReceiptUrl,
+      branchTaken: input.invoiceUrl
+        ? 'reuse_upstream_invoice_url'
+        : 'reuse_existing_payment_invoice_url',
       denyReason: null,
     };
   }
 
-  const isMockSettlement = env.PAYMENTS_MODE === 'mock'
-    || hasMockStripeIdentifier([
-      input.payment.stripe_checkout_session_id,
-      input.payment.stripe_payment_intent_id,
-      input.payment.stripe_invoice_id,
-    ]);
-
-  if (!isMockSettlement) {
-    return {
-      invoiceId: input.invoiceId ?? null,
-      invoiceUrl: null,
-      branchTaken: 'missing_invoice_url_non_mock_settlement',
-      denyReason: 'invoice_url_missing_from_upstream_settlement',
-    };
+  if (invoiceId || paymentIntentId) {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'payment_settlement_artifact_fetch_decision',
+      message: 'Fetching Stripe payment artifacts because settlement input omitted customer-facing document URLs',
+      context: {
+        booking_id: input.payment.booking_id,
+        payment_id: input.payment.id,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_invoice_id: invoiceId,
+        payments_mode: ctx.env.PAYMENTS_MODE ?? null,
+        existing_invoice_url_present: Boolean(existingInvoiceUrl),
+        existing_receipt_url_present: Boolean(existingReceiptUrl),
+        branch_taken: 'fetch_payment_artifacts_from_provider',
+        deny_reason: !existingInvoiceUrl && !existingReceiptUrl
+          ? 'payment_document_urls_missing_from_settlement_input'
+          : !existingInvoiceUrl
+            ? 'invoice_url_missing_from_settlement_input'
+            : 'receipt_url_missing_from_settlement_input',
+      },
+    });
+    try {
+      const artifacts = await ctx.providers.payments.getPaymentArtifactDetails({
+        paymentIntentId,
+        invoiceId,
+      });
+      const resolvedInvoiceUrl = existingInvoiceUrl ?? artifacts.invoiceUrl;
+      const resolvedReceiptUrl = existingReceiptUrl ?? artifacts.receiptUrl;
+      const filledInvoiceUrl = !existingInvoiceUrl && Boolean(artifacts.invoiceUrl);
+      const filledReceiptUrl = !existingReceiptUrl && Boolean(artifacts.receiptUrl);
+      if (resolvedInvoiceUrl || resolvedReceiptUrl) {
+        const branchTaken = filledInvoiceUrl
+          ? 'fetched_invoice_url_from_provider'
+          : filledReceiptUrl
+            ? 'fetched_receipt_url_from_provider'
+            : existingInvoiceUrl
+              ? 'reuse_existing_payment_invoice_url'
+              : 'reuse_upstream_invoice_url';
+        ctx.logger.logInfo?.({
+          source: 'backend',
+          eventType: 'payment_settlement_artifact_fetch_completed',
+          message: 'Fetched Stripe payment artifacts from payments provider',
+          context: {
+            booking_id: input.payment.booking_id,
+            payment_id: input.payment.id,
+            stripe_payment_intent_id: artifacts.paymentIntentId ?? paymentIntentId,
+            stripe_invoice_id: artifacts.invoiceId ?? invoiceId,
+            resolved_invoice_url_present: Boolean(resolvedInvoiceUrl),
+            resolved_receipt_url_present: Boolean(resolvedReceiptUrl),
+            branch_taken: branchTaken,
+            deny_reason: null,
+          },
+        });
+        return {
+          paymentIntentId: artifacts.paymentIntentId ?? paymentIntentId,
+          invoiceId: artifacts.invoiceId ?? invoiceId,
+          invoiceUrl: resolvedInvoiceUrl,
+          receiptUrl: resolvedReceiptUrl,
+          branchTaken,
+          denyReason: null,
+        };
+      }
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'payment_settlement_artifact_fetch_completed',
+        message: 'Payments provider returned no customer-facing payment document URLs',
+        context: {
+          booking_id: input.payment.booking_id,
+          payment_id: input.payment.id,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_invoice_id: invoiceId,
+          resolved_invoice_url_present: false,
+          resolved_receipt_url_present: false,
+          branch_taken: 'provider_payment_artifacts_missing_after_fetch',
+          deny_reason: 'provider_payment_artifacts_missing',
+        },
+      });
+    } catch (error) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'payment_settlement_artifact_fetch_completed',
+        message: 'Stripe payment artifact fetch failed; continuing without customer-facing document URLs',
+        context: {
+          booking_id: input.payment.booking_id,
+          payment_id: input.payment.id,
+          stripe_payment_intent_id: paymentIntentId,
+          stripe_invoice_id: invoiceId,
+          resolved_invoice_url_present: false,
+          resolved_receipt_url_present: false,
+          branch_taken: 'provider_payment_artifact_fetch_failed',
+          deny_reason: error instanceof Error ? error.message : 'provider_payment_artifact_fetch_failed',
+        },
+      });
+    }
   }
 
-  const invoiceId = input.invoiceId
-    ?? input.payment.stripe_invoice_id
-    ?? `mock_inv_${input.payment.stripe_checkout_session_id ?? input.payment.id}`;
   return {
+    paymentIntentId,
     invoiceId,
-    invoiceUrl: `${siteUrl}/mock-invoice/${invoiceId}.pdf`,
-    branchTaken: 'generated_mock_invoice_url_for_settlement',
-    denyReason: null,
+    invoiceUrl: existingInvoiceUrl,
+    receiptUrl: existingReceiptUrl,
+    branchTaken: invoiceId
+      ? 'missing_invoice_url_non_mock_settlement'
+      : paymentIntentId
+        ? 'missing_receipt_url_non_mock_settlement'
+        : 'missing_payment_artifacts_without_stripe_identifiers',
+    denyReason: invoiceId
+      ? 'invoice_url_missing_from_upstream_settlement'
+      : paymentIntentId
+        ? 'receipt_url_missing_from_upstream_settlement'
+        : 'payment_artifact_identifiers_missing',
   };
 }
 
@@ -289,12 +391,13 @@ interface PaymentSettlementInput {
     | 'stripe_checkout_session_id'
     | 'stripe_payment_intent_id'
     | 'stripe_invoice_id'
-  >;
+  > & Partial<Pick<Payment, 'invoice_url' | 'stripe_receipt_url'>>;
   settlementSource: 'WEBHOOK' | 'ADMIN_UI' | 'SYSTEM';
   settledAt?: string;
   paymentIntentId?: string | null;
   invoiceId?: string | null;
   invoiceUrl?: string | null;
+  receiptUrl?: string | null;
   rawPayload?: Record<string, unknown> | null;
 }
 
@@ -348,10 +451,6 @@ function paymentCheckoutUrlForContinuation(payment: Pick<Payment, 'checkout_url'
   return payment?.checkout_url ?? null;
 }
 
-function hasMockStripeIdentifier(values: Array<string | null | undefined>): boolean {
-  return values.some((value) => typeof value === 'string' && value.startsWith('mock_'));
-}
-
 function buildCheckoutSuccessUrl(siteUrl: string, bookingId: string): string {
   return `${siteUrl}/payment-success.html?booking_id=${encodeURIComponent(bookingId)}&session_id={CHECKOUT_SESSION_ID}`;
 }
@@ -368,27 +467,21 @@ function paymentEmailUrl(
   },
 ): { invoiceUrl: string | null; payUrl: string | null } {
   const invoiceUrl = input.payment?.invoice_url ?? null;
-  if (invoiceUrl) {
-    return { invoiceUrl, payUrl: null };
-  }
-
   const checkoutUrl = input.payment?.checkout_url ?? null;
-  if (checkoutUrl) {
-    return { invoiceUrl: null, payUrl: checkoutUrl };
-  }
-
-  if (
+  const canContinuePayLater = (
     input.booking.booking_type === 'PAY_LATER'
     && input.booking.current_status === 'CONFIRMED'
     && isPaymentContinuableOnline(input.payment?.status ?? null)
-  ) {
-    return {
-      invoiceUrl: null,
-      payUrl: buildContinuePaymentUrl(input.siteUrl, input.booking as Booking),
-    };
-  }
+  );
 
-  return { invoiceUrl: null, payUrl: null };
+  return {
+    invoiceUrl,
+    payUrl: checkoutUrl ?? (
+      canContinuePayLater
+        ? buildContinuePaymentUrl(input.siteUrl, input.booking as Booking)
+        : null
+    ),
+  };
 }
 
 function canContinuePayLaterPayment(
@@ -1029,6 +1122,7 @@ export async function confirmBookingPayment(
     paymentIntentId: string | null;
     invoiceId: string | null;
     invoiceUrl: string | null;
+    receiptUrl?: string | null;
     rawPayload?: Record<string, unknown> | null;
   },
   ctx: BookingContext,
@@ -1040,6 +1134,7 @@ export async function confirmBookingPayment(
       paymentIntentId: stripeData.paymentIntentId,
       invoiceId: stripeData.invoiceId,
       invoiceUrl: stripeData.invoiceUrl,
+      receiptUrl: stripeData.receiptUrl ?? null,
       rawPayload: stripeData.rawPayload ?? null,
     },
     ctx,
@@ -1053,6 +1148,7 @@ export async function backfillSettledPaymentArtifacts(
     | 'booking_id'
     | 'status'
     | 'invoice_url'
+    | 'stripe_receipt_url'
     | 'stripe_checkout_session_id'
     | 'stripe_payment_intent_id'
     | 'stripe_invoice_id'
@@ -1061,38 +1157,35 @@ export async function backfillSettledPaymentArtifacts(
     paymentIntentId: string | null;
     invoiceId: string | null;
     invoiceUrl: string | null;
+    receiptUrl?: string | null;
     rawPayload?: Record<string, unknown> | null;
   },
   ctx: BookingContext,
 ): Promise<{ updated: boolean; branchTaken: string; denyReason: string | null }> {
   const { providers, logger } = ctx;
-  const resolvedInvoice = payment.invoice_url
-    ? {
-        invoiceId: payment.stripe_invoice_id ?? stripeData.invoiceId ?? null,
-        invoiceUrl: payment.invoice_url,
-        branchTaken: 'reuse_existing_payment_invoice_url',
-        denyReason: null,
-      }
-    : resolveSettlementInvoiceDetails(
-        {
-          payment,
-          invoiceId: stripeData.invoiceId,
-          invoiceUrl: stripeData.invoiceUrl,
-        },
-        ctx.env,
-        bookingSiteUrl(ctx),
-      );
-  const nextPaymentIntentId = stripeData.paymentIntentId ?? payment.stripe_payment_intent_id ?? null;
-  const nextInvoiceId = resolvedInvoice.invoiceId ?? payment.stripe_invoice_id ?? null;
-  const nextInvoiceUrl = resolvedInvoice.invoiceUrl ?? payment.invoice_url ?? null;
+  const resolvedArtifacts = await resolveSettlementPaymentArtifacts(
+    {
+      payment,
+      paymentIntentId: stripeData.paymentIntentId,
+      invoiceId: stripeData.invoiceId,
+      invoiceUrl: stripeData.invoiceUrl,
+      receiptUrl: stripeData.receiptUrl ?? null,
+    },
+    ctx,
+  );
+  const nextPaymentIntentId = resolvedArtifacts.paymentIntentId ?? payment.stripe_payment_intent_id ?? null;
+  const nextInvoiceId = resolvedArtifacts.invoiceId ?? payment.stripe_invoice_id ?? null;
+  const nextInvoiceUrl = resolvedArtifacts.invoiceUrl ?? payment.invoice_url ?? null;
+  const nextReceiptUrl = resolvedArtifacts.receiptUrl ?? payment.stripe_receipt_url ?? null;
   const hasArtifactDelta = nextPaymentIntentId !== (payment.stripe_payment_intent_id ?? null)
     || nextInvoiceId !== (payment.stripe_invoice_id ?? null)
-    || nextInvoiceUrl !== (payment.invoice_url ?? null);
+    || nextInvoiceUrl !== (payment.invoice_url ?? null)
+    || nextReceiptUrl !== (payment.stripe_receipt_url ?? null);
   const branchTaken = hasArtifactDelta
-    ? resolvedInvoice.branchTaken
+    ? resolvedArtifacts.branchTaken
     : 'skip_succeeded_payment_artifact_backfill_no_delta';
   const denyReason = hasArtifactDelta
-    ? resolvedInvoice.denyReason
+    ? resolvedArtifacts.denyReason
     : 'succeeded_payment_artifacts_already_current_or_missing';
 
   logger.logInfo?.({
@@ -1107,11 +1200,14 @@ export async function backfillSettledPaymentArtifacts(
       stripe_payment_intent_id: payment.stripe_payment_intent_id,
       stripe_invoice_id: payment.stripe_invoice_id,
       existing_invoice_url_present: Boolean(payment.invoice_url),
+      existing_receipt_url_present: Boolean(payment.stripe_receipt_url),
       invoice_id_from_input: stripeData.invoiceId,
       invoice_url_from_input_present: Boolean(stripeData.invoiceUrl),
+      receipt_url_from_input_present: Boolean(stripeData.receiptUrl),
       payment_intent_id_from_input: stripeData.paymentIntentId,
       resolved_invoice_id: nextInvoiceId,
       resolved_invoice_url_present: Boolean(nextInvoiceUrl),
+      resolved_receipt_url_present: Boolean(nextReceiptUrl),
       branch_taken: branchTaken,
       deny_reason: denyReason,
     },
@@ -1123,6 +1219,7 @@ export async function backfillSettledPaymentArtifacts(
 
   await providers.repository.updatePayment(payment.id, {
     invoice_url: nextInvoiceUrl,
+    stripe_receipt_url: nextReceiptUrl,
     stripe_payment_intent_id: nextPaymentIntentId,
     stripe_invoice_id: nextInvoiceId,
     raw_payload: {
@@ -1141,12 +1238,13 @@ export async function backfillSettledPaymentArtifacts(
       payment_id: payment.id,
       resolved_invoice_id: nextInvoiceId,
       resolved_invoice_url_present: Boolean(nextInvoiceUrl),
+      resolved_receipt_url_present: Boolean(nextReceiptUrl),
       branch_taken: branchTaken,
-      deny_reason: resolvedInvoice.denyReason,
+      deny_reason: resolvedArtifacts.denyReason,
     },
   });
 
-  return { updated: true, branchTaken, denyReason: resolvedInvoice.denyReason };
+  return { updated: true, branchTaken, denyReason: resolvedArtifacts.denyReason };
 }
 
 export async function settleBookingPaymentManually(
@@ -1162,6 +1260,7 @@ export async function settleBookingPaymentManually(
   input: {
     invoiceUrl?: string | null;
     invoiceId?: string | null;
+    receiptUrl?: string | null;
     note?: string | null;
     settledAt?: string | null;
   },
@@ -1174,6 +1273,7 @@ export async function settleBookingPaymentManually(
       settledAt: input.settledAt ?? undefined,
       invoiceId: input.invoiceId ?? null,
       invoiceUrl: input.invoiceUrl ?? null,
+      receiptUrl: input.receiptUrl ?? null,
       rawPayload: {
         settlement_mode: 'manual_admin_action',
         settlement_note: input.note ?? null,
@@ -1189,12 +1289,12 @@ async function settleBookingPayment(
 ): Promise<void> {
   const { providers, logger } = ctx;
   const settledAt = input.settledAt ?? new Date().toISOString();
-  const resolvedInvoice = resolveSettlementInvoiceDetails(input, ctx.env, bookingSiteUrl(ctx));
+  const resolvedArtifacts = await resolveSettlementPaymentArtifacts(input, ctx);
 
   logger.logInfo?.({
     source: 'backend',
     eventType: 'payment_settlement_invoice_resolution_decision',
-    message: 'Evaluated invoice URL resolution for payment settlement',
+    message: 'Evaluated customer-facing payment artifact resolution for payment settlement',
     context: {
       booking_id: input.payment.booking_id,
       payment_id: input.payment.id,
@@ -1204,19 +1304,23 @@ async function settleBookingPayment(
       payments_mode: ctx.env.PAYMENTS_MODE ?? null,
       invoice_id_from_input: input.invoiceId ?? null,
       invoice_url_from_input_present: Boolean(input.invoiceUrl),
-      resolved_invoice_id: resolvedInvoice.invoiceId,
-      resolved_invoice_url_present: Boolean(resolvedInvoice.invoiceUrl),
-      branch_taken: resolvedInvoice.branchTaken,
-      deny_reason: resolvedInvoice.denyReason,
+      receipt_url_from_input_present: Boolean(input.receiptUrl),
+      resolved_payment_intent_id: resolvedArtifacts.paymentIntentId,
+      resolved_invoice_id: resolvedArtifacts.invoiceId,
+      resolved_invoice_url_present: Boolean(resolvedArtifacts.invoiceUrl),
+      resolved_receipt_url_present: Boolean(resolvedArtifacts.receiptUrl),
+      branch_taken: resolvedArtifacts.branchTaken,
+      deny_reason: resolvedArtifacts.denyReason,
     },
   });
 
   await providers.repository.updatePayment(input.payment.id, {
     status: 'SUCCEEDED',
     paid_at: settledAt,
-    invoice_url: resolvedInvoice.invoiceUrl,
-    stripe_payment_intent_id: input.paymentIntentId ?? input.payment.stripe_payment_intent_id ?? null,
-    stripe_invoice_id: resolvedInvoice.invoiceId ?? input.payment.stripe_invoice_id ?? null,
+    invoice_url: resolvedArtifacts.invoiceUrl,
+    stripe_payment_intent_id: resolvedArtifacts.paymentIntentId ?? input.payment.stripe_payment_intent_id ?? null,
+    stripe_invoice_id: resolvedArtifacts.invoiceId ?? input.payment.stripe_invoice_id ?? null,
+    stripe_receipt_url: resolvedArtifacts.receiptUrl,
     raw_payload: {
       ...(input.rawPayload ?? {}),
       settlement_source: input.settlementSource,
@@ -1226,14 +1330,16 @@ async function settleBookingPayment(
   logger.logInfo?.({
     source: 'backend',
     eventType: 'payment_settlement_invoice_resolution_completed',
-    message: 'Persisted invoice URL resolution for payment settlement',
+    message: 'Persisted customer-facing payment artifact resolution for payment settlement',
     context: {
       booking_id: input.payment.booking_id,
       payment_id: input.payment.id,
-      resolved_invoice_id: resolvedInvoice.invoiceId,
-      resolved_invoice_url_present: Boolean(resolvedInvoice.invoiceUrl),
-      branch_taken: resolvedInvoice.branchTaken,
-      deny_reason: resolvedInvoice.denyReason,
+      resolved_payment_intent_id: resolvedArtifacts.paymentIntentId,
+      resolved_invoice_id: resolvedArtifacts.invoiceId,
+      resolved_invoice_url_present: Boolean(resolvedArtifacts.invoiceUrl),
+      resolved_receipt_url_present: Boolean(resolvedArtifacts.receiptUrl),
+      branch_taken: resolvedArtifacts.branchTaken,
+      deny_reason: resolvedArtifacts.denyReason,
     },
   });
 
@@ -1258,9 +1364,10 @@ async function settleBookingPayment(
       payload: {
         late: true,
         prior_status: booking.current_status,
-        payment_intent_id: input.paymentIntentId ?? null,
-        invoice_id: resolvedInvoice.invoiceId,
-        invoice_url: resolvedInvoice.invoiceUrl,
+        payment_intent_id: resolvedArtifacts.paymentIntentId ?? null,
+        invoice_id: resolvedArtifacts.invoiceId,
+        invoice_url: resolvedArtifacts.invoiceUrl,
+        receipt_url: resolvedArtifacts.receiptUrl,
         settled_at: settledAt,
       },
     });
@@ -1274,9 +1381,10 @@ async function settleBookingPayment(
     input.settlementSource,
     {
       prior_payment_status: input.payment.status,
-      payment_intent_id: input.paymentIntentId ?? null,
-      invoice_id: resolvedInvoice.invoiceId,
-      invoice_url: resolvedInvoice.invoiceUrl,
+      payment_intent_id: resolvedArtifacts.paymentIntentId ?? null,
+      invoice_id: resolvedArtifacts.invoiceId,
+      invoice_url: resolvedArtifacts.invoiceUrl,
+      receipt_url: resolvedArtifacts.receiptUrl,
       settled_at: settledAt,
       ...(input.rawPayload ?? {}),
     },
@@ -1887,7 +1995,59 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const siteUrl = bookingSiteUrl(ctx);
   const manageUrl = await buildManageUrl(siteUrl, booking);
   const paymentMode = await inferPaymentModeForBooking(booking.id, ctx.providers.repository);
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  let payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
+
+  if (paymentMode === 'pay_later' && payment && !isPaymentSettledStatus(payment.status)) {
+    const shouldBootstrapCheckoutLink = isPaymentContinuableOnline(payment.status) && !payment.checkout_url;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'booking_confirmation_payment_link_bootstrap_decision',
+      message: 'Evaluated pay-later checkout link readiness for confirmation email',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        payment_id: payment.id,
+        payment_status: payment.status,
+        has_invoice_url: Boolean(payment.invoice_url),
+        has_checkout_url: Boolean(payment.checkout_url),
+        should_bootstrap_checkout_link: shouldBootstrapCheckoutLink,
+        branch_taken: shouldBootstrapCheckoutLink
+          ? 'bootstrap_checkout_link_before_confirmation_email'
+          : 'reuse_existing_payment_links_for_confirmation_email',
+        deny_reason: shouldBootstrapCheckoutLink ? null : 'checkout_link_not_required',
+      },
+    });
+
+    if (shouldBootstrapCheckoutLink) {
+      try {
+        const bootstrappedPayment = await ensureContinuePaymentUrlForBooking(booking, payment, ctx);
+        if (bootstrappedPayment) {
+          payment = bootstrappedPayment;
+        }
+      } catch (error) {
+        ctx.logger.logWarn?.({
+          source: 'backend',
+          eventType: 'booking_confirmation_payment_link_bootstrap_failed',
+          message: 'Proceeding with confirmation email after checkout link bootstrap failure',
+          context: {
+            booking_id: booking.id,
+            booking_kind: bookingKind,
+            booking_status: booking.current_status,
+            payment_id: payment.id,
+            payment_status: payment.status,
+            has_invoice_url: Boolean(payment.invoice_url),
+            has_checkout_url: Boolean(payment.checkout_url),
+            branch_taken: 'continue_with_fallback_payment_link',
+            deny_reason: 'checkout_link_bootstrap_failed',
+            failure_reason: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+  }
+
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
   const paymentSettledForEmail = isPaymentSettledStatus(payment?.status ?? null);
   const paymentEmailLinks = paymentMode === 'pay_later'
@@ -1895,10 +2055,10 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
     : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
   const payUrl = paymentEmailLinks.payUrl;
   const invoiceUrl = paymentEmailLinks.invoiceUrl;
+  const receiptUrl = paymentSettledForEmail ? payment?.stripe_receipt_url ?? null : null;
   const paymentDueAt = isPayLaterPendingConfirmation
     ? getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours)
     : null;
-  const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -1913,6 +2073,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       has_google_event_id: Boolean(booking.google_event_id),
       has_manage_url: Boolean(manageUrl),
       has_invoice_url: Boolean(invoiceUrl),
+      has_receipt_url: Boolean(receiptUrl),
       has_pay_url: Boolean(payUrl),
       calendar_sync_pending_retry: !booking.event_id && !booking.google_event_id,
       email_variant: isPayLaterPendingConfirmation ? 'confirmed_payment_pending' : 'confirmed_paid_or_free',
@@ -1958,6 +2119,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       {
         paymentSettled: paymentSettledForEmail,
         paymentDueAt,
+        receiptUrl,
       },
     );
     ctx.logger.logInfo?.({
@@ -2007,6 +2169,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
     {
       paymentSettled: paymentSettledForEmail,
       paymentDueAt,
+      receiptUrl,
     },
   );
   ctx.logger.logInfo?.({
@@ -3442,11 +3605,13 @@ async function ensurePayLaterPendingPaymentRecord(
     stripe_payment_intent_id: null,
     stripe_invoice_id: null,
     stripe_payment_link_id: null,
+    stripe_receipt_url: null,
     refund_status: 'NONE',
     refund_amount: null,
     refund_currency: null,
     stripe_refund_id: null,
     stripe_credit_note_id: null,
+    stripe_credit_note_url: null,
     refunded_at: null,
     refund_reason: null,
   });
@@ -3646,7 +3811,7 @@ async function ensureContinuePaymentUrlForBooking(
     const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
       amount: session.amount,
       currency: session.currency,
-      status: 'PENDING',
+      status: payment.invoice_url ? payment.status : 'PENDING',
       checkout_url: session.checkoutUrl,
       invoice_url: payment.invoice_url ?? null,
       stripe_customer_id: session.customerId,
@@ -3777,11 +3942,13 @@ async function ensureCheckoutForBooking(
       stripe_payment_intent_id: session.paymentIntentId,
       stripe_invoice_id: null,
       stripe_payment_link_id: null,
+      stripe_receipt_url: null,
       refund_status: 'NONE',
       refund_amount: null,
       refund_currency: null,
       stripe_refund_id: null,
       stripe_credit_note_id: null,
+      stripe_credit_note_url: null,
       refunded_at: null,
       refund_reason: null,
     });

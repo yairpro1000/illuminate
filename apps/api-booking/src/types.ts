@@ -355,11 +355,13 @@ export interface Payment {
   stripe_payment_intent_id: string | null;
   stripe_invoice_id: string | null;
   stripe_payment_link_id: string | null;
+  stripe_receipt_url?: string | null;
   refund_status?: RefundStatus | null;
   refund_amount?: number | null;
   refund_currency?: string | null;
   stripe_refund_id?: string | null;
   stripe_credit_note_id?: string | null;
+  stripe_credit_note_url?: string | null;
   refunded_at?: string | null;
   refund_reason?: string | null;
 }
@@ -388,11 +390,18 @@ export interface OrganizerBookingRow {
   payment_provider: PaymentProvider | null;
   payment_checkout_url: string | null;
   payment_invoice_url: string | null;
+  payment_refund_status: RefundStatus | null;
+  payment_refund_amount: number | null;
+  payment_refund_currency: string | null;
   payment_stripe_customer_id: string | null;
   payment_stripe_checkout_session_id: string | null;
   payment_stripe_payment_intent_id: string | null;
   payment_stripe_invoice_id: string | null;
   payment_stripe_payment_link_id: string | null;
+  payment_stripe_refund_id: string | null;
+  payment_stripe_credit_note_id: string | null;
+  payment_stripe_receipt_url: string | null;
+  payment_stripe_credit_note_url: string | null;
   payment_paid_at: string | null;
   latest_event_type: BookingEventType | null;
   latest_event_at: string | null;
@@ -492,11 +501,13 @@ export type PaymentUpdate = Partial<
     | 'stripe_payment_intent_id'
     | 'stripe_invoice_id'
     | 'stripe_payment_link_id'
+    | 'stripe_receipt_url'
     | 'refund_status'
     | 'refund_amount'
     | 'refund_currency'
     | 'stripe_refund_id'
     | 'stripe_credit_note_id'
+    | 'stripe_credit_note_url'
     | 'refunded_at'
     | 'refund_reason'
   >

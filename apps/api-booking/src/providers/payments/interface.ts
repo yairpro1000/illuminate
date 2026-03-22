@@ -56,6 +56,26 @@ export interface InvoiceRecord {
   rawPayload?: Record<string, unknown> | null;
 }
 
+export interface InvoiceDetails {
+  invoiceId: string;
+  invoiceUrl: string | null;
+  paymentIntentId: string | null;
+  paymentLinkId: string | null;
+  amount: number | null;
+  currency: string | null;
+  rawPayload?: Record<string, unknown> | null;
+}
+
+export interface PaymentArtifactDetails {
+  invoiceId: string | null;
+  invoiceUrl: string | null;
+  paymentIntentId: string | null;
+  paymentLinkId: string | null;
+  chargeId: string | null;
+  receiptUrl: string | null;
+  rawPayload?: Record<string, unknown> | null;
+}
+
 export interface CreateRefundParams {
   bookingId: string;
   paymentId: string;
@@ -76,6 +96,7 @@ export interface RefundRecord {
   creditNoteId: string | null;
   creditNoteNumber: string | null;
   creditNoteDocumentUrl: string | null;
+  receiptUrl: string | null;
   invoiceId: string | null;
   paymentIntentId: string | null;
   amount: number;
@@ -92,6 +113,7 @@ export interface StripePaymentWebhookEvent {
   invoiceId: string | null;
   invoiceUrl: string | null;
   paymentLinkId: string | null;
+  receiptUrl: string | null;
   amount: number;
   currency: string;
   bookingId: string | null;
@@ -108,6 +130,7 @@ export interface StripeRefundWebhookEvent {
   creditNoteId: string | null;
   creditNoteNumber: string | null;
   creditNoteDocumentUrl: string | null;
+  receiptUrl: string | null;
   paymentIntentId: string | null;
   invoiceId: string | null;
   refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | null;
@@ -122,6 +145,12 @@ export type StripeWebhookEvent = StripePaymentWebhookEvent | StripeRefundWebhook
 export interface IPaymentsProvider {
   createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession>;
   createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord>;
+  getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails>;
+  getPaymentArtifactDetails(input: {
+    paymentIntentId?: string | null;
+    invoiceId?: string | null;
+    chargeId?: string | null;
+  }): Promise<PaymentArtifactDetails>;
   createRefund(params: CreateRefundParams): Promise<RefundRecord>;
 
   /**

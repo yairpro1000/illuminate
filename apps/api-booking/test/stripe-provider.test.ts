@@ -12,6 +12,10 @@ describe('StripePaymentsProvider.parseWebhookEvent', () => {
           id: 'in_123',
           payment_intent: 'pi_123',
           hosted_invoice_url: 'https://invoice.example/in_123',
+          charge: {
+            id: 'ch_123',
+            receipt_url: 'https://pay.stripe.com/receipts/ch_123',
+          },
           amount_paid: 15000,
           currency: 'chf',
           customer: 'cus_123',
@@ -33,6 +37,7 @@ describe('StripePaymentsProvider.parseWebhookEvent', () => {
       invoiceId: 'in_123',
       invoiceUrl: 'https://invoice.example/in_123',
       paymentLinkId: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
       amount: 150,
       currency: 'CHF',
       bookingId: 'booking_123',
@@ -125,8 +130,13 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
       id: 're_123',
       status: 'pending',
       payment_intent: 'pi_123',
+      charge: 'ch_123',
       amount: 15000,
       currency: 'chf',
+    }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'ch_123',
+        receipt_url: 'https://pay.stripe.com/receipts/ch_123',
     }), { status: 200 }));
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
@@ -146,6 +156,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
         refundStatus: 'PENDING',
         refundId: 're_123',
         paymentIntentId: 'pi_123',
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
         amount: 150,
         currency: 'CHF',
       }));
@@ -160,6 +171,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
       }),
     );
     expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent=pi_123');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.stripe.com/v1/charges/ch_123');
   });
 
   it('creates invoice-backed refunds through Stripe credit notes when an invoice id is available', async () => {
@@ -178,8 +190,13 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
         id: 're_123',
         status: 'succeeded',
         payment_intent: 'pi_123',
+        charge: 'ch_123',
         amount: 15000,
         currency: 'chf',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'ch_123',
+        receipt_url: 'https://pay.stripe.com/receipts/ch_123',
       }), { status: 200 }));
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetchMock as typeof fetch;
@@ -202,6 +219,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
         creditNoteId: 'cn_123',
         creditNoteNumber: 'CN-2026-0001',
         creditNoteDocumentUrl: 'https://stripe.example/cn_123.pdf',
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
         invoiceId: 'in_123',
         paymentIntentId: 'pi_123',
         amount: 150,
@@ -215,6 +233,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
     expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('invoice=in_123');
     expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('refund_amount=15000');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.stripe.com/v1/refunds/re_123');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('https://api.stripe.com/v1/charges/ch_123');
   });
 
   it('normalizes refund.updated webhook payloads into refund reconciliation events', async () => {
@@ -226,6 +245,10 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
         object: {
           id: 're_123',
           payment_intent: 'pi_123',
+          charge: {
+            id: 'ch_123',
+            receipt_url: 'https://pay.stripe.com/receipts/ch_123',
+          },
           status: 'succeeded',
           amount: 15000,
           currency: 'chf',
@@ -247,6 +270,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
       creditNoteId: null,
       creditNoteNumber: null,
       creditNoteDocumentUrl: null,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
       paymentIntentId: 'pi_123',
       invoiceId: 'in_123',
       refundStatus: 'SUCCEEDED',
@@ -307,6 +331,7 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
       creditNoteId: 'cn_123',
       creditNoteNumber: 'CN-2026-0001',
       creditNoteDocumentUrl: 'https://stripe.example/cn_123.pdf',
+      receiptUrl: null,
       paymentIntentId: null,
       invoiceId: 'in_123',
       refundStatus: null,

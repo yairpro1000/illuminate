@@ -115,10 +115,27 @@ async function safeUpdate(
   let lastError: string | null = null;
   for (const { schema, client } of clients) {
     try {
-      const { error } = await client.from(table).update(row).eq('id', id);
+      const { data, error } = await client
+        .from(table)
+        .update(row)
+        .eq('id', id)
+        .select('id')
+        .maybeSingle<{ id: string }>();
       if (error) {
         lastError = error.message;
         console.warn('[technical-observability] update failed', { schema, table, id, error: error.message });
+        continue;
+      }
+      if (!data?.id) {
+        lastError = 'api_log_row_not_found_in_schema';
+        console.warn('[technical-observability] update target row missing', {
+          schema,
+          table,
+          id,
+          configured_schema: getSchema(env),
+          branch_taken: 'skip_schema_update_row_missing',
+          deny_reason: 'api_log_row_not_found_in_schema',
+        });
         continue;
       }
       if (schema !== getSchema(env)) {

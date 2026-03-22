@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const updateEq = vi.fn().mockResolvedValue({ error: null });
+const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'api-log-1' }, error: null });
+const updateSelect = vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle });
+const updateEq = vi.fn().mockReturnValue({ select: updateSelect });
 const update = vi.fn().mockReturnValue({ eq: updateEq });
 const selectSingle = vi.fn().mockResolvedValue({ data: { id: 'api-log-1' }, error: null });
 const select = vi.fn().mockReturnValue({ single: selectSingle });

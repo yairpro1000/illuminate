@@ -3,7 +3,9 @@ import type {
   CreateCheckoutParams,
   CheckoutSession,
   CreateInvoiceParams,
+  InvoiceDetails,
   InvoiceRecord,
+  PaymentArtifactDetails,
   CreateRefundParams,
   RefundRecord,
   StripeWebhookEvent,
@@ -69,10 +71,52 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails> {
+    return {
+      invoiceId,
+      invoiceUrl: `${this.siteUrl}/mock-invoice/${invoiceId}.pdf`,
+      paymentIntentId: null,
+      paymentLinkId: null,
+      amount: null,
+      currency: null,
+      rawPayload: {
+        id: invoiceId,
+        hosted_invoice_url: `${this.siteUrl}/mock-invoice/${invoiceId}.pdf`,
+      },
+    };
+  }
+
+  async getPaymentArtifactDetails(input: {
+    paymentIntentId?: string | null;
+    invoiceId?: string | null;
+    chargeId?: string | null;
+  }): Promise<PaymentArtifactDetails> {
+    const paymentIntentId = input.paymentIntentId ?? null;
+    const chargeId = input.chargeId ?? (paymentIntentId ? `mock_ch_${paymentIntentId}` : null);
+    const invoiceId = input.invoiceId
+      ?? (paymentIntentId ? `mock_inv_${paymentIntentId}` : null);
+    return {
+      invoiceId,
+      invoiceUrl: invoiceId ? `${this.siteUrl}/mock-invoice/${invoiceId}.pdf` : null,
+      paymentIntentId,
+      paymentLinkId: null,
+      chargeId,
+      receiptUrl: chargeId ? `${this.siteUrl}/mock-receipt/${chargeId}.html` : null,
+      rawPayload: {
+        invoice_id: invoiceId,
+        payment_intent_id: paymentIntentId,
+        charge_id: chargeId,
+      },
+    };
+  }
+
   async createRefund(params: CreateRefundParams): Promise<RefundRecord> {
     const refundId = `mock_re_${crypto.randomUUID()}`;
     const creditNoteId = params.stripeInvoiceId ? `mock_cn_${crypto.randomUUID()}` : null;
     const creditNoteDocumentUrl = creditNoteId ? `${this.siteUrl}/mock-credit-note/${creditNoteId}.pdf` : null;
+    const receiptArtifact = await this.getPaymentArtifactDetails({
+      paymentIntentId: params.stripePaymentIntentId ?? null,
+    });
 
     console.log(`[payments:mock] createRefund → ${refundId}`, {
       bookingId: params.bookingId,
@@ -89,6 +133,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
       creditNoteId,
       creditNoteNumber: creditNoteId,
       creditNoteDocumentUrl,
+      receiptUrl: receiptArtifact.receiptUrl,
       invoiceId: params.stripeInvoiceId ?? null,
       paymentIntentId: params.stripePaymentIntentId ?? null,
       amount: params.amount,
@@ -127,6 +172,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           invoiceId: (object['invoice'] as string | null) ?? null,
           invoiceUrl: `${siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
           paymentLinkId: null,
+          receiptUrl: null,
           amount: Number(object['amount_total'] ?? 0) / 100,
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? (object['client_reference_id'] as string | null) ?? null,
@@ -145,6 +191,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           invoiceId: object['id'] as string,
           invoiceUrl: (object['hosted_invoice_url'] as string | null) ?? `${siteUrl}/mock-invoice/${object['id'] as string}.pdf`,
           paymentLinkId: null,
+          receiptUrl: `${siteUrl}/mock-receipt/mock_ch_${String(object['payment_intent'] ?? object['id'])}.html`,
           amount: Number(object['amount_paid'] ?? object['amount_due'] ?? 0) / 100,
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? null,
@@ -163,6 +210,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           invoiceId: (object['invoice'] as string | null) ?? null,
           invoiceUrl: null,
           paymentLinkId: null,
+          receiptUrl: `${siteUrl}/mock-receipt/mock_ch_${object['id'] as string}.html`,
           amount: Number(object['amount_received'] ?? object['amount'] ?? 0) / 100,
           currency: String(object['currency'] ?? 'chf').toUpperCase(),
           bookingId: metadata['booking_id'] ?? null,
@@ -180,6 +228,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           creditNoteId: null,
           creditNoteNumber: null,
           creditNoteDocumentUrl: null,
+          receiptUrl: `${siteUrl}/mock-receipt/${String(object['charge'] ?? `mock_ch_${String(object['payment_intent'] ?? object['id'])}`)}.html`,
           paymentIntentId: (object['payment_intent'] as string | null) ?? null,
           invoiceId: metadata['invoice_id'] ?? null,
           refundStatus: mapMockRefundStatus(object['status'] as string | null),
@@ -201,6 +250,9 @@ export class MockPaymentsProvider implements IPaymentsProvider {
           creditNoteId: object['id'] as string,
           creditNoteNumber: (object['number'] as string | null) ?? (object['id'] as string | null) ?? null,
           creditNoteDocumentUrl: (object['pdf'] as string | null) ?? `${siteUrl}/mock-credit-note/${object['id'] as string}.pdf`,
+          receiptUrl: metadata['payment_intent_id']
+            ? `${siteUrl}/mock-receipt/mock_ch_${metadata['payment_intent_id']}.html`
+            : null,
           paymentIntentId: metadata['payment_intent_id'] ?? null,
           invoiceId: (object['invoice'] as string | null) ?? metadata['invoice_id'] ?? null,
           refundStatus: eventType === 'credit_note.voided' ? 'CANCELED' : null,

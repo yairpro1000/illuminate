@@ -892,11 +892,18 @@ export class SupabaseRepository implements IRepository {
       provider: OrganizerBookingRow['payment_provider'];
       checkout_url: OrganizerBookingRow['payment_checkout_url'];
       invoice_url: OrganizerBookingRow['payment_invoice_url'];
+      refund_status: OrganizerBookingRow['payment_refund_status'];
+      refund_amount: OrganizerBookingRow['payment_refund_amount'];
+      refund_currency: OrganizerBookingRow['payment_refund_currency'];
       stripe_customer_id: OrganizerBookingRow['payment_stripe_customer_id'];
       stripe_checkout_session_id: OrganizerBookingRow['payment_stripe_checkout_session_id'];
       stripe_payment_intent_id: OrganizerBookingRow['payment_stripe_payment_intent_id'];
       stripe_invoice_id: OrganizerBookingRow['payment_stripe_invoice_id'];
       stripe_payment_link_id: OrganizerBookingRow['payment_stripe_payment_link_id'];
+      stripe_refund_id: OrganizerBookingRow['payment_stripe_refund_id'];
+      stripe_credit_note_id: OrganizerBookingRow['payment_stripe_credit_note_id'];
+      stripe_receipt_url: OrganizerBookingRow['payment_stripe_receipt_url'];
+      stripe_credit_note_url: OrganizerBookingRow['payment_stripe_credit_note_url'];
       paid_at: OrganizerBookingRow['payment_paid_at'];
     }>();
     const latestAttemptByBooking = new Map<string, { status: OrganizerBookingRow['latest_side_effect_attempt_status']; created_at: string }>();
@@ -945,18 +952,25 @@ export class SupabaseRepository implements IRepository {
         provider: OrganizerBookingRow['payment_provider'];
         checkout_url: OrganizerBookingRow['payment_checkout_url'];
         invoice_url: OrganizerBookingRow['payment_invoice_url'];
+        refund_status: OrganizerBookingRow['payment_refund_status'];
+        refund_amount: OrganizerBookingRow['payment_refund_amount'];
+        refund_currency: OrganizerBookingRow['payment_refund_currency'];
         stripe_customer_id: OrganizerBookingRow['payment_stripe_customer_id'];
         stripe_checkout_session_id: OrganizerBookingRow['payment_stripe_checkout_session_id'];
         stripe_payment_intent_id: OrganizerBookingRow['payment_stripe_payment_intent_id'];
         stripe_invoice_id: OrganizerBookingRow['payment_stripe_invoice_id'];
         stripe_payment_link_id: OrganizerBookingRow['payment_stripe_payment_link_id'];
+        stripe_refund_id: OrganizerBookingRow['payment_stripe_refund_id'];
+        stripe_credit_note_id: OrganizerBookingRow['payment_stripe_credit_note_id'];
+        stripe_receipt_url: OrganizerBookingRow['payment_stripe_receipt_url'];
+        stripe_credit_note_url: OrganizerBookingRow['payment_stripe_credit_note_url'];
         paid_at: OrganizerBookingRow['payment_paid_at'];
         created_at: string;
       }>>(
         this.db
           .from('payments')
           .select(
-            'booking_id, amount, currency, status, provider, checkout_url, invoice_url, stripe_customer_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_invoice_id, stripe_payment_link_id, paid_at, created_at',
+            'booking_id, amount, currency, status, provider, checkout_url, invoice_url, refund_status, refund_amount, refund_currency, stripe_customer_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_invoice_id, stripe_payment_link_id, stripe_refund_id, stripe_credit_note_id, stripe_receipt_url, stripe_credit_note_url, paid_at, created_at',
           )
           .in('booking_id', bookingIds)
           .order('created_at', { ascending: false }) as any,
@@ -971,11 +985,18 @@ export class SupabaseRepository implements IRepository {
             provider: payment.provider,
             checkout_url: payment.checkout_url,
             invoice_url: payment.invoice_url,
+            refund_status: payment.refund_status,
+            refund_amount: payment.refund_amount,
+            refund_currency: payment.refund_currency,
             stripe_customer_id: payment.stripe_customer_id,
             stripe_checkout_session_id: payment.stripe_checkout_session_id,
             stripe_payment_intent_id: payment.stripe_payment_intent_id,
             stripe_invoice_id: payment.stripe_invoice_id,
             stripe_payment_link_id: payment.stripe_payment_link_id,
+            stripe_refund_id: payment.stripe_refund_id,
+            stripe_credit_note_id: payment.stripe_credit_note_id,
+            stripe_receipt_url: payment.stripe_receipt_url,
+            stripe_credit_note_url: payment.stripe_credit_note_url,
             paid_at: payment.paid_at,
           });
         }
@@ -1079,11 +1100,18 @@ export class SupabaseRepository implements IRepository {
         payment_provider: payment?.provider ?? null,
         payment_checkout_url: payment?.checkout_url ?? null,
         payment_invoice_url: payment?.invoice_url ?? null,
+        payment_refund_status: payment?.refund_status ?? null,
+        payment_refund_amount: payment?.refund_amount ?? null,
+        payment_refund_currency: payment?.refund_currency ?? null,
         payment_stripe_customer_id: payment?.stripe_customer_id ?? null,
         payment_stripe_checkout_session_id: payment?.stripe_checkout_session_id ?? null,
         payment_stripe_payment_intent_id: payment?.stripe_payment_intent_id ?? null,
         payment_stripe_invoice_id: payment?.stripe_invoice_id ?? null,
         payment_stripe_payment_link_id: payment?.stripe_payment_link_id ?? null,
+        payment_stripe_refund_id: payment?.stripe_refund_id ?? null,
+        payment_stripe_credit_note_id: payment?.stripe_credit_note_id ?? null,
+        payment_stripe_receipt_url: payment?.stripe_receipt_url ?? null,
+        payment_stripe_credit_note_url: payment?.stripe_credit_note_url ?? null,
         payment_paid_at: payment?.paid_at ?? null,
         latest_event_type: latestEvent?.event_type ?? null,
         latest_event_at: latestEvent?.created_at ?? null,

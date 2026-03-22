@@ -116,10 +116,13 @@ describe('Resend booking expiry email layout', () => {
       makeBooking(),
       makeEvent(),
       'https://example.com/manage.html?token=tok-1',
-      null,
+      'https://example.com/invoice/in_123',
       null,
       'Booking policy\nRule one\nRule two\nContact',
-      { paymentSettled: true },
+      {
+        paymentSettled: true,
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
+      },
     );
 
     expect(message.payload.html).toContain('19:00\u201321:00 (Europe/Zurich)');
@@ -127,5 +130,11 @@ describe('Resend booking expiry email layout', () => {
     expect(message.payload.html).not.toContain('UTC');
     expect(message.payload.text).toContain('Time: 19:00\u201321:00 (Europe/Zurich)');
     expect(message.payload.text).not.toContain('Date & time:');
+    expect(message.payload.text).toContain('Invoice: https://example.com/invoice/in_123');
+    expect(message.payload.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_123');
+    expect(message.payload.text).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+    expect(message.payload.html).toContain('View invoice');
+    expect(message.payload.html).toContain('View receipt');
+    expect(message.payload.html).toContain('For online sessions, a video conference link will be sent at the day of the session.');
   });
 });

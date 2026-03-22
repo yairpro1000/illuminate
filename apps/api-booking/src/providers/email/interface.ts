@@ -18,6 +18,7 @@ export class EmailProviderError extends Error {
 export interface ConfirmationEmailOptions {
   paymentSettled?: boolean;
   paymentDueAt?: string | null;
+  receiptUrl?: string | null;
 }
 
 export interface CancellationEmailOptions {
@@ -32,7 +33,8 @@ export interface RefundConfirmationEmailInput {
   invoiceReference?: string | null;
   creditNoteReference?: string | null;
   refundReference?: string | null;
-  documentUrl?: string | null;
+  receiptUrl?: string | null;
+  creditNoteUrl?: string | null;
 }
 
 export interface IEmailProvider {

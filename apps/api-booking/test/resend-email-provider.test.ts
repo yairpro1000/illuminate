@@ -81,10 +81,45 @@ describe('Resend payment-due email payload', () => {
     expect(payload.subject).toBe('Your session on Mar 19 is confirmed');
     expect(payload.text).toContain('payment is still pending');
     expect(payload.text).toContain('Invoice: https://letsilluminate.co/mock-invoice/in_123');
+    expect(payload.text).toContain('Complete payment: https://letsilluminate.co/continue-payment.html?token=m1.test');
+    expect(payload.text).toContain('For online sessions, a video conference link will be sent at the day of the session.');
     expect(payload.html).toContain('Payment due');
     expect(payload.html).toContain('Invoice');
     expect(payload.html).toContain('Click here');
     expect(payload.html).toContain('Complete payment');
+    expect(payload.html).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+  });
+
+  it('includes the receipt link in settled confirmation emails when available', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendBookingConfirmation({
+      id: 'bk-2b',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any,
+    'https://letsilluminate.co/manage.html?token=m1.test',
+    'https://letsilluminate.co/mock-invoice/in_123',
+    null,
+    '',
+    {
+      paymentSettled: true,
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_123');
+    expect(payload.text).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+    expect(payload.html).toContain('View receipt');
+    expect(payload.html).toContain('For online sessions, a video conference link will be sent at the day of the session.');
   });
 
   it('includes the hold-window copy in event confirmation-request emails', async () => {
@@ -206,7 +241,8 @@ describe('Resend payment-due email payload', () => {
       invoiceReference: 'in_123',
       creditNoteReference: 'cn_123',
       refundReference: 're_123',
-      documentUrl: 'https://letsilluminate.co/mock-credit-note/cn_123',
+      creditNoteUrl: 'https://letsilluminate.co/mock-credit-note/cn_123',
+      receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
     });
 
     expect(sendMock).toHaveBeenCalledTimes(1);
@@ -217,8 +253,42 @@ describe('Resend payment-due email payload', () => {
     expect(payload.text).toContain('Invoice: in_123');
     expect(payload.text).toContain('Credit note: cn_123');
     expect(payload.text).toContain('Refund reference: re_123');
+    expect(payload.text).toContain('Credit note link: https://letsilluminate.co/mock-credit-note/cn_123');
+    expect(payload.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_123');
     expect(payload.html).toContain('Amount');
     expect(payload.html).toContain('CHF 150.00');
-    expect(payload.html).toContain('View document');
+    expect(payload.html).toContain('View credit note');
+    expect(payload.html).toContain('View receipt');
+  });
+
+  it('omits refund document links when Stripe did not provide URLs', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendRefundConfirmation({
+      id: 'bk-6',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, {
+      subjectTitle: 'Cycle Session',
+      amount: 150,
+      currency: 'CHF',
+      explanation: 'Your refund has been processed.',
+      invoiceReference: 'in_123',
+      refundReference: 're_123',
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.text).not.toContain('Credit note link:');
+    expect(payload.text).not.toContain('Receipt: https://');
+    expect(payload.html).not.toContain('View credit note');
+    expect(payload.html).not.toContain('View receipt');
   });
 });

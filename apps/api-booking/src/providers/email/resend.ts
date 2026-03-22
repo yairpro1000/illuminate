@@ -138,6 +138,8 @@ function bookingConfirmationSubject(
     : `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed and paid`;
 }
 
+const ONLINE_SESSION_FOLLOWUP_NOTE = 'For online sessions, a video conference link will be sent at the day of the session.';
+
 function bookingConfirmationBody(
   booking: Booking,
   manageUrl: string,
@@ -147,6 +149,7 @@ function bookingConfirmationBody(
   options: ConfirmationEmailOptions = {},
 ): string {
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+  const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
@@ -169,6 +172,8 @@ function bookingConfirmationBody(
       '',
       payUrl ? `Complete payment: ${payUrl}` : null,
       `Manage booking: ${manageUrl}`,
+      '',
+      ONLINE_SESSION_FOLLOWUP_NOTE,
     ];
     return lines.filter((line): line is string => line !== null).join('\n');
   }
@@ -203,6 +208,9 @@ function bookingConfirmationBody(
     `Manage booking: ${manageUrl}`,
     payUrl ? `Complete payment: ${payUrl}` : null,
     invoiceUrl ? `Invoice: ${invoiceUrl}` : null,
+    receiptUrl ? `Receipt: ${receiptUrl}` : null,
+    '',
+    ONLINE_SESSION_FOLLOWUP_NOTE,
     '',
     policyText,
     '',
@@ -402,6 +410,7 @@ function bookingConfirmationHtml(
 ): string {
   const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+  const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
@@ -428,6 +437,7 @@ function bookingConfirmationHtml(
         : 'Please complete payment before your session.'}</p>
       ${payUrl ? `<p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>` : ''}
       <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
+      <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
     `;
     return htmlLayout(body);
   }
@@ -461,6 +471,7 @@ function bookingConfirmationHtml(
     `<p class="secondary-link"><a href="${esc(calendarUrl)}">Add to Google Calendar &rarr;</a></p>`,
     payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
     invoiceUrl ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>` : '',
+    receiptUrl ? `<p class="secondary-link"><a href="${esc(receiptUrl)}">View receipt &rarr;</a></p>` : '',
   ].join('');
 
   const body = `
@@ -469,6 +480,7 @@ function bookingConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}
+    <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
     ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to meeting you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
@@ -552,6 +564,7 @@ function eventConfirmationHtml(
 ): string {
   const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
+  const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
@@ -573,6 +586,7 @@ function eventConfirmationHtml(
         : 'Please complete payment to finalize your event payment.'}</p>
       ${payUrl ? `<p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>` : ''}
       <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
+      <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
     `;
     return htmlLayout(body);
   }
@@ -586,6 +600,9 @@ function eventConfirmationHtml(
   const invoiceLine = invoiceUrl
     ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
     : '';
+  const receiptLine = receiptUrl
+    ? `<p class="secondary-link"><a href="${esc(receiptUrl)}">View receipt &rarr;</a></p>`
+    : '';
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
@@ -593,6 +610,8 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${invoiceLine}
+    ${receiptLine}
+    <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
     ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
@@ -868,7 +887,8 @@ export function buildRefundConfirmationEmail(
     input.invoiceReference ? `Invoice: ${input.invoiceReference}` : null,
     input.creditNoteReference ? `Credit note: ${input.creditNoteReference}` : null,
     input.refundReference ? `Refund reference: ${input.refundReference}` : null,
-    input.documentUrl ? `Document: ${input.documentUrl}` : null,
+    input.creditNoteUrl ? `Credit note link: ${input.creditNoteUrl}` : null,
+    input.receiptUrl ? `Receipt: ${input.receiptUrl}` : null,
   ].filter(Boolean);
   const text = `Hi ${clientName(booking)},\n\n${input.explanation}\n\nBooking: ${input.subjectTitle}\nAmount: ${amountLabel}${referenceLines.length ? `\n${referenceLines.join('\n')}` : ''}`;
   const detailRows: Array<[string, string]> = [
@@ -878,12 +898,24 @@ export function buildRefundConfirmationEmail(
   if (input.invoiceReference) detailRows.push(['Invoice', esc(input.invoiceReference)]);
   if (input.creditNoteReference) detailRows.push(['Credit note', esc(input.creditNoteReference)]);
   if (input.refundReference) detailRows.push(['Refund reference', esc(input.refundReference)]);
+  const primaryDocumentUrl = input.creditNoteUrl ?? input.receiptUrl ?? `${DEFAULT_SITE_URL}/manage.html`;
+  const primaryDocumentLabel = input.creditNoteUrl
+    ? 'View credit note'
+    : input.receiptUrl
+      ? 'View receipt'
+      : 'Manage booking';
+  const extraLinks = [
+    input.creditNoteUrl && input.receiptUrl
+      ? `<a href="${esc(input.receiptUrl)}">View receipt &rarr;</a>`
+      : null,
+  ].filter((line): line is string => Boolean(line));
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     detailRows,
     [input.explanation],
-    input.documentUrl ? 'View document' : 'Manage booking',
-    input.documentUrl ?? `${DEFAULT_SITE_URL}/manage.html`,
+    primaryDocumentLabel,
+    primaryDocumentUrl,
+    extraLinks,
   );
   return buildEmailMessage(
     'refund_confirmation',
@@ -962,6 +994,7 @@ export function buildEventConfirmationEmail(
 ): BuiltEmailMessage {
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
+  const receiptUrl = paymentSettled ? options.receiptUrl ?? null : null;
   const paymentDueLabel = options.paymentDueAt
     ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
     : null;
@@ -972,10 +1005,10 @@ export function buildEventConfirmationEmail(
     includeCalendar: paymentSettled || !isPendingPayment,
   });
   const text = paymentSettled
-    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}\n\nManage: ${manageUrl}\n\n${policyText}`
+    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${receiptUrl ? `\nReceipt: ${receiptUrl}` : ''}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`
     : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}`
-      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${policyText}`;
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
+      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),

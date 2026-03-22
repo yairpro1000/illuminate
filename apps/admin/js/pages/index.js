@@ -302,11 +302,22 @@
       detailRow('Provider', row.payment_provider || '—'),
       detailRow('Checkout URL', detailLink(row.payment_checkout_url, 'Open checkout')),
       detailRow('Invoice URL', detailLink(row.payment_invoice_url, 'Open invoice')),
+      detailRow('Refund status', row.payment_refund_status || '—'),
+      detailRow(
+        'Refund amount',
+        (row.payment_refund_amount != null && row.payment_refund_currency)
+          ? formatMoneyDisplay(row.payment_refund_amount, row.payment_refund_currency)
+          : '—',
+      ),
       detailRow('Stripe customer ID', row.payment_stripe_customer_id || '—'),
       detailRow('Stripe checkout session', row.payment_stripe_checkout_session_id || '—'),
       detailRow('Stripe payment intent', row.payment_stripe_payment_intent_id || '—'),
       detailRow('Stripe invoice', row.payment_stripe_invoice_id || '—'),
       detailRow('Stripe payment link', row.payment_stripe_payment_link_id || '—'),
+      detailRow('Stripe refund', row.payment_stripe_refund_id || '—'),
+      detailRow('Stripe credit note', row.payment_stripe_credit_note_id || '—'),
+      detailRow('Receipt URL', detailLink(row.payment_stripe_receipt_url, 'View receipt')),
+      detailRow('Credit note URL', detailLink(row.payment_stripe_credit_note_url, 'View credit note')),
       detailRow('Paid at', fmtDateTime(row.payment_paid_at)),
       detailRow('Payment booking event', row.payment_latest_event_type || '—'),
       detailRow('Payment event datetime', fmtDateTime(row.payment_latest_event_at)),

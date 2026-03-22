@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const schemaCalls: string[] = [];
 const insertAttempts: Array<{ schema: string; table: string; row: Record<string, unknown> }> = [];
+const updateAttempts: Array<{ schema: string; table: string; id: string; row: Record<string, unknown> }> = [];
 
 vi.mock('../src/repo/supabase.js', () => ({
   makeSupabase: vi.fn(() => ({
@@ -20,8 +21,18 @@ vi.mock('../src/repo/supabase.js', () => ({
               })),
             };
           }),
-          update: vi.fn(() => ({
-            eq: vi.fn(async () => ({ error: null })),
+          update: vi.fn((row: Record<string, unknown>) => ({
+            eq: vi.fn((_: string, id: string) => {
+              updateAttempts.push({ schema: schemaName, table, id, row });
+              return {
+                select: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => ({
+                    data: schemaName === 'public' ? { id } : null,
+                    error: null,
+                  })),
+                })),
+              };
+            }),
           })),
         })),
       };
@@ -30,7 +41,7 @@ vi.mock('../src/repo/supabase.js', () => ({
 }));
 
 import { createOperationContext } from '../src/lib/execution.js';
-import { startApiLog } from '../src/lib/technical-observability.js';
+import { finalizeApiLog, startApiLog } from '../src/lib/technical-observability.js';
 
 function makeEnv(overrides: Record<string, unknown> = {}) {
   return {
@@ -45,6 +56,7 @@ describe('technical observability schema selection', () => {
   beforeEach(() => {
     schemaCalls.length = 0;
     insertAttempts.length = 0;
+    updateAttempts.length = 0;
   });
 
   it('defaults to public when OBSERVABILITY_SCHEMA is unset', async () => {
@@ -84,6 +96,22 @@ describe('technical observability schema selection', () => {
     expect(insertAttempts).toEqual([
       expect.objectContaining({ schema: 'observability', table: 'api_logs' }),
       expect.objectContaining({ schema: 'public', table: 'api_logs' }),
+    ]);
+  });
+
+  it('falls back to public when an api_log update silently matches no row in the configured schema', async () => {
+    await finalizeApiLog(makeEnv({ OBSERVABILITY_SCHEMA: 'observability' }), 'api-log-public', {
+      responseStatus: 500,
+      responseBody: { error: 'INTERNAL_ERROR', message: 'Internal server error' },
+      errorCode: 'INTERNAL_ERROR',
+      errorMessage: 'boom',
+      startedAtMs: Date.now() - 5,
+    });
+
+    expect(schemaCalls).toEqual(['observability', 'public']);
+    expect(updateAttempts).toEqual([
+      expect.objectContaining({ schema: 'observability', table: 'api_logs', id: 'api-log-public' }),
+      expect.objectContaining({ schema: 'public', table: 'api_logs', id: 'api-log-public' }),
     ]);
   });
 });

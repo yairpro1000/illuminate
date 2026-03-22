@@ -41,6 +41,8 @@ interface RefundCompletionPayload {
   stripe_credit_note_id: string | null;
   credit_note_number: string | null;
   credit_note_document_url: string | null;
+  credit_note_url: string | null;
+  receipt_url: string | null;
   invoice_id: string | null;
   payment_intent_id: string | null;
 }
@@ -51,6 +53,125 @@ export function effectiveRefundStatus(
   if (!payment) return 'NONE';
   if (payment.refund_status) return payment.refund_status;
   return payment.status === 'REFUNDED' ? 'SUCCEEDED' : 'NONE';
+}
+
+async function resolveRefundArtifactUrls(
+  payment: Payment,
+  event: Pick<StripeRefundWebhookEvent, 'eventType' | 'paymentIntentId' | 'invoiceId' | 'receiptUrl' | 'creditNoteDocumentUrl'>,
+  ctx: Pick<BookingContext, 'providers' | 'logger'>,
+): Promise<{
+  receiptUrl: string | null;
+  creditNoteUrl: string | null;
+  branchTaken: string;
+  denyReason: string | null;
+}> {
+  const existingReceiptUrl = payment.stripe_receipt_url ?? null;
+  const existingCreditNoteUrl = payment.stripe_credit_note_url ?? null;
+  const upstreamReceiptUrl = event.receiptUrl ?? null;
+  const upstreamCreditNoteUrl = event.creditNoteDocumentUrl ?? null;
+
+  if (upstreamReceiptUrl || upstreamCreditNoteUrl) {
+    return {
+      receiptUrl: upstreamReceiptUrl ?? existingReceiptUrl,
+      creditNoteUrl: upstreamCreditNoteUrl ?? existingCreditNoteUrl,
+      branchTaken: upstreamCreditNoteUrl
+        ? 'reuse_upstream_credit_note_url'
+        : 'reuse_upstream_receipt_url',
+      denyReason: null,
+    };
+  }
+
+  if (existingReceiptUrl || existingCreditNoteUrl) {
+    return {
+      receiptUrl: existingReceiptUrl,
+      creditNoteUrl: existingCreditNoteUrl,
+      branchTaken: existingCreditNoteUrl
+        ? 'reuse_existing_credit_note_url'
+        : 'reuse_existing_receipt_url',
+      denyReason: null,
+    };
+  }
+
+  const paymentIntentId = event.paymentIntentId ?? payment.stripe_payment_intent_id ?? null;
+  const invoiceId = event.invoiceId ?? payment.stripe_invoice_id ?? null;
+  if (!paymentIntentId && !invoiceId) {
+    return {
+      receiptUrl: null,
+      creditNoteUrl: null,
+      branchTaken: 'skip_refund_artifact_fetch_without_identifiers',
+      denyReason: 'refund_artifact_identifiers_missing',
+    };
+  }
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'refund_artifact_fetch_decision',
+    message: 'Fetching Stripe refund artifacts because stored customer-facing links are missing',
+    context: {
+      booking_id: payment.booking_id,
+      payment_id: payment.id,
+      stripe_event_type: event.eventType,
+      stripe_payment_intent_id: paymentIntentId,
+      stripe_invoice_id: invoiceId,
+      branch_taken: 'fetch_refund_receipt_artifact_from_provider',
+      deny_reason: 'refund_artifact_urls_missing',
+    },
+  });
+
+  try {
+    const artifacts = await ctx.providers.payments.getPaymentArtifactDetails({
+      paymentIntentId,
+      invoiceId,
+    });
+    const resolvedReceiptUrl = artifacts.receiptUrl ?? null;
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'refund_artifact_fetch_completed',
+      message: 'Fetched Stripe refund artifacts from payments provider',
+      context: {
+        booking_id: payment.booking_id,
+        payment_id: payment.id,
+        stripe_event_type: event.eventType,
+        stripe_payment_intent_id: artifacts.paymentIntentId ?? paymentIntentId,
+        stripe_invoice_id: artifacts.invoiceId ?? invoiceId,
+        resolved_receipt_url_present: Boolean(resolvedReceiptUrl),
+        branch_taken: resolvedReceiptUrl
+          ? 'fetched_refund_receipt_url_from_provider'
+          : 'provider_refund_receipt_url_missing_after_fetch',
+        deny_reason: resolvedReceiptUrl ? null : 'provider_refund_receipt_url_missing',
+      },
+    });
+    return {
+      receiptUrl: resolvedReceiptUrl,
+      creditNoteUrl: null,
+      branchTaken: resolvedReceiptUrl
+        ? 'fetched_refund_receipt_url_from_provider'
+        : 'provider_refund_receipt_url_missing_after_fetch',
+      denyReason: resolvedReceiptUrl ? null : 'provider_refund_receipt_url_missing',
+    };
+  } catch (error) {
+    const denyReason = error instanceof Error ? error.message : 'provider_refund_artifact_fetch_failed';
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'refund_artifact_fetch_completed',
+      message: 'Stripe refund artifact fetch failed; continuing without document links',
+      context: {
+        booking_id: payment.booking_id,
+        payment_id: payment.id,
+        stripe_event_type: event.eventType,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_invoice_id: invoiceId,
+        branch_taken: 'provider_refund_artifact_fetch_failed',
+        deny_reason: denyReason,
+      },
+    });
+    return {
+      receiptUrl: null,
+      creditNoteUrl: null,
+      branchTaken: 'provider_refund_artifact_fetch_failed',
+      denyReason,
+    };
+  }
 }
 
 export async function evaluateCancellationRefundDecision(
@@ -291,6 +412,8 @@ export async function initiateAutomaticCancellationRefund(
       stripe_credit_note_id: refundRecord.creditNoteId,
       refund_amount: refundRecord.amount,
       refund_currency: refundRecord.currency,
+      receipt_url_present: Boolean(refundRecord.receiptUrl),
+      credit_note_url_present: Boolean(refundRecord.creditNoteDocumentUrl),
       branch_taken: refundRecord.refundPath === 'credit_note'
         ? 'refund_created_via_credit_note'
         : 'refund_created_via_direct_refund',
@@ -305,6 +428,8 @@ export async function initiateAutomaticCancellationRefund(
     refund_currency: refundRecord.currency,
     stripe_refund_id: refundRecord.refundId,
     stripe_credit_note_id: refundRecord.creditNoteId,
+    stripe_receipt_url: refundRecord.receiptUrl ?? payment.stripe_receipt_url ?? null,
+    stripe_credit_note_url: refundRecord.creditNoteDocumentUrl ?? payment.stripe_credit_note_url ?? null,
     refunded_at: refundRecord.refundStatus === 'SUCCEEDED'
       ? (payment.refunded_at ?? new Date().toISOString())
       : payment.refunded_at,
@@ -325,6 +450,8 @@ export async function initiateAutomaticCancellationRefund(
         stripe_credit_note_id: refundRecord.creditNoteId,
         credit_note_number: refundRecord.creditNoteNumber,
         credit_note_document_url: refundRecord.creditNoteDocumentUrl,
+        credit_note_url: refundRecord.creditNoteDocumentUrl,
+        receipt_url: refundRecord.receiptUrl,
         invoice_id: refundRecord.invoiceId,
         payment_intent_id: refundRecord.paymentIntentId,
       },
@@ -368,12 +495,15 @@ export async function reconcileStripeRefundWebhook(
     };
   }
 
+  const artifactUrls = await resolveRefundArtifactUrls(payment, event, ctx);
   const nextRefundStatus = resolveRefundStatusFromWebhook(payment, event, currentRefundStatus);
   const shouldPersist = currentRefundStatus !== nextRefundStatus
     || (event.refundId && event.refundId !== payment.stripe_refund_id)
     || (event.creditNoteId && event.creditNoteId !== payment.stripe_credit_note_id)
     || (event.amount !== null && event.amount !== payment.refund_amount)
-    || (event.currency && event.currency !== payment.refund_currency);
+    || (event.currency && event.currency !== payment.refund_currency)
+    || artifactUrls.receiptUrl !== (payment.stripe_receipt_url ?? null)
+    || artifactUrls.creditNoteUrl !== (payment.stripe_credit_note_url ?? null);
   const branchTaken = shouldPersist
     ? event.eventType.startsWith('credit_note.')
       ? 'reconcile_credit_note_refund_event'
@@ -395,6 +525,9 @@ export async function reconcileStripeRefundWebhook(
       next_refund_status: nextRefundStatus,
       refund_amount_from_event: event.amount,
       refund_currency_from_event: event.currency,
+      resolved_receipt_url_present: Boolean(artifactUrls.receiptUrl),
+      resolved_credit_note_url_present: Boolean(artifactUrls.creditNoteUrl),
+      artifact_branch_taken: artifactUrls.branchTaken,
       branch_taken: branchTaken,
       deny_reason: denyReason,
     },
@@ -411,6 +544,8 @@ export async function reconcileStripeRefundWebhook(
     refund_currency: event.currency ?? payment.refund_currency,
     stripe_refund_id: event.refundId ?? payment.stripe_refund_id,
     stripe_credit_note_id: event.creditNoteId ?? payment.stripe_credit_note_id,
+    stripe_receipt_url: artifactUrls.receiptUrl,
+    stripe_credit_note_url: artifactUrls.creditNoteUrl,
     refunded_at: nextRefundStatus === 'SUCCEEDED'
       ? (payment.refunded_at ?? new Date().toISOString())
       : payment.refunded_at,
@@ -432,6 +567,8 @@ export async function reconcileStripeRefundWebhook(
         stripe_credit_note_id: event.creditNoteId ?? updatedPayment.stripe_credit_note_id ?? null,
         credit_note_number: event.creditNoteNumber,
         credit_note_document_url: event.creditNoteDocumentUrl,
+        credit_note_url: artifactUrls.creditNoteUrl,
+        receipt_url: artifactUrls.receiptUrl,
         invoice_id: event.invoiceId ?? updatedPayment.stripe_invoice_id,
         payment_intent_id: event.paymentIntentId ?? updatedPayment.stripe_payment_intent_id,
       },
@@ -452,6 +589,9 @@ export async function reconcileStripeRefundWebhook(
       refund_status: nextRefundStatus,
       stripe_refund_id: updatedPayment.stripe_refund_id ?? null,
       stripe_credit_note_id: updatedPayment.stripe_credit_note_id ?? null,
+      stripe_receipt_url_present: Boolean(updatedPayment.stripe_receipt_url),
+      stripe_credit_note_url_present: Boolean(updatedPayment.stripe_credit_note_url),
+      artifact_branch_taken: artifactUrls.branchTaken,
       branch_taken: branchTaken,
       deny_reason: null,
     },
@@ -532,7 +672,10 @@ export async function sendRefundConfirmationEmailForBooking(
       ?? readPayloadString(payload, 'stripe_credit_note_id')
       ?? payment.stripe_credit_note_id,
     refundReference: readPayloadString(payload, 'stripe_refund_id') ?? payment.stripe_refund_id,
-    documentUrl: readPayloadString(payload, 'credit_note_document_url'),
+    creditNoteUrl: readPayloadString(payload, 'credit_note_url')
+      ?? readPayloadString(payload, 'credit_note_document_url')
+      ?? payment.stripe_credit_note_url,
+    receiptUrl: readPayloadString(payload, 'receipt_url') ?? payment.stripe_receipt_url,
   });
 
   ctx.logger.logInfo?.({

@@ -633,10 +633,7 @@
                 A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.
                 Please confirm your booking there first. After that, payment is due 24 hours before your session.
               </p>
-              <div class="confirmation__actions" style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-                <a href="${escHtml(state.submissionContinuePaymentUrl)}" class="btn btn-primary">Complete payment</a>
-                <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
-              </div>
+              <a href="index.html" class="btn btn-ghost confirmation__back">← Back to homepage</a>
             </div>
           `;
         }
