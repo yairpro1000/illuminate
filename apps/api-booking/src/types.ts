@@ -30,6 +30,7 @@ export type BookingSideEffectAttemptStatus = 'SUCCESS' | 'FAILED';
 export type BookingEffectIntent =
   | 'SEND_BOOKING_CONFIRMATION_REQUEST'
   | 'SEND_BOOKING_CONFIRMATION'
+  | 'SEND_BOOKING_REFUND_CONFIRMATION'
   | 'SEND_PAYMENT_LINK'
   | 'SEND_PAYMENT_REMINDER'
   | 'SEND_BOOKING_CANCELLATION_CONFIRMATION'
@@ -47,6 +48,7 @@ export type BookingEffectIntent =
 
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'sold_out';
 export type PaymentStatus = 'PENDING' | 'INVOICE_SENT' | 'CASH_OK' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED';
+export type RefundStatus = 'NONE' | 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
 export type PaymentProvider = 'stripe' | 'mock';
 export type SystemSettingValueType = 'integer' | 'float' | 'boolean' | 'text' | 'json';
 
@@ -353,6 +355,13 @@ export interface Payment {
   stripe_payment_intent_id: string | null;
   stripe_invoice_id: string | null;
   stripe_payment_link_id: string | null;
+  refund_status?: RefundStatus | null;
+  refund_amount?: number | null;
+  refund_currency?: string | null;
+  stripe_refund_id?: string | null;
+  stripe_credit_note_id?: string | null;
+  refunded_at?: string | null;
+  refund_reason?: string | null;
 }
 
 // ── Admin/read models ───────────────────────────────────────────────────────
@@ -483,6 +492,13 @@ export type PaymentUpdate = Partial<
     | 'stripe_payment_intent_id'
     | 'stripe_invoice_id'
     | 'stripe_payment_link_id'
+    | 'refund_status'
+    | 'refund_amount'
+    | 'refund_currency'
+    | 'stripe_refund_id'
+    | 'stripe_credit_note_id'
+    | 'refunded_at'
+    | 'refund_reason'
   >
 >;
 

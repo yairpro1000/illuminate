@@ -81,6 +81,8 @@ afterEach(() => {
 
 describe('booking domain model', () => {
   it('creates pay-now, pay-later, and free bookings with phase-2 vocabulary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-10T12:00:00.000Z'));
     const ctx = makeCtx();
 
     const payNow = await createPayNowBooking({
@@ -1180,6 +1182,8 @@ describe('booking domain model', () => {
   });
 
   it('sends event confirmation email with Add to Google Calendar link', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-10T12:00:00.000Z'));
     const ctx = makeCtx();
     const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
 
@@ -1211,7 +1215,97 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain('calendar.google.com');
   });
 
+  it('initiates invoice-backed Stripe refunds during refundable cancellations and sends separate refund confirmation', async () => {
+    const ctx = makeCtx();
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-04-19T10:00:00.000Z',
+      slotEnd: '2026-04-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Refundable Doe',
+      clientEmail: 'refund@example.com',
+      clientPhone: '+41000000091',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    await confirmBookingEmail(token, ctx);
+
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    await confirmBookingPayment({
+      id: payment!.id,
+      booking_id: payment!.booking_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
+    }, {
+      paymentIntentId: 'pi_refund_invoice_123',
+      invoiceId: payment!.stripe_invoice_id,
+      invoiceUrl: payment!.invoice_url,
+    }, ctx);
+
+    const confirmedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const canceled = await cancelBooking(confirmedBooking!, ctx);
+
+    expect(canceled.ok).toBe(true);
+    expect(canceled.code).toBe('CANCELED_AND_REFUNDED');
+    expect(canceled.message).toContain('If a refund applies, you\'ll receive a separate confirmation email.');
+
+    const refundedPayment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(refundedPayment?.status).toBe('REFUNDED');
+    expect(refundedPayment?.refund_status).toBe('SUCCEEDED');
+    expect(refundedPayment?.refund_amount).toBe(150);
+    expect(refundedPayment?.refund_currency).toBe('CHF');
+    expect(refundedPayment?.stripe_credit_note_id).toBeTruthy();
+    expect(refundedPayment?.stripe_refund_id).toBeTruthy();
+    expect(refundedPayment?.refund_reason).toContain('Full refund initiated because');
+    expect(refundedPayment?.refunded_at).toBeTruthy();
+
+    const refundEvent = mockState.bookingEvents.find(
+      (event) => event.booking_id === created.bookingId && event.event_type === 'REFUND_COMPLETED',
+    );
+    expect(refundEvent?.payload?.['refund_path']).toBe('credit_note');
+
+    const cancellationEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'booking_cancellation' && email.to === 'refund@example.com',
+    );
+    expect(cancellationEmail?.text).toContain('If a refund applies, you\'ll receive a separate confirmation email.');
+
+    const refundEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'refund_confirmation' && email.to === 'refund@example.com',
+    );
+    expect(refundEmail?.subject).toBe('Your refund for First Clarity Session');
+    expect(refundEmail?.text).toContain('Your refund has been processed and a credit note was created.');
+    expect(refundEmail?.text).toContain('Amount: CHF 150.00');
+    expect(refundEmail?.text).toContain('Credit note:');
+
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'cancellation_refund_provider_call_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'refund_created_via_credit_note',
+      }),
+    }));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'refund_confirmation_email_completed',
+      context: expect.objectContaining({
+        booking_id: created.bookingId,
+        branch_taken: 'refund_confirmation_email_sent',
+      }),
+    }));
+  });
+
   it('sends event-specific cancellation copy for canceled event bookings', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-10T12:00:00.000Z'));
     const ctx = makeCtx();
     const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
 
@@ -1246,7 +1340,7 @@ describe('booking domain model', () => {
     expect(cancellationEmail?.text).toContain('We are sorry to see you go.');
     expect(cancellationEmail?.text).toContain('Your event booking for');
     expect(cancellationEmail?.text).toContain('You can always book again: https://example.com/evenings.html');
-    expect(cancellationEmail?.text).toContain('Contact Yair: https://letsilluminate.co/contact.html');
+    expect(cancellationEmail?.text).toContain('Contact Yair: https://example.com/contact.html');
     expect(cancellationEmail?.text).not.toContain('Your session on');
     expect(cancellationEmail?.html).toContain('We are sorry to see you go.');
     expect(cancellationEmail?.html).toContain('You can always');

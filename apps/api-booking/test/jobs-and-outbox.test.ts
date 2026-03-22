@@ -151,6 +151,7 @@ function makeCtx(overrides: any = {}) {
         sendEventReminder24h: vi.fn().mockResolvedValue(undefined),
         sendBookingConfirmation: vi.fn().mockResolvedValue(undefined),
         sendEventConfirmation: vi.fn().mockResolvedValue(undefined),
+        sendRefundConfirmation: vi.fn().mockResolvedValue(undefined),
         sendContactMessage: vi.fn().mockResolvedValue(undefined),
         ...((overrides.providers && overrides.providers.email) || {}),
       },
@@ -566,6 +567,7 @@ describe('jobs and side-effect dispatcher', () => {
       expect.objectContaining({ id: 'b1', event_id: 'evt-1' }),
       expect.objectContaining({ id: 'evt-1', title: 'Listening to the Body' }),
       'https://example.com/evenings.html',
+      expect.objectContaining({ includeRefundNotice: false }),
     );
     expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({

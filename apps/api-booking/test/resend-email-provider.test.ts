@@ -130,15 +130,19 @@ describe('Resend payment-due email payload', () => {
       ends_at: '2026-03-19T11:00:00.000Z',
       timezone: 'Europe/Zurich',
       address_line: 'Via Example 1, Lugano',
-    } as any, 'https://letsilluminate.co/sessions.html');
+    } as any, 'https://letsilluminate.co/sessions.html', {
+      includeRefundNotice: true,
+    });
 
     expect(sendMock).toHaveBeenCalledTimes(1);
     const payload = sendMock.mock.calls[0][0] as Record<string, string>;
     expect(payload.subject).toBe('Your session on Mar 19 has been cancelled');
     expect(payload.text).toContain('We are sorry to see you go.');
+    expect(payload.text).toContain('If a refund applies, you\'ll receive a separate confirmation email.');
     expect(payload.text).toContain('You can always book again: https://letsilluminate.co/sessions.html');
     expect(payload.text).toContain('Contact Yair: https://letsilluminate.co/contact.html');
     expect(payload.html).toContain('We are sorry to see you go.');
+    expect(payload.html).toContain('If a refund applies, you\'ll receive a separate confirmation email.');
     expect(payload.html).toContain('You can always');
     expect(payload.html).toContain('Book again');
     expect(payload.html).toContain('Contact Yair');
@@ -178,5 +182,43 @@ describe('Resend payment-due email payload', () => {
     expect(payload.html).toContain('Your event booking has been cancelled.');
     expect(payload.html).toContain('Book again');
     expect(payload.html).toContain('Contact Yair');
+  });
+
+  it('sends refund confirmation copy with amount and references', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendRefundConfirmation({
+      id: 'bk-5',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, {
+      subjectTitle: 'Cycle Session',
+      amount: 150,
+      currency: 'CHF',
+      explanation: 'Your refund has been processed.',
+      invoiceReference: 'in_123',
+      creditNoteReference: 'cn_123',
+      refundReference: 're_123',
+      documentUrl: 'https://letsilluminate.co/mock-credit-note/cn_123',
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.subject).toBe('Your refund for Cycle Session');
+    expect(payload.text).toContain('Your refund has been processed.');
+    expect(payload.text).toContain('Amount: CHF 150.00');
+    expect(payload.text).toContain('Invoice: in_123');
+    expect(payload.text).toContain('Credit note: cn_123');
+    expect(payload.text).toContain('Refund reference: re_123');
+    expect(payload.html).toContain('Amount');
+    expect(payload.html).toContain('CHF 150.00');
+    expect(payload.html).toContain('View document');
   });
 });

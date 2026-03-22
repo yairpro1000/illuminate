@@ -104,6 +104,7 @@ describe('manage page reschedule link type', () => {
         booking_id: 'booking-3',
         status: 'CANCELED',
         result_code: 'CANCELED',
+        message: "Your cancellation has been registered. If a refund applies, you'll receive a separate confirmation email.",
         mock_email_preview: {
           email_id: 'mock_msg_cancel',
           to: 'cancel@example.test',
@@ -125,6 +126,7 @@ describe('manage page reschedule link type', () => {
     await flush()
 
     expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('cancelled')
+    expect(document.querySelector('.manage-subtitle')?.textContent).toContain('If a refund applies')
   })
 
   it('renders add-to-calendar for confirmed bookings on manage page', async () => {

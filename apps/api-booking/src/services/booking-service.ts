@@ -45,6 +45,11 @@ import { applyCouponToPrice, normalizeCouponCode, resolveCouponByCode } from './
 import { computePaymentDueReminderTime } from './reminder-service.js';
 import { recordSideEffectAttempts } from './side-effect-attempts.js';
 import {
+  evaluateCancellationRefundNoticeDecision,
+  initiateAutomaticCancellationRefund,
+  sendRefundConfirmationEmailForBooking,
+} from './refund-service.js';
+import {
   assertSessionTypeWeekCapacityAvailable,
   localWeekRangeForSlot,
   resolvePublicSessionTypeForBooking,
@@ -65,6 +70,7 @@ const REALTIME_TRANSITION_SIDE_EFFECT_INTENTS: ReadonlySet<BookingEffectIntent> 
   'SEND_BOOKING_EXPIRATION_NOTIFICATION',
   'SEND_BOOKING_CANCELLATION_CONFIRMATION',
   'SEND_BOOKING_CONFIRMATION',
+  'SEND_BOOKING_REFUND_CONFIRMATION',
   'CREATE_STRIPE_CHECKOUT',
   'CREATE_STRIPE_REFUND',
 ]);
@@ -1402,6 +1408,12 @@ export async function cancelBooking(
     { reason: 'user_cancelled' },
     ctx,
   );
+  const paymentBeforeImmediateEffects = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(
+    transitioned.booking,
+    paymentBeforeImmediateEffects,
+    ctx,
+  );
 
   let finalBooking = await applyImmediateNonCronSideEffectsForTransition({
     transitionEventType: 'BOOKING_CANCELED',
@@ -1412,7 +1424,6 @@ export async function cancelBooking(
   }, ctx);
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-  const wasPaid = isPaymentSettledStatus(payment?.status);
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'cancel_booking_refund_branch_decision',
@@ -1423,17 +1434,22 @@ export async function cancelBooking(
       payment_status: payment?.status ?? null,
       prior_booking_status: booking.current_status,
       source,
-      branch_taken: wasPaid ? 'run_refund_flow' : 'skip_refund_flow_unpaid',
-      deny_reason: wasPaid ? null : 'booking_not_paid',
+      refund_notice_included: refundNoticeDecision.includeRefundNotice,
+      refund_eligible: refundNoticeDecision.refundDecision.eligible,
+      refund_path: refundNoticeDecision.refundDecision.refundPath,
+      refund_amount: refundNoticeDecision.refundDecision.refundAmount,
+      branch_taken: refundNoticeDecision.branchTaken,
+      deny_reason: refundNoticeDecision.denyReason,
     },
   });
   const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
 
   return {
     ok: true,
     code: refreshedPayment?.status === 'REFUNDED' ? 'CANCELED_AND_REFUNDED' : 'CANCELED',
-    message: refreshedPayment?.status === 'REFUNDED'
-      ? 'Booking cancelled and refund verified.'
+    message: includeRefundNotice
+      ? 'Booking cancelled. If a refund applies, you\'ll receive a separate confirmation email.'
       : 'Booking cancelled.',
     booking: finalBooking,
   };
@@ -1784,6 +1800,9 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
 
 export async function sendBookingCancellationConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
   const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
+  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(booking, payment, ctx);
+  const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -1794,6 +1813,8 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
       booking_kind: bookingKind,
       booking_status: booking.current_status,
       event_id: booking.event_id ?? null,
+      include_refund_notice: includeRefundNotice,
+      refund_branch_taken: refundNoticeDecision.branchTaken,
       branch_taken: booking.event_id
         ? 'load_event_and_send_event_cancellation_email'
         : 'send_session_cancellation_email',
@@ -1802,7 +1823,11 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
   });
 
   if (!booking.event_id) {
-    await ctx.providers.email.sendBookingCancellation(booking, buildStartNewBookingUrl(bookingSiteUrl(ctx), booking));
+    await ctx.providers.email.sendBookingCancellation(
+      booking,
+      buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
+      { includeRefundNotice },
+    );
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'booking_cancellation_email_dispatch_completed',
@@ -1836,7 +1861,12 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     throw new Error('event_not_found_for_cancellation_email');
   }
 
-  await ctx.providers.email.sendEventCancellation(booking, event, buildStartNewBookingUrl(bookingSiteUrl(ctx), booking));
+  await ctx.providers.email.sendEventCancellation(
+    booking,
+    event,
+    buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
+    { includeRefundNotice },
+  );
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_cancellation_email_dispatch_completed',
@@ -3032,18 +3062,13 @@ async function executeImmediateTransitionSideEffect(
       return booking;
     }
 
+    case 'SEND_BOOKING_REFUND_CONFIRMATION': {
+      await sendRefundConfirmationEmailForBooking(booking, effect, ctx);
+      return booking;
+    }
+
     case 'CREATE_STRIPE_REFUND': {
-      const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-      if (payment && payment.status !== 'REFUNDED') {
-        await ctx.providers.repository.updatePayment(payment.id, { status: 'REFUNDED' });
-      }
-      await appendBookingEventWithEffects(
-        booking.id,
-        'REFUND_COMPLETED',
-        'SYSTEM',
-        { provider: 'stripe', mode: 'simulated' },
-        ctx,
-      );
+      await initiateAutomaticCancellationRefund(booking, ctx);
       return booking;
     }
 
@@ -3417,6 +3442,13 @@ async function ensurePayLaterPendingPaymentRecord(
     stripe_payment_intent_id: null,
     stripe_invoice_id: null,
     stripe_payment_link_id: null,
+    refund_status: 'NONE',
+    refund_amount: null,
+    refund_currency: null,
+    stripe_refund_id: null,
+    stripe_credit_note_id: null,
+    refunded_at: null,
+    refund_reason: null,
   });
 }
 
@@ -3745,6 +3777,13 @@ async function ensureCheckoutForBooking(
       stripe_payment_intent_id: session.paymentIntentId,
       stripe_invoice_id: null,
       stripe_payment_link_id: null,
+      refund_status: 'NONE',
+      refund_amount: null,
+      refund_currency: null,
+      stripe_refund_id: null,
+      stripe_credit_note_id: null,
+      refunded_at: null,
+      refund_reason: null,
     });
   }
 

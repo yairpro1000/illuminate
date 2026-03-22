@@ -198,7 +198,7 @@
   if (cancellable) {
     const dialogMsg = document.getElementById('cancel-dialog-msg');
     dialogMsg.textContent = data.is_paid
-      ? 'This action cannot be undone online.\nA refund will be processed if the booking was paid.'
+      ? 'This action cannot be undone online.\nIf a refund applies, you\'ll receive a separate confirmation email.'
       : 'This action cannot be undone online.';
     document.getElementById('cancel-btn').addEventListener('click', () => {
       document.getElementById('cancel-dialog').removeAttribute('hidden');
@@ -210,14 +210,14 @@
       document.getElementById('cancel-yes').textContent = 'Cancelling…';
       document.getElementById('cancel-yes').disabled = true;
       try {
-        await siteClient.requestJson('/api/bookings/cancel', {
+        const cancelResult = await siteClient.requestJson('/api/bookings/cancel', {
           method: 'POST',
           body: JSON.stringify(adminToken ? { token, admin_token: adminToken } : { token }),
         });
         document.getElementById('cancel-dialog').setAttribute('hidden', '');
         card.innerHTML = `
           <h1 class="manage-title">Cancelled</h1>
-          <p class="manage-subtitle">Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.</p>
+          <p class="manage-subtitle">${escapeHtml(cancelResult.message || `Your ${isBooking ? 'booking' : 'event booking'} has been cancelled.`)}</p>
           <a href="index.html" class="btn btn-ghost" style="margin-top:1rem">← Homepage</a>
         `;
       } catch (err) {

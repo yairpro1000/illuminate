@@ -1,9 +1,14 @@
 import type { AppContext } from '../router.js';
 import { ok } from '../lib/errors.js';
-import type { StripePaymentEvent } from '../providers/payments/interface.js';
+import type {
+  StripePaymentWebhookEvent,
+  StripeRefundWebhookEvent,
+  StripeWebhookEvent,
+} from '../providers/payments/interface.js';
 import { resolveStripeRuntimeConfig } from '../providers/payments/runtime-config.js';
 import type { Payment } from '../types.js';
 import { backfillSettledPaymentArtifacts, confirmBookingPayment } from '../services/booking-service.js';
+import { reconcileStripeRefundWebhook } from '../services/refund-service.js';
 
 // POST /api/stripe/webhook
 export async function handleStripeWebhook(request: Request, ctx: AppContext): Promise<Response> {
@@ -56,7 +61,9 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
     return ok({ received: true, handled: false });
   }
 
-  const paymentMatch = await findPaymentForStripeEvent(event, ctx);
+  const paymentMatch = event.eventCategory === 'payment'
+    ? await findPaymentForStripePaymentEvent(event, ctx)
+    : await findPaymentForStripeRefundEvent(event, ctx);
   const payment = paymentMatch.payment;
   if (!payment) {
     ctx.logger.logWarn?.({
@@ -65,9 +72,11 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
       message: 'Stripe webhook event could not be reconciled to a payment row',
       context: {
         stripe_event_type: event.eventType,
-        stripe_checkout_session_id: event.checkoutSessionId,
+        stripe_checkout_session_id: event.eventCategory === 'payment' ? event.checkoutSessionId : null,
         stripe_payment_intent_id: event.paymentIntentId,
         stripe_invoice_id: event.invoiceId,
+        stripe_refund_id: event.eventCategory === 'refund' ? event.refundId : null,
+        stripe_credit_note_id: event.eventCategory === 'refund' ? event.creditNoteId : null,
         booking_id: event.bookingId,
         attempted_match_branches: paymentMatch.attemptedBranches,
         branch_taken: paymentMatch.branchTaken,
@@ -75,6 +84,47 @@ export async function handleStripeWebhook(request: Request, ctx: AppContext): Pr
       },
     });
     return ok({ received: true, handled: false });
+  }
+
+  if (event.eventCategory === 'refund') {
+    const reconciliation = await reconcileStripeRefundWebhook(
+      payment,
+      event,
+      {
+        providers: ctx.providers,
+        env: ctx.env,
+        logger: ctx.logger,
+        requestId: ctx.requestId,
+        correlationId: ctx.correlationId,
+        operation: ctx.operation,
+        siteUrl: ctx.siteUrl,
+      },
+    );
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'stripe_webhook_request_completed',
+      message: reconciliation.updated
+        ? 'Stripe refund webhook reconciled local refund state'
+        : reconciliation.branchTaken === 'skip_refund_webhook_without_local_initiation'
+          ? 'Ignored Stripe refund webhook because refund initiation did not originate locally'
+          : 'Stripe refund webhook was idempotent because local refund state was already current',
+      context: {
+        payment_id: payment.id,
+        booking_id: payment.booking_id,
+        stripe_event_type: event.eventType,
+        stripe_refund_id: event.refundId,
+        stripe_credit_note_id: event.creditNoteId,
+        matched_branch: paymentMatch.branchTaken,
+        branch_taken: reconciliation.updated
+          ? 'refund_state_reconciled_via_shared_path'
+          : reconciliation.branchTaken === 'skip_refund_webhook_without_local_initiation'
+            ? 'skip_refund_webhook_without_local_initiation'
+            : 'idempotent_refund_state_already_current',
+        deny_reason: reconciliation.updated ? null : reconciliation.denyReason,
+      },
+    });
+    return ok({ received: true, handled: true, idempotent: !reconciliation.updated });
   }
 
   if (payment.status === 'SUCCEEDED') {
@@ -203,11 +253,26 @@ interface StripeWebhookPaymentMatchResult {
   denyReason: string | null;
 }
 
-async function findPaymentForStripeEvent(
-  event: StripePaymentEvent,
+type StripeWebhookLookupIdentifierKind =
+  | 'checkout_session_id'
+  | 'payment_intent_id'
+  | 'invoice_id'
+  | 'booking_id'
+  | 'refund_id'
+  | 'credit_note_id';
+
+interface StripeWebhookLookupAttempt {
+  branch: string;
+  identifierKind: StripeWebhookLookupIdentifierKind;
+  identifierValue: string;
+  lookup: () => Promise<Payment | null>;
+}
+
+async function findPaymentForStripePaymentEvent(
+  event: StripePaymentWebhookEvent,
   ctx: AppContext,
 ): Promise<StripeWebhookPaymentMatchResult> {
-  const attempts = buildStripeWebhookPaymentLookupPlan(event, ctx);
+  const attempts = buildStripeWebhookLookupPlanForPayment(event, ctx);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -225,6 +290,41 @@ async function findPaymentForStripeEvent(
     },
   });
 
+  return findPaymentFromLookupAttempts(event, attempts, ctx, 'payment');
+}
+
+async function findPaymentForStripeRefundEvent(
+  event: StripeRefundWebhookEvent,
+  ctx: AppContext,
+): Promise<StripeWebhookPaymentMatchResult> {
+  const attempts = buildStripeWebhookLookupPlanForRefund(event, ctx);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'stripe_webhook_payment_lookup_started',
+    message: 'Started Stripe refund webhook payment reconciliation',
+    context: {
+      stripe_event_type: event.eventType,
+      stripe_payment_intent_id: event.paymentIntentId,
+      stripe_invoice_id: event.invoiceId,
+      stripe_refund_id: event.refundId,
+      stripe_credit_note_id: event.creditNoteId,
+      booking_id: event.bookingId,
+      attempted_match_branches: attempts.map((attempt) => attempt.branch),
+      branch_taken: 'evaluate_refund_reconciliation_lookup_plan',
+      deny_reason: null,
+    },
+  });
+
+  return findPaymentFromLookupAttempts(event, attempts, ctx, 'refund');
+}
+
+async function findPaymentFromLookupAttempts(
+  event: StripeWebhookEvent,
+  attempts: StripeWebhookLookupAttempt[],
+  ctx: AppContext,
+  mode: 'payment' | 'refund',
+): Promise<StripeWebhookPaymentMatchResult> {
   for (const attempt of attempts) {
     const payment = await attempt.lookup();
     if (!payment) continue;
@@ -232,7 +332,9 @@ async function findPaymentForStripeEvent(
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'stripe_webhook_payment_lookup_completed',
-      message: 'Matched Stripe webhook event to payment row',
+      message: mode === 'payment'
+        ? 'Matched Stripe webhook event to payment row'
+        : 'Matched Stripe refund webhook event to payment row',
       context: {
         stripe_event_type: event.eventType,
         payment_id: payment.id,
@@ -256,30 +358,31 @@ async function findPaymentForStripeEvent(
   return {
     payment: null,
     branchTaken: attempts.length > 0
-      ? 'deny_missing_payment_match_after_lookup_plan'
-      : 'deny_missing_reconciliation_identifiers',
+      ? mode === 'payment'
+        ? 'deny_missing_payment_match_after_lookup_plan'
+        : 'deny_missing_refund_payment_match_after_lookup_plan'
+      : mode === 'payment'
+        ? 'deny_missing_reconciliation_identifiers'
+        : 'deny_missing_refund_reconciliation_identifiers',
     attemptedBranches: attempts.map((attempt) => attempt.branch),
     denyReason: attempts.length > 0
-      ? 'payment_not_found_for_webhook_identifiers'
-      : 'webhook_event_missing_reconciliation_identifiers',
+      ? mode === 'payment'
+        ? 'payment_not_found_for_webhook_identifiers'
+        : 'payment_not_found_for_refund_webhook_identifiers'
+      : mode === 'payment'
+        ? 'webhook_event_missing_reconciliation_identifiers'
+        : 'refund_webhook_event_missing_reconciliation_identifiers',
   };
 }
 
-interface StripeWebhookLookupAttempt {
-  branch: string;
-  identifierKind: 'checkout_session_id' | 'payment_intent_id' | 'invoice_id' | 'booking_id';
-  identifierValue: string;
-  lookup: () => Promise<Payment | null>;
-}
-
-function buildStripeWebhookPaymentLookupPlan(
-  event: StripePaymentEvent,
+function buildStripeWebhookLookupPlanForPayment(
+  event: StripePaymentWebhookEvent,
   ctx: AppContext,
 ): StripeWebhookLookupAttempt[] {
   const attempts: StripeWebhookLookupAttempt[] = [];
   const pushAttempt = (
-    branch: StripeWebhookLookupAttempt['branch'],
-    identifierKind: StripeWebhookLookupAttempt['identifierKind'],
+    branch: string,
+    identifierKind: StripeWebhookLookupIdentifierKind,
     identifierValue: string | null,
     lookup: () => Promise<Payment | null>,
   ): void => {
@@ -345,5 +448,53 @@ function buildStripeWebhookPaymentLookupPlan(
       () => ctx.providers.repository.getPaymentByBookingId(event.bookingId!),
     );
   }
+  return attempts;
+}
+
+function buildStripeWebhookLookupPlanForRefund(
+  event: StripeRefundWebhookEvent,
+  ctx: AppContext,
+): StripeWebhookLookupAttempt[] {
+  const attempts: StripeWebhookLookupAttempt[] = [];
+  const pushAttempt = (
+    branch: string,
+    identifierKind: StripeWebhookLookupIdentifierKind,
+    identifierValue: string | null,
+    lookup: () => Promise<Payment | null>,
+  ): void => {
+    if (!identifierValue) return;
+    attempts.push({ branch, identifierKind, identifierValue, lookup });
+  };
+
+  pushAttempt(
+    'match_refund_primary',
+    'refund_id',
+    event.refundId,
+    () => ctx.providers.repository.getPaymentByStripeRefundId(event.refundId!),
+  );
+  pushAttempt(
+    'match_credit_note_primary',
+    'credit_note_id',
+    event.creditNoteId,
+    () => ctx.providers.repository.getPaymentByStripeCreditNoteId(event.creditNoteId!),
+  );
+  pushAttempt(
+    'match_invoice_fallback_for_refund',
+    'invoice_id',
+    event.invoiceId,
+    () => ctx.providers.repository.getPaymentByStripeInvoiceId(event.invoiceId!),
+  );
+  pushAttempt(
+    'match_payment_intent_fallback_for_refund',
+    'payment_intent_id',
+    event.paymentIntentId,
+    () => ctx.providers.repository.getPaymentByStripePaymentIntentId(event.paymentIntentId!),
+  );
+  pushAttempt(
+    'match_booking_id_fallback_for_refund',
+    'booking_id',
+    event.bookingId,
+    () => ctx.providers.repository.getPaymentByBookingId(event.bookingId!),
+  );
   return attempts;
 }

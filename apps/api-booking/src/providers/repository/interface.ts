@@ -171,6 +171,8 @@ export interface IRepository {
   getPaymentByStripeCheckoutSessionId(sessionId: string): Promise<Payment | null>;
   getPaymentByStripePaymentIntentId(paymentIntentId: string): Promise<Payment | null>;
   getPaymentByStripeInvoiceId(invoiceId: string): Promise<Payment | null>;
+  getPaymentByStripeRefundId(refundId: string): Promise<Payment | null>;
+  getPaymentByStripeCreditNoteId(creditNoteId: string): Promise<Payment | null>;
   updatePayment(id: string, updates: PaymentUpdate): Promise<Payment>;
 
   // ── Contact form ────────────────────────────────────────────────────────

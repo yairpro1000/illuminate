@@ -756,6 +756,32 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async getPaymentByStripeRefundId(refundId: string): Promise<Payment | null> {
+    return maybeSingle<Payment>(
+      this.db
+        .from('payments')
+        .select('*')
+        .eq('stripe_refund_id', refundId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load payment by refund',
+    );
+  }
+
+  async getPaymentByStripeCreditNoteId(creditNoteId: string): Promise<Payment | null> {
+    return maybeSingle<Payment>(
+      this.db
+        .from('payments')
+        .select('*')
+        .eq('stripe_credit_note_id', creditNoteId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      'Failed to load payment by credit note',
+    );
+  }
+
   async updatePayment(id: string, updates: PaymentUpdate): Promise<Payment> {
     const row = await requireSingle<Payment>(
       this.db

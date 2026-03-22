@@ -56,8 +56,36 @@ export interface InvoiceRecord {
   rawPayload?: Record<string, unknown> | null;
 }
 
+export interface CreateRefundParams {
+  bookingId: string;
+  paymentId: string;
+  amount: number;
+  currency: string;
+  reasonText: string;
+  siteUrl?: string | null;
+  stripeInvoiceId?: string | null;
+  stripePaymentIntentId?: string | null;
+  idempotencyKey?: string;
+  metadata?: Record<string, string>;
+}
+
+export interface RefundRecord {
+  refundPath: 'credit_note' | 'direct_refund';
+  refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED';
+  refundId: string | null;
+  creditNoteId: string | null;
+  creditNoteNumber: string | null;
+  creditNoteDocumentUrl: string | null;
+  invoiceId: string | null;
+  paymentIntentId: string | null;
+  amount: number;
+  currency: string;
+  rawPayload?: Record<string, unknown> | null;
+}
+
 /** Minimal subset of Stripe webhook event data this system cares about. */
-export interface StripePaymentEvent {
+export interface StripePaymentWebhookEvent {
+  eventCategory: 'payment';
   eventType: 'checkout.session.completed' | 'invoice.paid' | 'payment_intent.succeeded';
   checkoutSessionId: string | null;
   paymentIntentId: string | null;
@@ -72,9 +100,29 @@ export interface StripePaymentEvent {
   rawPayload: Record<string, unknown>;
 }
 
+/** Refund reconciliation events subscribed from Stripe. */
+export interface StripeRefundWebhookEvent {
+  eventCategory: 'refund';
+  eventType: 'refund.created' | 'refund.updated' | 'refund.failed' | 'credit_note.created' | 'credit_note.updated' | 'credit_note.voided';
+  refundId: string | null;
+  creditNoteId: string | null;
+  creditNoteNumber: string | null;
+  creditNoteDocumentUrl: string | null;
+  paymentIntentId: string | null;
+  invoiceId: string | null;
+  refundStatus: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | null;
+  amount: number | null;
+  currency: string | null;
+  bookingId: string | null;
+  rawPayload: Record<string, unknown>;
+}
+
+export type StripeWebhookEvent = StripePaymentWebhookEvent | StripeRefundWebhookEvent;
+
 export interface IPaymentsProvider {
   createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession>;
   createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord>;
+  createRefund(params: CreateRefundParams): Promise<RefundRecord>;
 
   /**
    * Verifies and parses an incoming Stripe webhook payload.
@@ -85,5 +133,5 @@ export interface IPaymentsProvider {
     rawBody: string,
     signature: string,
     secret: string,
-  ): Promise<StripePaymentEvent | null>;
+  ): Promise<StripeWebhookEvent | null>;
 }

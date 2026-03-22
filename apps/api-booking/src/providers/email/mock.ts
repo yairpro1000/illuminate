@@ -1,5 +1,11 @@
 import { mockState } from '../mock-state.js';
-import type { ConfirmationEmailOptions, IEmailProvider, SendResult } from './interface.js';
+import type {
+  CancellationEmailOptions,
+  ConfirmationEmailOptions,
+  IEmailProvider,
+  RefundConfirmationEmailInput,
+  SendResult,
+} from './interface.js';
 import type { Booking, Event } from '../../types.js';
 import {
   buildBookingCancellationEmail,
@@ -16,6 +22,7 @@ import {
   buildEventConfirmRequestEmail,
   buildEventFollowupEmail,
   buildEventReminder24hEmail,
+  buildRefundConfirmationEmail,
   type BuiltEmailMessage,
 } from './resend.js';
 
@@ -130,15 +137,31 @@ export class MockEmailProvider implements IEmailProvider {
     });
   }
 
-  async sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.send(buildEventCancellationEmail(booking, event, startNewBookingUrl), {
+  async sendEventCancellation(
+    booking: Booking,
+    event: Event,
+    startNewBookingUrl?: string | null,
+    options: CancellationEmailOptions = {},
+  ): Promise<SendResult> {
+    return this.send(buildEventCancellationEmail(booking, event, startNewBookingUrl, options), {
       bookingId: booking.id,
       eventId: event.id,
     });
   }
 
-  async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.send(buildBookingCancellationEmail(booking, startNewBookingUrl), {
+  async sendBookingCancellation(
+    booking: Booking,
+    startNewBookingUrl?: string | null,
+    options: CancellationEmailOptions = {},
+  ): Promise<SendResult> {
+    return this.send(buildBookingCancellationEmail(booking, startNewBookingUrl, options), {
+      bookingId: booking.id,
+      eventId: booking.event_id ?? null,
+    });
+  }
+
+  async sendRefundConfirmation(booking: Booking, input: RefundConfirmationEmailInput): Promise<SendResult> {
+    return this.send(buildRefundConfirmationEmail(booking, input), {
       bookingId: booking.id,
       eventId: booking.event_id ?? null,
     });

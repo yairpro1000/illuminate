@@ -578,6 +578,20 @@ export class MockRepository implements IRepository {
     return null;
   }
 
+  async getPaymentByStripeRefundId(refundId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_refund_id === refundId) return payment;
+    }
+    return null;
+  }
+
+  async getPaymentByStripeCreditNoteId(creditNoteId: string): Promise<Payment | null> {
+    for (const payment of mockState.payments.values()) {
+      if (payment.stripe_credit_note_id === creditNoteId) return payment;
+    }
+    return null;
+  }
+
   async updatePayment(id: string, updates: PaymentUpdate): Promise<Payment> {
     const existing = mockState.payments.get(id);
     if (!existing) throw new Error(`Payment ${id} not found`);

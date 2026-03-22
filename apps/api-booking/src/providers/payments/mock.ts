@@ -4,7 +4,9 @@ import type {
   CheckoutSession,
   CreateInvoiceParams,
   InvoiceRecord,
-  StripePaymentEvent,
+  CreateRefundParams,
+  RefundRecord,
+  StripeWebhookEvent,
 } from './interface.js';
 
 export class MockPaymentsProvider implements IPaymentsProvider {
@@ -67,11 +69,44 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async createRefund(params: CreateRefundParams): Promise<RefundRecord> {
+    const refundId = `mock_re_${crypto.randomUUID()}`;
+    const creditNoteId = params.stripeInvoiceId ? `mock_cn_${crypto.randomUUID()}` : null;
+    const creditNoteDocumentUrl = creditNoteId ? `${this.siteUrl}/mock-credit-note/${creditNoteId}.pdf` : null;
+
+    console.log(`[payments:mock] createRefund → ${refundId}`, {
+      bookingId: params.bookingId,
+      paymentId: params.paymentId,
+      refundPath: params.stripeInvoiceId ? 'credit_note' : 'direct_refund',
+      amount: params.amount,
+      currency: params.currency,
+    });
+
+    return {
+      refundPath: params.stripeInvoiceId ? 'credit_note' : 'direct_refund',
+      refundStatus: 'SUCCEEDED',
+      refundId,
+      creditNoteId,
+      creditNoteNumber: creditNoteId,
+      creditNoteDocumentUrl,
+      invoiceId: params.stripeInvoiceId ?? null,
+      paymentIntentId: params.stripePaymentIntentId ?? null,
+      amount: params.amount,
+      currency: params.currency,
+      rawPayload: {
+        booking_id: params.bookingId,
+        payment_id: params.paymentId,
+        reason_text: params.reasonText,
+        metadata: params.metadata ?? {},
+      },
+    };
+  }
+
   async parseWebhookEvent(
     rawBody: string,
     _signature: string,
     _secret: string,
-  ): Promise<StripePaymentEvent | null> {
+  ): Promise<StripeWebhookEvent | null> {
     try {
       const body = JSON.parse(rawBody) as Record<string, unknown>;
       const eventType = body['type'];
@@ -85,6 +120,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
       const siteUrl = metadata['site_url'] ?? this.siteUrl;
       if (eventType === 'checkout.session.completed') {
         return {
+          eventCategory: 'payment',
           eventType,
           checkoutSessionId: object['id'] as string,
           paymentIntentId: (object['payment_intent'] as string | null) ?? null,
@@ -102,6 +138,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
 
       if (eventType === 'invoice.paid') {
         return {
+          eventCategory: 'payment',
           eventType,
           checkoutSessionId: null,
           paymentIntentId: (object['payment_intent'] as string | null) ?? null,
@@ -119,6 +156,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
 
       if (eventType === 'payment_intent.succeeded') {
         return {
+          eventCategory: 'payment',
           eventType,
           checkoutSessionId: null,
           paymentIntentId: object['id'] as string,
@@ -134,9 +172,56 @@ export class MockPaymentsProvider implements IPaymentsProvider {
         };
       }
 
+      if (eventType === 'refund.created' || eventType === 'refund.updated' || eventType === 'refund.failed') {
+        return {
+          eventCategory: 'refund',
+          eventType,
+          refundId: object['id'] as string,
+          creditNoteId: null,
+          creditNoteNumber: null,
+          creditNoteDocumentUrl: null,
+          paymentIntentId: (object['payment_intent'] as string | null) ?? null,
+          invoiceId: metadata['invoice_id'] ?? null,
+          refundStatus: mapMockRefundStatus(object['status'] as string | null),
+          amount: Number(object['amount'] ?? 0) / 100,
+          currency: String(object['currency'] ?? 'chf').toUpperCase(),
+          bookingId: metadata['booking_id'] ?? null,
+          rawPayload: body,
+        };
+      }
+
+      if (eventType === 'credit_note.created' || eventType === 'credit_note.updated' || eventType === 'credit_note.voided') {
+        return {
+          eventCategory: 'refund',
+          eventType,
+          refundId: Array.isArray(object['refunds']) && object['refunds'][0]
+            && typeof (object['refunds'][0] as Record<string, unknown>)['refund'] === 'string'
+            ? (object['refunds'][0] as Record<string, unknown>)['refund'] as string
+            : null,
+          creditNoteId: object['id'] as string,
+          creditNoteNumber: (object['number'] as string | null) ?? (object['id'] as string | null) ?? null,
+          creditNoteDocumentUrl: (object['pdf'] as string | null) ?? `${siteUrl}/mock-credit-note/${object['id'] as string}.pdf`,
+          paymentIntentId: metadata['payment_intent_id'] ?? null,
+          invoiceId: (object['invoice'] as string | null) ?? metadata['invoice_id'] ?? null,
+          refundStatus: eventType === 'credit_note.voided' ? 'CANCELED' : null,
+          amount: Number(object['amount'] ?? object['subtotal_excluding_tax'] ?? 0) / 100,
+          currency: String(object['currency'] ?? 'chf').toUpperCase(),
+          bookingId: metadata['booking_id'] ?? null,
+          rawPayload: body,
+        };
+      }
+
       return null;
     } catch {
       return null;
     }
   }
+}
+
+function mapMockRefundStatus(status: string | null | undefined): 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | null {
+  if (status === 'pending' || status === 'requires_action') return 'PENDING';
+  if (status === 'succeeded') return 'SUCCEEDED';
+  if (status === 'failed') return 'FAILED';
+  if (status === 'canceled') return 'CANCELED';
+  return null;
 }

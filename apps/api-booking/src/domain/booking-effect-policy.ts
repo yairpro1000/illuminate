@@ -221,7 +221,7 @@ export function getEffectsForEvent(
       return effects;
     }
     case 'REFUND_COMPLETED':
-      return [];
+      return [make('SEND_BOOKING_REFUND_CONFIRMATION', null)];
     default:
       return [];
   }

@@ -1,5 +1,10 @@
 import { Resend } from 'resend';
-import { EmailProviderError, type ConfirmationEmailOptions } from './interface.js';
+import {
+  EmailProviderError,
+  type CancellationEmailOptions,
+  type ConfirmationEmailOptions,
+  type RefundConfirmationEmailInput,
+} from './interface.js';
 import type { IEmailProvider, SendResult } from './interface.js';
 import type { Booking, Event } from '../../types.js';
 
@@ -778,11 +783,15 @@ export function buildBookingFollowupEmail(booking: Booking, confirmUrl: string):
 export function buildBookingCancellationEmail(
   booking: Booking,
   startNewBookingUrl?: string | null,
+  options: CancellationEmailOptions = {},
 ): BuiltEmailMessage {
   const siteUrl = siteUrlFromKnownLink(startNewBookingUrl);
   const bookingUrl = startNewBookingUrl ?? eventBookingUrl(booking.event_id, siteUrl);
   const contactUrl = contactPageUrl(siteUrl);
-  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
+  const refundNotice = options.includeRefundNotice
+    ? `\n\nIf a refund applies, you'll receive a separate confirmation email.`
+    : '';
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour session on ${fmt(booking.starts_at)} has been cancelled.${refundNotice}\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -791,7 +800,11 @@ export function buildBookingCancellationEmail(
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
     ],
-    ['We are sorry to see you go.', 'Your session has been cancelled.'],
+    [
+      'We are sorry to see you go.',
+      'Your session has been cancelled.',
+      ...(options.includeRefundNotice ? ['If a refund applies, you\'ll receive a separate confirmation email.'] : []),
+    ],
     'Book again',
     bookingUrl,
     [`<a href="${esc(contactUrl)}">Contact Yair &rarr;</a>`],
@@ -810,11 +823,15 @@ export function buildEventCancellationEmail(
   booking: Booking,
   event: Event,
   startNewBookingUrl?: string | null,
+  options: CancellationEmailOptions = {},
 ): BuiltEmailMessage {
   const siteUrl = siteUrlFromKnownLink(startNewBookingUrl);
   const bookingUrl = startNewBookingUrl ?? eventBookingUrl(event.id, siteUrl);
   const contactUrl = contactPageUrl(siteUrl);
-  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
+  const refundNotice = options.includeRefundNotice
+    ? `\n\nIf a refund applies, you'll receive a separate confirmation email.`
+    : '';
+  const text = `Hi ${clientName(booking)},\n\nWe are sorry to see you go.\n\nYour event booking for ${event.title} on ${fmt(booking.starts_at)} has been cancelled.${refundNotice}\n\nYou can always book again: ${bookingUrl}\nContact Yair: ${contactUrl}`;
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     [
@@ -823,7 +840,11 @@ export function buildEventCancellationEmail(
       ['Time', esc(fmtBodyTimeRange(booking.starts_at, booking.ends_at, booking.timezone))],
       ['Location', esc(booking.address_line ?? '')],
     ],
-    ['We are sorry to see you go.', 'Your event booking has been cancelled.'],
+    [
+      'We are sorry to see you go.',
+      'Your event booking has been cancelled.',
+      ...(options.includeRefundNotice ? ['If a refund applies, you\'ll receive a separate confirmation email.'] : []),
+    ],
     'Book again',
     bookingUrl,
     [`<a href="${esc(contactUrl)}">Contact Yair &rarr;</a>`],
@@ -833,6 +854,41 @@ export function buildEventCancellationEmail(
     'event_cancellation',
     clientEmail(booking),
     `Your booking for ${eventSubjectTitle(event)} has been cancelled`,
+    text,
+    { html },
+  );
+}
+
+export function buildRefundConfirmationEmail(
+  booking: Booking,
+  input: RefundConfirmationEmailInput,
+): BuiltEmailMessage {
+  const amountLabel = `${input.currency} ${input.amount.toFixed(2)}`;
+  const referenceLines = [
+    input.invoiceReference ? `Invoice: ${input.invoiceReference}` : null,
+    input.creditNoteReference ? `Credit note: ${input.creditNoteReference}` : null,
+    input.refundReference ? `Refund reference: ${input.refundReference}` : null,
+    input.documentUrl ? `Document: ${input.documentUrl}` : null,
+  ].filter(Boolean);
+  const text = `Hi ${clientName(booking)},\n\n${input.explanation}\n\nBooking: ${input.subjectTitle}\nAmount: ${amountLabel}${referenceLines.length ? `\n${referenceLines.join('\n')}` : ''}`;
+  const detailRows: Array<[string, string]> = [
+    ['Booking', esc(input.subjectTitle)],
+    ['Amount', esc(amountLabel)],
+  ];
+  if (input.invoiceReference) detailRows.push(['Invoice', esc(input.invoiceReference)]);
+  if (input.creditNoteReference) detailRows.push(['Credit note', esc(input.creditNoteReference)]);
+  if (input.refundReference) detailRows.push(['Refund reference', esc(input.refundReference)]);
+  const html = simpleHtml(
+    `Hi ${clientName(booking)}`,
+    detailRows,
+    [input.explanation],
+    input.documentUrl ? 'View document' : 'Manage booking',
+    input.documentUrl ?? `${DEFAULT_SITE_URL}/manage.html`,
+  );
+  return buildEmailMessage(
+    'refund_confirmation',
+    clientEmail(booking),
+    `Your refund for ${input.subjectTitle}`,
     text,
     { html },
   );
@@ -1090,12 +1146,25 @@ export class ResendEmailProvider implements IEmailProvider {
     return this.sendEmail(buildBookingFollowupEmail(booking, confirmUrl));
   }
 
-  async sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.sendEmail(buildBookingCancellationEmail(booking, startNewBookingUrl));
+  async sendBookingCancellation(
+    booking: Booking,
+    startNewBookingUrl?: string | null,
+    options: CancellationEmailOptions = {},
+  ): Promise<SendResult> {
+    return this.sendEmail(buildBookingCancellationEmail(booking, startNewBookingUrl, options));
   }
 
-  async sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult> {
-    return this.sendEmail(buildEventCancellationEmail(booking, event, startNewBookingUrl));
+  async sendEventCancellation(
+    booking: Booking,
+    event: Event,
+    startNewBookingUrl?: string | null,
+    options: CancellationEmailOptions = {},
+  ): Promise<SendResult> {
+    return this.sendEmail(buildEventCancellationEmail(booking, event, startNewBookingUrl, options));
+  }
+
+  async sendRefundConfirmation(booking: Booking, input: RefundConfirmationEmailInput): Promise<SendResult> {
+    return this.sendEmail(buildRefundConfirmationEmail(booking, input));
   }
 
   async sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult> {

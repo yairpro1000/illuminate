@@ -26,6 +26,7 @@ describe('StripePaymentsProvider.parseWebhookEvent', () => {
     const event = await provider.parseWebhookEvent(payload, signature, 'whsec_test');
 
     expect(event).toEqual({
+      eventCategory: 'payment',
       eventType: 'invoice.paid',
       checkoutSessionId: null,
       paymentIntentId: 'pi_123',
@@ -116,6 +117,207 @@ describe('StripePaymentsProvider.createCheckoutSession', () => {
     expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('invoice_creation%5Binvoice_data%5D%5Bmetadata%5D%5Bbooking_id%5D=booking_123');
     expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent_data%5Bmetadata%5D%5Bbooking_id%5D=booking_123');
     expect(String((checkoutCall?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent_data%5Bmetadata%5D%5Bpayment_kind%5D=pay_now');
+  });
+
+  it('creates direct refunds through the refunds API when only a payment intent is available', async () => {
+    const provider = new StripePaymentsProvider('sk_test_123', 'https://example.com');
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({
+      id: 're_123',
+      status: 'pending',
+      payment_intent: 'pi_123',
+      amount: 15000,
+      currency: 'chf',
+    }), { status: 200 }));
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      const refund = await provider.createRefund({
+        bookingId: 'booking_123',
+        paymentId: 'payment_123',
+        amount: 150,
+        currency: 'CHF',
+        reasonText: 'Full refund initiated because cancellation happened before the lock window.',
+        stripePaymentIntentId: 'pi_123',
+      });
+
+      expect(refund).toEqual(expect.objectContaining({
+        refundPath: 'direct_refund',
+        refundStatus: 'PENDING',
+        refundId: 're_123',
+        paymentIntentId: 'pi_123',
+        amount: 150,
+        currency: 'CHF',
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.stripe.com/v1/refunds',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('payment_intent=pi_123');
+  });
+
+  it('creates invoice-backed refunds through Stripe credit notes when an invoice id is available', async () => {
+    const provider = new StripePaymentsProvider('sk_test_123', 'https://example.com');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'cn_123',
+        number: 'CN-2026-0001',
+        invoice: 'in_123',
+        amount: 15000,
+        currency: 'chf',
+        pdf: 'https://stripe.example/cn_123.pdf',
+        refunds: [{ refund: 're_123' }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 're_123',
+        status: 'succeeded',
+        payment_intent: 'pi_123',
+        amount: 15000,
+        currency: 'chf',
+      }), { status: 200 }));
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    try {
+      const refund = await provider.createRefund({
+        bookingId: 'booking_123',
+        paymentId: 'payment_123',
+        amount: 150,
+        currency: 'CHF',
+        reasonText: 'Full refund initiated because cancellation happened before the lock window.',
+        stripeInvoiceId: 'in_123',
+        stripePaymentIntentId: 'pi_123',
+      });
+
+      expect(refund).toEqual(expect.objectContaining({
+        refundPath: 'credit_note',
+        refundStatus: 'SUCCEEDED',
+        refundId: 're_123',
+        creditNoteId: 'cn_123',
+        creditNoteNumber: 'CN-2026-0001',
+        creditNoteDocumentUrl: 'https://stripe.example/cn_123.pdf',
+        invoiceId: 'in_123',
+        paymentIntentId: 'pi_123',
+        amount: 150,
+        currency: 'CHF',
+      }));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.stripe.com/v1/credit_notes');
+    expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('invoice=in_123');
+    expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.body)).toContain('refund_amount=15000');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://api.stripe.com/v1/refunds/re_123');
+  });
+
+  it('normalizes refund.updated webhook payloads into refund reconciliation events', async () => {
+    const provider = new StripePaymentsProvider('sk_test_123', 'https://example.com');
+    const payload = JSON.stringify({
+      id: 'evt_refund_123',
+      type: 'refund.updated',
+      data: {
+        object: {
+          id: 're_123',
+          payment_intent: 'pi_123',
+          status: 'succeeded',
+          amount: 15000,
+          currency: 'chf',
+          metadata: {
+            booking_id: 'booking_123',
+            invoice_id: 'in_123',
+          },
+        },
+      },
+    });
+    const signature = await stripeSignature('whsec_test', payload, '1742342402');
+
+    const event = await provider.parseWebhookEvent(payload, signature, 'whsec_test');
+
+    expect(event).toEqual({
+      eventCategory: 'refund',
+      eventType: 'refund.updated',
+      refundId: 're_123',
+      creditNoteId: null,
+      creditNoteNumber: null,
+      creditNoteDocumentUrl: null,
+      paymentIntentId: 'pi_123',
+      invoiceId: 'in_123',
+      refundStatus: 'SUCCEEDED',
+      amount: 150,
+      currency: 'CHF',
+      bookingId: 'booking_123',
+      rawPayload: expect.objectContaining({
+        type: 'refund.updated',
+      }),
+    });
+  });
+
+  it('normalizes credit_note.created payloads and ignores charge.refunded payloads', async () => {
+    const provider = new StripePaymentsProvider('sk_test_123', 'https://example.com');
+    const creditNotePayload = JSON.stringify({
+      id: 'evt_credit_note_123',
+      type: 'credit_note.created',
+      data: {
+        object: {
+          id: 'cn_123',
+          number: 'CN-2026-0001',
+          invoice: 'in_123',
+          amount: 15000,
+          currency: 'chf',
+          pdf: 'https://stripe.example/cn_123.pdf',
+          refunds: [],
+          metadata: {
+            booking_id: 'booking_123',
+          },
+        },
+      },
+    });
+    const chargeRefundedPayload = JSON.stringify({
+      id: 'evt_charge_refunded_123',
+      type: 'charge.refunded',
+      data: {
+        object: {
+          id: 'ch_123',
+          amount_refunded: 15000,
+          currency: 'chf',
+          metadata: {
+            booking_id: 'booking_123',
+          },
+        },
+      },
+    });
+
+    const creditNoteSignature = await stripeSignature('whsec_test', creditNotePayload, '1742342403');
+    const chargeRefundedSignature = await stripeSignature('whsec_test', chargeRefundedPayload, '1742342404');
+
+    const creditNoteEvent = await provider.parseWebhookEvent(creditNotePayload, creditNoteSignature, 'whsec_test');
+    const ignoredChargeEvent = await provider.parseWebhookEvent(chargeRefundedPayload, chargeRefundedSignature, 'whsec_test');
+
+    expect(creditNoteEvent).toEqual({
+      eventCategory: 'refund',
+      eventType: 'credit_note.created',
+      refundId: null,
+      creditNoteId: 'cn_123',
+      creditNoteNumber: 'CN-2026-0001',
+      creditNoteDocumentUrl: 'https://stripe.example/cn_123.pdf',
+      paymentIntentId: null,
+      invoiceId: 'in_123',
+      refundStatus: null,
+      amount: 150,
+      currency: 'CHF',
+      bookingId: 'booking_123',
+      rawPayload: expect.objectContaining({
+        type: 'credit_note.created',
+      }),
+    });
+    expect(ignoredChargeEvent).toBeNull();
   });
 });
 

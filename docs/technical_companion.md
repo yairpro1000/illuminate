@@ -315,6 +315,21 @@ Main objects used:
 - invoices
 - webhook events
 
+Refund reconciliation webhook events subscribed:
+
+- `refund.created`
+- `refund.updated`
+- `refund.failed`
+- `credit_note.created`
+- `credit_note.updated`
+- `credit_note.voided`
+
+Notes:
+
+- refund webhooks reconcile local refund state only; they do not originate refund business decisions
+- `charge.refunded` and `charge.refund.updated` are not used as primary refund signals
+- invoice-backed refunds may reconcile credit-note references before a cash-refund outcome exists, but a credit note alone is not treated as cash refunded
+
 ### 7.4 Google Calendar
 
 Purpose:

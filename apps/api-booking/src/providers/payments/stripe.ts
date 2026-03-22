@@ -2,9 +2,11 @@ import type {
   CheckoutSession,
   CreateCheckoutParams,
   CreateInvoiceParams,
+  CreateRefundParams,
   InvoiceRecord,
   IPaymentsProvider,
-  StripePaymentEvent,
+  RefundRecord,
+  StripeWebhookEvent,
 } from './interface.js';
 
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
@@ -150,11 +152,92 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async createRefund(params: CreateRefundParams): Promise<RefundRecord> {
+    if (params.stripeInvoiceId) {
+      const creditNoteForm = new URLSearchParams();
+      creditNoteForm.set('invoice', params.stripeInvoiceId);
+      creditNoteForm.set('amount', String(toMinorAmount(params.amount, params.currency)));
+      creditNoteForm.set('refund_amount', String(toMinorAmount(params.amount, params.currency)));
+      creditNoteForm.set('memo', params.reasonText);
+      creditNoteForm.set('reason', 'order_change');
+      creditNoteForm.set('email_type', 'none');
+      creditNoteForm.set('metadata[booking_id]', params.bookingId);
+      creditNoteForm.set('metadata[payment_id]', params.paymentId);
+      creditNoteForm.set('metadata[invoice_id]', params.stripeInvoiceId);
+      appendMetadata(creditNoteForm, params.metadata);
+
+      const creditNote = await this.postForm<StripeObject>(
+        '/credit_notes',
+        creditNoteForm,
+        params.idempotencyKey ? `${params.idempotencyKey}:credit-note` : undefined,
+      );
+      const creditNoteId = asNullableString(creditNote['id']);
+      const creditNoteNumber = asNullableString(creditNote['number']) ?? creditNoteId;
+      const creditNoteDocumentUrl = asNullableString(creditNote['pdf']);
+      const nestedRefundId = extractCreditNoteRefundId(creditNote);
+      const fetchedRefund = nestedRefundId
+        ? await this.getJson<StripeObject>(`/refunds/${encodeURIComponent(nestedRefundId)}`)
+        : null;
+
+      return {
+        refundPath: 'credit_note',
+        refundStatus: mapStripeRefundStatus(asNullableString(fetchedRefund?.['status']) ?? null) ?? 'PENDING',
+        refundId: nestedRefundId,
+        creditNoteId,
+        creditNoteNumber,
+        creditNoteDocumentUrl,
+        invoiceId: params.stripeInvoiceId,
+        paymentIntentId: asNullableString(fetchedRefund?.['payment_intent']) ?? params.stripePaymentIntentId ?? null,
+        amount: fromMinorAmount(
+          asNumber(fetchedRefund?.['amount'] ?? creditNote['amount'] ?? 0),
+          asString(fetchedRefund?.['currency'] ?? creditNote['currency'], params.currency),
+        ),
+        currency: normalizeCurrency(asString(fetchedRefund?.['currency'] ?? creditNote['currency'], params.currency)),
+        rawPayload: {
+          credit_note: creditNote,
+          refund: fetchedRefund,
+        },
+      };
+    }
+
+    if (!params.stripePaymentIntentId) {
+      throw new Error('stripe_refund_payment_intent_missing');
+    }
+
+    const refundForm = new URLSearchParams();
+    refundForm.set('payment_intent', params.stripePaymentIntentId);
+    refundForm.set('amount', String(toMinorAmount(params.amount, params.currency)));
+    refundForm.set('reason', 'requested_by_customer');
+    refundForm.set('metadata[booking_id]', params.bookingId);
+    refundForm.set('metadata[payment_id]', params.paymentId);
+    appendMetadata(refundForm, params.metadata);
+
+    const refund = await this.postForm<StripeObject>(
+      '/refunds',
+      refundForm,
+      params.idempotencyKey ? `${params.idempotencyKey}:refund` : undefined,
+    );
+
+    return {
+      refundPath: 'direct_refund',
+      refundStatus: mapStripeRefundStatus(asNullableString(refund['status']) ?? null) ?? 'PENDING',
+      refundId: asNullableString(refund['id']),
+      creditNoteId: null,
+      creditNoteNumber: null,
+      creditNoteDocumentUrl: null,
+      invoiceId: params.stripeInvoiceId ?? asNullableString(refund['invoice']),
+      paymentIntentId: asNullableString(refund['payment_intent']) ?? params.stripePaymentIntentId,
+      amount: fromMinorAmount(asNumber(refund['amount'] ?? 0), asString(refund['currency'], params.currency)),
+      currency: normalizeCurrency(asString(refund['currency'], params.currency)),
+      rawPayload: refund,
+    };
+  }
+
   async parseWebhookEvent(
     rawBody: string,
     signature: string,
     secret: string,
-  ): Promise<StripePaymentEvent | null> {
+  ): Promise<StripeWebhookEvent | null> {
     await verifyStripeSignature(rawBody, signature, secret);
 
     const parsed = JSON.parse(rawBody) as StripeObject;
@@ -171,6 +254,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
 
     if (eventType === 'checkout.session.completed') {
       return {
+        eventCategory: 'payment',
         eventType,
         checkoutSessionId: asNullableString(eventObject['id']),
         paymentIntentId: asNullableString(eventObject['payment_intent']),
@@ -188,6 +272,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
 
     if (eventType === 'invoice.paid') {
       return {
+        eventCategory: 'payment',
         eventType,
         checkoutSessionId: null,
         paymentIntentId: asNullableString(eventObject['payment_intent']),
@@ -208,6 +293,7 @@ export class StripePaymentsProvider implements IPaymentsProvider {
 
     if (eventType === 'payment_intent.succeeded') {
       return {
+        eventCategory: 'payment',
         eventType,
         checkoutSessionId: null,
         paymentIntentId: asNullableString(eventObject['id']),
@@ -222,6 +308,45 @@ export class StripePaymentsProvider implements IPaymentsProvider {
         bookingId,
         customerId: asNullableString(eventObject['customer']),
         siteUrl,
+        rawPayload: parsed,
+      };
+    }
+
+    if (eventType === 'refund.created' || eventType === 'refund.updated' || eventType === 'refund.failed') {
+      return {
+        eventCategory: 'refund',
+        eventType,
+        refundId: asNullableString(eventObject['id']),
+        creditNoteId: null,
+        creditNoteNumber: null,
+        creditNoteDocumentUrl: null,
+        paymentIntentId: asNullableString(eventObject['payment_intent']),
+        invoiceId: asNullableString(metadata['invoice_id']),
+        refundStatus: mapStripeRefundStatus(asNullableString(eventObject['status'])),
+        amount: fromMinorAmount(asNumber(eventObject['amount'] ?? 0), asString(eventObject['currency'], 'CHF')),
+        currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
+        bookingId,
+        rawPayload: parsed,
+      };
+    }
+
+    if (eventType === 'credit_note.created' || eventType === 'credit_note.updated' || eventType === 'credit_note.voided') {
+      return {
+        eventCategory: 'refund',
+        eventType,
+        refundId: extractCreditNoteRefundId(eventObject),
+        creditNoteId: asNullableString(eventObject['id']),
+        creditNoteNumber: asNullableString(eventObject['number']) ?? asNullableString(eventObject['id']),
+        creditNoteDocumentUrl: asNullableString(eventObject['pdf']),
+        paymentIntentId: asNullableString(metadata['payment_intent_id']),
+        invoiceId: asNullableString(eventObject['invoice']) ?? asNullableString(metadata['invoice_id']),
+        refundStatus: eventType === 'credit_note.voided' ? 'CANCELED' : null,
+        amount: fromMinorAmount(
+          asNumber(eventObject['amount'] ?? eventObject['subtotal_excluding_tax'] ?? 0),
+          asString(eventObject['currency'], 'CHF'),
+        ),
+        currency: normalizeCurrency(asString(eventObject['currency'], 'CHF')),
+        bookingId,
         rawPayload: parsed,
       };
     }
@@ -343,6 +468,22 @@ function asNullableString(value: unknown): string | null {
 
 function asNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function mapStripeRefundStatus(status: string | null): 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'CANCELED' | null {
+  if (status === 'pending' || status === 'requires_action') return 'PENDING';
+  if (status === 'succeeded') return 'SUCCEEDED';
+  if (status === 'failed') return 'FAILED';
+  if (status === 'canceled') return 'CANCELED';
+  return null;
+}
+
+function extractCreditNoteRefundId(creditNote: StripeObject): string | null {
+  const refunds = creditNote['refunds'];
+  if (!Array.isArray(refunds) || refunds.length === 0) return asNullableString(creditNote['refund']);
+  const firstRefund = refunds[0];
+  if (!isRecord(firstRefund)) return asNullableString(creditNote['refund']);
+  return asNullableString(firstRefund['refund']) ?? asNullableString(firstRefund['id']) ?? asNullableString(creditNote['refund']);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

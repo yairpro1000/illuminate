@@ -20,6 +20,21 @@ export interface ConfirmationEmailOptions {
   paymentDueAt?: string | null;
 }
 
+export interface CancellationEmailOptions {
+  includeRefundNotice?: boolean;
+}
+
+export interface RefundConfirmationEmailInput {
+  subjectTitle: string;
+  amount: number;
+  currency: string;
+  explanation: string;
+  invoiceReference?: string | null;
+  creditNoteReference?: string | null;
+  refundReference?: string | null;
+  documentUrl?: string | null;
+}
+
 export interface IEmailProvider {
   /** Generic website contact message. */
   sendContactMessage(name: string, email: string, message: string, topic?: string | null): Promise<SendResult>;
@@ -55,10 +70,22 @@ export interface IEmailProvider {
   sendBookingFollowup(booking: Booking, confirmUrl: string): Promise<SendResult>;
 
   /** Session cancellation. Optionally include a start-new-booking URL. */
-  sendBookingCancellation(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
+  sendBookingCancellation(
+    booking: Booking,
+    startNewBookingUrl?: string | null,
+    options?: CancellationEmailOptions,
+  ): Promise<SendResult>;
 
   /** Event cancellation. Optionally include a start-new-booking URL. */
-  sendEventCancellation(booking: Booking, event: Event, startNewBookingUrl?: string | null): Promise<SendResult>;
+  sendEventCancellation(
+    booking: Booking,
+    event: Event,
+    startNewBookingUrl?: string | null,
+    options?: CancellationEmailOptions,
+  ): Promise<SendResult>;
+
+  /** Refund confirmation after a Stripe refund succeeds. */
+  sendRefundConfirmation(booking: Booking, input: RefundConfirmationEmailInput): Promise<SendResult>;
 
   /** Session expired because it was not confirmed/paid in time. Optionally include a start-new-booking URL. */
   sendBookingExpired(booking: Booking, startNewBookingUrl?: string | null): Promise<SendResult>;
