@@ -1427,6 +1427,57 @@ async function settleBookingPayment(
     return;
   }
 
+  const paymentVerification = await findLatestUnresolvedSideEffectByIntent(
+    booking.id,
+    'VERIFY_STRIPE_PAYMENT',
+    bookingCtx,
+  );
+  if (paymentVerification) {
+    bookingCtx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'payment_settlement_verification_resolution_decision',
+      message: 'Resolved settled payment through the existing VERIFY_STRIPE_PAYMENT side effect',
+      context: {
+        booking_id: booking.id,
+        payment_id: input.payment.id,
+        verification_booking_event_id: paymentVerification.event.id,
+        verification_side_effect_id: paymentVerification.effect.id,
+        verification_side_effect_status: paymentVerification.effect.status,
+        settlement_source: input.settlementSource,
+        branch_taken: 'run_existing_verify_stripe_payment_side_effect',
+        deny_reason: null,
+      },
+    });
+
+    await runBookingEventEffects(
+      {
+        booking,
+        event: paymentVerification.event,
+        sideEffects: [paymentVerification.effect],
+        sourceOperation: input.settlementSource === 'ADMIN_UI'
+          ? 'admin_manual_payment_settlement:verify_stripe_payment'
+          : 'confirm_booking_payment:verify_stripe_payment',
+        triggerSource: 'realtime',
+        executeEffect: executeBookingSideEffectAction,
+      },
+      bookingCtx,
+    );
+    return;
+  }
+
+  bookingCtx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'payment_settlement_verification_resolution_decision',
+    message: 'No unresolved VERIFY_STRIPE_PAYMENT side effect existed; falling back to direct PAYMENT_SETTLED append',
+    context: {
+      booking_id: booking.id,
+      payment_id: input.payment.id,
+      settlement_source: input.settlementSource,
+      branch_taken: 'fallback_direct_payment_settled_append',
+      deny_reason: 'verify_stripe_payment_side_effect_missing',
+    },
+  });
+
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'PAYMENT_SETTLED',
@@ -1453,6 +1504,28 @@ async function settleBookingPayment(
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, bookingCtx);
+}
+
+async function findLatestUnresolvedSideEffectByIntent(
+  bookingId: string,
+  effectIntent: BookingEffectIntent,
+  ctx: BookingContext,
+): Promise<{ event: BookingEventRecord; effect: BookingSideEffect } | null> {
+  const events = await ctx.providers.repository.listBookingEvents(bookingId);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event) continue;
+    const effects = await ctx.providers.repository.listBookingSideEffectsForEvent(event.id);
+    const effect = [...effects].reverse().find((candidate) =>
+      candidate.effect_intent === effectIntent
+      && candidate.status !== 'SUCCESS'
+      && candidate.status !== 'DEAD',
+    );
+    if (effect) {
+      return { event, effect };
+    }
+  }
+  return null;
 }
 
 // ── Access and public-action owners were moved to dedicated services ───────

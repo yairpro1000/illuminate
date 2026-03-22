@@ -197,7 +197,7 @@ describe('post-booking pages', () => {
     await flush()
 
     expect(document.getElementById('dev-detail')?.textContent).toContain('CHF 83.00')
-    expect(navigatedTo).toBe('payment-success?session_id=sess-123')
+    expect(navigatedTo).toBe('payment-success.html?session_id=sess-123')
 
     window.location = originalLocation
   })

@@ -267,6 +267,59 @@
     return href || resolveHomepageHref();
   }
 
+  function normalizeBookingEventPollTarget(target) {
+    const eventId = target && target.id ? String(target.id) : '';
+    if (eventId) {
+      return {
+        params: {
+          booking_event_id: eventId,
+        },
+      };
+    }
+
+    const bookingId = target && (target.bookingId || target.booking_id)
+      ? String(target.bookingId || target.booking_id)
+      : '';
+    const eventType = target && (target.eventType || target.booking_event_type)
+      ? String(target.eventType || target.booking_event_type)
+      : '';
+    if (bookingId && eventType) {
+      return {
+        params: {
+          booking_id: bookingId,
+          booking_event_type: eventType,
+        },
+      };
+    }
+
+    throw new Error('booking_event_id or booking_id plus booking_event_type are required');
+  }
+
+  async function pollBookingEventStatus(bookingEvent, token, adminToken, options) {
+    if (!token) throw new Error('booking event token is required');
+    const target = normalizeBookingEventPollTarget(bookingEvent);
+    const intervalMs = options && Number.isFinite(options.intervalMs) ? Math.max(100, Number(options.intervalMs)) : 500;
+    const timeoutMs = options && Number.isFinite(options.timeoutMs) ? Math.max(intervalMs, Number(options.timeoutMs)) : 12000;
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt <= timeoutMs) {
+      const params = new URLSearchParams({
+        token: String(token),
+        ...target.params,
+      });
+      if (adminToken) params.set('admin_token', String(adminToken));
+
+      const snapshot = await requestJson('/api/bookings/event-status?' + params.toString());
+      if (snapshot.is_terminal) return {
+        ...snapshot,
+        status: snapshot.booking_status || null,
+      };
+      await new Promise(function (resolve) { setTimeout(resolve, intervalMs); });
+    }
+
+    throw Object.assign(new Error('BOOKING_EVENT_STATUS_TIMEOUT'), { code: 'BOOKING_EVENT_STATUS_TIMEOUT' });
+  }
+
   async function requestJson(path, init) {
     const method = String((init && init.method) || 'GET').toUpperCase();
     const apiBase = getApiBase();
@@ -331,6 +384,7 @@
     makeRequestId: makeRequestId,
     parseJsonishResponse: parseJsonishResponse,
     requestJson: requestJson,
+    pollBookingEventStatus: pollBookingEventStatus,
     detectUiTestMode: detectUiTestMode,
     maybeRenderMockEmailPreview: maybeRenderMockEmailPreview,
     resolveHomepageHref: resolveHomepageHref,
@@ -338,6 +392,8 @@
     isHomepageActionLabel: isHomepageActionLabel,
     config: DEFAULT_CONFIG,
   };
+
+  window.pollBookingEventStatus = pollBookingEventStatus;
 
   // ── Global loading spinner (used by requestJson here and in api.js) ──────
   if (!window.siteSpinner) {
