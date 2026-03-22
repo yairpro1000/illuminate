@@ -548,6 +548,36 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
     : null;
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const manageUrl = await buildManageUrl(ctx.siteUrl, booking);
+  const eventsWithSideEffects = await Promise.all(events.map(async (event) => {
+    const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(event.id);
+    const sideEffectsWithAttempts = await Promise.all(sideEffects.map(async (sideEffect) => ({
+      id: sideEffect.id,
+      entity: sideEffect.entity,
+      effect_intent: sideEffect.effect_intent,
+      status: sideEffect.status,
+      expires_at: sideEffect.expires_at,
+      max_attempts: sideEffect.max_attempts,
+      created_at: sideEffect.created_at,
+      updated_at: sideEffect.updated_at,
+      attempts: (await ctx.providers.repository.listBookingSideEffectAttempts(sideEffect.id)).map((attempt) => ({
+        id: attempt.id,
+        attempt_num: attempt.attempt_num,
+        status: attempt.status,
+        error_message: attempt.error_message,
+        api_log_id: attempt.api_log_id,
+        created_at: attempt.created_at,
+      })),
+    })));
+
+    return {
+      id: event.id,
+      event_type: event.event_type,
+      source: event.source,
+      payload: event.payload,
+      created_at: event.created_at,
+      side_effects: sideEffectsWithAttempts,
+    };
+  }));
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -589,7 +619,18 @@ export async function handleTestBookingArtifacts(request: Request, ctx: AppConte
       status: payment.status,
       session_id: payment.stripe_checkout_session_id,
       checkout_url: payment.checkout_url,
+      invoice_url: payment.invoice_url,
+      receipt_url: payment.stripe_receipt_url,
+      credit_note_url: payment.stripe_credit_note_url,
+      refund_status: payment.refund_status,
+      refunded_at: payment.refunded_at,
+      refund_amount: payment.refund_amount,
+      refund_currency: payment.refund_currency,
+      stripe_invoice_id: payment.stripe_invoice_id,
+      stripe_refund_id: payment.stripe_refund_id,
+      stripe_credit_note_id: payment.stripe_credit_note_id,
     } : null,
+    events: eventsWithSideEffects,
   });
 }
 

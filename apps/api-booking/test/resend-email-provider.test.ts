@@ -218,7 +218,7 @@ describe('Resend payment-due email payload', () => {
     expect(payload.html).toContain('Contact Yair');
   });
 
-  it('sends refund confirmation copy with amount and references', async () => {
+  it('sends refund confirmation copy with customer-facing document links only', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
 
@@ -250,14 +250,15 @@ describe('Resend payment-due email payload', () => {
     expect(payload.text).toContain('Your refund has been processed.');
     expect(payload.text).toContain('Amount: CHF 150.00');
     expect(payload.text).toContain('Invoice: in_123');
-    expect(payload.text).toContain('Credit note: cn_123');
-    expect(payload.text).toContain('Refund reference: re_123');
+    expect(payload.text).not.toContain('Credit note: cn_123');
+    expect(payload.text).not.toContain('Refund reference: re_123');
     expect(payload.text).toContain('Credit note link: https://letsilluminate.co/mock-credit-note/cn_123');
     expect(payload.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_123');
     expect(payload.html).toContain('Amount');
     expect(payload.html).toContain('CHF 150.00');
-    expect(payload.html).toContain('View credit note');
     expect(payload.html).toContain('View receipt');
+    expect(payload.html).toContain('View credit note &rarr;');
+    expect(payload.html).not.toContain('Refund reference');
   });
 
   it('omits refund document links when Stripe did not provide URLs', async () => {

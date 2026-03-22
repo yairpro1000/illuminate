@@ -885,8 +885,6 @@ export function buildRefundConfirmationEmail(
   const amountLabel = `${input.currency} ${input.amount.toFixed(2)}`;
   const referenceLines = [
     input.invoiceReference ? `Invoice: ${input.invoiceReference}` : null,
-    input.creditNoteReference ? `Credit note: ${input.creditNoteReference}` : null,
-    input.refundReference ? `Refund reference: ${input.refundReference}` : null,
     input.creditNoteUrl ? `Credit note link: ${input.creditNoteUrl}` : null,
     input.receiptUrl ? `Receipt: ${input.receiptUrl}` : null,
   ].filter(Boolean);
@@ -896,17 +894,11 @@ export function buildRefundConfirmationEmail(
     ['Amount', esc(amountLabel)],
   ];
   if (input.invoiceReference) detailRows.push(['Invoice', esc(input.invoiceReference)]);
-  if (input.creditNoteReference) detailRows.push(['Credit note', esc(input.creditNoteReference)]);
-  if (input.refundReference) detailRows.push(['Refund reference', esc(input.refundReference)]);
-  const primaryDocumentUrl = input.creditNoteUrl ?? input.receiptUrl ?? `${DEFAULT_SITE_URL}/manage.html`;
-  const primaryDocumentLabel = input.creditNoteUrl
-    ? 'View credit note'
-    : input.receiptUrl
-      ? 'View receipt'
-      : 'Manage booking';
+  const primaryDocumentUrl = input.receiptUrl ?? `${DEFAULT_SITE_URL}/manage.html`;
+  const primaryDocumentLabel = input.receiptUrl ? 'View receipt' : 'Manage booking';
   const extraLinks = [
-    input.creditNoteUrl && input.receiptUrl
-      ? `<a href="${esc(input.receiptUrl)}">View receipt &rarr;</a>`
+    input.creditNoteUrl
+      ? `<a href="${esc(input.creditNoteUrl)}">View credit note &rarr;</a>`
       : null,
   ].filter((line): line is string => Boolean(line));
   const html = simpleHtml(

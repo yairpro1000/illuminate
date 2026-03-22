@@ -3071,14 +3071,40 @@ export async function applyImmediateNonCronSideEffectsForTransition(
     try {
       await markSideEffectsProcessing([effect], ctx);
       currentBooking = await executeImmediateTransitionSideEffect(effect, currentBooking, input, ctx);
-      await recordSideEffectAttempts([effect], {
-        status: 'SUCCESS',
-        errorMessage: null,
-        apiLogId: consumeLatestProviderApiLogId(ctx.operation),
-        ctx,
-        bookingId: currentBooking.id,
-        logSource: 'backend',
-      });
+      try {
+        await recordSideEffectAttempts([effect], {
+          status: 'SUCCESS',
+          errorMessage: null,
+          apiLogId: consumeLatestProviderApiLogId(ctx.operation),
+          ctx,
+          bookingId: currentBooking.id,
+          logSource: 'backend',
+        });
+      } catch (attemptError) {
+        const persistenceFailureReason = toSyncFailureReason(attemptError);
+        logger.logError?.({
+          source: 'backend',
+          eventType: 'realtime_side_effect_attempt_record_failed',
+          message: 'Immediate side effect succeeded but attempt persistence failed',
+          context: {
+            booking_id: currentBooking.id,
+            transition_event_type: input.transitionEventType,
+            source_operation: input.sourceOperation,
+            side_effect_id: effect.id,
+            side_effect_intent: effect.effect_intent,
+            persistence_failure_reason: persistenceFailureReason,
+            branch_taken: 'realtime_side_effect_succeeded_attempt_persist_failed',
+            deny_reason: 'side_effect_attempt_persistence_failed',
+          },
+        });
+        await recoverImmediateSideEffectStatusAfterAttemptPersistenceFailure(effect, {
+          terminalStatus: 'SUCCESS',
+          bookingId: currentBooking.id,
+          transitionEventType: input.transitionEventType,
+          sourceOperation: input.sourceOperation,
+          persistenceFailureReason,
+        }, ctx);
+      }
 
       logger.logInfo?.({
         source: 'backend',
@@ -3109,6 +3135,7 @@ export async function applyImmediateNonCronSideEffectsForTransition(
           enableCalendarBackoff,
         });
       } catch (attemptError) {
+        const recordFailureReason = toSyncFailureReason(attemptError);
         logger.logError?.({
           source: 'backend',
           eventType: 'realtime_side_effect_attempt_record_failed',
@@ -3120,10 +3147,17 @@ export async function applyImmediateNonCronSideEffectsForTransition(
             side_effect_id: effect.id,
             side_effect_intent: effect.effect_intent,
             failure_reason: failureReason,
-            record_failure_reason: toSyncFailureReason(attemptError),
+            record_failure_reason: recordFailureReason,
             branch_taken: 'realtime_side_effect_failed_record_persist_error',
           },
         });
+        await recoverImmediateSideEffectStatusAfterAttemptPersistenceFailure(effect, {
+          terminalStatus: 'FAILED',
+          bookingId: currentBooking.id,
+          transitionEventType: input.transitionEventType,
+          sourceOperation: input.sourceOperation,
+          persistenceFailureReason: recordFailureReason,
+        }, ctx);
       }
 
       logger.logWarn?.({
@@ -3898,6 +3932,63 @@ async function markSideEffectsProcessing(
     await ctx.providers.repository.updateBookingSideEffect(effect.id, {
       status: 'PROCESSING',
       updated_at: updatedAt,
+    });
+  }
+}
+
+async function recoverImmediateSideEffectStatusAfterAttemptPersistenceFailure(
+  effect: Pick<BookingSideEffect, 'id' | 'effect_intent'>,
+  input: {
+    terminalStatus: 'SUCCESS' | 'FAILED';
+    bookingId: string;
+    transitionEventType: BookingEventType;
+    sourceOperation: string;
+    persistenceFailureReason: string;
+  },
+  ctx: BookingContext,
+): Promise<void> {
+  const fallbackStatus = input.terminalStatus === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
+
+  try {
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, {
+      status: fallbackStatus,
+      updated_at: new Date().toISOString(),
+    });
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'realtime_side_effect_attempt_persistence_recovered',
+      message: 'Recovered immediate side effect status after attempt persistence failure',
+      context: {
+        booking_id: input.bookingId,
+        transition_event_type: input.transitionEventType,
+        source_operation: input.sourceOperation,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        fallback_side_effect_status: fallbackStatus,
+        persistence_failure_reason: input.persistenceFailureReason,
+        branch_taken: input.terminalStatus === 'SUCCESS'
+          ? 'recover_successful_side_effect_without_attempt_row'
+          : 'recover_failed_side_effect_without_attempt_row',
+        deny_reason: 'side_effect_attempt_persistence_failed',
+      },
+    });
+  } catch (statusRecoveryError) {
+    ctx.logger.logError?.({
+      source: 'backend',
+      eventType: 'realtime_side_effect_attempt_persistence_recovery_failed',
+      message: 'Failed to recover immediate side effect status after attempt persistence failure',
+      context: {
+        booking_id: input.bookingId,
+        transition_event_type: input.transitionEventType,
+        source_operation: input.sourceOperation,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        fallback_side_effect_status: fallbackStatus,
+        persistence_failure_reason: input.persistenceFailureReason,
+        status_recovery_failure_reason: toSyncFailureReason(statusRecoveryError),
+        branch_taken: 'side_effect_attempt_persistence_recovery_failed',
+        deny_reason: 'side_effect_status_recovery_failed',
+      },
     });
   }
 }

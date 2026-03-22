@@ -49,7 +49,42 @@ export interface BookingArtifacts {
     status: string;
     session_id: string | null;
     checkout_url: string | null;
+    invoice_url: string | null;
+    receipt_url: string | null;
+    credit_note_url: string | null;
+    refund_status: string | null;
+    refunded_at: string | null;
+    refund_amount: number | null;
+    refund_currency: string | null;
+    stripe_invoice_id: string | null;
+    stripe_refund_id: string | null;
+    stripe_credit_note_id: string | null;
   };
+  events: Array<{
+    id: string;
+    event_type: string;
+    source: string;
+    payload: Record<string, unknown>;
+    created_at: string;
+    side_effects: Array<{
+      id: string;
+      entity: string;
+      effect_intent: string;
+      status: string;
+      expires_at: string | null;
+      max_attempts: number;
+      created_at: string;
+      updated_at: string;
+      attempts: Array<{
+        id: string;
+        attempt_num: number;
+        status: string;
+        error_message: string | null;
+        api_log_id: string | null;
+        created_at: string;
+      }>;
+    }>;
+  }>;
 }
 
 export interface PublicSlot {
@@ -446,6 +481,14 @@ export async function waitForCapturedEmail(to: string, kind?: string): Promise<C
   throw new Error(`Could not find captured email for ${to}${kind ? ` (${kind})` : ''}. Last seen: ${JSON.stringify(lastEmails)}`);
 }
 
+export async function fetchCapturedEmailPreviewHtml(previewHtmlUrl: string): Promise<string> {
+  const response = await fetch(previewHtmlUrl);
+  if (!response.ok) {
+    throw new Error(`GET preview html -> ${response.status}: ${await response.text()}`);
+  }
+  return response.text();
+}
+
 export async function waitForBookingArtifacts(email: string): Promise<BookingArtifacts> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -457,6 +500,23 @@ export async function waitForBookingArtifacts(email: string): Promise<BookingArt
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Could not resolve booking artifacts');
+}
+
+export async function waitForBookingArtifactsWhere(
+  email: string,
+  predicate: (artifacts: BookingArtifacts) => boolean,
+  timeoutMs = 20_000,
+): Promise<BookingArtifacts> {
+  const deadline = Date.now() + timeoutMs;
+  let lastArtifacts: BookingArtifacts | null = null;
+
+  while (Date.now() < deadline) {
+    lastArtifacts = await waitForBookingArtifacts(email);
+    if (predicate(lastArtifacts)) return lastArtifacts;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error(`Timed out waiting for booking artifacts predicate for ${email}. Last artifacts: ${JSON.stringify(lastArtifacts)}`);
 }
 
 export async function getSupabasePaymentRowByBookingId(bookingId: string): Promise<SupabasePaymentRow | null> {
@@ -564,6 +624,21 @@ export async function expectManageStatus(email: string, expectedStatus: string):
   const artifacts = await waitForBookingArtifacts(email);
   expect(artifacts.booking.status).toBe(expectedStatus);
   return artifacts;
+}
+
+export function findEventArtifacts(
+  artifacts: BookingArtifacts,
+  eventType: string,
+): BookingArtifacts['events'][number] | undefined {
+  return artifacts.events.find((event) => event.event_type === eventType);
+}
+
+export function findSideEffectArtifacts(
+  artifacts: BookingArtifacts,
+  eventType: string,
+  effectIntent: string,
+): BookingArtifacts['events'][number]['side_effects'][number] | undefined {
+  return findEventArtifacts(artifacts, eventType)?.side_effects.find((sideEffect) => sideEffect.effect_intent === effectIntent);
 }
 
 export async function clickFirstAvailableSlot(page: Page): Promise<{ dateYmd: string; timeLabel: string }> {

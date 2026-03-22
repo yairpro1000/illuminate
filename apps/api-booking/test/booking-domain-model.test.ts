@@ -1359,7 +1359,8 @@ describe('booking domain model', () => {
     expect(refundEmail?.subject).toBe('Your refund for First Clarity Session');
     expect(refundEmail?.text).toContain('Your refund has been processed and a credit note was created.');
     expect(refundEmail?.text).toContain('Amount: CHF 150.00');
-    expect(refundEmail?.text).toContain('Credit note:');
+    expect(refundEmail?.text).not.toContain('Refund reference:');
+    expect(refundEmail?.text).not.toContain('Credit note:');
     expect(refundEmail?.text).toContain('Credit note link:');
     expect(refundEmail?.text).toContain('Receipt: https://example.com/mock-receipt/');
 
@@ -1376,6 +1377,86 @@ describe('booking domain model', () => {
         booking_id: created.bookingId,
         branch_taken: 'refund_confirmation_email_sent',
       }),
+    }));
+  });
+
+  it('keeps refunded cancellations successful when refund side-effect attempt persistence fails after business success', async () => {
+    const ctx = makeCtx();
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-04-20T10:00:00.000Z',
+      slotEnd: '2026-04-20T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Persist Retry',
+      clientEmail: 'persist-retry@example.com',
+      clientPhone: '+41000000199',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const token = String(submission?.payload?.['confirm_token'] ?? '');
+    const confirmed = await confirmBookingEmail(token, ctx);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    await confirmBookingPayment({
+      id: payment!.id,
+      booking_id: payment!.booking_id,
+      stripe_checkout_session_id: payment!.stripe_checkout_session_id,
+      stripe_payment_intent_id: payment!.stripe_payment_intent_id,
+      stripe_invoice_id: payment!.stripe_invoice_id,
+      status: payment!.status,
+    }, {
+      paymentIntentId: 'pi_refund_persist_123',
+      invoiceId: payment!.stripe_invoice_id,
+      invoiceUrl: payment!.invoice_url,
+      receiptUrl: 'https://example.com/mock-receipt/ch_refund_persist_123',
+    }, ctx);
+
+    const createAttemptSpy = vi.spyOn(ctx.providers.repository, 'createBookingSideEffectAttempt');
+    createAttemptSpy.mockImplementation(async (data) => {
+      const effect = mockState.sideEffects.find((entry) => entry.id === data.booking_side_effect_id);
+      if (effect?.effect_intent === 'CREATE_STRIPE_REFUND' || effect?.effect_intent === 'SEND_BOOKING_REFUND_CONFIRMATION') {
+        throw new Error(`forced_attempt_persistence_failure:${effect.effect_intent}`);
+      }
+      mockState.sideEffectAttempts.push({
+        id: `attempt-${data.booking_side_effect_id}`,
+        booking_side_effect_id: data.booking_side_effect_id,
+        attempt_num: data.attempt_num,
+        api_log_id: data.api_log_id ?? null,
+        status: data.status,
+        error_message: data.error_message ?? null,
+        created_at: new Date().toISOString(),
+      } as any);
+      return mockState.sideEffectAttempts[mockState.sideEffectAttempts.length - 1] as any;
+    });
+
+    const confirmedBooking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const canceled = await cancelBooking(confirmedBooking!, ctx);
+
+    expect(canceled.ok).toBe(true);
+    expect(canceled.code).toBe('CANCELED_AND_REFUNDED');
+    const refundEffect = mockState.sideEffects.find((effect) =>
+      effect.booking_id === created.bookingId && effect.effect_intent === 'CREATE_STRIPE_REFUND',
+    );
+    const refundEmailEffect = mockState.sideEffects.find((effect) =>
+      effect.booking_id === created.bookingId && effect.effect_intent === 'SEND_BOOKING_REFUND_CONFIRMATION',
+    );
+    expect(refundEffect?.status).toBe('SUCCESS');
+    expect(refundEmailEffect?.status).toBe('SUCCESS');
+    expect(mockState.sideEffectAttempts.some((attempt) => attempt.booking_side_effect_id === refundEffect?.id)).toBe(false);
+    expect(mockState.sideEffectAttempts.some((attempt) => attempt.booking_side_effect_id === refundEmailEffect?.id)).toBe(false);
+    expect(ctx.logger.logError).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'realtime_side_effect_attempt_record_failed',
+      context: expect.objectContaining({
+        deny_reason: 'side_effect_attempt_persistence_failed',
+      }),
+    }));
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'realtime_side_effect_attempt_persistence_recovered',
     }));
   });
 
