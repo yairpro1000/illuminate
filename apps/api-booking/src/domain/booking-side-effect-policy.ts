@@ -56,6 +56,15 @@ export function evaluateSweeperDispatchDecision(
     };
   }
 
+  const pendingAgeMs = Date.now() - new Date(effect.created_at).getTime();
+  if (Number.isFinite(pendingAgeMs) && pendingAgeMs >= 15_000) {
+    return {
+      shouldDispatch: true,
+      branchTaken: 'dispatch_orphaned_pending_first_attempt_after_grace_window',
+      denyReason: null,
+    };
+  }
+
   return {
     shouldDispatch: false,
     branchTaken: 'skip_pending_non_cron_first_attempt',

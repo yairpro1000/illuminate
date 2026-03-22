@@ -4,6 +4,7 @@ import type {
   Booking,
   BookingCurrentStatus,
   BookingEventRecord,
+  BookingEventStatus,
   BookingSideEffect,
   BookingSideEffectAttempt,
   BookingUpdate,
@@ -96,6 +97,23 @@ type PendingSideEffectRow = BookingSideEffect & {
     booking_id: string;
   } | null;
 };
+
+type BookingEventRow = Pick<
+  BookingEventRecord,
+  'id' | 'booking_id' | 'event_type' | 'source' | 'payload' | 'status' | 'created_at'
+>;
+
+interface BookingEventSnapshot {
+  status: BookingEventStatus;
+  error_message: string | null;
+  completed_at: string | null;
+  updated_at: string;
+}
+
+type BookingSideEffectAttemptRow = Pick<
+  BookingSideEffectAttempt,
+  'id' | 'booking_side_effect_id' | 'attempt_num' | 'api_log_id' | 'status' | 'error_message' | 'created_at'
+>;
 
 const CONTACT_MESSAGE_SELECT = `
   *,
@@ -360,45 +378,57 @@ export class SupabaseRepository implements IRepository {
     source: BookingEventRecord['source'];
     payload?: Record<string, unknown>;
   }): Promise<BookingEventRecord> {
-    const row = await requireSingle<BookingEventRecord>(
+    const row = await requireSingle<BookingEventRow>(
       this.db
         .from('booking_events')
         .insert({
           booking_id: data.booking_id,
           event_type: data.event_type,
           source: data.source,
-          status: 'PENDING',
           payload: data.payload ?? {},
-          error_message: null,
-          completed_at: null,
+          status: 'PENDING',
         })
         .select('*')
         .single(),
       'Failed to persist booking event',
     );
-    return row;
+    return toBookingEventRecord(row, {
+      status: 'PENDING',
+      error_message: null,
+      completed_at: null,
+      updated_at: row.created_at,
+    });
   }
 
   async updateBookingEvent(
     id: string,
     updates: Partial<Pick<BookingEventRecord, 'status' | 'error_message' | 'completed_at' | 'updated_at'>>,
   ): Promise<BookingEventRecord> {
-    return requireSingle<BookingEventRecord>(
+    const row = await requireSingle<BookingEventRow>(
       this.db
         .from('booking_events')
         .update({
-          ...updates,
-          updated_at: updates.updated_at ?? nowIso(),
+          ...(updates.status !== undefined ? { status: updates.status } : {}),
         })
         .eq('id', id)
         .select('*')
         .single(),
       `Failed to update booking event ${id}`,
     );
+    const snapshots = await this.loadBookingEventSnapshots([row.id]);
+    return toBookingEventRecord(
+      row,
+      snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at),
+      {
+        error_message: updates.error_message,
+        completed_at: updates.completed_at,
+        updated_at: updates.updated_at,
+      },
+    );
   }
 
   async listBookingEvents(bookingId: string): Promise<BookingEventRecord[]> {
-    const rows = await requireData<BookingEventRecord[]>(
+    const rows = await requireData<BookingEventRow[]>(
       this.db
         .from('booking_events')
         .select('*')
@@ -406,18 +436,22 @@ export class SupabaseRepository implements IRepository {
         .order('created_at', { ascending: true }),
       'Failed to load booking events',
     );
-    return rows;
+    const snapshots = await this.loadBookingEventSnapshots(rows.map((row) => row.id));
+    return rows.map((row) => toBookingEventRecord(row, snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at)));
   }
 
   async getBookingEventById(eventId: string): Promise<BookingEventRecord | null> {
-    return maybeSingle<BookingEventRecord>(
+    const row = await maybeSingle<BookingEventRow>(
       this.db.from('booking_events').select('*').eq('id', eventId).limit(1).maybeSingle(),
       'Failed to load booking event',
     );
+    if (!row) return null;
+    const snapshots = await this.loadBookingEventSnapshots([row.id]);
+    return toBookingEventRecord(row, snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at));
   }
 
   async getLatestBookingEvent(bookingId: string): Promise<BookingEventRecord | null> {
-    return maybeSingle<BookingEventRecord>(
+    const row = await maybeSingle<BookingEventRow>(
       this.db
         .from('booking_events')
         .select('*')
@@ -427,10 +461,13 @@ export class SupabaseRepository implements IRepository {
         .maybeSingle(),
       'Failed to load latest booking event',
     );
+    if (!row) return null;
+    const snapshots = await this.loadBookingEventSnapshots([row.id]);
+    return toBookingEventRecord(row, snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at));
   }
 
   async updateBookingEventCreatedAt(eventId: string, createdAt: string): Promise<BookingEventRecord> {
-    return requireSingle<BookingEventRecord>(
+    const row = await requireSingle<BookingEventRow>(
       this.db
         .from('booking_events')
         .update({ created_at: createdAt })
@@ -439,6 +476,34 @@ export class SupabaseRepository implements IRepository {
         .single(),
       `Failed to update booking event ${eventId}`,
     );
+    const snapshots = await this.loadBookingEventSnapshots([row.id]);
+    return toBookingEventRecord(row, snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at));
+  }
+
+  private async loadBookingEventSnapshots(eventIds: string[]): Promise<Map<string, BookingEventSnapshot>> {
+    const ids = [...new Set(eventIds.filter(Boolean))];
+    if (ids.length === 0) return new Map();
+
+    const sideEffects = await requireData<Array<Pick<BookingSideEffect, 'booking_event_id' | 'status' | 'updated_at'>>>(
+      this.db
+        .from('booking_side_effects')
+        .select('booking_event_id,status,updated_at')
+        .in('booking_event_id', ids),
+      'Failed to load side effects for booking-event snapshots',
+    );
+
+    const grouped = new Map<string, Array<Pick<BookingSideEffect, 'status' | 'updated_at'>>>();
+    for (const row of sideEffects) {
+      const list = grouped.get(row.booking_event_id) ?? [];
+      list.push({ status: row.status, updated_at: row.updated_at });
+      grouped.set(row.booking_event_id, list);
+    }
+
+    const snapshots = new Map<string, BookingEventSnapshot>();
+    for (const id of ids) {
+      snapshots.set(id, deriveBookingEventSnapshot(grouped.get(id) ?? []));
+    }
+    return snapshots;
   }
 
   // ── Booking side effects ─────────────────────────────────────────────────
@@ -546,33 +611,47 @@ export class SupabaseRepository implements IRepository {
   // ── Booking side effect attempts ──────────────────────────────────────────
 
   async createBookingSideEffectAttempt(data: NewBookingSideEffectAttempt): Promise<BookingSideEffectAttempt> {
-    const row = await requireSingle<BookingSideEffectAttempt>(
-      this.db.from('booking_side_effect_attempts').insert(data).select('*').single(),
+    const row = await requireSingle<BookingSideEffectAttemptRow>(
+      this.db.from('booking_side_effect_attempts').insert({
+        booking_side_effect_id: data.booking_side_effect_id,
+        attempt_num: data.attempt_num,
+        api_log_id: data.api_log_id ?? null,
+        status: data.status,
+        error_message: data.error_message ?? null,
+      }).select('*').single(),
       'Failed to create booking side effect attempt',
     );
-    return row;
+    return toBookingSideEffectAttemptRecord(row, {
+      completed_at: null,
+      updated_at: row.created_at,
+    });
   }
 
   async updateBookingSideEffectAttempt(
     id: string,
     updates: Partial<Pick<BookingSideEffectAttempt, 'api_log_id' | 'status' | 'error_message' | 'updated_at' | 'completed_at'>>,
   ): Promise<BookingSideEffectAttempt> {
-    return requireSingle<BookingSideEffectAttempt>(
+    const row = await requireSingle<BookingSideEffectAttemptRow>(
       this.db
         .from('booking_side_effect_attempts')
         .update({
-          ...updates,
-          updated_at: updates.updated_at ?? nowIso(),
+          ...(updates.api_log_id !== undefined ? { api_log_id: updates.api_log_id } : {}),
+          ...(updates.status !== undefined ? { status: updates.status } : {}),
+          ...(updates.error_message !== undefined ? { error_message: updates.error_message } : {}),
         })
         .eq('id', id)
         .select('*')
         .single(),
       `Failed to update booking side effect attempt ${id}`,
     );
+    return toBookingSideEffectAttemptRecord(row, {
+      updated_at: updates.updated_at ?? row.created_at,
+      completed_at: updates.completed_at ?? (row.status === 'PROCESSING' ? null : row.created_at),
+    });
   }
 
   async listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]> {
-    const rows = await requireData<BookingSideEffectAttempt[]>(
+    const rows = await requireData<BookingSideEffectAttemptRow[]>(
       this.db
         .from('booking_side_effect_attempts')
         .select('*')
@@ -580,11 +659,11 @@ export class SupabaseRepository implements IRepository {
         .order('attempt_num', { ascending: true }),
       'Failed to load booking side effect attempts',
     );
-    return rows;
+    return rows.map((row) => toBookingSideEffectAttemptRecord(row));
   }
 
   async getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null> {
-    return maybeSingle<BookingSideEffectAttempt>(
+    const row = await maybeSingle<BookingSideEffectAttemptRow>(
       this.db
         .from('booking_side_effect_attempts')
         .select('*')
@@ -594,6 +673,7 @@ export class SupabaseRepository implements IRepository {
         .maybeSingle(),
       'Failed to load latest booking side effect attempt',
     );
+    return row ? toBookingSideEffectAttemptRecord(row) : null;
   }
 
   // ── Events ────────────────────────────────────────────────────────────────
@@ -1422,6 +1502,104 @@ function isPaymentRelatedBookingEventType(eventType: OrganizerBookingRow['latest
 
 function isPaymentRelatedSideEffectIntent(effectIntent: string): boolean {
   return effectIntent.includes('stripe') || effectIntent.includes('payment');
+}
+
+function toBookingEventRecord(
+  row: BookingEventRow,
+  snapshot: BookingEventSnapshot,
+  overrides?: {
+    error_message?: string | null;
+    completed_at?: string | null;
+    updated_at?: string;
+  },
+): BookingEventRecord {
+  return {
+    id: row.id,
+    booking_id: row.booking_id,
+    event_type: row.event_type,
+    source: row.source,
+    payload: row.payload ?? {},
+    status: row.status,
+    error_message: overrides?.error_message ?? snapshot.error_message,
+    completed_at: overrides?.completed_at ?? snapshot.completed_at,
+    created_at: row.created_at,
+    updated_at: overrides?.updated_at ?? snapshot.updated_at,
+  };
+}
+
+function defaultBookingEventSnapshot(createdAt: string): BookingEventSnapshot {
+  return {
+    status: 'SUCCESS',
+    error_message: null,
+    completed_at: createdAt,
+    updated_at: createdAt,
+  };
+}
+
+function deriveBookingEventSnapshot(
+  sideEffects: Array<Pick<BookingSideEffect, 'status' | 'updated_at'>>,
+): BookingEventSnapshot {
+  if (sideEffects.length === 0) {
+    return {
+      status: 'SUCCESS',
+      error_message: null,
+      completed_at: null,
+      updated_at: nowIso(),
+    };
+  }
+
+  const updatedAt = sideEffects
+    .map((effect) => effect.updated_at)
+    .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? nowIso();
+
+  if (sideEffects.some((effect) => effect.status === 'DEAD')) {
+    return {
+      status: 'FAILED',
+      error_message: 'Side effect exhausted retries',
+      completed_at: updatedAt,
+      updated_at: updatedAt,
+    };
+  }
+
+  if (sideEffects.every((effect) => effect.status === 'SUCCESS')) {
+    return {
+      status: 'SUCCESS',
+      error_message: null,
+      completed_at: updatedAt,
+      updated_at: updatedAt,
+    };
+  }
+
+  if (sideEffects.some((effect) => effect.status === 'PROCESSING' || effect.status === 'FAILED')) {
+    return {
+      status: 'PROCESSING',
+      error_message: null,
+      completed_at: null,
+      updated_at: updatedAt,
+    };
+  }
+
+  return {
+    status: 'PENDING',
+    error_message: null,
+    completed_at: null,
+    updated_at: updatedAt,
+  };
+}
+
+function toBookingSideEffectAttemptRecord(
+  row: BookingSideEffectAttemptRow,
+  overrides?: {
+    updated_at?: string;
+    completed_at?: string | null;
+  },
+): BookingSideEffectAttempt {
+  const isTerminal = row.status === 'SUCCESS' || row.status === 'FAILED';
+  return {
+    ...row,
+    updated_at: overrides?.updated_at ?? row.created_at,
+    completed_at: overrides?.completed_at ?? (isTerminal ? row.created_at : null),
+  };
 }
 
 function normalizeEmail(email: string): string {

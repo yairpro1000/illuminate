@@ -36,11 +36,11 @@
         if (bookingId) successParams.set('booking_id', bookingId);
         if (token) successParams.set('token', token);
         if (bookingEventType) successParams.set('booking_event_type', bookingEventType);
-        window.location.href = 'payment-success?' + successParams.toString();
+        window.location.href = 'payment-success.html?' + successParams.toString();
       } else {
         const cancelParams = new URLSearchParams();
         if (bookingId) cancelParams.set('booking_id', bookingId);
-        window.location.href = 'payment-cancel' + (cancelParams.size > 0 ? `?${cancelParams.toString()}` : '');
+        window.location.href = 'payment-cancel.html' + (cancelParams.size > 0 ? `?${cancelParams.toString()}` : '');
       }
     } catch (err) {
       btn.disabled = false;

@@ -202,6 +202,7 @@
     </table>
     ${policyText ? bookingPolicyHtml(policyText) : ''}
     ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
+    ${renderRefundLinks(data.refund || null)}
     ${calendarHtml}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}

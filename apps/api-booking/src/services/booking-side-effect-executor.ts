@@ -5,12 +5,13 @@ import {
   isPaymentManualArrangementStatus,
   isPaymentSettledStatus,
 } from '../domain/payment-status.js';
-import type { Booking, BookingEffectIntent, BookingEventRecord } from '../types.js';
+import type { Booking, BookingEffectIntent, BookingEventRecord, BookingEventType } from '../types.js';
 import type {
   BookingSideEffectExecutorInput,
   BookingSideEffectExecutorResult,
 } from './booking-event-workflow.js';
 import type { BookingContext } from './booking-service.js';
+import type { CancellationRefundExecutionResult } from './refund-service.js';
 
 type EffectHandler = (input: BookingSideEffectExecutorInput) => Promise<BookingSideEffectExecutorResult>;
 
@@ -43,7 +44,10 @@ interface ExecutorDeps {
     booking: Booking,
     ctx: BookingContext,
   ) => Promise<{ checkoutUrl: string | null; expiresAt: string | null }>;
-  initiateAutomaticCancellationRefund: (booking: Booking, ctx: BookingContext) => Promise<unknown>;
+  initiateAutomaticCancellationRefund: (
+    booking: Booking,
+    ctx: BookingContext,
+  ) => Promise<CancellationRefundExecutionResult>;
   completeEmailVerificationWithinEvent: (
     eventId: string,
     booking: Booking,
@@ -52,7 +56,7 @@ interface ExecutorDeps {
   expireBooking: (booking: Booking, ctx: BookingContext) => Promise<Booking>;
   runImmediateBookingEventWorkflow: (input: {
     transitionEvent: BookingEventRecord;
-    transitionEventType: 'PAYMENT_SETTLED';
+    transitionEventType: BookingEventType;
     sourceOperation: string;
     bookingBeforeTransition: Booking;
     bookingAfterTransition: Booking;
@@ -177,8 +181,35 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
       };
     },
     CREATE_STRIPE_REFUND: async ({ booking, ctx }) => {
-      await deps.initiateAutomaticCancellationRefund(booking, ctx);
-      return { booking };
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'side_effect_execution_step',
+        message: 'Dispatching CREATE_STRIPE_REFUND through refund service',
+        context: {
+          booking_id: booking.id,
+          side_effect_intent: 'CREATE_STRIPE_REFUND',
+          branch_taken: 'execute_create_stripe_refund_handler',
+          deny_reason: null,
+        },
+      });
+      const refundResult = await deps.initiateAutomaticCancellationRefund(booking, ctx);
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'side_effect_execution_step',
+        message: 'CREATE_STRIPE_REFUND returned from refund service',
+        context: {
+          booking_id: booking.id,
+          side_effect_intent: 'CREATE_STRIPE_REFUND',
+          refund_eligible: refundResult.decision.eligible,
+          next_side_effect_count: refundResult.nextSideEffects.length,
+          branch_taken: 'complete_create_stripe_refund_handler',
+          deny_reason: null,
+        },
+      });
+      return {
+        booking,
+        nextSideEffects: refundResult.nextSideEffects,
+      };
     },
     VERIFY_EMAIL_CONFIRMATION: async ({ booking, effect, ctx, sourceOperation }) => {
       if (sourceOperation === 'confirm_booking_email_verification') {

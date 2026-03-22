@@ -31,6 +31,16 @@ interface DispatchResolutionContext {
   request: Request;
 }
 
+interface MockEmailDispatchPayload {
+  id?: unknown;
+  to?: unknown;
+  subject?: unknown;
+  html?: unknown;
+  text?: unknown;
+  email_kind?: unknown;
+  kind?: unknown;
+}
+
 function normalizeApiOrigin(apiOrigin: string): string {
   return apiOrigin.replace(/\/+$/g, '');
 }
@@ -121,7 +131,12 @@ export function resolveEmailDispatchState(
     };
   }
 
-  const preview = resolveMockEmailPreviewById(messageId, {
+  const previewFromDispatch = resolveMockEmailPreviewFromDispatch(sendResult, {
+    emailMode: context.emailMode,
+    apiOrigin: context.apiOrigin,
+    uiTestMode: decision.uiTestMode,
+  });
+  const preview = previewFromDispatch ?? resolveMockEmailPreviewById(messageId, {
     emailMode: context.emailMode,
     apiOrigin: context.apiOrigin,
     uiTestMode: decision.uiTestMode,
@@ -136,6 +151,34 @@ export function resolveEmailDispatchState(
       ? 'include_mock_email_preview'
       : 'skip_mock_email_preview_captured_email_missing',
     denyReason: preview ? null : 'captured_email_not_found_for_message_id',
+  };
+}
+
+function resolveMockEmailPreviewFromDispatch(
+  sendResult: { messageId?: unknown; debug?: Record<string, unknown> } | null | undefined,
+  context: PreviewContext,
+): MockEmailPreview | null {
+  if (!shouldExposeMockEmailPreview(context)) return null;
+  const payload = sendResult?.debug?.['mock_email'] as MockEmailDispatchPayload | undefined;
+  if (!payload || typeof payload !== 'object') return null;
+
+  const id = typeof payload.id === 'string' ? payload.id : null;
+  const to = typeof payload.to === 'string' ? payload.to : null;
+  const subject = typeof payload.subject === 'string' ? payload.subject : null;
+  const html = typeof payload.html === 'string' ? payload.html : null;
+  const text = typeof payload.text === 'string' ? payload.text : '';
+  const kind = typeof payload.email_kind === 'string'
+    ? payload.email_kind
+    : (typeof payload.kind === 'string' ? payload.kind : null);
+  if (!id || !to || !subject || !kind) return null;
+
+  return {
+    email_id: id,
+    to,
+    subject,
+    html_url: `${normalizeApiOrigin(context.apiOrigin)}/api/__dev/emails/${encodeURIComponent(id)}/html`,
+    html_content: html && html.trim() ? html : `<pre>${escapeHtml(text)}</pre>`,
+    email_kind: kind,
   };
 }
 

@@ -1,6 +1,8 @@
 import { consumeLatestProviderApiLogId, extendOperationContext } from '../lib/execution.js';
 import { syncApiLogOperationReferences } from '../lib/technical-observability.js';
 import { resolveSideEffectAttemptOutcome } from '../domain/booking-effect-policy.js';
+import { getBookingPolicyConfig } from '../config/booking-policy.js';
+import { sideEffectStatusAfterAttempt } from '../providers/repository/interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -49,6 +51,17 @@ interface StartedAttempt {
   attemptNum: number;
 }
 
+interface AttemptFinishInput {
+  effect: BookingSideEffect;
+  booking: Booking;
+  attempt: StartedAttempt;
+  status: 'SUCCESS' | 'FAILED';
+  errorMessage: string | null;
+  apiLogId: string | null;
+  enableCalendarBackoff: boolean;
+  logSource: 'backend' | 'cron' | 'worker';
+}
+
 export async function finalizeBookingEventStatus(
   eventId: string,
   ctx: BookingContext,
@@ -59,12 +72,48 @@ export async function finalizeBookingEventStatus(
 ): Promise<BookingEventRecord> {
   const event = await ctx.providers.repository.getBookingEventById(eventId);
   if (!event) throw new Error(`booking_event_not_found:${eventId}`);
-  const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(eventId);
-  const nextStatus = deriveBookingEventStatus(sideEffects, options.startedExecution);
+  await reconcileStuckProcessingSideEffects(event, ctx);
+  let sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(eventId);
+  let nextStatus = deriveBookingEventStatus(sideEffects, options.startedExecution);
+  let failureMessage = options.failureMessage ?? event.error_message;
+
+  if (options.startedExecution && (nextStatus === 'PENDING' || nextStatus === 'PROCESSING')) {
+    const policy = await getBookingPolicyConfig(ctx.providers.repository);
+    const timeoutMs = policy.sideEffectProcessingTimeoutMinutes * 60_000;
+    const elapsedMs = Date.now() - new Date(event.created_at).getTime();
+    if (elapsedMs >= timeoutMs) {
+      for (const effect of sideEffects) {
+        if (effect.status === 'SUCCESS' || effect.status === 'DEAD') continue;
+        await ctx.providers.repository.updateBookingSideEffect(effect.id, {
+          status: 'DEAD',
+          expires_at: null,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(eventId);
+      nextStatus = 'FAILED';
+      failureMessage = failureMessage ?? 'booking_event_timed_out';
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'booking_event_timeout',
+        message: 'Marked booking event as failed because side effects exceeded timeout',
+        context: {
+          booking_id: event.booking_id,
+          booking_event_id: eventId,
+          event_type: event.event_type,
+          elapsed_ms: elapsedMs,
+          timeout_ms: timeoutMs,
+          branch_taken: 'mark_event_failed_on_timeout',
+          deny_reason: 'booking_event_timed_out',
+        },
+      });
+    }
+  }
+
   const terminal = nextStatus === 'SUCCESS' || nextStatus === 'FAILED';
   return ctx.providers.repository.updateBookingEvent(eventId, {
     status: nextStatus,
-    error_message: nextStatus === 'FAILED' ? options.failureMessage ?? event.error_message : null,
+    error_message: nextStatus === 'FAILED' ? failureMessage : null,
     completed_at: terminal ? new Date().toISOString() : null,
     updated_at: new Date().toISOString(),
   });
@@ -85,6 +134,9 @@ export async function runBookingEventEffects(
   const effectResults: BookingEventEffectResult[] = [];
   const pendingEffects = [...input.sideEffects];
   const queuedEffectIds = new Set(input.sideEffects.map((effect) => effect.id));
+  const eventsById = new Map<string, BookingEventRecord>([[input.event.id, input.event]]);
+  const startedEventIds = new Set<string>();
+  const workflowStartedAt = Date.now();
 
   if (pendingEffects.length === 0) {
     const finalizedEvent = await finalizeBookingEventStatus(input.event.id, ctx);
@@ -96,20 +148,35 @@ export async function runBookingEventEffects(
     };
   }
 
-  await ctx.providers.repository.updateBookingEvent(input.event.id, {
-    status: 'PROCESSING',
-    error_message: null,
-    completed_at: null,
-    updated_at: new Date().toISOString(),
-  });
+  async function resolveEventForEffect(effect: BookingSideEffect): Promise<BookingEventRecord> {
+    const cached = eventsById.get(effect.booking_event_id);
+    if (cached) return cached;
+    const event = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
+    if (!event) throw new Error(`booking_event_not_found:${effect.booking_event_id}`);
+    eventsById.set(event.id, event);
+    return event;
+  }
+
+  async function markEventExecutionStarted(eventId: string): Promise<void> {
+    if (startedEventIds.has(eventId)) return;
+    await ctx.providers.repository.updateBookingEvent(eventId, {
+      status: 'PROCESSING',
+      error_message: null,
+      completed_at: null,
+      updated_at: new Date().toISOString(),
+    });
+    startedEventIds.add(eventId);
+  }
 
   while (pendingEffects.length > 0) {
     const effect = pendingEffects.shift();
     if (!effect) break;
+    const effectEvent = await resolveEventForEffect(effect);
+    await markEventExecutionStarted(effectEvent.id);
     const result = await executeBookingSideEffectLifecycle(
       {
         booking: currentBooking,
-        event: input.event,
+        event: effectEvent,
         effect,
         sourceOperation: input.sourceOperation,
         triggerSource: input.triggerSource,
@@ -124,9 +191,25 @@ export async function runBookingEventEffects(
       queuedEffectIds.add(nextEffect.id);
       pendingEffects.push(nextEffect);
     }
+    const discoveredEffects = await discoverNewDispatchableSideEffects(
+      currentBooking.id,
+      workflowStartedAt,
+      queuedEffectIds,
+      ctx,
+    );
+    for (const discoveredEffect of discoveredEffects) {
+      queuedEffectIds.add(discoveredEffect.id);
+      pendingEffects.push(discoveredEffect);
+    }
   }
 
-  const finalizedEvent = await finalizeBookingEventStatus(input.event.id, ctx, { startedExecution: true });
+  const finalEvents = new Map<string, BookingEventRecord>();
+  for (const eventId of startedEventIds) {
+    const finalized = await finalizeBookingEventStatus(eventId, ctx, { startedExecution: true });
+    finalEvents.set(eventId, finalized);
+  }
+  const finalizedEvent = finalEvents.get(input.event.id)
+    ?? await finalizeBookingEventStatus(input.event.id, ctx, { startedExecution: true });
   const refreshedEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(input.event.id);
   return {
     booking: currentBooking,
@@ -134,6 +217,37 @@ export async function runBookingEventEffects(
     sideEffects: refreshedEffects,
     effectResults,
   };
+}
+
+async function discoverNewDispatchableSideEffects(
+  bookingId: string,
+  workflowStartedAtMs: number,
+  queuedEffectIds: Set<string>,
+  ctx: BookingContext,
+): Promise<BookingSideEffect[]> {
+  const events = await ctx.providers.repository.listBookingEvents(bookingId);
+  if (events.length === 0) return [];
+
+  const allEffectsNested = await Promise.all(
+    events.map(async (event) => await ctx.providers.repository.listBookingSideEffectsForEvent(event.id)),
+  );
+  const nowMs = Date.now();
+  const discovered: BookingSideEffect[] = [];
+
+  for (const effects of allEffectsNested) {
+    for (const effect of effects) {
+      if (queuedEffectIds.has(effect.id)) continue;
+      if (effect.status !== 'PENDING' && effect.status !== 'FAILED') continue;
+      if (new Date(effect.created_at).getTime() < workflowStartedAtMs) continue;
+      if (effect.expires_at) {
+        const expiresAtMs = new Date(effect.expires_at).getTime();
+        if (Number.isFinite(expiresAtMs) && expiresAtMs > nowMs) continue;
+      }
+      discovered.push(effect);
+    }
+  }
+
+  return discovered;
 }
 
 export async function expireBookingSideEffectWithoutExecution(
@@ -196,7 +310,7 @@ async function executeBookingSideEffectLifecycle(
       triggerSource: input.triggerSource,
     });
     if (executed.handledFailure) {
-      await finishBookingSideEffectAttempt(
+      await completeAttemptWithGuaranteedPersistence(
         {
           effect: input.effect,
           booking: executed.booking,
@@ -222,7 +336,7 @@ async function executeBookingSideEffectLifecycle(
       };
     }
     const apiLogId = consumeLatestProviderApiLogId(ctx.operation);
-    await finishBookingSideEffectAttempt(
+    await completeAttemptWithGuaranteedPersistence(
       {
         effect: input.effect,
         booking: executed.booking,
@@ -235,6 +349,27 @@ async function executeBookingSideEffectLifecycle(
       },
       ctx,
     );
+    const refreshedEffect = await ctx.providers.repository.getBookingSideEffectById(input.effect.id);
+    if (refreshedEffect?.status === 'PROCESSING') {
+      await ctx.providers.repository.updateBookingSideEffect(input.effect.id, {
+        status: 'SUCCESS',
+        expires_at: null,
+        updated_at: new Date().toISOString(),
+      });
+      ctx.logger.logWarn?.({
+        source: input.triggerSource === 'cron' ? 'cron' : 'backend',
+        eventType: 'side_effect_processing_reconciled',
+        message: 'Reconciled side effect stuck in PROCESSING immediately after successful attempt',
+        context: {
+          booking_id: executed.booking.id,
+          booking_event_id: input.event.id,
+          side_effect_id: input.effect.id,
+          side_effect_intent: input.effect.effect_intent,
+          branch_taken: 'reconcile_processing_to_success_after_successful_attempt',
+          deny_reason: 'side_effect_stuck_processing',
+        },
+      });
+    }
     return {
       booking: executed.booking,
       effectResult: {
@@ -249,7 +384,7 @@ async function executeBookingSideEffectLifecycle(
   } catch (error) {
     const errorMessage = error instanceof Error && error.message ? error.message : String(error);
     const apiLogId = consumeLatestProviderApiLogId(ctx.operation);
-    await finishBookingSideEffectAttempt(
+    await completeAttemptWithGuaranteedPersistence(
       {
         effect: input.effect,
         booking: input.booking,
@@ -282,7 +417,7 @@ async function startBookingSideEffectAttempt(
     booking_side_effect_id: effect.id,
     attempt_num: attemptNum,
     api_log_id: null,
-    status: 'PROCESSING',
+    status: 'FAILED',
     error_message: null,
     completed_at: null,
   });
@@ -297,25 +432,44 @@ async function startBookingSideEffectAttempt(
     });
   }
 
-  await ctx.providers.repository.updateBookingSideEffect(effect.id, {
-    status: 'PROCESSING',
-    updated_at: new Date().toISOString(),
-  });
+  try {
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, {
+      status: 'PROCESSING',
+      updated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    const bootstrapError = error instanceof Error && error.message
+      ? error.message
+      : String(error);
+    await ctx.providers.repository.updateBookingSideEffectAttempt(attempt.id, {
+      status: 'FAILED',
+      error_message: bootstrapError,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+    ctx.logger.logError?.({
+      source: 'backend',
+      eventType: 'side_effect_attempt_bootstrap_failed',
+      message: 'Failed to mark side effect as PROCESSING after inserting attempt row',
+      context: {
+        booking_id: booking.id,
+        booking_event_id: event.id,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        side_effect_attempt_id: attempt.id,
+        side_effect_attempt_num: attemptNum,
+        branch_taken: 'fail_attempt_bootstrap_after_insert',
+        deny_reason: bootstrapError,
+      },
+    });
+    throw error;
+  }
 
   return { attempt, attemptNum };
 }
 
 async function finishBookingSideEffectAttempt(
-  input: {
-    effect: BookingSideEffect;
-    booking: Booking;
-    attempt: StartedAttempt;
-    status: 'SUCCESS' | 'FAILED';
-    errorMessage: string | null;
-    apiLogId: string | null;
-    enableCalendarBackoff: boolean;
-    logSource: 'backend' | 'cron' | 'worker';
-  },
+  input: AttemptFinishInput,
   ctx: BookingContext,
 ): Promise<void> {
   const outcome = resolveSideEffectAttemptOutcome(
@@ -362,6 +516,45 @@ async function finishBookingSideEffectAttempt(
   }
 }
 
+async function completeAttemptWithGuaranteedPersistence(
+  input: AttemptFinishInput,
+  ctx: BookingContext,
+): Promise<void> {
+  try {
+    await finishBookingSideEffectAttempt(input, ctx);
+  } catch (finalizationError) {
+    const fallbackErrorMessage = input.errorMessage
+      ?? (finalizationError instanceof Error && finalizationError.message
+        ? finalizationError.message
+        : String(finalizationError));
+
+    await ctx.providers.repository.updateBookingSideEffectAttempt(input.attempt.attempt.id, {
+      api_log_id: input.apiLogId,
+      status: 'FAILED',
+      error_message: fallbackErrorMessage,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    ctx.logger.logError?.({
+      source: input.logSource,
+      eventType: 'side_effect_attempt_finalization_failed',
+      message: 'Primary side-effect finalization failed; wrote fallback failed-attempt state',
+      context: {
+        booking_id: input.booking.id,
+        side_effect_id: input.effect.id,
+        side_effect_intent: input.effect.effect_intent,
+        side_effect_attempt_id: input.attempt.attempt.id,
+        side_effect_attempt_num: input.attempt.attemptNum,
+        branch_taken: 'fallback_finalize_attempt_as_failed',
+        deny_reason: fallbackErrorMessage,
+      },
+    });
+
+    throw finalizationError;
+  }
+}
+
 function deriveBookingEventStatus(
   sideEffects: BookingSideEffect[],
   startedExecution = false,
@@ -379,4 +572,64 @@ function deriveBookingEventStatus(
 function isRetryableCalendarWriteError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   return (error as { name?: string }).name === 'RetryableCalendarWriteError';
+}
+
+async function reconcileStuckProcessingSideEffects(
+  event: BookingEventRecord,
+  ctx: BookingContext,
+): Promise<void> {
+  const sideEffects = await ctx.providers.repository.listBookingSideEffectsForEvent(event.id);
+  for (const effect of sideEffects) {
+    if (effect.status !== 'PROCESSING') continue;
+    const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
+    if (!lastAttempt) continue;
+    if (lastAttempt.status === 'SUCCESS') {
+      await ctx.providers.repository.updateBookingSideEffect(effect.id, {
+        status: 'SUCCESS',
+        expires_at: null,
+        updated_at: new Date().toISOString(),
+      });
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'side_effect_processing_reconciled',
+        message: 'Reconciled stuck PROCESSING side effect to SUCCESS from latest attempt',
+        context: {
+          booking_id: event.booking_id,
+          booking_event_id: event.id,
+          side_effect_id: effect.id,
+          side_effect_intent: effect.effect_intent,
+          last_attempt_id: lastAttempt.id,
+          last_attempt_num: lastAttempt.attempt_num,
+          branch_taken: 'reconcile_processing_to_success_from_latest_attempt',
+          deny_reason: 'side_effect_stuck_processing',
+        },
+      });
+      continue;
+    }
+
+    const reconciledStatus = sideEffectStatusAfterAttempt('FAILED', lastAttempt.attempt_num, effect.max_attempts);
+    await ctx.providers.repository.updateBookingSideEffect(effect.id, {
+      status: reconciledStatus,
+      expires_at: null,
+      updated_at: new Date().toISOString(),
+    });
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'side_effect_processing_reconciled',
+      message: 'Reconciled stuck PROCESSING side effect from latest failed attempt',
+      context: {
+        booking_id: event.booking_id,
+        booking_event_id: event.id,
+        side_effect_id: effect.id,
+        side_effect_intent: effect.effect_intent,
+        last_attempt_id: lastAttempt.id,
+        last_attempt_num: lastAttempt.attempt_num,
+        reconciled_status: reconciledStatus,
+        branch_taken: reconciledStatus === 'DEAD'
+          ? 'reconcile_processing_to_dead_from_latest_failed_attempt'
+          : 'reconcile_processing_to_failed_from_latest_failed_attempt',
+        deny_reason: 'side_effect_stuck_processing',
+      },
+    });
+  }
 }

@@ -7,6 +7,7 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest, notFound } from '../lib/errors.js';
 import { normalizeLowercasePrefix } from '../lib/prefix-utils.js';
+import { findCapturedMockEmailById, listRecentCapturedMockEmails, type CapturedEmailRecord } from '../lib/mock-email-capture.js';
 import { mockState } from '../providers/mock-state.js';
 import { buildConfirmUrl, buildManageUrl, cancelBooking, confirmBookingPayment, expireBooking } from '../services/booking-service.js';
 import type { Booking } from '../types.js';
@@ -29,8 +30,52 @@ function guardCapturedEmailPreview(ctx: AppContext): void {
   }
 }
 
-function getCapturedEmailOrThrow(emailId: string, ctx: AppContext) {
-  const email = mockState.sentEmails.find((entry) => entry.id === emailId);
+async function listCapturedEmails(ctx: AppContext): Promise<CapturedEmailRecord[]> {
+  const durable = await listRecentCapturedMockEmails(ctx.env, 200);
+  if (durable.length > 0) return durable;
+
+  return mockState.sentEmails
+    .slice()
+    .reverse()
+    .map((email) => ({
+      id: email.id,
+      from: email.from,
+      to: email.to,
+      subject: email.subject,
+      kind: email.kind,
+      email_kind: email.email_kind,
+      replyTo: email.replyTo,
+      text: email.text,
+      html: email.html ?? null,
+      sentAt: email.sentAt,
+      sent_at: email.sent_at,
+      booking_id: email.booking_id,
+      event_id: email.event_id,
+      contact_message_id: email.contact_message_id,
+    }));
+}
+
+async function getCapturedEmailOrThrow(emailId: string, ctx: AppContext): Promise<CapturedEmailRecord> {
+  const durable = await findCapturedMockEmailById(emailId, ctx.env);
+  const inMemory = mockState.sentEmails.find((entry) => entry.id === emailId);
+  const email = durable ?? (inMemory
+    ? {
+        id: inMemory.id,
+        from: inMemory.from,
+        to: inMemory.to,
+        subject: inMemory.subject,
+        kind: inMemory.kind,
+        email_kind: inMemory.email_kind,
+        replyTo: inMemory.replyTo,
+        text: inMemory.text,
+        html: inMemory.html ?? null,
+        sentAt: inMemory.sentAt,
+        sent_at: inMemory.sent_at,
+        booking_id: inMemory.booking_id,
+        event_id: inMemory.event_id,
+        contact_message_id: inMemory.contact_message_id,
+      }
+    : null);
   if (!email) {
     ctx.logger.logWarn?.({
       source: 'backend',
@@ -254,7 +299,7 @@ export async function handleDevEmails(request: Request, ctx: AppContext): Promis
       },
     });
     guardCapturedEmailPreview(ctx);
-    const emails = mockState.sentEmails.slice(-50).reverse().map((email) => ({
+    const emails = (await listCapturedEmails(ctx)).slice(0, 50).map((email) => ({
       id: email.id,
       to: email.to,
       subject: email.subject,
@@ -300,7 +345,7 @@ export async function handleDevEmailDetail(request: Request, ctx: AppContext, pa
       },
     });
     guardCapturedEmailPreview(ctx);
-    const email = getCapturedEmailOrThrow(emailId, ctx);
+    const email = await getCapturedEmailOrThrow(emailId, ctx);
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'dev_email_detail_completed',
@@ -351,7 +396,7 @@ export async function handleDevEmailHtml(_request: Request, ctx: AppContext, par
       },
     });
     guardCapturedEmailPreview(ctx);
-    const email = getCapturedEmailOrThrow(emailId, ctx);
+    const email = await getCapturedEmailOrThrow(emailId, ctx);
     const body = email.html ?? email.text;
     const contentType = email.html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
     ctx.logger.logInfo?.({

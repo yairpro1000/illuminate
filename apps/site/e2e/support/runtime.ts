@@ -21,7 +21,8 @@ function shouldIgnoreUrl(url: string): boolean {
     url.startsWith('data:') ||
     url.startsWith('blob:') ||
     url.includes('/favicon.ico') ||
-    url.includes('/api/observability/frontend')
+    url.includes('/api/observability/frontend') ||
+    url.includes('https://letsilluminate.co/img/')
   );
 }
 
@@ -47,10 +48,12 @@ export function attachRuntimeMonitor(page: Page) {
 
   page.on('console', (msg) => {
     if (msg.type() !== 'error' && msg.type() !== 'warning') return;
+    const locationUrl = msg.location().url || page.url();
+    if (shouldIgnoreUrl(locationUrl) && msg.text().includes('Failed to load resource')) return;
     issues.push({
       kind: 'console',
       message: `[${msg.type()}] ${msg.text()}`,
-      url: msg.location().url || page.url(),
+      url: locationUrl,
     });
   });
 

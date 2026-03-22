@@ -18,6 +18,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     const siteUrl = params.siteUrl ?? this.siteUrl;
     const sessionId = `mock_cs_${crypto.randomUUID()}`;
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
+    const paymentIntentId = `mock_pi_${crypto.randomUUID()}`;
     const amount = params.lineItems.reduce((sum, item) => sum + item.amount * item.quantity, 0);
     const currency = params.lineItems[0]?.currency ?? 'CHF';
     const successUrl = new URL(params.successUrl);
@@ -32,7 +33,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     if (successToken) checkoutParams.set('token', successToken);
     if (successEventType) checkoutParams.set('booking_event_type', successEventType);
 
-    const checkoutUrl = `${siteUrl}/dev-pay?${checkoutParams.toString()}`;
+    const checkoutUrl = `${siteUrl}/dev-pay.html?${checkoutParams.toString()}`;
 
     console.log(`[payments:mock] createCheckoutSession → ${sessionId}`, {
       bookingId: params.bookingId,
@@ -45,10 +46,11 @@ export class MockPaymentsProvider implements IPaymentsProvider {
       amount,
       currency,
       customerId,
-      paymentIntentId: null,
+      paymentIntentId,
       rawPayload: {
         booking_id: params.bookingId,
         customer_id: customerId,
+        payment_intent_id: paymentIntentId,
         metadata: params.metadata ?? {},
       },
     };
@@ -58,6 +60,7 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     const siteUrl = params.siteUrl ?? this.siteUrl;
     const invoiceId = `mock_in_${crypto.randomUUID()}`;
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
+    const paymentIntentId = `mock_pi_${crypto.randomUUID()}`;
     const invoiceUrl = `${siteUrl}/mock-invoice/${invoiceId}?booking_id=${encodeURIComponent(params.bookingId)}&amount=${params.amount}&currency=${encodeURIComponent(params.currency)}&email=${encodeURIComponent(params.customerEmail)}`;
 
     console.log(`[payments:mock] createInvoice → ${invoiceId}`, {
@@ -72,11 +75,12 @@ export class MockPaymentsProvider implements IPaymentsProvider {
       amount: params.amount,
       currency: params.currency,
       customerId,
-      paymentIntentId: null,
+      paymentIntentId,
       paymentLinkId: null,
       rawPayload: {
         booking_id: params.bookingId,
         customer_id: customerId,
+        payment_intent_id: paymentIntentId,
         metadata: params.metadata ?? {},
       },
     };
@@ -102,7 +106,8 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     invoiceId?: string | null;
     chargeId?: string | null;
   }): Promise<PaymentArtifactDetails> {
-    const paymentIntentId = input.paymentIntentId ?? null;
+    const paymentIntentId = input.paymentIntentId
+      ?? (input.invoiceId ? `mock_pi_${input.invoiceId}` : null);
     const chargeId = input.chargeId ?? (paymentIntentId ? `mock_ch_${paymentIntentId}` : null);
     const invoiceId = input.invoiceId
       ?? (paymentIntentId ? `mock_inv_${paymentIntentId}` : null);
@@ -123,10 +128,11 @@ export class MockPaymentsProvider implements IPaymentsProvider {
 
   async createRefund(params: CreateRefundParams): Promise<RefundRecord> {
     const refundId = `mock_re_${crypto.randomUUID()}`;
-    const creditNoteId = params.stripeInvoiceId ? `mock_cn_${crypto.randomUUID()}` : null;
-    const creditNoteDocumentUrl = creditNoteId ? `${this.siteUrl}/mock-credit-note/${creditNoteId}.pdf` : null;
+    const creditNoteId = `mock_cn_${crypto.randomUUID()}`;
+    const creditNoteDocumentUrl = `${this.siteUrl}/mock-credit-note/${creditNoteId}.pdf`;
     const receiptArtifact = await this.getPaymentArtifactDetails({
       paymentIntentId: params.stripePaymentIntentId ?? null,
+      invoiceId: params.stripeInvoiceId ?? null,
     });
 
     console.log(`[payments:mock] createRefund → ${refundId}`, {

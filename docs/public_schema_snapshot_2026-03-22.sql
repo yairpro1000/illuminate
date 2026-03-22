@@ -476,9 +476,11 @@ CREATE TABLE IF NOT EXISTS "public"."booking_events" (
     "event_type" "text" NOT NULL,
     "source" "text" NOT NULL,
     "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "status" "text" DEFAULT 'PENDING'::"text" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "booking_events_event_type_check" CHECK (("event_type" = ANY (ARRAY['BOOKING_FORM_SUBMITTED'::"text", 'BOOKING_RESCHEDULED'::"text", 'BOOKING_CANCELED'::"text", 'BOOKING_EXPIRED'::"text", 'PAYMENT_SETTLED'::"text", 'REFUND_COMPLETED'::"text"]))),
-    CONSTRAINT "booking_events_source_check" CHECK (("source" = ANY (ARRAY['PUBLIC_UI'::"text", 'ADMIN_UI'::"text", 'SYSTEM'::"text", 'WEBHOOK'::"text"])))
+    CONSTRAINT "booking_events_source_check" CHECK (("source" = ANY (ARRAY['PUBLIC_UI'::"text", 'ADMIN_UI'::"text", 'SYSTEM'::"text", 'WEBHOOK'::"text"]))),
+    CONSTRAINT "booking_events_status_check" CHECK (("status" = ANY (ARRAY['PENDING'::"text", 'PROCESSING'::"text", 'SUCCESS'::"text", 'FAILED'::"text"])))
 );
 
 
@@ -1760,7 +1762,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
 
 
 

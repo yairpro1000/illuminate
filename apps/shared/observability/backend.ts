@@ -257,6 +257,10 @@ function sanitizeUnknown(value: unknown, depth = 0): JsonValue {
     const entries = Object.entries(value as Record<string, unknown>).slice(0, MAX_JSON_KEYS);
     for (const [rawKey, rawValue] of entries) {
       const key = String(rawKey);
+      if (normalizeKey(key) === "mock_email") {
+        out[key] = sanitizeMockEmailPreviewPayload(rawValue);
+        continue;
+      }
       if (isApiErrorEnvelope && key === "message") {
         out[key] = truncateText(String(rawValue ?? ""));
         continue;
@@ -275,6 +279,32 @@ function sanitizeUnknown(value: unknown, depth = 0): JsonValue {
   }
 
   return truncateText(String(value));
+}
+
+function sanitizeMockEmailPreviewPayload(value: unknown): JsonValue {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "[redacted]";
+  const record = value as Record<string, unknown>;
+  const keepString = (key: string, max = 2000): string | null => {
+    const raw = record[key];
+    return typeof raw === "string" ? truncateText(raw, max) : null;
+  };
+
+  return {
+    id: keepString("id", 200),
+    from: keepString("from", 300),
+    to: keepString("to", 300),
+    subject: keepString("subject", 500),
+    kind: keepString("kind", 120),
+    email_kind: keepString("email_kind", 120),
+    replyTo: keepString("replyTo", 300),
+    text: keepString("text", 4000),
+    html: keepString("html", 12000),
+    sentAt: keepString("sentAt", 120),
+    sent_at: keepString("sent_at", 120),
+    booking_id: keepString("booking_id", 120),
+    event_id: keepString("event_id", 120),
+    contact_message_id: keepString("contact_message_id", 120),
+  };
 }
 
 export function sanitizeContext(value: unknown): Record<string, JsonValue> {

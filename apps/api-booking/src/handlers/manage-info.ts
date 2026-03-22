@@ -8,6 +8,7 @@ import {
 import { resolveBookingManageAccess } from '../services/booking-access-service.js';
 import { evaluateManageBookingPolicy, resolveManageActionState } from '../services/booking-public-action-service.js';
 import { loadBookingReadModel } from '../services/booking-read-model.js';
+import { effectiveRefundStatus } from '../services/refund-service.js';
 
 // GET /api/bookings/manage?token=<raw>
 export async function handleManageInfo(request: Request, ctx: AppContext): Promise<Response> {
@@ -68,6 +69,15 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
     });
     const event = booking.event_id ? await ctx.providers.repository.getEventById(booking.event_id) : null;
     const payment = readModel.payment;
+    const refundStatus = effectiveRefundStatus(payment);
+    const refund = refundStatus !== 'NONE'
+      ? {
+          status: refundStatus,
+          invoiceUrl: payment?.invoice_url ?? null,
+          receiptUrl: payment?.stripe_receipt_url ?? null,
+          creditNoteUrl: payment?.stripe_credit_note_url ?? null,
+        }
+      : null;
     const paymentDueAt = new Date(
       new Date(booking.starts_at).getTime() - bookingPolicy.paymentDueBeforeStartHours * 60 * 60 * 1000,
     ).toISOString();
@@ -128,6 +138,7 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       },
       is_paid: actions.isPaid,
       payment_status: payment?.status ?? null,
+      refund,
       payment_due_at: payment ? paymentDueAt : null,
       policy: {
         text: getBookingPolicyText(bookingPolicy.selfServiceLockWindowHours),

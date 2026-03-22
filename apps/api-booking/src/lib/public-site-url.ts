@@ -16,19 +16,20 @@ function sanitizeSiteUrl(value: string): string {
   return String(value || '').trim().replace(/\/+$/g, '');
 }
 
-function canonicalSiteUrlForHost(hostname: string, protocol: string): string | null {
+function canonicalSiteUrlForHost(hostname: string, protocol: string, port: string): string | null {
   const host = hostname.toLowerCase();
   if (isAdminPreviewHost(host)) return sanitizeSiteUrl(ADMIN_PREVIEW_SITE_URL);
+  const hostWithPort = port ? `${host}:${port}` : host;
   if (
     host === 'letsilluminate.co'
     || host === 'www.letsilluminate.co'
     || host === 'yairb.ch'
     || host === 'www.yairb.ch'
   ) {
-    return `${protocol}//${host}`;
+    return `${protocol}//${hostWithPort}`;
   }
   if (host.endsWith(PREVIEW_SUFFIX) || LOCAL_HOSTS.has(host)) {
-    return `${protocol}//${host}`;
+    return `${protocol}//${hostWithPort}`;
   }
   return null;
 }
@@ -61,7 +62,7 @@ export function decidePublicSiteUrl(input: PublicSiteUrlDecisionInput): PublicSi
   const defaultSiteUrl = sanitizeSiteUrl(input.defaultSiteUrl);
   const originUrl = parseCandidateUrl(input.originHeader);
   if (originUrl) {
-    const mapped = canonicalSiteUrlForHost(originUrl.hostname, originUrl.protocol);
+    const mapped = canonicalSiteUrlForHost(originUrl.hostname, originUrl.protocol, originUrl.port);
     if (mapped) {
       return {
         siteUrl: mapped,
@@ -76,7 +77,7 @@ export function decidePublicSiteUrl(input: PublicSiteUrlDecisionInput): PublicSi
 
   const refererUrl = parseCandidateUrl(input.refererHeader);
   if (refererUrl) {
-    const mapped = canonicalSiteUrlForHost(refererUrl.hostname, refererUrl.protocol);
+    const mapped = canonicalSiteUrlForHost(refererUrl.hostname, refererUrl.protocol, refererUrl.port);
     if (mapped) {
       return {
         siteUrl: mapped,

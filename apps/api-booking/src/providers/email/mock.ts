@@ -75,6 +75,22 @@ export class MockEmailProvider implements IEmailProvider {
         provider: 'mock',
         kind,
         preview: 'captured_exact_provider_payload',
+        mock_email: {
+          id: messageId,
+          from: payload.from,
+          to: payload.to,
+          subject: payload.subject,
+          kind,
+          email_kind: kind,
+          replyTo: payload.replyTo,
+          text: payload.text,
+          html: payload.html ?? null,
+          sentAt,
+          sent_at: sentAt,
+          booking_id: metadata.bookingId ?? null,
+          event_id: metadata.eventId ?? null,
+          contact_message_id: metadata.contactMessageId ?? null,
+        },
       },
     };
   }

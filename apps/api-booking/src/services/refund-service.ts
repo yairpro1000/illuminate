@@ -31,6 +31,11 @@ export interface CancellationRefundNoticeDecision {
   denyReason: string | null;
 }
 
+export interface CancellationRefundExecutionResult {
+  decision: CancellationRefundDecision;
+  nextSideEffects: BookingSideEffect[];
+}
+
 interface RefundCompletionPayload {
   refund_status: 'SUCCEEDED';
   refund_amount: number;
@@ -177,9 +182,9 @@ async function resolveRefundArtifactUrls(
 export async function evaluateCancellationRefundDecision(
   booking: Booking,
   payment: Payment | null,
-  ctx: Pick<BookingContext, 'providers'>,
+  ctx: Pick<BookingContext, 'providers' | 'bookingPolicyConfig' | 'bookingPolicyConfigPromise' | 'logger'>,
 ): Promise<CancellationRefundDecision> {
-  const bookingPolicy = await getBookingPolicyConfig(ctx.providers.repository);
+  const bookingPolicy = await resolveBookingPolicyForRefundDecision(ctx);
   const lockWindowHours = bookingPolicy.selfServiceLockWindowHours;
   const hoursBeforeStart = (new Date(booking.starts_at).getTime() - Date.now()) / 3_600_000;
   const isOutsideNonRefundableWindow = hoursBeforeStart >= lockWindowHours;
@@ -305,7 +310,7 @@ export async function evaluateCancellationRefundDecision(
 export async function evaluateCancellationRefundNoticeDecision(
   booking: Booking,
   payment: Payment | null,
-  ctx: Pick<BookingContext, 'providers'>,
+  ctx: Pick<BookingContext, 'providers' | 'bookingPolicyConfig' | 'bookingPolicyConfigPromise' | 'logger'>,
 ): Promise<CancellationRefundNoticeDecision> {
   const refundDecision = await evaluateCancellationRefundDecision(booking, payment, ctx);
   const currentRefundStatus = effectiveRefundStatus(payment);
@@ -328,8 +333,31 @@ export async function evaluateCancellationRefundNoticeDecision(
 export async function initiateAutomaticCancellationRefund(
   booking: Booking,
   ctx: BookingContext,
-): Promise<CancellationRefundDecision> {
+): Promise<CancellationRefundExecutionResult> {
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Entered automatic cancellation refund execution',
+    context: {
+      booking_id: booking.id,
+      branch_taken: 'refund_execution_entered',
+      deny_reason: null,
+    },
+  });
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Loaded payment for automatic cancellation refund execution',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment?.id ?? null,
+      payment_status: payment?.status ?? null,
+      refund_status: payment?.refund_status ?? null,
+      branch_taken: 'refund_execution_loaded_payment',
+      deny_reason: payment ? null : 'payment_record_missing',
+    },
+  });
   const decision = await evaluateCancellationRefundDecision(booking, payment, ctx);
 
   ctx.logger.logInfo?.({
@@ -355,13 +383,39 @@ export async function initiateAutomaticCancellationRefund(
   });
 
   if (!payment) {
-    return decision;
+    return { decision, nextSideEffects: [] };
   }
 
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Persisting refund decision state before provider execution',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      eligible: decision.eligible,
+      refund_path: decision.refundPath,
+      branch_taken: 'refund_execution_persist_decision_state_started',
+      deny_reason: null,
+    },
+  });
   await persistRefundDecisionState(payment, decision, ctx);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Persisted refund decision state before provider execution',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      eligible: decision.eligible,
+      refund_path: decision.refundPath,
+      branch_taken: 'refund_execution_persist_decision_state_completed',
+      deny_reason: null,
+    },
+  });
 
   if (!decision.eligible || !decision.refundAmount || !decision.refundCurrency) {
-    return decision;
+    return { decision, nextSideEffects: [] };
   }
 
   ctx.logger.logInfo?.({
@@ -398,6 +452,20 @@ export async function initiateAutomaticCancellationRefund(
       payment_intent_id: payment.stripe_payment_intent_id ?? '',
     },
   });
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Refund provider returned control to refund execution',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      refund_status: refundRecord.refundStatus,
+      stripe_refund_id: refundRecord.refundId,
+      stripe_credit_note_id: refundRecord.creditNoteId,
+      branch_taken: 'refund_execution_provider_call_completed',
+      deny_reason: null,
+    },
+  });
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -421,6 +489,18 @@ export async function initiateAutomaticCancellationRefund(
     },
   });
 
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Persisting refund completion onto payment row',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      refund_status: refundRecord.refundStatus,
+      branch_taken: 'refund_execution_update_payment_started',
+      deny_reason: null,
+    },
+  });
   const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
     status: refundRecord.refundStatus === 'SUCCEEDED' ? 'REFUNDED' : payment.status,
     refund_status: refundRecord.refundStatus,
@@ -435,9 +515,34 @@ export async function initiateAutomaticCancellationRefund(
       : payment.refunded_at,
     refund_reason: decision.refundReasonText,
   });
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_execution_step',
+    message: 'Persisted refund completion onto payment row',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      updated_payment_status: updatedPayment.status,
+      updated_refund_status: updatedPayment.refund_status ?? null,
+      branch_taken: 'refund_execution_update_payment_completed',
+      deny_reason: null,
+    },
+  });
 
+  let nextSideEffects: BookingSideEffect[] = [];
   if (refundRecord.refundStatus === 'SUCCEEDED') {
-    await appendRefundCompletedEventIfNeeded(
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'cancellation_refund_execution_step',
+      message: 'Appending refund completed event after successful refund',
+      context: {
+        booking_id: booking.id,
+        payment_id: payment.id,
+        branch_taken: 'refund_execution_append_refund_completed_started',
+        deny_reason: null,
+      },
+    });
+    const transition = await appendRefundCompletedEventIfNeeded(
       booking,
       updatedPayment,
       {
@@ -458,9 +563,25 @@ export async function initiateAutomaticCancellationRefund(
       'SYSTEM',
       ctx,
     );
+    nextSideEffects = transition?.sideEffects ?? [];
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'cancellation_refund_execution_step',
+      message: 'Appended refund completed event after successful refund',
+      context: {
+        booking_id: booking.id,
+        payment_id: payment.id,
+        next_side_effect_count: nextSideEffects.length,
+        branch_taken: 'refund_execution_append_refund_completed_completed',
+        deny_reason: null,
+      },
+    });
   }
 
-  return decision;
+  return {
+    decision,
+    nextSideEffects,
+  };
 }
 
 export async function reconcileStripeRefundWebhook(
@@ -714,7 +835,7 @@ async function appendRefundCompletedEventIfNeeded(
   payload: RefundCompletionPayload,
   source: 'SYSTEM' | 'WEBHOOK',
   ctx: BookingContext,
-): Promise<BookingEventRecord | null> {
+): Promise<{ event: BookingEventRecord; sideEffects: BookingSideEffect[] } | null> {
   const existingEvents = await ctx.providers.repository.listBookingEvents(booking.id);
   const alreadyRecorded = existingEvents.some((event) =>
     event.event_type === 'REFUND_COMPLETED'
@@ -734,16 +855,10 @@ async function appendRefundCompletedEventIfNeeded(
     payload as unknown as Record<string, unknown>,
     ctx,
   );
-  const { runImmediateBookingEventWorkflow } = await import('./booking-service.js');
-  await runImmediateBookingEventWorkflow({
-    transitionEvent: transition.event,
-    transitionEventType: 'REFUND_COMPLETED',
-    sourceOperation: source === 'WEBHOOK' ? 'refund_webhook_reconciliation' : 'refund_completion',
-    bookingBeforeTransition: booking,
-    bookingAfterTransition: transition.booking,
-    transitionSideEffects: transition.sideEffects,
-  }, ctx);
-  return transition.event;
+  return {
+    event: transition.event,
+    sideEffects: transition.sideEffects,
+  };
 }
 
 async function resolveRefundSubjectTitle(booking: Booking, ctx: BookingContext): Promise<string> {
@@ -763,6 +878,46 @@ async function resolveRefundSubjectTitle(booking: Booking, ctx: BookingContext):
 
 function resolveSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
   return String(ctx.siteUrl || ctx.env.SITE_URL || '').replace(/\/+$/g, '');
+}
+
+async function resolveBookingPolicyForRefundDecision(
+  ctx: Pick<BookingContext, 'providers' | 'bookingPolicyConfig' | 'bookingPolicyConfigPromise' | 'logger'>,
+) {
+  if (ctx.bookingPolicyConfig) {
+    ctx.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'cancellation_refund_policy_resolution',
+      message: 'Resolved refund decision policy from booking context cache',
+      context: {
+        branch_taken: 'use_cached_booking_policy_config',
+        deny_reason: null,
+      },
+    });
+    return ctx.bookingPolicyConfig;
+  }
+  if (ctx.bookingPolicyConfigPromise) {
+    ctx.logger?.logInfo?.({
+      source: 'backend',
+      eventType: 'cancellation_refund_policy_resolution',
+      message: 'Resolved refund decision policy from in-flight booking context promise',
+      context: {
+        branch_taken: 'await_cached_booking_policy_config_promise',
+        deny_reason: null,
+      },
+    });
+    return ctx.bookingPolicyConfigPromise;
+  }
+
+  ctx.logger?.logInfo?.({
+    source: 'backend',
+    eventType: 'cancellation_refund_policy_resolution',
+    message: 'Resolved refund decision policy from repository lookup',
+    context: {
+      branch_taken: 'load_booking_policy_config_from_repository',
+      deny_reason: null,
+    },
+  });
+  return getBookingPolicyConfig(ctx.providers.repository);
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string | null {

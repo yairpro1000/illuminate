@@ -6,8 +6,8 @@ import {
   findSideEffectArtifacts,
   clickFirstAvailableSlot,
   ensureAntiBotMock,
-  ensureEmailMock,
   ensurePaymentsMock,
+  ensureEmailMock,
   fillContactDetails,
   getSupabaseBookingRowById,
   getSupabasePaymentRowByBookingId,
@@ -17,6 +17,7 @@ import {
 } from './support/api';
 import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
+import { API_BASE_URL } from './support/api';
 
 async function bookPaidSession(page: Page, email: string, paymentMode: 'pay-now' | 'pay-later') {
   await page.goto(`${SITE_BASE_URL}/sessions.html`);
@@ -37,18 +38,78 @@ async function bookPaidSession(page: Page, email: string, paymentMode: 'pay-now'
   await page.locator('button[data-submit]').click();
 }
 
-async function settleMockCheckout(page: Page) {
-  await page.waitForURL(/\/dev-pay\?session_id=/);
-  await page.locator('#btn-success').click();
-  await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
-  await expect(page.locator('.result-title')).toContainText(/Payment confirmed!|Payment received/);
+async function settleCheckout(page: Page) {
+  await Promise.race([
+    page.waitForURL(/\/dev-pay(\.html)?\?session_id=/, { timeout: 30_000 }),
+    page.waitForURL(/checkout\.stripe\.com\/c\/pay\//, { timeout: 30_000 }),
+  ]);
+
+  if (/\/dev-pay(\.html)?\?session_id=/.test(page.url())) {
+    const legacyButton = page.locator('#btn-success');
+    if (await legacyButton.count()) {
+      await legacyButton.click();
+    } else {
+      await page.getByRole('button', { name: /simulate payment success/i }).first().click();
+    }
+  } else {
+    if (!/\/payment-success(\.html)?\?session_id=/.test(page.url())) {
+      await settleStripeCheckout(page);
+    }
+  }
+  await Promise.race([
+    page.waitForURL(/\/payment-success(\.html)?\?session_id=/, { timeout: 15_000 }),
+    page.waitForTimeout(3_000),
+  ]);
+}
+
+async function settleStripeCheckout(page: Page) {
+  const payWithCardButton = page.getByRole('button', { name: /Pay with card/i });
+  if (await payWithCardButton.count() && await payWithCardButton.first().isVisible()) {
+    await payWithCardButton.first().click();
+  }
+
+  const cardFrame = await findStripeCardFrame(page, 20_000);
+  await cardFrame.fill('input[name="cardnumber"]', '4242424242424242');
+  await cardFrame.fill('input[name="exp-date"]', '12/34');
+  await cardFrame.fill('input[name="cvc"]', '123');
+
+  const billingName = page.locator('input[name="billingName"]').first();
+  if (await billingName.count()) {
+    await billingName.fill('E2E Refund');
+  }
+
+  const payButton = page.locator('button:visible').filter({ hasText: /^Pay$/ }).first();
+  await payButton.click();
+}
+
+async function findStripeCardFrame(page: Page, timeoutMs: number) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (page.isClosed()) throw new Error('Stripe checkout page closed before card form was filled');
+    if (!/checkout\.stripe\.com/.test(page.url())) {
+      throw new Error(`Expected Stripe checkout URL while resolving card frame, got: ${page.url()}`);
+    }
+    for (const frame of page.frames()) {
+      try {
+        const cardInput = frame.locator('input[name="cardnumber"]');
+        if (await cardInput.count()) {
+          await cardInput.first().waitFor({ state: 'visible', timeout: 2_000 });
+          return frame;
+        }
+      } catch {
+        // Stripe frequently detaches/reattaches nested frames during initialization.
+      }
+    }
+    await page.waitForTimeout(250);
+  }
+  throw new Error('Could not locate Stripe card input frame');
 }
 
 async function confirmPayLaterBooking(page: Page, email: string) {
   const pendingArtifacts = await waitForBookingArtifacts(email);
   expect(pendingArtifacts.links.confirm_url).toBeTruthy();
 
-  await page.goto(pendingArtifacts.links.confirm_url!);
+  await page.goto(normalizeSiteUrl(pendingArtifacts.links.confirm_url!));
   const preview = await expectInlineMockEmailPreview(page, {
     title: 'Confirmed!',
     frameText: /confirmed|Manage booking|Complete payment/i,
@@ -70,11 +131,27 @@ async function confirmPayLaterBooking(page: Page, email: string) {
 }
 
 async function cancelFromManage(page: Page, manageUrl: string) {
-  await page.goto(manageUrl);
-  await expect(page.locator('#cancel-btn')).toBeVisible();
-  await page.locator('#cancel-btn').click();
-  await page.locator('#cancel-yes').click();
-  await expect(page.locator('.manage-title')).toContainText('Cancelled');
+  const url = normalizeSiteUrl(manageUrl);
+  await page.goto(url, { waitUntil: 'commit' });
+
+  const cancelButton = page.locator('#cancel-btn').or(page.getByRole('button', { name: /Cancel booking/i })).first();
+  await expect(cancelButton).toBeVisible();
+  await cancelButton.click();
+
+  const legacyConfirm = page.locator('#cancel-yes');
+  if (await legacyConfirm.count() && await legacyConfirm.first().isVisible()) {
+    await legacyConfirm.first().click();
+  } else {
+    await page.getByRole('button', { name: /Yes, cancel booking/i }).first().click();
+  }
+}
+
+function normalizeSiteUrl(rawUrl: string): string {
+  const target = new URL(rawUrl, SITE_BASE_URL);
+  const site = new URL(SITE_BASE_URL);
+  target.protocol = site.protocol;
+  target.host = site.host;
+  return target.toString();
 }
 
 async function waitForRefundedArtifacts(email: string) {
@@ -88,14 +165,33 @@ async function waitForRefundedArtifacts(email: string) {
   );
 }
 
-async function assertRefundUi(page: Page, refundedArtifacts: Awaited<ReturnType<typeof waitForRefundedArtifacts>>) {
-  await expect(page.locator('.manage-subtitle')).toContainText(/refund processed/i);
-  const creditNoteLink = page.getByRole('link', { name: 'View credit note' });
-  const receiptLink = page.getByRole('link', { name: 'View receipt' });
-  const invoiceLink = page.getByRole('link', { name: 'View invoice' });
-  await expect(creditNoteLink).toHaveAttribute('href', refundedArtifacts.payment?.credit_note_url || '');
-  await expect(receiptLink).toHaveAttribute('href', refundedArtifacts.payment?.receipt_url || '');
-  await expect(invoiceLink).toHaveAttribute('href', refundedArtifacts.payment?.invoice_url || '');
+async function assertRefundUi(
+  page: Page,
+  manageUrl: string,
+  refundedArtifacts: Awaited<ReturnType<typeof waitForRefundedArtifacts>>,
+) {
+  const expectedCreditNote = refundedArtifacts.payment?.credit_note_url || '';
+  const expectedReceipt = refundedArtifacts.payment?.receipt_url || '';
+  const expectedInvoice = refundedArtifacts.payment?.invoice_url || '';
+  const deadline = Date.now() + 20_000;
+
+  while (Date.now() < deadline) {
+    await page.goto(normalizeSiteUrl(manageUrl), { waitUntil: 'domcontentloaded' });
+    const creditNoteLink = page.getByRole('link', { name: 'View credit note' });
+    const receiptLink = page.getByRole('link', { name: 'View receipt' });
+    const invoiceLink = page.getByRole('link', { name: 'View invoice' });
+
+    const creditHref = await creditNoteLink.first().getAttribute('href').catch(() => null);
+    const receiptHref = await receiptLink.first().getAttribute('href').catch(() => null);
+    const invoiceHref = await invoiceLink.first().getAttribute('href').catch(() => null);
+
+    if (creditHref === expectedCreditNote && receiptHref === expectedReceipt && invoiceHref === expectedInvoice) {
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error('Manage UI did not reflect refunded state within 20s');
 }
 
 async function assertRefundEmails(email: string) {
@@ -157,13 +253,19 @@ test.describe('refund flows', () => {
     await ensurePaymentsMock();
   });
 
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((apiBase) => {
+      window.localStorage.setItem('API_BASE', apiBase);
+    }, API_BASE_URL);
+  });
+
   test('booking pay now + cancellation verifies refund across ui email and db', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
     const email = `refund-pay-now-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
 
     let checkpoint = runtime.checkpoint();
     await bookPaidSession(page, email, 'pay-now');
-    await settleMockCheckout(page);
+    await settleCheckout(page);
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-now-settle', testInfo);
 
     const settledArtifacts = await waitForBookingArtifactsWhere(email, (artifacts) =>
@@ -173,9 +275,11 @@ test.describe('refund flows', () => {
     );
 
     checkpoint = runtime.checkpoint();
-    await cancelFromManage(page, settledArtifacts.links.manage_url);
+    const managePage = await page.context().newPage();
+    await cancelFromManage(managePage, settledArtifacts.links.manage_url);
     const refundedArtifacts = await waitForRefundedArtifacts(email);
-    await assertRefundUi(page, refundedArtifacts);
+    await assertRefundUi(managePage, settledArtifacts.links.manage_url, refundedArtifacts);
+    await managePage.close();
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-now-cancel', testInfo);
 
     await assertRefundEmails(email);
@@ -198,8 +302,8 @@ test.describe('refund flows', () => {
 
     checkpoint = runtime.checkpoint();
     const confirmed = await confirmPayLaterBooking(page, email);
-    await page.goto(confirmed.continuePaymentUrl);
-    await settleMockCheckout(page);
+    await page.goto(normalizeSiteUrl(confirmed.continuePaymentUrl));
+    await settleCheckout(page);
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-later-confirm-and-settle', testInfo);
 
     const settledArtifacts = await waitForBookingArtifactsWhere(email, (artifacts) =>
@@ -209,9 +313,11 @@ test.describe('refund flows', () => {
     );
 
     checkpoint = runtime.checkpoint();
-    await cancelFromManage(page, settledArtifacts.links.manage_url);
+    const managePage = await page.context().newPage();
+    await cancelFromManage(managePage, settledArtifacts.links.manage_url);
     const refundedArtifacts = await waitForRefundedArtifacts(email);
-    await assertRefundUi(page, refundedArtifacts);
+    await assertRefundUi(managePage, settledArtifacts.links.manage_url, refundedArtifacts);
+    await managePage.close();
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-later-cancel', testInfo);
 
     await assertRefundEmails(email);

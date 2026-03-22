@@ -5,6 +5,7 @@ import {
   isPaymentSettledStatus,
 } from '../domain/payment-status.js';
 import { effectiveRefundStatus } from './refund-service.js';
+import { finalizeBookingEventStatus } from './booking-event-workflow.js';
 import { loadBookingReadModel } from './booking-read-model.js';
 import {
   buildContinuePaymentUrl,
@@ -121,6 +122,24 @@ export async function getBookingEventStatusSnapshot(
   const payment = readModel.payment;
   const selectedEvent = readModel.selectedEvent ?? access.event;
   if (!selectedEvent) throw notFound('Booking event not found');
+  let resolvedEvent = selectedEvent;
+  const reconciledEvent = await finalizeBookingEventStatus(selectedEvent.id, ctx, {
+    startedExecution: selectedEvent.status === 'PROCESSING',
+  });
+  if (reconciledEvent.status !== selectedEvent.status) {
+    const refreshedReadModel = await loadBookingReadModel({
+      booking: access.booking,
+      include: {
+        payment: 'latest',
+        event: selector.mode === 'by_id'
+          ? { mode: 'by_id', eventId: access.event?.id ?? selector.bookingEventId }
+          : { mode: 'latest_of_type', eventType: selector.eventType },
+      },
+    }, ctx);
+    resolvedEvent = refreshedReadModel.selectedEvent ?? reconciledEvent;
+  } else {
+    resolvedEvent = reconciledEvent;
+  }
   const actionState = await resolveBookingPublicActionState(booking, payment, ctx);
   const eventRecord = booking.event_id
     ? await ctx.providers.repository.getEventById(booking.event_id)
@@ -135,22 +154,22 @@ export async function getBookingEventStatusSnapshot(
       }
     : null;
   const checkoutUrl = payment?.checkout_url ?? null;
-  const message = selectedEvent.event_type === 'BOOKING_CANCELED'
+  const message = resolvedEvent.event_type === 'BOOKING_CANCELED'
     ? refundStatus === 'SUCCEEDED'
       ? 'Booking cancelled and refund processed.'
       : 'Booking cancelled.'
-    : selectedEvent.event_type === 'BOOKING_RESCHEDULED'
+    : resolvedEvent.event_type === 'BOOKING_RESCHEDULED'
       ? 'Booking rescheduled.'
-      : selectedEvent.event_type === 'BOOKING_FORM_SUBMITTED' && checkoutUrl
+      : resolvedEvent.event_type === 'BOOKING_FORM_SUBMITTED' && checkoutUrl
         ? 'Payment checkout is ready.'
-        : selectedEvent.status === 'FAILED'
+        : resolvedEvent.status === 'FAILED'
           ? 'This action could not be completed.'
           : 'This action is still processing.';
 
   return {
-    event: selectedEvent,
+    event: resolvedEvent,
     booking,
-    isTerminal: selectedEvent.status === 'SUCCESS' || selectedEvent.status === 'FAILED',
+    isTerminal: resolvedEvent.status === 'SUCCESS' || resolvedEvent.status === 'FAILED',
     message,
     checkoutUrl,
     refund,
