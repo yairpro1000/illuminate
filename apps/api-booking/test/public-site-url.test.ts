@@ -6,7 +6,7 @@ import { handleRequest } from '../src/router.js';
 import { makeCtx, makeEnv, makeLogger } from './admin-helpers.js';
 
 describe('public site URL resolution', () => {
-  it('resolves yairb.ch from Origin and logs the branch', () => {
+  it('resolves yairb.ch from Origin without routine success logs', () => {
     const logger = makeLogger();
     const siteUrl = resolvePublicSiteUrl(
       new Request('https://api.local/api/bookings/pay-later', {
@@ -19,15 +19,8 @@ describe('public site URL resolution', () => {
     );
 
     expect(siteUrl).toBe('https://yairb.ch');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'public_site_url_resolution_completed',
-      context: expect.objectContaining({
-        resolved_site_url: 'https://yairb.ch',
-        matched_header: 'origin',
-        branch_taken: 'use_origin_header_site_url',
-        deny_reason: null,
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
+    expect(logger.logWarn).not.toHaveBeenCalled();
   });
 
   it('falls back to SITE_URL for unsupported origins and logs the deny reason', () => {
@@ -43,8 +36,8 @@ describe('public site URL resolution', () => {
     );
 
     expect(siteUrl).toBe('https://letsilluminate.co');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'public_site_url_resolution_completed',
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_site_url_resolution_fallback',
       context: expect.objectContaining({
         resolved_site_url: 'https://letsilluminate.co',
         branch_taken: 'fallback_env_site_url',
@@ -66,16 +59,8 @@ describe('public site URL resolution', () => {
     );
 
     expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'public_site_url_resolution_completed',
-      context: expect.objectContaining({
-        resolved_site_url: 'https://illuminate-tw9.pages.dev',
-        matched_header: 'origin',
-        matched_host: 'admin.letsilluminate.co',
-        branch_taken: 'use_origin_header_site_url',
-        deny_reason: null,
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
+    expect(logger.logWarn).not.toHaveBeenCalled();
   });
 
   it('maps illuminateadmin.pages.dev origins to the temporary public Pages host', () => {
@@ -91,16 +76,8 @@ describe('public site URL resolution', () => {
     );
 
     expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'public_site_url_resolution_completed',
-      context: expect.objectContaining({
-        resolved_site_url: 'https://illuminate-tw9.pages.dev',
-        matched_header: 'origin',
-        matched_host: 'illuminateadmin.pages.dev',
-        branch_taken: 'use_origin_header_site_url',
-        deny_reason: null,
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
+    expect(logger.logWarn).not.toHaveBeenCalled();
   });
 
   it('returns yairb.ch public links for pay-later bookings created from yairb.ch', async () => {
@@ -156,12 +133,8 @@ describe('public site URL resolution', () => {
       continue_payment_url: expect.stringContaining('https://yairb.ch/continue-payment.html?token=m1.'),
       manage_url: expect.stringContaining('https://yairb.ch/manage.html?token=m1.'),
     }));
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'public_site_url_resolution_completed',
-      context: expect.objectContaining({
-        resolved_site_url: 'https://yairb.ch',
-        branch_taken: 'use_origin_header_site_url',
-      }),
+    expect(ctx.logger.logWarn).not.toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'public_site_url_resolution_fallback',
     }));
   });
 

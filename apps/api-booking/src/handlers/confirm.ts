@@ -7,18 +7,6 @@ import { confirmBookingEmailResult } from '../services/booking-service.js';
 export async function handleConfirm(request: Request, ctx: AppContext): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get('token');
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_confirm_request_started',
-    message: 'Started booking confirmation request handling',
-    context: {
-      method: request.method,
-      path: url.pathname,
-      has_token: Boolean(token),
-      branch_taken: 'evaluate_confirm_token',
-      deny_reason: null,
-    },
-  });
   if (!token) {
     ctx.logger.logWarn?.({
       source: 'backend',
@@ -34,19 +22,6 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     });
     throw badRequest('token is required');
   }
-
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_confirm_token_redemption_started',
-    message: 'Started booking confirmation token redemption',
-    context: {
-      method: request.method,
-      path: url.pathname,
-      has_token: true,
-      branch_taken: 'redeem_confirm_token',
-      deny_reason: null,
-    },
-  });
   const confirmation = await confirmBookingEmailResult(token, {
     providers: ctx.providers,
     env: ctx.env,

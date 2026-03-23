@@ -83,42 +83,11 @@ export function createProviders(env: Env, logger?: Logger): Providers {
   let payments: IPaymentsProvider;
   const normalizedPaymentsMode = normalizePaymentsMode(paymentsMode);
   const stripeRuntimeConfig = resolveStripeRuntimeConfig(env, paymentsMode);
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'payments_provider_mode_decision',
-    message: 'Evaluated payments provider mode',
-    context: {
-      payments_mode_env: env.PAYMENTS_MODE,
-      payments_mode_override: getOverride('payments') ?? null,
-      payments_mode_effective: normalizedPaymentsMode,
-      stripe_runtime_mode: stripeRuntimeConfig?.mode ?? null,
-      stripe_secret_present: Boolean(stripeRuntimeConfig?.secretKey),
-      stripe_webhook_secret_present: Boolean(stripeRuntimeConfig?.webhookSecret),
-      branch_taken: normalizedPaymentsMode === 'mock'
-        ? 'select_mock_payments_provider'
-        : 'select_stripe_payments_provider',
-      deny_reason: null,
-    },
-  });
   if (stripeRuntimeConfig) {
     payments = new StripePaymentsProvider(stripeRuntimeConfig.secretKey, env.SITE_URL);
   } else {
     payments = new MockPaymentsProvider(env.SITE_URL);
   }
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'payments_provider_mode_selected',
-    message: 'Selected payments provider implementation',
-    context: {
-      payments_mode_effective: normalizedPaymentsMode,
-      stripe_runtime_mode: stripeRuntimeConfig?.mode ?? null,
-      provider_class: stripeRuntimeConfig ? 'StripePaymentsProvider' : 'MockPaymentsProvider',
-      branch_taken: stripeRuntimeConfig
-        ? 'payments_provider_selected_stripe'
-        : 'payments_provider_selected_mock',
-      deny_reason: null,
-    },
-  });
 
   // antibot
   let antibot: IAntiBotProvider;

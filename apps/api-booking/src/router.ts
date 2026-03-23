@@ -291,11 +291,6 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
     return finalRes;
   }
 
-  ctx.logger.logMilestone('incoming_request_received', {
-    method: request.method,
-    path: url.pathname,
-  });
-
   let patternMatched = false;
   for (const r of ROUTES) {
     const match = r.pattern.exec(url.pathname);
@@ -321,12 +316,6 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
         requestSizeBytes,
         responseSizeBytes: headerByteLength(res.headers),
       });
-      if (res.status < 500) {
-        ctx.logger.logMilestone?.('response_completed', {
-          status_code: res.status,
-          path: url.pathname,
-        });
-      }
       const finalRes = origin ? addCors(res, origin) : res;
       if (isAdminEventsPath) {
         console.log('[admin-events-debug] matched_route_response', JSON.stringify({
@@ -423,7 +412,6 @@ async function executeObservedRoute(
 ): Promise<Response> {
   const path = new URL(request.url).pathname;
   const isBookingRoute = executionLayer === 'booking';
-  const shouldSuppressSuccessLifecycleLogs = false;
   const routeCtx: AppContext = {
     ...ctx,
     operation: ctx.operation,
@@ -436,41 +424,8 @@ async function executeObservedRoute(
     },
   });
 
-  if (!shouldSuppressSuccessLifecycleLogs) {
-    routeCtx.logger.logInfo({
-      source: 'worker',
-      eventType: isBookingRoute ? 'booking_route_execution_started' : 'route_execution_started',
-      message: isBookingRoute
-        ? 'Executing booking route through shared inbound wrapper'
-        : 'Executing route through shared inbound wrapper',
-      context: {
-        method: request.method,
-        path,
-        params,
-        branch_taken: isBookingRoute ? 'execute_booking_route_wrapper' : 'execute_route_wrapper',
-        execution_layer: executionLayer,
-      },
-    });
-  }
-
   try {
     const response = await handler(request, routeCtx, params);
-    if (!shouldSuppressSuccessLifecycleLogs) {
-      routeCtx.logger.logInfo({
-        source: 'worker',
-        eventType: isBookingRoute ? 'booking_route_execution_completed' : 'route_execution_completed',
-        message: isBookingRoute
-          ? 'Booking route completed through shared inbound wrapper'
-          : 'Route completed through shared inbound wrapper',
-        context: {
-          method: request.method,
-          path,
-          status_code: response.status,
-          branch_taken: isBookingRoute ? 'return_booking_route_response' : 'return_route_response',
-          execution_layer: executionLayer,
-        },
-      });
-    }
     return response;
   } catch (error) {
     const statusCode = error instanceof ApiError ? error.statusCode : 500;

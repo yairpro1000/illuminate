@@ -259,13 +259,6 @@ describe('mock email inline preview contract', () => {
       email_id: bookingEmailId(pendingAData.booking_id, 'booking_confirmation'),
     }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'booking_confirm_request_started',
-      context: expect.objectContaining({
-        has_token: true,
-        branch_taken: 'evaluate_confirm_token',
-      }),
-    }));
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'booking_confirm_token_redemption_completed',
       context: expect.objectContaining({
         booking_id: pendingAData.booking_id,

@@ -67,7 +67,7 @@ function makeLogger() {
 }
 
 describe('provider observability wrapper', () => {
-  it('selects the Stripe provider for stripe_sandbox mode and logs the decision', async () => {
+  it('selects the Stripe provider for stripe_sandbox mode', async () => {
     const logger = makeLogger();
     const env = makeEnv();
     env.PAYMENTS_MODE = 'stripe_sandbox';
@@ -75,24 +75,7 @@ describe('provider observability wrapper', () => {
     const providers = createProviders(env, logger);
 
     expect(providers.payments.constructor.name).toBe('StripePaymentsProvider');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'payments_provider_mode_decision',
-      context: expect.objectContaining({
-        payments_mode_effective: 'stripe_sandbox',
-        stripe_runtime_mode: 'stripe_sandbox',
-        stripe_secret_present: true,
-        stripe_webhook_secret_present: true,
-        branch_taken: 'select_stripe_payments_provider',
-      }),
-    }));
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'payments_provider_mode_selected',
-      context: expect.objectContaining({
-        payments_mode_effective: 'stripe_sandbox',
-        provider_class: 'StripePaymentsProvider',
-        branch_taken: 'payments_provider_selected_stripe',
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
   });
 
   it('wraps only external providers and leaves repository calls outside the outbound wrapper', async () => {
@@ -117,7 +100,7 @@ describe('provider observability wrapper', () => {
     }));
   });
 
-  it('routes external provider calls through the shared outbound wrapper', async () => {
+  it('routes external provider calls through the shared outbound wrapper without extra success logs', async () => {
     insert.mockClear();
     updateEq.mockClear();
     const logger = makeLogger();
@@ -135,24 +118,7 @@ describe('provider observability wrapper', () => {
       'test_topic',
     );
 
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'provider_wrapper_started',
-      context: expect.objectContaining({
-        provider: 'email',
-        provider_operation: 'sendContactMessage',
-        branch_taken: 'execute_provider_call_via_shared_wrapper',
-        outbound_api_log_write_mode: 'insert_completed_row_after_provider_call',
-      }),
-    }));
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'provider_wrapper_completed',
-      context: expect.objectContaining({
-        provider: 'email',
-        provider_operation: 'sendContactMessage',
-        branch_taken: 'provider_call_succeeded',
-        api_log_id: 'api-log-1',
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
     expect(operation.latestProviderApiLogId).toBe('api-log-1');
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       app_area: 'website',

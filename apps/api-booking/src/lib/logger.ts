@@ -150,6 +150,7 @@ function createLogger(defaults: LoggerDefaults): Logger {
       });
     },
     logProviderCall(entry) {
+      if (entry.success) return;
       emit(entry.success ? 'info' : 'warn', defaults, {
         source: 'provider',
         eventType: 'provider_call',

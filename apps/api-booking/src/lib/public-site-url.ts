@@ -108,42 +108,29 @@ export function resolvePublicSiteUrl(
   const originHeader = request.headers.get('Origin');
   const refererHeader = request.headers.get('Referer');
 
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'public_site_url_resolution_started',
-    message: 'Started public site URL resolution for request-scoped booking links',
-    context: {
-      path: new URL(request.url).pathname,
-      request_origin: originHeader,
-      request_referer: refererHeader,
-      default_site_url: sanitizeSiteUrl(env.SITE_URL),
-      branch_taken: 'evaluate_request_site_headers',
-      deny_reason: null,
-    },
-  });
-
   const decision = decidePublicSiteUrl({
     originHeader,
     refererHeader,
     defaultSiteUrl: env.SITE_URL,
   });
-
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'public_site_url_resolution_completed',
-    message: 'Resolved public site URL for request-scoped booking links',
-    context: {
-      path: new URL(request.url).pathname,
-      request_origin: originHeader,
-      request_referer: refererHeader,
-      resolved_site_url: decision.siteUrl,
-      matched_header: decision.matchedHeader,
-      matched_header_value: decision.matchedSource,
-      matched_host: decision.matchedHost,
-      branch_taken: decision.branchTaken,
-      deny_reason: decision.denyReason,
-    },
-  });
+  if (decision.denyReason) {
+    logger?.logWarn?.({
+      source: 'backend',
+      eventType: 'public_site_url_resolution_fallback',
+      message: 'Fell back to default public site URL for request-scoped booking links',
+      context: {
+        path: new URL(request.url).pathname,
+        request_origin: originHeader,
+        request_referer: refererHeader,
+        resolved_site_url: decision.siteUrl,
+        matched_header: decision.matchedHeader,
+        matched_header_value: decision.matchedSource,
+        matched_host: decision.matchedHost,
+        branch_taken: decision.branchTaken,
+        deny_reason: decision.denyReason,
+      },
+    });
+  }
 
   return decision.siteUrl;
 }
