@@ -261,12 +261,12 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
         deny_reason: 'google_calendar_invalid_conference_type',
       }),
     }));
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_insert_completed',
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_insert_conference_fallback_completed',
       context: expect.objectContaining({
-        google_event_id: 'google-event-no-conference',
+        google_http_status: 200,
         requested_conference_type: 'hangoutsMeet',
-        branch_taken: 'google_event_created_without_conference_after_invalid_conference_type',
+        branch_taken: 'google_events_insert_succeeded_without_conference_data',
       }),
     }));
   });
@@ -365,13 +365,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/existing-link',
     });
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_insert_idempotent_hit',
-      context: expect.objectContaining({
-        google_event_id: 'google-event-existing',
-        branch_taken: 'reuse_existing_event_by_booking_id',
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
   });
 
   it('throws RetryableCalendarWriteError for retryable quotaExceeded insert failures', async () => {
@@ -394,7 +388,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     await expect(provider.createEvent(makeCalendarEvent() as any)).rejects.toBeInstanceOf(RetryableCalendarWriteError);
   });
 
-  it('uses the service-account token path for updateEvent and logs the request', async () => {
+  it('uses the service-account token path for updateEvent', async () => {
     stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
@@ -433,13 +427,7 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
       meetingProvider: 'google_meet',
       meetingLink: 'https://meet.google.com/updated-link',
     });
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_update_request',
-      context: expect.objectContaining({
-        google_event_id: 'google-event-3',
-        branch_taken: 'call_google_events_update',
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
   });
 
   it('retries updateEvent without conferenceData when Google rejects the conference type', async () => {
@@ -497,17 +485,18 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
         branch_taken: 'retry_google_events_update_without_conference_data',
       }),
     }));
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_update_completed',
+    expect(logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'google_calendar_update_conference_fallback_completed',
       context: expect.objectContaining({
         google_event_id: 'google-event-4',
+        google_http_status: 200,
         requested_conference_type: 'hangoutsMeet',
-        branch_taken: 'google_event_updated_without_conference_after_invalid_conference_type',
+        branch_taken: 'google_events_update_succeeded_without_conference_data',
       }),
     }));
   });
 
-  it('uses the service-account token path for deleteEvent and treats 404 as success', async () => {
+  it('uses the service-account token path for deleteEvent and treats 404 as success without routine success logs', async () => {
     stubServiceAccountSigning();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'token' }), { status: 200 }))
@@ -526,13 +515,6 @@ describe('GoogleCalendarProvider service-account diagnostics', () => {
     const tokenBody = String((fetchMock.mock.calls[0]?.[1] as RequestInit)?.body ?? '');
     expect(tokenBody).toContain('grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer');
     expect(String(fetchMock.mock.calls[1]?.[0] ?? '')).toContain('/events/google-event-4?sendUpdates=none');
-    expect(logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'google_calendar_delete_completed',
-      context: expect.objectContaining({
-        google_event_id: 'google-event-4',
-        google_http_status: 404,
-        branch_taken: 'google_event_already_absent_treated_as_success',
-      }),
-    }));
+    expect(logger.logInfo).not.toHaveBeenCalled();
   });
 });

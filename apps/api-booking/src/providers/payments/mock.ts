@@ -35,11 +35,6 @@ export class MockPaymentsProvider implements IPaymentsProvider {
 
     const checkoutUrl = `${siteUrl}/dev-pay.html?${checkoutParams.toString()}`;
 
-    console.log(`[payments:mock] createCheckoutSession → ${sessionId}`, {
-      bookingId: params.bookingId,
-      amount,
-    });
-
     return {
       sessionId,
       checkoutUrl,
@@ -62,12 +57,6 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     const customerId = params.existingStripeCustomerId ?? `mock_cus_${crypto.randomUUID()}`;
     const paymentIntentId = `mock_pi_${crypto.randomUUID()}`;
     const invoiceUrl = `${siteUrl}/mock-invoice/${invoiceId}?booking_id=${encodeURIComponent(params.bookingId)}&amount=${params.amount}&currency=${encodeURIComponent(params.currency)}&email=${encodeURIComponent(params.customerEmail)}`;
-
-    console.log(`[payments:mock] createInvoice → ${invoiceId}`, {
-      bookingId: params.bookingId,
-      amount: params.amount,
-      customerEmail: params.customerEmail,
-    });
 
     return {
       invoiceId,
@@ -133,14 +122,6 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     const receiptArtifact = await this.getPaymentArtifactDetails({
       paymentIntentId: params.stripePaymentIntentId ?? null,
       invoiceId: params.stripeInvoiceId ?? null,
-    });
-
-    console.log(`[payments:mock] createRefund → ${refundId}`, {
-      bookingId: params.bookingId,
-      paymentId: params.paymentId,
-      refundPath: params.stripeInvoiceId ? 'credit_note' : 'direct_refund',
-      amount: params.amount,
-      currency: params.currency,
     });
 
     return {

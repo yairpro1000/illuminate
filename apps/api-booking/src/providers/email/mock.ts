@@ -57,18 +57,6 @@ export class MockEmailProvider implements IEmailProvider {
       contact_message_id: metadata.contactMessageId ?? null,
     });
 
-    console.info('[email:mock] capture', JSON.stringify({
-      provider: 'mock',
-      kind,
-      to: payload.to,
-      subject: payload.subject,
-      has_html: Boolean(payload.html),
-      text_length: payload.text.length,
-      html_length: payload.html ? payload.html.length : 0,
-      branch_taken: 'capture_exact_provider_payload',
-      deny_reason: null,
-    }));
-
     return {
       messageId,
       debug: {

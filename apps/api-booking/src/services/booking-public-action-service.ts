@@ -134,6 +134,7 @@ export async function getBookingEventStatusSnapshot(
   let resolvedEvent = selectedEvent;
   const reconciledEvent = await finalizeBookingEventStatus(selectedEvent.id, ctx, {
     startedExecution: selectedEvent.status === 'PROCESSING',
+    reconcileProcessing: selectedEvent.status === 'PROCESSING',
   });
   if (reconciledEvent.status !== selectedEvent.status) {
     const refreshedReadModel = await loadBookingReadModel({

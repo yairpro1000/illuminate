@@ -212,21 +212,6 @@ async function getServiceAccountAccessToken(
     throw error;
   }
 
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'google_calendar_service_account_token_exchange_started',
-    message: 'Starting Google service-account token exchange',
-    context: {
-      auth_mode: 'service_account',
-      auth_config_source: 'service_account_json',
-      calendar_operation: calendarOperation,
-      booking_id: bookingId,
-      request_id: requestId,
-      branch_taken: 'exchange_service_account_jwt_for_access_token',
-      deny_reason: null,
-    },
-  });
-
   const jwt = await createServiceAccountJWT(serviceAccount);
   const body = new URLSearchParams({
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -318,20 +303,6 @@ async function getServiceAccountAccessToken(
     throw new Error('Google service-account token exchange failed (missing_access_token)');
   }
 
-  logger?.logInfo?.({
-    source: 'backend',
-    eventType: 'google_calendar_service_account_token_exchange_succeeded',
-    message: 'Google service-account token exchange succeeded',
-    context: {
-      auth_mode: 'service_account',
-      auth_config_source: 'service_account_json',
-      calendar_operation: calendarOperation,
-      booking_id: bookingId,
-      request_id: requestId,
-      branch_taken: 'service_account_token_exchange_succeeded',
-      deny_reason: null,
-    },
-  });
   return data.access_token;
 }
 
@@ -434,18 +405,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       GOOGLE_CALENDAR_BURST_THROTTLE_MS.min,
       GOOGLE_CALENDAR_BURST_THROTTLE_MS.max,
     );
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_insert_throttle_delay',
-      message: 'Applied pre-insert burst throttle delay before Google Calendar write',
-      context: {
-        booking_id: bookingId ?? null,
-        request_id: requestId ?? null,
-        delay_ms: delayMs,
-        branch_taken: 'apply_pre_insert_burst_throttle_delay',
-        deny_reason: null,
-      },
-    });
     await sleep(delayMs);
   }
 
@@ -459,18 +418,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     url.searchParams.set('privateExtendedProperty', `booking_id=${bookingId}`);
     url.searchParams.set('maxResults', '1');
     url.searchParams.set('showDeleted', 'false');
-
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_existing_event_lookup_started',
-      message: 'Looking up existing Google Calendar event by booking id metadata',
-      context: {
-        booking_id: bookingId,
-        request_id: requestId ?? null,
-        branch_taken: 'lookup_existing_event_by_booking_id',
-        deny_reason: null,
-      },
-    });
 
     const res = this.logger
       ? await instrumentFetch(this.logger, {
@@ -512,22 +459,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const data = await res.json() as GoogleCalendarListResponse;
     const existing = (data.items ?? []).find((item) => item.id && item.status !== 'cancelled');
 
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_existing_event_lookup_completed',
-      message: 'Completed Google Calendar existing-event lookup',
-      context: {
-        booking_id: bookingId,
-        request_id: requestId ?? null,
-        has_existing_google_event: Boolean(existing),
-        existing_google_event_id: existing?.id ?? null,
-        branch_taken: existing
-          ? 'existing_event_found_by_booking_id'
-          : 'no_existing_event_found_by_booking_id',
-        deny_reason: existing ? null : 'existing_event_not_found',
-      },
-    });
-
     return existing ? toCalendarUpsertResult(existing) : null;
   }
 
@@ -544,21 +475,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       return data;
     }
 
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_meet_hydration_started',
-      message: 'Google Calendar write response had no Meet link; fetching event to hydrate conference data',
-      context: {
-        booking_id: input.bookingId,
-        request_id: input.requestId,
-        google_event_id: data.id,
-        calendar_operation: input.operation,
-        conference_create_status: readConferenceCreateStatus(data),
-        branch_taken: 'refetch_google_event_for_meet_link_hydration',
-        deny_reason: 'google_meet_link_missing_in_initial_write_response',
-      },
-    });
-
     let hydrated = data;
     for (let attemptIndex = 0; attemptIndex <= GOOGLE_MEET_HYDRATION_RETRY_DELAYS_MS.length; attemptIndex += 1) {
       if (attemptIndex > 0) {
@@ -572,21 +488,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
       hydrated = fetched;
       if (extractGoogleMeetLink(hydrated)) {
-        this.logger?.logInfo?.({
-          source: 'backend',
-          eventType: 'google_calendar_meet_hydration_completed',
-          message: 'Fetched Google Calendar event now contains Meet link data',
-          context: {
-            booking_id: input.bookingId,
-            request_id: input.requestId,
-            google_event_id: hydrated.id,
-            calendar_operation: input.operation,
-            hydration_attempt: attemptIndex + 1,
-            conference_create_status: readConferenceCreateStatus(hydrated),
-            branch_taken: 'google_event_hydrated_with_meet_link',
-            deny_reason: null,
-          },
-        });
         return hydrated;
       }
     }
@@ -671,23 +572,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     const diagnostics = toGoogleDiagnosticsContext(event);
     const bookingId = diagnostics.bookingId ?? event.privateMetadata?.['booking_id'] ?? null;
 
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_insert_request',
-      message: 'Preparing Google Calendar events.insert request',
-      context: {
-        booking_id: diagnostics.bookingId,
-        request_id: diagnostics.requestId,
-        calendar_id_present: this.calendarId.length > 0,
-        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
-        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
-        has_booking_id_metadata: Boolean(bookingId),
-        has_event_id_hint: Boolean(options?.eventIdHint),
-        branch_taken: 'call_google_events_insert',
-        deny_reason: null,
-      },
-    });
-
     const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'create_event',
       bookingId: diagnostics.bookingId,
@@ -699,18 +583,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       ? await this.findExistingEventByBookingId(token, bookingId, diagnostics.requestId)
       : null;
     if (existing) {
-      this.logger?.logInfo?.({
-        source: 'backend',
-        eventType: 'google_calendar_insert_idempotent_hit',
-        message: 'Skipped Google Calendar insert because an event already exists for the booking id',
-        context: {
-          booking_id: diagnostics.bookingId,
-          request_id: diagnostics.requestId,
-          google_event_id: existing.eventId,
-          branch_taken: 'reuse_existing_event_by_booking_id',
-          deny_reason: null,
-        },
-      });
       return existing;
     }
 
@@ -731,23 +603,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
         requestId: diagnostics.requestId,
         operation: 'create_event',
       });
-      const result = toCalendarUpsertResult(data);
-      this.logger?.logInfo?.({
-        source: 'backend',
-        eventType: 'google_calendar_insert_completed',
-        message: 'Google Calendar events.insert succeeded',
-        context: {
-          booking_id: diagnostics.bookingId,
-          request_id: diagnostics.requestId,
-          google_event_id: result.eventId,
-          meeting_provider: result.meetingProvider,
-          has_meeting_link: Boolean(result.meetingLink),
-          meeting_link_source: detectMeetingLinkSource(data),
-          branch_taken: result.meetingLink ? 'google_event_created_with_meet_link' : 'google_event_created_without_meet_link',
-          deny_reason: result.meetingLink ? null : 'google_meet_link_missing_in_create_response',
-        },
-      });
-      return result;
+      return toCalendarUpsertResult(data);
     }
 
     if (initialRes.status === 409 && options?.eventIdHint) {
@@ -773,24 +629,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
       if (fallbackResult.ok) {
         const fallbackData = await fallbackResult.response.json() as GoogleCalendarEventResponse;
-        const result = toCalendarUpsertResult(fallbackData);
-        this.logger?.logInfo?.({
-          source: 'backend',
-          eventType: 'google_calendar_insert_completed',
-          message: 'Google Calendar events.insert succeeded',
-          context: {
-            booking_id: diagnostics.bookingId,
-            request_id: diagnostics.requestId,
-            google_event_id: result.eventId,
-            meeting_provider: result.meetingProvider,
-            has_meeting_link: Boolean(result.meetingLink),
-            meeting_link_source: detectMeetingLinkSource(fallbackData),
-            requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
-            branch_taken: 'google_event_created_without_conference_after_invalid_conference_type',
-            deny_reason: 'google_calendar_invalid_conference_type',
-          },
-        });
-        return result;
+        return toCalendarUpsertResult(fallbackData);
       }
 
       throw new Error(`Google createEvent failed (${fallbackResult.status}): ${fallbackResult.errorBody}`);
@@ -824,21 +663,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
     const diagnostics = toGoogleDiagnosticsContext(event);
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_update_request',
-      message: 'Preparing Google Calendar events.update request',
-      context: {
-        booking_id: diagnostics.bookingId,
-        request_id: diagnostics.requestId,
-        google_event_id: eventId,
-        calendar_id_present: this.calendarId.length > 0,
-        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
-        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
-        branch_taken: 'call_google_events_update',
-        deny_reason: null,
-      },
-    });
     const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'update_event',
       bookingId: diagnostics.bookingId,
@@ -861,23 +685,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
         requestId: diagnostics.requestId,
         operation: 'update_event',
       });
-      const result = toCalendarUpsertResult(data);
-      this.logger?.logInfo?.({
-        source: 'backend',
-        eventType: 'google_calendar_update_completed',
-        message: 'Google Calendar events.update succeeded',
-        context: {
-          booking_id: diagnostics.bookingId,
-          request_id: diagnostics.requestId,
-          google_event_id: result.eventId,
-          meeting_provider: result.meetingProvider,
-          has_meeting_link: Boolean(result.meetingLink),
-          meeting_link_source: detectMeetingLinkSource(data),
-          branch_taken: result.meetingLink ? 'google_event_updated_with_meet_link' : 'google_event_updated_without_meet_link',
-          deny_reason: null,
-        },
-      });
-      return result;
+      return toCalendarUpsertResult(data);
     }
 
     const initialErrorBody = await initialRes.text();
@@ -899,24 +707,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
 
       if (fallbackResult.ok) {
         const fallbackData = await fallbackResult.response.json() as GoogleCalendarEventResponse;
-        const result = toCalendarUpsertResult(fallbackData);
-        this.logger?.logInfo?.({
-          source: 'backend',
-          eventType: 'google_calendar_update_completed',
-          message: 'Google Calendar events.update succeeded',
-          context: {
-            booking_id: diagnostics.bookingId,
-            request_id: diagnostics.requestId,
-            google_event_id: result.eventId,
-            meeting_provider: result.meetingProvider,
-            has_meeting_link: Boolean(result.meetingLink),
-            meeting_link_source: detectMeetingLinkSource(fallbackData),
-            requested_conference_type: GOOGLE_CONFERENCE_SOLUTION_TYPE,
-            branch_taken: 'google_event_updated_without_conference_after_invalid_conference_type',
-            deny_reason: 'google_calendar_invalid_conference_type',
-          },
-        });
-        return result;
+        return toCalendarUpsertResult(fallbackData);
       }
 
       throw new Error(`Google updateEvent failed (${fallbackResult.status}): ${fallbackResult.errorBody}`);
@@ -948,19 +739,6 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     if (!this.calendarId) {
       throw new Error('GOOGLE_CALENDAR_ID is empty after trim');
     }
-    this.logger?.logInfo?.({
-      source: 'backend',
-      eventType: 'google_calendar_delete_request',
-      message: 'Preparing Google Calendar events.delete request',
-      context: {
-        google_event_id: eventId,
-        calendar_id_present: this.calendarId.length > 0,
-        calendar_id_was_trimmed: this.calendarIdWasTrimmed,
-        calendar_id_shape: this.calendarId.includes('@') ? 'email_like' : 'opaque_id_like',
-        branch_taken: 'call_google_events_delete',
-        deny_reason: null,
-      },
-    });
     const token = await getServiceAccountAccessToken(this.env, this.logger, {
       calendarOperation: 'delete_event',
     });
@@ -980,34 +758,9 @@ export class GoogleCalendarProvider implements ICalendarProvider {
           headers: { 'Authorization': `Bearer ${token}` },
         });
 
-    if (res.ok) {
-      this.logger?.logInfo?.({
-        source: 'backend',
-        eventType: 'google_calendar_delete_completed',
-        message: 'Google Calendar events.delete succeeded',
-        context: {
-          google_event_id: eventId,
-          branch_taken: 'google_event_deleted',
-          deny_reason: null,
-        },
-      });
-      return;
-    }
+    if (res.ok) return;
 
-    if (res.status === 404 || res.status === 410) {
-      this.logger?.logInfo?.({
-        source: 'backend',
-        eventType: 'google_calendar_delete_completed',
-        message: 'Google Calendar event already absent; treating delete as success',
-        context: {
-          google_event_id: eventId,
-          google_http_status: res.status,
-          branch_taken: 'google_event_already_absent_treated_as_success',
-          deny_reason: 'google_event_not_found',
-        },
-      });
-      return;
-    }
+    if (res.status === 404 || res.status === 410) return;
 
     if (!res.ok) {
       const body = await res.text();
@@ -1118,7 +871,7 @@ export class GoogleCalendarProvider implements ICalendarProvider {
     );
     const fallbackRes = await input.send(input.url, input.token, fallbackBody);
     if (fallbackRes.ok) {
-      this.logger?.logInfo?.({
+      this.logger?.logWarn?.({
         source: 'backend',
         eventType: `google_calendar_${input.writeKind}_conference_fallback_completed`,
         message: 'Google Calendar write succeeded after retrying without conference data',

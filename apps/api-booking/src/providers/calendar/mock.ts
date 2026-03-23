@@ -42,11 +42,6 @@ export class MockCalendarProvider implements ICalendarProvider {
   async createEvent(event: CalendarEvent, options?: CreateCalendarEventOptions): Promise<CalendarEventUpsertResult> {
     const eventId = options?.eventIdHint ?? `mock_gcal_${crypto.randomUUID()}`;
     this.events.set(eventId, event);
-    console.log(`[calendar:mock] createEvent → ${eventId}`, {
-      title: event.title,
-      start: event.startIso,
-      end: event.endIso,
-    });
     return {
       eventId,
       htmlLink: `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`,
@@ -57,10 +52,6 @@ export class MockCalendarProvider implements ICalendarProvider {
 
   async updateEvent(eventId: string, event: CalendarEvent): Promise<CalendarEventUpsertResult> {
     this.events.set(eventId, event);
-    console.log(`[calendar:mock] updateEvent ${eventId}`, {
-      title: event.title,
-      start: event.startIso,
-    });
     return {
       eventId,
       htmlLink: `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`,
@@ -71,6 +62,5 @@ export class MockCalendarProvider implements ICalendarProvider {
 
   async deleteEvent(eventId: string): Promise<void> {
     this.events.delete(eventId);
-    console.log(`[calendar:mock] deleteEvent ${eventId}`);
   }
 }

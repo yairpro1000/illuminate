@@ -162,18 +162,6 @@ export async function withOutboundProviderCall<T>(
   const startedAtMs = Date.now();
   const url = `provider://${input.provider}/${input.operationName}`;
 
-  logger.logInfo({
-    source: 'provider',
-    eventType: 'provider_wrapper_started',
-    message: 'Provider call entered shared outbound wrapper',
-    context: {
-      provider: input.provider,
-      provider_operation: input.operationName,
-      branch_taken: 'execute_provider_call_via_shared_wrapper',
-      outbound_api_log_write_mode: 'insert_completed_row_after_provider_call',
-    },
-  });
-
   try {
     const result = await run();
     const apiLogId = await insertCompletedApiLog(env, {
@@ -188,19 +176,6 @@ export async function withOutboundProviderCall<T>(
       startedAtMs,
     });
     operation.latestProviderApiLogId = apiLogId;
-    logger.logInfo({
-      source: 'provider',
-      eventType: 'provider_wrapper_completed',
-      message: 'Provider call completed through shared outbound wrapper',
-      context: {
-        provider: input.provider,
-        provider_operation: input.operationName,
-        api_log_id: apiLogId,
-        status_code: 200,
-        branch_taken: 'provider_call_succeeded',
-        deny_reason: null,
-      },
-    });
     return result;
   } catch (error) {
     const statusCode = typeof (error as { status?: unknown })?.status === 'number'
