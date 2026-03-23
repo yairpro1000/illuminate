@@ -45,16 +45,19 @@ export async function getBookingPublicActionInfo(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<BookingPublicActionInfo> {
-  const readModel = await loadBookingReadModel({
-    booking,
-    include: {
-      payment: 'latest',
-    },
-  }, ctx);
+  const readModel = booking.booking_type === 'FREE'
+    ? { booking, payment: null as Payment | null }
+    : await loadBookingReadModel({
+      booking,
+      include: {
+        payment: 'latest',
+      },
+    }, ctx);
   const bookingRecord = readModel.booking;
-  const actionState = await resolveBookingPublicActionState(bookingRecord, readModel.payment, ctx);
-  const event = booking.event_id
-    ? await ctx.providers.repository.getEventById(booking.event_id)
+  const payment = readModel.payment;
+  const actionState = await resolveBookingPublicActionState(bookingRecord, payment, ctx);
+  const event = bookingRecord.event_id
+    ? await ctx.providers.repository.getEventById(bookingRecord.event_id)
     : null;
 
   if (actionState.checkoutUrl) {

@@ -1926,13 +1926,6 @@ async function completeEmailVerificationWithinEvent(
   const bookingAfterVerification = booking.current_status === 'PENDING'
     ? await ctx.providers.repository.updateBooking(booking.id, { current_status: 'CONFIRMED' })
     : booking;
-  if (bookingAfterVerification.booking_type !== 'FREE') {
-    await ensurePayLaterPendingPaymentRecord(
-      bookingAfterVerification,
-      ctx,
-      'confirm_booking_email_verification',
-    );
-  }
   const existingIntentSet = new Set(existingDownstreamSideEffects.map((effect) => effect.effect_intent));
   const missingDownstreamIntents = desiredDownstreamIntents.filter((intent) => !existingIntentSet.has(intent));
   const createdDownstreamSideEffects = missingDownstreamIntents.length > 0
