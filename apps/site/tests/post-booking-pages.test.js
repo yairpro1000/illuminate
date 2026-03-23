@@ -131,7 +131,7 @@ describe('post-booking pages', () => {
           to: 'maya@example.test',
           subject: 'Booking confirmed',
           html_url: 'https://api.letsilluminate.co/api/__dev/emails/mock_msg_confirm/html',
-          html_content: '<html><body><a href="/manage.html?token=tok-456">Manage booking</a></body></html>',
+          html_content: '<html><body><a href="/continue-payment.html?token=tok-456">Complete payment</a><a href="/manage.html?token=tok-456">Manage booking</a></body></html>',
         },
       }
       await window.siteClient.maybeRenderMockEmailPreview(response)
@@ -142,6 +142,7 @@ describe('post-booking pages', () => {
     await flush()
 
     expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Manage booking')
+    expect(document.querySelector('#mock-email-preview-overlay .mock-email-preview__frame')?.srcdoc).toContain('Complete payment')
   })
 
   it('payment success page renders the captured email iframe when mock preview metadata is present', async () => {

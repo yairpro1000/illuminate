@@ -258,6 +258,9 @@ describe('mock email inline preview contract', () => {
     expect(confirmData.mock_email_preview).toEqual(expect.objectContaining({
       email_id: bookingEmailId(pendingAData.booking_id, 'booking_confirmation'),
     }));
+    expect(confirmData.mock_email_preview.html_content).toContain('Complete payment');
+    expect(confirmData.mock_email_preview.html_content).toContain('/continue-payment.html?token=');
+    expect(confirmData.mock_email_preview.html_content).toContain('Manage booking');
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'booking_confirm_token_redemption_completed',
       context: expect.objectContaining({

@@ -508,11 +508,7 @@ function paymentEmailUrl(
 ): { invoiceUrl: string | null; payUrl: string | null } {
   const invoiceUrl = input.payment?.invoice_url ?? null;
   const checkoutUrl = input.payment?.checkout_url ?? null;
-  const canContinuePayLater = (
-    input.booking.booking_type === 'PAY_LATER'
-    && input.booking.current_status === 'CONFIRMED'
-    && isPaymentContinuableOnline(input.payment?.status ?? null)
-  );
+  const canContinuePayLater = canContinuePayLaterPayment(input.booking, input.payment?.status ?? null);
 
   return {
     invoiceUrl,
@@ -536,7 +532,7 @@ export function canContinuePayLaterPayment(
 ): boolean {
   return booking.booking_type === 'PAY_LATER'
     && booking.current_status === 'CONFIRMED'
-    && isPaymentContinuableOnline(paymentStatus ?? null);
+    && (paymentStatus == null || isPaymentContinuableOnline(paymentStatus));
 }
 
 async function assertClientWithinWeeklySessionLimit(
