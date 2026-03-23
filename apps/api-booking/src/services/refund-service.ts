@@ -9,6 +9,7 @@ import type {
   RefundStatus,
 } from '../types.js';
 import type { BookingSideEffect } from '../types.js';
+import type { BookingSideEffectQueueEntry } from './booking-event-workflow.js';
 import type {
   StripeRefundWebhookEvent,
 } from '../providers/payments/interface.js';
@@ -33,7 +34,7 @@ export interface CancellationRefundNoticeDecision {
 
 export interface CancellationRefundExecutionResult {
   decision: CancellationRefundDecision;
-  nextSideEffects: BookingSideEffect[];
+  nextSideEffects: BookingSideEffectQueueEntry[];
 }
 
 interface RefundCompletionPayload {
@@ -529,7 +530,7 @@ export async function initiateAutomaticCancellationRefund(
     },
   });
 
-  let nextSideEffects: BookingSideEffect[] = [];
+  let nextSideEffects: BookingSideEffectQueueEntry[] = [];
   if (refundRecord.refundStatus === 'SUCCEEDED') {
     ctx.logger.logInfo?.({
       source: 'backend',
@@ -563,7 +564,13 @@ export async function initiateAutomaticCancellationRefund(
       'SYSTEM',
       ctx,
     );
-    nextSideEffects = transition?.sideEffects ?? [];
+    nextSideEffects = transition
+      ? transition.sideEffects.map((effect) => ({
+        effect,
+        event: transition.event,
+        isFresh: true,
+      }))
+      : [];
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'cancellation_refund_execution_step',
@@ -854,6 +861,11 @@ async function appendRefundCompletedEventIfNeeded(
     source,
     payload as unknown as Record<string, unknown>,
     ctx,
+    {
+      booking,
+      payment,
+      policy: ctx.bookingPolicyConfig,
+    },
   );
   return {
     event: transition.event,

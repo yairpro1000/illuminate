@@ -762,6 +762,7 @@ export async function createPayNowBooking(
       session_type_slug: sessionType.slug,
     },
     bookingCtx,
+    { booking },
   );
 
   const executed = await runImmediateBookingEventWorkflow({
@@ -869,6 +870,7 @@ export async function createPayLaterBooking(
       confirm_token_hash: confirmTokenHash,
     },
     bookingCtx,
+    { booking },
   );
 
   const finalizedBooking = (await runImmediateBookingEventWorkflow({
@@ -969,6 +971,7 @@ async function createEventBookingInternal(
         via_late_access: options.viaLateAccess,
       },
       bookingCtx,
+      { booking },
     );
     const createdWithImmediateEffects = (await runImmediateBookingEventWorkflow({
       transitionEvent: created.event,
@@ -1000,6 +1003,7 @@ async function createEventBookingInternal(
       event_id: input.event.id,
     },
     bookingCtx,
+    { booking },
   );
 
   const executed = await runImmediateBookingEventWorkflow({
@@ -1123,7 +1127,7 @@ export async function confirmBookingEmailResult(
     {
       booking,
       event: submissionWithToken,
-      sideEffects: verificationEffects,
+      sideEffects: verificationEffects.map((effect) => ({ effect, event: submissionWithToken })),
       sourceOperation: 'confirm_booking_email_verification',
       triggerSource: 'realtime',
       executeEffect: executeBookingSideEffectAction,
@@ -1507,10 +1511,9 @@ async function settleBookingPayment(
     return;
   }
 
-  const paymentVerification = await findLatestUnresolvedSideEffectByIntent(
+  const paymentVerification = await bookingCtx.providers.repository.getLatestUnresolvedBookingSideEffectByIntent(
     booking.id,
     'VERIFY_STRIPE_PAYMENT',
-    bookingCtx,
   );
   if (paymentVerification) {
     bookingCtx.logger.logInfo?.({
@@ -1533,7 +1536,7 @@ async function settleBookingPayment(
       {
         booking,
         event: paymentVerification.event,
-        sideEffects: [paymentVerification.effect],
+        sideEffects: [{ effect: paymentVerification.effect, event: paymentVerification.event }],
         sourceOperation: input.settlementSource === 'ADMIN_UI'
           ? 'admin_manual_payment_settlement:verify_stripe_payment'
           : 'confirm_booking_payment:verify_stripe_payment',
@@ -1572,6 +1575,10 @@ async function settleBookingPayment(
       ...(input.rawPayload ?? {}),
     },
     bookingCtx,
+    {
+      booking,
+      payment: { status: 'SUCCEEDED' },
+    },
   );
 
   await runImmediateBookingEventWorkflow({
@@ -1584,28 +1591,6 @@ async function settleBookingPayment(
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, bookingCtx);
-}
-
-async function findLatestUnresolvedSideEffectByIntent(
-  bookingId: string,
-  effectIntent: BookingEffectIntent,
-  ctx: BookingContext,
-): Promise<{ event: BookingEventRecord; effect: BookingSideEffect } | null> {
-  const events = await ctx.providers.repository.listBookingEvents(bookingId);
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (!event) continue;
-    const effects = await ctx.providers.repository.listBookingSideEffectsForEvent(event.id);
-    const effect = [...effects].reverse().find((candidate) =>
-      candidate.effect_intent === effectIntent
-      && candidate.status !== 'SUCCESS'
-      && candidate.status !== 'DEAD',
-    );
-    if (effect) {
-      return { event, effect };
-    }
-  }
-  return null;
 }
 
 // ── Access and public-action owners were moved to dedicated services ───────
@@ -1686,6 +1671,7 @@ export async function cancelBooking(
     source,
     { reason: 'user_cancelled' },
     ctx,
+    { booking },
   );
   const paymentBeforeImmediateEffects = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(
@@ -1763,6 +1749,7 @@ export async function expireBooking(
     'SYSTEM',
     { reason: 'side_effect_expired' },
     ctx,
+    { booking },
   );
 
   const finalizedBooking = (await runImmediateBookingEventWorkflow({
@@ -1892,6 +1879,7 @@ export async function rescheduleBooking(
       to: { start: updated.starts_at, end: updated.ends_at, timezone: updated.timezone },
     },
     ctx,
+    { booking: updated },
   );
 
   const finalBooking = (await runImmediateBookingEventWorkflow({
@@ -3105,7 +3093,11 @@ export async function runImmediateBookingEventWorkflow(
     {
       booking: input.bookingAfterTransition,
       event: input.transitionEvent,
-      sideEffects: realtimeEffects,
+      sideEffects: realtimeEffects.map((effect) => ({
+        effect,
+        event: input.transitionEvent,
+        isFresh: true,
+      })),
       sourceOperation: input.sourceOperation,
       triggerSource: 'realtime',
       executeEffect: executeBookingSideEffectAction,

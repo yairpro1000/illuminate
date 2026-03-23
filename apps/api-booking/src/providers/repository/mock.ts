@@ -353,6 +353,33 @@ export class MockRepository implements IRepository {
       .map((effect) => stripBookingId(effect));
   }
 
+  async getLatestUnresolvedBookingSideEffectByIntent(
+    bookingId: string,
+    effectIntent: import('../../types.js').BookingEffectIntent,
+  ): Promise<{ event: BookingEventRecord; effect: BookingSideEffect } | null> {
+    const events = [...mockState.bookingEvents]
+      .filter((event) => event.booking_id === bookingId)
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+
+    for (const event of events) {
+      const effect = [...mockState.sideEffects]
+        .filter((candidate) =>
+          candidate.booking_event_id === event.id
+          && candidate.effect_intent === effectIntent
+          && candidate.status !== 'SUCCESS'
+          && candidate.status !== 'DEAD',
+        )
+        .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0];
+      if (effect) {
+        return {
+          event,
+          effect: stripBookingId(effect),
+        };
+      }
+    }
+    return null;
+  }
+
   async getPendingBookingSideEffects(
     limit: number,
     _nowIso: string,

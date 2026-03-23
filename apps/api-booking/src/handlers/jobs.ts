@@ -592,7 +592,7 @@ async function dispatchSideEffect(
       {
         booking,
         event: bookingEvent,
-        sideEffects: [effect],
+        sideEffects: [{ effect, event: bookingEvent }],
         sourceOperation: `run_side_effects_outbox:${effect.effect_intent}`,
         triggerSource: 'cron',
         executeEffect: executeBookingSideEffectAction,

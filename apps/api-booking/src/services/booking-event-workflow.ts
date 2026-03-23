@@ -38,11 +38,17 @@ export interface BookingSideEffectExecutorInput {
 export interface BookingSideEffectExecutorResult {
   booking: Booking;
   metadata?: Record<string, unknown> | null;
-  nextSideEffects?: BookingSideEffect[];
+  nextSideEffects?: BookingSideEffectQueueEntry[];
   handledFailure?: {
     errorMessage: string;
     enableCalendarBackoff?: boolean;
   } | null;
+}
+
+export interface BookingSideEffectQueueEntry {
+  effect: BookingSideEffect;
+  event?: BookingEventRecord;
+  isFresh?: boolean;
 }
 
 interface StartedAttempt {
@@ -129,7 +135,7 @@ export async function runBookingEventEffects(
   input: {
     booking: Booking;
     event: BookingEventRecord;
-    sideEffects: BookingSideEffect[];
+    sideEffects: BookingSideEffectQueueEntry[];
     sourceOperation: string;
     triggerSource: 'realtime' | 'cron';
     executeEffect: (input: BookingSideEffectExecutorInput) => Promise<BookingSideEffectExecutorResult>;
@@ -139,27 +145,31 @@ export async function runBookingEventEffects(
   let currentBooking = input.booking;
   const effectResults: BookingEventEffectResult[] = [];
   const pendingEffects = [...input.sideEffects];
-  const queuedEffectIds = new Set(input.sideEffects.map((effect) => effect.id));
+  const queuedEffectIds = new Set(input.sideEffects.map((entry) => entry.effect.id));
   const eventsById = new Map<string, BookingEventRecord>([[input.event.id, input.event]]);
   const sideEffectsByEventId = new Map<string, BookingSideEffect[]>();
   const startedEventIds = new Set<string>();
-  sideEffectsByEventId.set(input.event.id, [...input.sideEffects]);
+  sideEffectsByEventId.set(input.event.id, input.sideEffects.map((entry) => entry.effect));
 
   if (pendingEffects.length === 0) {
     const finalizedEvent = await finalizeBookingEventStatus(input.event.id, ctx);
     return {
       booking: currentBooking,
       event: finalizedEvent,
-      sideEffects: input.sideEffects,
+      sideEffects: input.sideEffects.map((entry) => entry.effect),
       effectResults,
     };
   }
 
-  async function resolveEventForEffect(effect: BookingSideEffect): Promise<BookingEventRecord> {
-    const cached = eventsById.get(effect.booking_event_id);
+  async function resolveEventForEffect(entry: BookingSideEffectQueueEntry): Promise<BookingEventRecord> {
+    if (entry.event) {
+      eventsById.set(entry.event.id, entry.event);
+      return entry.event;
+    }
+    const cached = eventsById.get(entry.effect.booking_event_id);
     if (cached) return cached;
-    const event = await ctx.providers.repository.getBookingEventById(effect.booking_event_id);
-    if (!event) throw new Error(`booking_event_not_found:${effect.booking_event_id}`);
+    const event = await ctx.providers.repository.getBookingEventById(entry.effect.booking_event_id);
+    if (!event) throw new Error(`booking_event_not_found:${entry.effect.booking_event_id}`);
     eventsById.set(event.id, event);
     return event;
   }
@@ -187,9 +197,10 @@ export async function runBookingEventEffects(
   }
 
   while (pendingEffects.length > 0) {
-    const effect = pendingEffects.shift();
-    if (!effect) break;
-    const effectEvent = await resolveEventForEffect(effect);
+    const queueEntry = pendingEffects.shift();
+    if (!queueEntry) break;
+    const effect = queueEntry.effect;
+    const effectEvent = await resolveEventForEffect(queueEntry);
     await markEventExecutionStarted(effectEvent.id);
     const result = await executeBookingSideEffectLifecycle(
       {
@@ -198,6 +209,7 @@ export async function runBookingEventEffects(
         effect,
         sourceOperation: input.sourceOperation,
         triggerSource: input.triggerSource,
+        isFreshEffect: Boolean(queueEntry.isFresh),
         executeEffect: input.executeEffect,
       },
       ctx,
@@ -205,11 +217,11 @@ export async function runBookingEventEffects(
     currentBooking = result.booking;
     effectResults.push(result.effectResult);
     rememberSideEffect(result.effect);
-    for (const nextEffect of result.nextSideEffects) {
-      if (queuedEffectIds.has(nextEffect.id)) continue;
-      queuedEffectIds.add(nextEffect.id);
-      pendingEffects.push(nextEffect);
-      rememberSideEffect(nextEffect);
+    for (const nextEntry of result.nextSideEffects) {
+      if (queuedEffectIds.has(nextEntry.effect.id)) continue;
+      queuedEffectIds.add(nextEntry.effect.id);
+      pendingEffects.push(nextEntry);
+      rememberSideEffect(nextEntry.effect);
     }
   }
 
@@ -226,11 +238,11 @@ export async function runBookingEventEffects(
   const finalizedEvent = finalEvents.get(input.event.id)
     ?? await updateBookingEventFromKnownSideEffects(
       input.event.id,
-      sideEffectsByEventId.get(input.event.id) ?? input.sideEffects,
+      sideEffectsByEventId.get(input.event.id) ?? input.sideEffects.map((entry) => entry.effect),
       ctx,
       { startedExecution: true },
     );
-  const refreshedEffects = sideEffectsByEventId.get(input.event.id) ?? input.sideEffects;
+  const refreshedEffects = sideEffectsByEventId.get(input.event.id) ?? input.sideEffects.map((entry) => entry.effect);
   return {
     booking: currentBooking,
     event: finalizedEvent,
@@ -284,11 +296,18 @@ async function executeBookingSideEffectLifecycle(
     effect: BookingSideEffect;
     sourceOperation: string;
     triggerSource: 'realtime' | 'cron';
+    isFreshEffect: boolean;
     executeEffect: (input: BookingSideEffectExecutorInput) => Promise<BookingSideEffectExecutorResult>;
   },
   ctx: BookingContext,
-): Promise<{ booking: Booking; effect: BookingSideEffect; effectResult: BookingEventEffectResult; nextSideEffects: BookingSideEffect[] }> {
-  const startedAttempt = await startBookingSideEffectAttempt(input.effect, input.booking, input.event, ctx);
+): Promise<{ booking: Booking; effect: BookingSideEffect; effectResult: BookingEventEffectResult; nextSideEffects: BookingSideEffectQueueEntry[] }> {
+  const startedAttempt = await startBookingSideEffectAttempt(
+    input.effect,
+    input.booking,
+    input.event,
+    ctx,
+    { isFresh: input.isFreshEffect },
+  );
   try {
     const executed = await input.executeEffect({
       booking: input.booking,
@@ -380,9 +399,12 @@ async function startBookingSideEffectAttempt(
   booking: Booking,
   event: BookingEventRecord,
   ctx: BookingContext,
+  options: { isFresh?: boolean } = {},
 ): Promise<StartedAttempt> {
-  const lastAttempt = await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
-  const attemptNum = (lastAttempt?.attempt_num ?? 0) + 1;
+  const lastAttempt = options.isFresh
+    ? null
+    : await ctx.providers.repository.getLastBookingSideEffectAttempt(effect.id);
+  const attemptNum = options.isFresh ? 1 : (lastAttempt?.attempt_num ?? 0) + 1;
   const attempt = await ctx.providers.repository.createBookingSideEffectAttempt({
     booking_side_effect_id: effect.id,
     attempt_num: attemptNum,

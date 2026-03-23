@@ -52,7 +52,7 @@ interface ExecutorDeps {
     eventId: string,
     booking: Booking,
     ctx: BookingContext,
-  ) => Promise<BookingSideEffectExecutorResult>;
+  ) => Promise<{ booking: Booking; nextSideEffects: BookingSideEffectExecutorInput['effect'][] }>;
   expireBooking: (booking: Booking, ctx: BookingContext) => Promise<Booking>;
   runImmediateBookingEventWorkflow: (input: {
     transitionEvent: BookingEventRecord;
@@ -211,9 +211,16 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
         nextSideEffects: refundResult.nextSideEffects,
       };
     },
-    VERIFY_EMAIL_CONFIRMATION: async ({ booking, effect, ctx, sourceOperation }) => {
+    VERIFY_EMAIL_CONFIRMATION: async ({ booking, event, effect, ctx, sourceOperation }) => {
       if (sourceOperation === 'confirm_booking_email_verification') {
-        return deps.completeEmailVerificationWithinEvent(effect.booking_event_id, booking, ctx);
+        const verificationResult = await deps.completeEmailVerificationWithinEvent(effect.booking_event_id, booking, ctx);
+        return {
+          ...verificationResult,
+          nextSideEffects: (verificationResult.nextSideEffects ?? []).map((nextEffect) => ({
+            effect: nextEffect,
+            event,
+          })),
+        };
       }
       if (booking.current_status === 'PENDING') {
         return { booking: await deps.expireBooking(booking, ctx) };
@@ -234,6 +241,10 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
             stripe_invoice_id: payment?.stripe_invoice_id,
           },
           ctx,
+          {
+            booking,
+            payment,
+          },
         );
         const executed = await deps.runImmediateBookingEventWorkflow({
           transitionEvent: transition.event,

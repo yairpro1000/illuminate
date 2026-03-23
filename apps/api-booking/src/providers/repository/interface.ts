@@ -126,6 +126,10 @@ export interface IRepository {
 
   getBookingSideEffectById(id: string): Promise<BookingSideEffect | null>;
   listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]>;
+  getLatestUnresolvedBookingSideEffectByIntent(
+    bookingId: string,
+    effectIntent: BookingEffectIntent,
+  ): Promise<{ event: BookingEventRecord; effect: BookingSideEffect } | null>;
 
   getPendingBookingSideEffects(
     limit: number,

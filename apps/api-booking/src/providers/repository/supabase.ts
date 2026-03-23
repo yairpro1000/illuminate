@@ -3,6 +3,7 @@ import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository }
 import type {
   Booking,
   BookingCurrentStatus,
+  BookingEffectIntent,
   BookingEventRecord,
   BookingEventStatus,
   BookingSideEffect,
@@ -415,10 +416,9 @@ export class SupabaseRepository implements IRepository {
         .single(),
       `Failed to update booking event ${id}`,
     );
-    const snapshots = await this.loadBookingEventSnapshots([row.id]);
     return toBookingEventRecord(
       row,
-      snapshots.get(row.id) ?? defaultBookingEventSnapshot(row.created_at),
+      defaultBookingEventSnapshot(row.created_at),
       {
         error_message: updates.error_message,
         completed_at: updates.completed_at,
@@ -534,6 +534,52 @@ export class SupabaseRepository implements IRepository {
         .order('created_at', { ascending: true }),
       'Failed to load booking side effects for event',
     );
+  }
+
+  async getLatestUnresolvedBookingSideEffectByIntent(
+    bookingId: string,
+    effectIntent: BookingEffectIntent,
+  ): Promise<{ event: BookingEventRecord; effect: BookingSideEffect } | null> {
+    const eventRows = await requireData<BookingEventRow[]>(
+      this.db
+        .from('booking_events')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false }),
+      'Failed to load booking events for unresolved side effect lookup',
+    );
+    if (eventRows.length === 0) return null;
+
+    const eventIds = eventRows.map((row) => row.id);
+    const effects = await requireData<BookingSideEffect[]>(
+      this.db
+        .from('booking_side_effects')
+        .select('*')
+        .in('booking_event_id', eventIds)
+        .eq('effect_intent', effectIntent)
+        .in('status', ['PENDING', 'FAILED', 'PROCESSING'])
+        .order('created_at', { ascending: false }),
+      'Failed to load unresolved booking side effects by intent',
+    );
+    if (effects.length === 0) return null;
+
+    const effectByEventId = new Map<string, BookingSideEffect>();
+    for (const effect of effects) {
+      if (!effectByEventId.has(effect.booking_event_id)) {
+        effectByEventId.set(effect.booking_event_id, effect);
+      }
+    }
+
+    for (const eventRow of eventRows) {
+      const effect = effectByEventId.get(eventRow.id);
+      if (!effect) continue;
+      return {
+        event: toBookingEventRecord(eventRow, defaultBookingEventSnapshot(eventRow.created_at)),
+        effect,
+      };
+    }
+
+    return null;
   }
 
   async getPendingBookingSideEffects(
