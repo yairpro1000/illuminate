@@ -25,8 +25,7 @@ export interface BuiltEmailMessage {
 export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 export const EMAIL_REPLY_TO = 'hello@yairb.ch';
 const DEFAULT_SITE_URL = 'https://letsilluminate.co';
-const PUBLIC_EVENT_IMAGE_BASE_URL = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
-const EMAIL_HERO_IMAGE_URL = `${PUBLIC_EVENT_IMAGE_BASE_URL}/ILLUMINATE_hero.png`;
+const EMAIL_HERO_IMAGE_URL = 'https://yairb.ch/img/ILLUMINATE_hero.png';
 function sanitizeSiteUrl(siteUrl?: string | null): string {
   return String(siteUrl || DEFAULT_SITE_URL).replace(/\/+$/g, '');
 }

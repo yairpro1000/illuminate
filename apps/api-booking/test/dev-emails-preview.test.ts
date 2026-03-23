@@ -41,7 +41,7 @@ describe('dev captured email preview', () => {
     expect(mockState.sentEmails[0]?.text).toContain('Confirm: https://letsilluminate.co/confirm.html?token=test-confirm');
     expect(mockState.sentEmails[0]?.html).toContain('Confirm booking');
     expect(mockState.sentEmails[0]?.html).toContain('https://letsilluminate.co/confirm.html?token=test-confirm');
-    expect(mockState.sentEmails[0]?.html).toContain('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/ILLUMINATE_hero.png');
+    expect(mockState.sentEmails[0]?.html).toContain('https://yairb.ch/img/ILLUMINATE_hero.png');
   });
 
   it('lists captured emails, returns captured payload detail, and serves raw preview html', async () => {

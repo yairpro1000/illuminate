@@ -40,7 +40,7 @@ describe('Resend payment-due email payload', () => {
     expect(payload.text).toContain('Please complete payment by');
     expect(payload.html).toContain('Complete payment');
     expect(payload.html).toContain('ILLUMINATE');
-    expect(payload.html).toContain('https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev/ILLUMINATE_hero.png');
+    expect(payload.html).toContain('https://yairb.ch/img/ILLUMINATE_hero.png');
     expect(payload.html).toContain('Payment due');
     expect(consoleInfoSpy).toHaveBeenCalledWith(
       '[email:resend] send_attempt',
