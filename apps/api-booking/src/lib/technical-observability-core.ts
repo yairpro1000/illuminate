@@ -4,14 +4,9 @@ import { makeSupabase, type Db } from '../repo/supabase.js';
 type TechnicalDb = ReturnType<Db['schema']>;
 export type TechnicalTable = 'api_logs' | 'exception_logs';
 
-export interface TechnicalObservabilityRow {
-  id: string;
-  created_at: string;
-  [key: string]: unknown;
-}
-
 let cachedDb: Db | null = null;
 const emittedWarnings = new Set<string>();
+const resolvedSchemaCache = new Map<string, string>();
 
 function getDb(env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY'>): Db {
   if (!cachedDb) cachedDb = makeSupabase(env);
@@ -22,6 +17,12 @@ function warnOnce(key: string, message: string, details: Record<string, unknown>
   if (emittedWarnings.has(key)) return;
   emittedWarnings.add(key);
   console.warn(message, details);
+}
+
+function schemaCacheKey(
+  env: Pick<Env, 'SUPABASE_URL' | 'OBSERVABILITY_SCHEMA'>,
+): string {
+  return `${String(env.SUPABASE_URL ?? '').trim()}::${getSchema(env)}`;
 }
 
 export function getSchema(env: Pick<Env, 'OBSERVABILITY_SCHEMA'>): string {
@@ -52,12 +53,20 @@ function tableClients(
   }
 
   const configuredSchema = getSchema(env);
-  const schemas = Array.from(new Set([configuredSchema, 'public']));
+  const resolvedSchema = resolvedSchemaCache.get(schemaCacheKey(env));
+  const schemas = Array.from(new Set(resolvedSchema ? [resolvedSchema] : [configuredSchema, 'public']));
   const db = getDb(env);
   return schemas.map((schema) => ({
     schema,
     client: db.schema(schema),
   }));
+}
+
+function rememberResolvedSchema(
+  env: Pick<Env, 'SUPABASE_URL' | 'OBSERVABILITY_SCHEMA'>,
+  schema: string,
+): void {
+  resolvedSchemaCache.set(schemaCacheKey(env), schema);
 }
 
 export async function safeInsert(
@@ -77,6 +86,7 @@ export async function safeInsert(
         console.warn('[technical-observability] insert failed', { schema, table, error: error.message });
         continue;
       }
+      rememberResolvedSchema(env, schema);
       if (schema !== getSchema(env)) {
         console.warn('[technical-observability] insert recovered via fallback schema', {
           table,
@@ -134,6 +144,7 @@ export async function safeUpdate(
         });
         continue;
       }
+      rememberResolvedSchema(env, schema);
       if (schema !== getSchema(env)) {
         console.warn('[technical-observability] update recovered via fallback schema', {
           table,
@@ -157,72 +168,8 @@ export async function safeUpdate(
   });
 }
 
-export async function safeSelectMany(
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
-  table: TechnicalTable,
-  run: (client: TechnicalDb) => Promise<{ data: TechnicalObservabilityRow[] | null; error: { message: string } | null }>,
-): Promise<TechnicalObservabilityRow[]> {
-  const clients = tableClients(env);
-  if (clients.length === 0) return [];
-
-  let lastError: string | null = null;
-  for (const { schema, client } of clients) {
-    try {
-      const { data, error } = await run(client);
-      if (error) {
-        lastError = error.message;
-        console.warn('[technical-observability] select failed', { schema, table, error: error.message });
-        continue;
-      }
-      if (schema !== getSchema(env)) {
-        console.warn('[technical-observability] select recovered via fallback schema', {
-          table,
-          configured_schema: getSchema(env),
-          fallback_schema: schema,
-        });
-      }
-      return data ?? [];
-    } catch (error) {
-      lastError = String(error);
-      console.warn('[technical-observability] select failed', { schema, table, error: lastError });
-    }
-  }
-
-  console.warn('[technical-observability] select exhausted schemas', {
-    table,
-    configured_schema: getSchema(env),
-    last_error: lastError,
-  });
-  return [];
-}
-
-export function dedupeTechnicalRows(rows: TechnicalObservabilityRow[]): TechnicalObservabilityRow[] {
-  const deduped = new Map<string, TechnicalObservabilityRow>();
-  for (const row of rows) deduped.set(String(row.id), row);
-  return [...deduped.values()].sort((left, right) =>
-    new Date(String(left.created_at)).getTime() - new Date(String(right.created_at)).getTime(),
-  );
-}
-
-export async function selectTechnicalRowsByEq(
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
-  table: TechnicalTable,
-  column: 'booking_id' | 'booking_event_id' | 'side_effect_id' | 'side_effect_attempt_id',
-  value: string,
-): Promise<TechnicalObservabilityRow[]> {
-  return safeSelectMany(env, table, async (client) =>
-    await client.from(table).select('*').eq(column, value).order('created_at', { ascending: true }),
-  );
-}
-
-export async function selectTechnicalRowsByIn(
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
-  table: TechnicalTable,
-  column: 'booking_event_id' | 'side_effect_id' | 'side_effect_attempt_id',
-  values: string[],
-): Promise<TechnicalObservabilityRow[]> {
-  if (values.length === 0) return [];
-  return safeSelectMany(env, table, async (client) =>
-    await client.from(table).select('*').in(column, values).order('created_at', { ascending: true }),
-  );
+export function resetTechnicalObservabilityStateForTest(): void {
+  cachedDb = null;
+  emittedWarnings.clear();
+  resolvedSchemaCache.clear();
 }

@@ -58,6 +58,19 @@ export interface AdminContactMessageFilters {
   q?: string;
 }
 
+export interface TechnicalObservabilityRow {
+  id: string;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface TechnicalObservabilityReferenceInput {
+  bookingId: string;
+  bookingEventIds?: string[];
+  sideEffectIds?: string[];
+  sideEffectAttemptIds?: string[];
+}
+
 /**
  * Generic persistence contract. Implementations must not leak driver-specific
  * types (no Supabase client, no Postgres row types) into this interface.
@@ -197,6 +210,8 @@ export interface IRepository {
 
   getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]>;
   getAdminContactMessages(filters: AdminContactMessageFilters): Promise<AdminContactMessageRow[]>;
+  listApiLogsByReferenceIds(input: TechnicalObservabilityReferenceInput): Promise<TechnicalObservabilityRow[]>;
+  listExceptionLogsByReferenceIds(input: TechnicalObservabilityReferenceInput): Promise<TechnicalObservabilityRow[]>;
 
   // ── Session types (offers) ──────────────────────────────────────────────
 

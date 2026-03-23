@@ -3,7 +3,6 @@ import { MockRepository } from '../src/providers/repository/mock.js';
 import { makeEnv } from './admin-helpers.js';
 
 const insertCalls: Array<{ schema: string; table: string; row: Record<string, unknown> }> = [];
-const updateCalls: Array<{ schema: string; table: string; id: string; row: Record<string, unknown> }> = [];
 const mockCreateProviders = vi.fn();
 
 vi.mock('../src/repo/supabase.js', () => ({
@@ -18,16 +17,7 @@ vi.mock('../src/repo/supabase.js', () => ({
             })),
           };
         }),
-        update: vi.fn((row: Record<string, unknown>) => ({
-          eq: vi.fn((_column: string, id: string) => {
-            updateCalls.push({ schema: schemaName, table, id, row });
-            return {
-              select: vi.fn(() => ({
-                maybeSingle: vi.fn(async () => ({ data: { id }, error: null })),
-              })),
-            };
-          }),
-        })),
+        update: vi.fn(),
       })),
     })),
   })),
@@ -60,11 +50,10 @@ function makeProviders(overrides: Record<string, unknown> = {}) {
 describe('worker fetch observability coverage', () => {
   beforeEach(() => {
     insertCalls.length = 0;
-    updateCalls.length = 0;
     mockCreateProviders.mockReset();
   });
 
-  it('writes api_logs for handled admin 401 responses', async () => {
+  it('writes one completed inbound api_log for handled admin 401 responses', async () => {
     mockCreateProviders.mockReturnValue(makeProviders());
     const env = makeEnv({
       SUPABASE_URL: 'https://supabase.test',
@@ -84,18 +73,12 @@ describe('worker fetch observability coverage', () => {
         direction: 'inbound',
         method: 'GET',
         url: 'https://api.local/api/admin/config',
-      }),
-    }));
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
-      table: 'api_logs',
-      row: expect.objectContaining({
         response_status: 401,
       }),
     }));
   });
 
-  it('writes api_logs for unmatched 404 responses', async () => {
+  it('writes one completed inbound api_log for unmatched api 404 responses', async () => {
     mockCreateProviders.mockReturnValue(makeProviders());
     const env = makeEnv({
       SUPABASE_URL: 'https://supabase.test',
@@ -114,18 +97,12 @@ describe('worker fetch observability coverage', () => {
         app_area: 'website',
         direction: 'inbound',
         url: 'https://api.local/api/nope',
-      }),
-    }));
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
-      table: 'api_logs',
-      row: expect.objectContaining({
         response_status: 404,
       }),
     }));
   });
 
-  it('writes api_logs for method-not-allowed 405 responses', async () => {
+  it('skips low-signal health-route api_logs', async () => {
     mockCreateProviders.mockReturnValue(makeProviders());
     const env = makeEnv({
       SUPABASE_URL: 'https://supabase.test',
@@ -137,16 +114,12 @@ describe('worker fetch observability coverage', () => {
     const res = await worker.fetch(req, env, makeExecutionCtx());
 
     expect(res.status).toBe(405);
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
+    expect(insertCalls).not.toContainEqual(expect.objectContaining({
       table: 'api_logs',
-      row: expect.objectContaining({
-        response_status: 405,
-      }),
     }));
   });
 
-  it('writes api_logs for non-api 404 responses returned by the worker', async () => {
+  it('skips non-api 404 request logs returned by the worker shell', async () => {
     mockCreateProviders.mockReturnValue(makeProviders());
     const env = makeEnv({
       SUPABASE_URL: 'https://supabase.test',
@@ -158,16 +131,12 @@ describe('worker fetch observability coverage', () => {
     const res = await worker.fetch(req, env, makeExecutionCtx());
 
     expect(res.status).toBe(404);
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
+    expect(insertCalls).not.toContainEqual(expect.objectContaining({
       table: 'api_logs',
-      row: expect.objectContaining({
-        response_status: 404,
-      }),
     }));
   });
 
-  it('writes api_logs for denied preflight responses', async () => {
+  it('skips denied preflight api_logs', async () => {
     mockCreateProviders.mockReturnValue(makeProviders());
     const env = makeEnv({
       SITE_URL: 'https://letsilluminate.co',
@@ -184,12 +153,8 @@ describe('worker fetch observability coverage', () => {
     const res = await worker.fetch(req, env, makeExecutionCtx());
 
     expect(res.status).toBe(403);
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
+    expect(insertCalls).not.toContainEqual(expect.objectContaining({
       table: 'api_logs',
-      row: expect.objectContaining({
-        response_status: 403,
-      }),
     }));
   });
 
@@ -219,7 +184,7 @@ describe('worker fetch observability coverage', () => {
         error_code: 'INTERNAL_ERROR',
       }),
     }));
-    expect(updateCalls).toContainEqual(expect.objectContaining({
+    expect(insertCalls).toContainEqual(expect.objectContaining({
       schema: 'public',
       table: 'api_logs',
       row: expect.objectContaining({
@@ -253,7 +218,7 @@ describe('worker fetch observability coverage', () => {
     const res = await worker.fetch(req, env, makeExecutionCtx());
 
     expect(res.status).toBe(500);
-    expect(updateCalls).toContainEqual(expect.objectContaining({
+    expect(insertCalls).toContainEqual(expect.objectContaining({
       schema: 'public',
       table: 'api_logs',
       row: expect.objectContaining({
@@ -287,7 +252,7 @@ describe('worker fetch observability coverage', () => {
       SUPABASE_SECRET_KEY: 'secret',
       OBSERVABILITY_SCHEMA: 'public',
     });
-    const req = new Request('https://api.local/api/health', { method: 'GET' });
+    const req = new Request('https://api.local/api/events', { method: 'GET' });
 
     const res = await worker.fetch(req, env, makeExecutionCtx());
 
@@ -298,15 +263,9 @@ describe('worker fetch observability coverage', () => {
       row: expect.objectContaining({
         app_area: 'website',
         direction: 'inbound',
-        url: 'https://api.local/api/health',
-      }),
-    }));
-    expect(updateCalls).toContainEqual(expect.objectContaining({
-      schema: 'public',
-      table: 'api_logs',
-      row: expect.objectContaining({
         response_status: 500,
         error_code: 'INTERNAL_ERROR',
+        url: 'https://api.local/api/events',
       }),
     }));
     expect(insertCalls).toContainEqual(expect.objectContaining({

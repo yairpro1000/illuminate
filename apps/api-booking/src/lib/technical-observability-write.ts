@@ -12,6 +12,16 @@ import {
 } from '../../../shared/observability/backend.js';
 import { safeInsert, safeUpdate } from './technical-observability-core.js';
 
+const NON_PERSISTED_INBOUND_PATHS = new Set([
+  '/api/health',
+  '/api/observability/frontend',
+]);
+
+const NON_PERSISTED_INBOUND_PREFIXES = [
+  '/api/__dev/',
+  '/api/__test/',
+];
+
 export async function startApiLog(
   env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
   input: {
@@ -37,6 +47,61 @@ export async function startApiLog(
     request_body_preview: sanitizeBody(input.requestBody),
   });
   return inserted?.id ?? null;
+}
+
+function normalizeMode(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isLowSignalInboundPath(path: string): boolean {
+  if (!path.startsWith('/api/')) return true;
+  if (NON_PERSISTED_INBOUND_PATHS.has(path)) return true;
+  return NON_PERSISTED_INBOUND_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function isMockProviderMode(
+  env: Pick<Env, 'EMAIL_MODE' | 'CALENDAR_MODE' | 'PAYMENTS_MODE' | 'ANTIBOT_MODE'>,
+  provider: string | null | undefined,
+): boolean {
+  switch (provider) {
+    case 'email':
+      return normalizeMode(env.EMAIL_MODE) === 'mock';
+    case 'calendar':
+      return normalizeMode(env.CALENDAR_MODE) === 'mock';
+    case 'payments':
+      return normalizeMode(env.PAYMENTS_MODE) === 'mock';
+    case 'antibot':
+      return normalizeMode(env.ANTIBOT_MODE) === 'mock';
+    default:
+      return false;
+  }
+}
+
+function shouldPersistCompletedApiLog(
+  env: Pick<
+    Env,
+    'EMAIL_MODE' | 'CALENDAR_MODE' | 'PAYMENTS_MODE' | 'ANTIBOT_MODE'
+  >,
+  input: {
+    direction: 'inbound' | 'outbound';
+    provider?: string | null;
+    method: string;
+    url: string;
+  },
+): boolean {
+  if (input.direction === 'outbound') {
+    return !isMockProviderMode(env, input.provider);
+  }
+
+  if (input.method.toUpperCase() === 'OPTIONS') return false;
+  return !isLowSignalInboundPath(safePathname(input.url));
+}
+
+function shouldPersistException(
+  contextJson: Record<string, unknown>,
+): boolean {
+  const path = typeof contextJson.path === 'string' ? contextJson.path : null;
+  return !path || !isLowSignalInboundPath(path);
 }
 
 async function insertCompletedApiLog(
@@ -80,7 +145,11 @@ async function insertCompletedApiLog(
 }
 
 export async function recordCompletedApiLog(
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  env: Pick<
+    Env,
+    'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'
+    | 'EMAIL_MODE' | 'CALENDAR_MODE' | 'PAYMENTS_MODE' | 'ANTIBOT_MODE'
+  >,
   input: {
     operation: OperationContext;
     direction: 'inbound' | 'outbound';
@@ -97,6 +166,9 @@ export async function recordCompletedApiLog(
     startedAtMs: number;
   },
 ): Promise<string | null> {
+  if (!shouldPersistCompletedApiLog(env, input)) {
+    return null;
+  }
   return insertCompletedApiLog(env, input);
 }
 
@@ -133,9 +205,12 @@ export async function recordExceptionLog(
   error: unknown,
   contextJson: Record<string, unknown>,
   errorCode?: string | null,
-): Promise<void> {
+): Promise<string | null> {
+  if (!shouldPersistException(contextJson)) {
+    return null;
+  }
   const details = errorToDetails(error);
-  await safeInsert(env, 'exception_logs', {
+  const inserted = await safeInsert(env, 'exception_logs', {
     app_area: operation.appArea,
     request_id: operation.requestId,
     correlation_id: operation.correlationId,
@@ -146,10 +221,15 @@ export async function recordExceptionLog(
     stack_trace: details.stackTrace ?? null,
     context_json: contextJson,
   });
+  return inserted?.id ?? null;
 }
 
 export async function withOutboundProviderCall<T>(
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  env: Pick<
+    Env,
+    'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'
+    | 'EMAIL_MODE' | 'CALENDAR_MODE' | 'PAYMENTS_MODE' | 'ANTIBOT_MODE'
+  >,
   logger: Logger,
   operation: OperationContext,
   input: {
@@ -164,7 +244,7 @@ export async function withOutboundProviderCall<T>(
 
   try {
     const result = await run();
-    const apiLogId = await insertCompletedApiLog(env, {
+    const apiLogId = await recordCompletedApiLog(env, {
       operation,
       direction: 'outbound',
       provider: input.provider,
@@ -185,7 +265,7 @@ export async function withOutboundProviderCall<T>(
       ? (error as { code: string }).code
       : null;
     const errorText = errorMessage(error);
-    const apiLogId = await insertCompletedApiLog(env, {
+    const apiLogId = await recordCompletedApiLog(env, {
       operation,
       direction: 'outbound',
       provider: input.provider,
@@ -228,7 +308,11 @@ export async function syncApiLogOperationReferences(
 
 export function wrapProvidersForOperation(
   providers: Providers,
-  env: Pick<Env, 'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'>,
+  env: Pick<
+    Env,
+    'SUPABASE_URL' | 'SUPABASE_SECRET_KEY' | 'OBSERVABILITY_SCHEMA'
+    | 'EMAIL_MODE' | 'CALENDAR_MODE' | 'PAYMENTS_MODE' | 'ANTIBOT_MODE'
+  >,
   logger: Logger,
   operation: OperationContext,
   options: {

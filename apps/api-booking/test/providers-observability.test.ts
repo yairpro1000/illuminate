@@ -22,6 +22,7 @@ import { createProviders } from '../src/providers/index.js';
 import { createOperationContext } from '../src/lib/execution.js';
 import {
   recordExceptionLog,
+  withOutboundProviderCall,
   wrapProvidersForOperation,
 } from '../src/lib/technical-observability.js';
 
@@ -100,7 +101,7 @@ describe('provider observability wrapper', () => {
     }));
   });
 
-  it('routes external provider calls through the shared outbound wrapper without extra success logs', async () => {
+  it('skips persisted outbound api_logs for mock providers', async () => {
     insert.mockClear();
     updateEq.mockClear();
     const logger = makeLogger();
@@ -119,16 +120,43 @@ describe('provider observability wrapper', () => {
     );
 
     expect(logger.logInfo).not.toHaveBeenCalled();
+    expect(operation.latestProviderApiLogId).toBeNull();
+    expect(insert).not.toHaveBeenCalled();
+    expect(updateEq).not.toHaveBeenCalled();
+  });
+
+  it('persists outbound api_logs for real providers using the same operation references', async () => {
+    insert.mockClear();
+    const logger = makeLogger();
+    const env = makeEnv();
+    env.EMAIL_MODE = 'resend';
+    const operation = createOperationContext({ appArea: 'website', requestId: 'req-3', correlationId: 'corr-3' });
+    operation.bookingId = 'booking-3';
+    operation.bookingEventId = 'event-3';
+    operation.sideEffectId = 'side-effect-3';
+
+    await withOutboundProviderCall(
+      env,
+      logger,
+      operation,
+      {
+        provider: 'email',
+        operationName: 'sendBookingConfirmation',
+        args: [{ bookingId: 'booking-3' }],
+      },
+      async () => ({ messageId: 'real-message-id' }),
+    );
+
     expect(operation.latestProviderApiLogId).toBe('api-log-1');
     expect(insert).toHaveBeenCalledWith(expect.objectContaining({
       app_area: 'website',
-      booking_id: 'booking-1',
-      booking_event_id: 'event-1',
-      side_effect_id: 'side-effect-1',
+      booking_id: 'booking-3',
+      booking_event_id: 'event-3',
+      side_effect_id: 'side-effect-3',
       direction: 'outbound',
+      provider: 'email',
       response_status: 200,
     }));
-    expect(updateEq).not.toHaveBeenCalled();
   });
 
   it('writes app_area on exception log inserts from the wrapper context', async () => {

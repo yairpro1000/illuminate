@@ -9,8 +9,7 @@ const createProvidersMock = vi.fn(() => ({
   payments: {},
   antibot: {},
 }));
-const startApiLogMock = vi.fn(async () => 'api-log-1');
-const finalizeApiLogMock = vi.fn(async () => undefined);
+const recordCompletedApiLogMock = vi.fn(async () => 'api-log-1');
 const recordExceptionLogMock = vi.fn(async () => undefined);
 
 vi.mock('../src/providers/index.js', () => ({
@@ -22,8 +21,7 @@ vi.mock('../src/router.js', () => ({
 }));
 
 vi.mock('../src/lib/technical-observability.js', () => ({
-  startApiLog: (...args: unknown[]) => startApiLogMock(...args),
-  finalizeApiLog: (...args: unknown[]) => finalizeApiLogMock(...args),
+  recordCompletedApiLog: (...args: unknown[]) => recordCompletedApiLogMock(...args),
   recordExceptionLog: (...args: unknown[]) => recordExceptionLogMock(...args),
   responseUrl: () => '/api/bookings/pay-now',
   wrapProvidersForOperation: (providers: unknown) => providers,
@@ -42,12 +40,11 @@ describe('worker operation reference propagation', () => {
   beforeEach(() => {
     handleRequestMock.mockReset();
     createProvidersMock.mockClear();
-    startApiLogMock.mockClear();
-    finalizeApiLogMock.mockClear();
+    recordCompletedApiLogMock.mockClear();
     recordExceptionLogMock.mockClear();
   });
 
-  it('finalizes inbound api_logs with booking references learned inside the route layer', async () => {
+  it('writes inbound api_logs with booking references learned inside the route layer', async () => {
     handleRequestMock.mockImplementation(async (_request, ctx) => {
       ctx.operation.bookingId = 'booking-1';
       ctx.operation.bookingEventId = 'event-1';
@@ -64,9 +61,8 @@ describe('worker operation reference propagation', () => {
       makeExecutionCtx(),
     );
 
-    expect(finalizeApiLogMock).toHaveBeenCalledWith(
+    expect(recordCompletedApiLogMock).toHaveBeenCalledWith(
       expect.anything(),
-      'api-log-1',
       expect.objectContaining({
         operation: expect.objectContaining({
           bookingId: 'booking-1',
@@ -103,9 +99,8 @@ describe('worker operation reference propagation', () => {
       expect.any(Object),
       'INTERNAL_ERROR',
     );
-    expect(finalizeApiLogMock).toHaveBeenCalledWith(
+    expect(recordCompletedApiLogMock).toHaveBeenCalledWith(
       expect.anything(),
-      'api-log-1',
       expect.objectContaining({
         operation: expect.objectContaining({
           bookingId: 'booking-2',

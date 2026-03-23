@@ -194,7 +194,9 @@ describe('mock email inline preview contract', () => {
 
   it('includes a preview on free event booking submit in mock mode without ui-test mode', async () => {
     const ctx = makeCtx();
-    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid);
+    const freeEvent = [...mockState.events.values()].find((event) =>
+      !event.is_paid && new Date(event.starts_at).getTime() > Date.now()
+    );
     expect(freeEvent).toBeTruthy();
 
     const response = await handleRequest(jsonRequest(`/api/events/${encodeURIComponent(String(freeEvent!.slug))}/book`, {
@@ -429,17 +431,13 @@ describe('mock email inline preview contract', () => {
     expect(cancelData.mock_email_preview).toEqual(expect.objectContaining({
       email_id: bookingEmailId(bookingData.booking_id, 'booking_cancellation'),
     }));
-    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'manage_booking_cancel_mock_email_preview_decision',
-      context: expect.objectContaining({
-        branch_taken: 'include_mock_email_preview',
-      }),
-    }));
   });
 
   it('includes event title in cancellation email for event bookings', async () => {
     const ctx = makeCtx();
-    const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid);
+    const freeEvent = [...mockState.events.values()].find((event) =>
+      !event.is_paid && new Date(event.starts_at).getTime() > Date.now()
+    );
     expect(freeEvent).toBeTruthy();
 
     const bookResponse = await handleRequest(jsonRequest(`/api/events/${encodeURIComponent(String(freeEvent!.slug))}/book`, {

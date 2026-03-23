@@ -41,6 +41,7 @@ vi.mock('../src/repo/supabase.js', () => ({
 }));
 
 import { createOperationContext } from '../src/lib/execution.js';
+import { resetTechnicalObservabilityStateForTest } from '../src/lib/technical-observability-core.js';
 import { finalizeApiLog, startApiLog } from '../src/lib/technical-observability.js';
 
 function makeEnv(overrides: Record<string, unknown> = {}) {
@@ -54,6 +55,7 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
 
 describe('technical observability schema selection', () => {
   beforeEach(() => {
+    resetTechnicalObservabilityStateForTest();
     schemaCalls.length = 0;
     insertAttempts.length = 0;
     updateAttempts.length = 0;

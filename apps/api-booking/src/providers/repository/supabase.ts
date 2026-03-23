@@ -1,5 +1,11 @@
 import type { Db } from '../../repo/supabase.js';
-import type { AdminContactMessageFilters, OrganizerBookingFilters, IRepository } from './interface.js';
+import type {
+  AdminContactMessageFilters,
+  OrganizerBookingFilters,
+  IRepository,
+  TechnicalObservabilityReferenceInput,
+  TechnicalObservabilityRow,
+} from './interface.js';
 import type {
   Booking,
   BookingCurrentStatus,
@@ -676,7 +682,7 @@ export class SupabaseRepository implements IRepository {
         booking_side_effect_id: data.booking_side_effect_id,
         attempt_num: data.attempt_num,
         api_log_id: data.api_log_id ?? null,
-        status: data.status,
+        ...(data.status != null ? { status: data.status } : {}),
         error_message: data.error_message ?? null,
       }).select('*').single(),
       'Failed to create booking side effect attempt',
@@ -706,7 +712,7 @@ export class SupabaseRepository implements IRepository {
     );
     return toBookingSideEffectAttemptRecord(row, {
       updated_at: updates.updated_at ?? row.created_at,
-      completed_at: updates.completed_at ?? (row.status === 'PROCESSING' ? null : row.created_at),
+      completed_at: updates.completed_at ?? (row.status === null ? null : row.created_at),
     });
   }
 
@@ -1055,6 +1061,28 @@ export class SupabaseRepository implements IRepository {
     }
 
     return result;
+  }
+
+  async listApiLogsByReferenceIds(input: TechnicalObservabilityReferenceInput): Promise<TechnicalObservabilityRow[]> {
+    return requireData<TechnicalObservabilityRow[]>(
+      this.db
+        .from('api_logs')
+        .select('*')
+        .or(buildTechnicalReferenceOrClause(input))
+        .order('created_at', { ascending: true }),
+      'Failed to load api logs by technical references',
+    );
+  }
+
+  async listExceptionLogsByReferenceIds(input: TechnicalObservabilityReferenceInput): Promise<TechnicalObservabilityRow[]> {
+    return requireData<TechnicalObservabilityRow[]>(
+      this.db
+        .from('exception_logs')
+        .select('*')
+        .or(buildTechnicalReferenceOrClause(input))
+        .order('created_at', { ascending: true }),
+      'Failed to load exception logs by technical references',
+    );
   }
 
   // ── Organizer reads ───────────────────────────────────────────────────────
@@ -1691,6 +1719,26 @@ function startOfDayIso(date: string): string {
 
 function endOfDayIso(date: string): string {
   return `${date}T23:59:59.999Z`;
+}
+
+function buildTechnicalReferenceOrClause(input: TechnicalObservabilityReferenceInput): string {
+  const clauses = [`booking_id.eq.${input.bookingId}`];
+
+  appendTechnicalReferenceClause(clauses, 'booking_event_id', input.bookingEventIds);
+  appendTechnicalReferenceClause(clauses, 'side_effect_id', input.sideEffectIds);
+  appendTechnicalReferenceClause(clauses, 'side_effect_attempt_id', input.sideEffectAttemptIds);
+
+  return clauses.join(',');
+}
+
+function appendTechnicalReferenceClause(
+  clauses: string[],
+  column: 'booking_event_id' | 'side_effect_id' | 'side_effect_attempt_id',
+  values: string[] | undefined,
+): void {
+  const normalizedValues = [...new Set((values ?? []).filter(Boolean))];
+  if (normalizedValues.length === 0) return;
+  clauses.push(`${column}.in.(${normalizedValues.join(',')})`);
 }
 
 async function requireSingle<T>(

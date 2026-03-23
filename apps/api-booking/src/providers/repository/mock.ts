@@ -442,7 +442,7 @@ export class MockRepository implements IRepository {
       booking_side_effect_id: data.booking_side_effect_id,
       attempt_num: data.attempt_num,
       api_log_id: data.api_log_id,
-      status: data.status,
+      status: data.status ?? null,
       error_message: data.error_message,
       created_at: now(),
       updated_at: now(),
@@ -745,6 +745,14 @@ export class MockRepository implements IRepository {
       ].join(' ').toLowerCase();
       return haystack.includes(q);
     });
+  }
+
+  async listApiLogsByReferenceIds(): Promise<import('./interface.js').TechnicalObservabilityRow[]> {
+    return [];
+  }
+
+  async listExceptionLogsByReferenceIds(): Promise<import('./interface.js').TechnicalObservabilityRow[]> {
+    return [];
   }
 
   // ── Organizer reads ───────────────────────────────────────────────────────

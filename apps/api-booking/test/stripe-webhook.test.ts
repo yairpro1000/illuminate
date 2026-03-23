@@ -730,7 +730,12 @@ describe('Stripe webhook handling', () => {
       remoteIp: null,
     }, ctx);
     const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
-    expect(payment?.stripe_payment_intent_id).toBeNull();
+    expect(payment).toBeTruthy();
+    await ctx.providers.repository.updatePayment(payment!.id, {
+      stripe_payment_intent_id: null,
+    });
+    const paymentWithoutIntent = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(paymentWithoutIntent?.stripe_payment_intent_id).toBeNull();
     ctx.providers.payments.parseWebhookEvent = vi.fn().mockResolvedValue({
       eventCategory: 'payment',
       eventType: 'payment_intent.succeeded',

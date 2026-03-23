@@ -416,7 +416,7 @@ async function startBookingSideEffectAttempt(
     booking_side_effect_id: effect.id,
     attempt_num: attemptNum,
     api_log_id: null,
-    status: 'FAILED',
+    status: null,
     error_message: null,
     completed_at: null,
   });

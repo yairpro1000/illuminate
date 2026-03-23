@@ -74,7 +74,7 @@ function makeCtx(overrides: any = {}) {
       booking_side_effect_id: 'se1',
       attempt_num: 1,
       api_log_id: null,
-      status: 'PROCESSING',
+      status: null,
       error_message: null,
       created_at: '2026-03-01T00:00:00.000Z',
       updated_at: '2026-03-01T00:00:00.000Z',
@@ -236,7 +236,7 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendBookingPaymentReminder).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se1', status: 'PROCESSING', attempt_num: 1 }),
+      expect.objectContaining({ booking_side_effect_id: 'se1', status: null, attempt_num: 1 }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -366,7 +366,7 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendBookingConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: 'PROCESSING' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-confirm-1', status: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -443,7 +443,7 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.payments.createRefund).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-refund-create-1', status: 'PROCESSING' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-create-1', status: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -540,7 +540,7 @@ describe('jobs and side-effect dispatcher', () => {
 
     expect(ctx.providers.email.sendRefundConfirmation).toHaveBeenCalledTimes(1);
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-refund-email-1', status: 'PROCESSING' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-refund-email-1', status: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -634,7 +634,7 @@ describe('jobs and side-effect dispatcher', () => {
     await expect(runSideEffectsOutbox(ctx)).resolves.toBeUndefined();
 
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-calendar-retry-1', status: 'PROCESSING', attempt_num: 2 }),
+      expect.objectContaining({ booking_side_effect_id: 'se-calendar-retry-1', status: null, attempt_num: 2 }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -685,7 +685,7 @@ describe('jobs and side-effect dispatcher', () => {
     );
     expect(ctx.providers.email.sendBookingCancellation).not.toHaveBeenCalled();
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ booking_side_effect_id: 'se-expired-1', status: 'PROCESSING' }),
+      expect.objectContaining({ booking_side_effect_id: 'se-expired-1', status: null }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
       'attempt-1',
@@ -742,7 +742,7 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_side_effect_id: 'se-confirm-missing-cal-1',
-        status: 'PROCESSING',
+        status: null,
       }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(
@@ -834,7 +834,7 @@ describe('jobs and side-effect dispatcher', () => {
     expect(ctx.providers.repository.createBookingSideEffectAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_side_effect_id: 'se-cancel-event-missing-1',
-        status: 'PROCESSING',
+        status: null,
       }),
     );
     expect(ctx.providers.repository.updateBookingSideEffectAttempt).toHaveBeenCalledWith(

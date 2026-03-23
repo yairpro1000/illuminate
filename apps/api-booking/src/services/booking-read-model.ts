@@ -1,4 +1,4 @@
-import { listBookingObservabilityRows, type TechnicalObservabilityRow } from '../lib/technical-observability.js';
+import type { TechnicalObservabilityRow } from '../providers/repository/interface.js';
 import type {
   Booking,
   BookingEventRecord,
@@ -168,18 +168,28 @@ export async function loadBookingObservabilitySnapshot(
     logScope: include.apiLogs,
     exceptionScope: include.exceptionLogs,
   });
-  const observability = await listBookingObservabilityRows(ctx.env, {
-    bookingId: input.booking.id,
-    bookingEventIds: logScopeIds.bookingEventIds,
-    sideEffectIds: logScopeIds.sideEffectIds,
-    sideEffectAttemptIds: logScopeIds.sideEffectAttemptIds,
-    includeApiLogs: include.apiLogs !== 'none',
-    includeExceptionLogs: include.exceptionLogs !== 'none',
-  });
+  const [apiLogs, exceptionLogs] = await Promise.all([
+    include.apiLogs === 'none'
+      ? Promise.resolve([] as TechnicalObservabilityRow[])
+      : ctx.providers.repository.listApiLogsByReferenceIds({
+          bookingId: input.booking.id,
+          bookingEventIds: logScopeIds.bookingEventIds,
+          sideEffectIds: logScopeIds.sideEffectIds,
+          sideEffectAttemptIds: logScopeIds.sideEffectAttemptIds,
+        }),
+    include.exceptionLogs === 'none'
+      ? Promise.resolve([] as TechnicalObservabilityRow[])
+      : ctx.providers.repository.listExceptionLogsByReferenceIds({
+          bookingId: input.booking.id,
+          bookingEventIds: logScopeIds.bookingEventIds,
+          sideEffectIds: logScopeIds.sideEffectIds,
+          sideEffectAttemptIds: logScopeIds.sideEffectAttemptIds,
+        }),
+  ]);
 
   return {
-    apiLogs: filterObservabilityRows(observability.apiLogs, include.apiLogs, input.booking.id),
-    exceptionLogs: filterObservabilityRows(observability.exceptionLogs, include.exceptionLogs, input.booking.id),
+    apiLogs: filterObservabilityRows(apiLogs, include.apiLogs, input.booking.id),
+    exceptionLogs: filterObservabilityRows(exceptionLogs, include.exceptionLogs, input.booking.id),
   };
 }
 

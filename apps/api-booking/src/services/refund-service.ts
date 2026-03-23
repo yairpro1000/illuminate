@@ -1,4 +1,4 @@
-import type { BookingContext } from './booking-service.js';
+import { runImmediateBookingEventWorkflow, type BookingContext } from './booking-service.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { getBookingPolicyConfig } from '../config/booking-policy.js';
 import { isPaymentSettledStatus } from '../domain/payment-status.js';
@@ -552,27 +552,38 @@ export async function reconcileStripeRefundWebhook(
   if (nextRefundStatus === 'SUCCEEDED') {
     const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
     if (booking) {
-    await appendRefundCompletedEventIfNeeded(
-      booking,
-      updatedPayment,
-      {
-        refund_status: 'SUCCEEDED',
-        refund_amount: event.amount ?? updatedPayment.refund_amount ?? payment.amount,
-        refund_currency: event.currency ?? updatedPayment.refund_currency ?? payment.currency,
-        refund_reason: updatedPayment.refund_reason ?? 'Refund processed through Stripe reconciliation.',
-        refund_path: event.creditNoteId ? 'credit_note' : 'direct_refund',
-        stripe_refund_id: event.refundId ?? updatedPayment.stripe_refund_id ?? null,
-        stripe_credit_note_id: event.creditNoteId ?? updatedPayment.stripe_credit_note_id ?? null,
-        credit_note_number: event.creditNoteNumber,
-        credit_note_document_url: event.creditNoteDocumentUrl,
-        credit_note_url: artifactUrls.creditNoteUrl,
-        receipt_url: artifactUrls.receiptUrl,
-        invoice_id: event.invoiceId ?? updatedPayment.stripe_invoice_id,
-        payment_intent_id: event.paymentIntentId ?? updatedPayment.stripe_payment_intent_id,
-      },
-      'WEBHOOK',
-      ctx,
-    );
+      const transition = await appendRefundCompletedEventIfNeeded(
+        booking,
+        updatedPayment,
+        {
+          refund_status: 'SUCCEEDED',
+          refund_amount: event.amount ?? updatedPayment.refund_amount ?? payment.amount,
+          refund_currency: event.currency ?? updatedPayment.refund_currency ?? payment.currency,
+          refund_reason: updatedPayment.refund_reason ?? 'Refund processed through Stripe reconciliation.',
+          refund_path: event.creditNoteId ? 'credit_note' : 'direct_refund',
+          stripe_refund_id: event.refundId ?? updatedPayment.stripe_refund_id ?? null,
+          stripe_credit_note_id: event.creditNoteId ?? updatedPayment.stripe_credit_note_id ?? null,
+          credit_note_number: event.creditNoteNumber,
+          credit_note_document_url: event.creditNoteDocumentUrl,
+          credit_note_url: artifactUrls.creditNoteUrl,
+          receipt_url: artifactUrls.receiptUrl,
+          invoice_id: event.invoiceId ?? updatedPayment.stripe_invoice_id,
+          payment_intent_id: event.paymentIntentId ?? updatedPayment.stripe_payment_intent_id,
+        },
+        'WEBHOOK',
+        ctx,
+      );
+
+      if (transition) {
+        await runImmediateBookingEventWorkflow({
+          transitionEvent: transition.event,
+          transitionEventType: 'REFUND_COMPLETED',
+          sourceOperation: 'reconcile_stripe_refund_webhook',
+          bookingBeforeTransition: booking,
+          bookingAfterTransition: booking,
+          transitionSideEffects: transition.sideEffects,
+        }, ctx);
+      }
     }
   }
 
@@ -659,6 +670,18 @@ export async function sendRefundConfirmationEmailForBooking(
       ?? readPayloadString(payload, 'credit_note_document_url')
       ?? payment.stripe_credit_note_url,
     receiptUrl: readPayloadString(payload, 'receipt_url') ?? payment.stripe_receipt_url,
+  });
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'refund_confirmation_email_completed',
+    message: 'Refund confirmation email sent',
+    context: {
+      booking_id: booking.id,
+      payment_id: payment.id,
+      current_refund_status: effectiveRefundStatus(payment),
+      branch_taken: 'refund_confirmation_email_sent',
+      deny_reason: null,
+    },
   });
 }
 

@@ -2073,6 +2073,20 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
       buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
       { includeRefundNotice },
     );
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'booking_cancellation_email_dispatch_completed',
+      message: 'Session cancellation email sent',
+      context: {
+        booking_id: booking.id,
+        booking_kind: bookingKind,
+        booking_status: booking.current_status,
+        payment_status: payment?.status ?? null,
+        refund_notice_included: includeRefundNotice,
+        branch_taken: 'session_cancellation_email_sent',
+        deny_reason: null,
+      },
+    });
     return;
   }
 
@@ -2100,6 +2114,21 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
     { includeRefundNotice },
   );
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_cancellation_email_dispatch_completed',
+    message: 'Event cancellation email sent',
+    context: {
+      booking_id: booking.id,
+      booking_kind: bookingKind,
+      booking_status: booking.current_status,
+      event_id: event.id,
+      payment_status: payment?.status ?? null,
+      refund_notice_included: includeRefundNotice,
+      branch_taken: 'event_cancellation_email_sent',
+      deny_reason: null,
+    },
+  });
 }
 
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {

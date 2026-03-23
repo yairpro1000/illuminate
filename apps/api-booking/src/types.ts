@@ -26,7 +26,7 @@ export type BookingSideEffectEntity = 'EMAIL' | 'CALENDAR' | 'PAYMENT' | 'WHATSA
 
 export type BookingSideEffectStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'DEAD';
 
-export type BookingSideEffectAttemptStatus = 'PROCESSING' | 'SUCCESS' | 'FAILED';
+export type BookingSideEffectAttemptStatus = 'SUCCESS' | 'FAILED';
 
 export type BookingEffectIntent =
   | 'SEND_BOOKING_CONFIRMATION_REQUEST'
@@ -126,7 +126,7 @@ export interface BookingSideEffectAttempt {
   booking_side_effect_id: string;
   attempt_num: number;
   api_log_id: string | null;
-  status: BookingSideEffectAttemptStatus;
+  status: BookingSideEffectAttemptStatus | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;
@@ -462,7 +462,9 @@ export type NewBooking = Omit<
 
 export type NewBookingEvent = Omit<BookingEventRecord, 'id' | 'created_at' | 'updated_at'>;
 export type NewBookingSideEffect = Omit<BookingSideEffect, 'id' | 'created_at' | 'updated_at'>;
-export type NewBookingSideEffectAttempt = Omit<BookingSideEffectAttempt, 'id' | 'created_at' | 'updated_at'>;
+export type NewBookingSideEffectAttempt =
+  Omit<BookingSideEffectAttempt, 'id' | 'created_at' | 'updated_at' | 'status'>
+  & { status?: BookingSideEffectAttemptStatus | null };
 
 export type NewPayment = Omit<Payment, 'id' | 'created_at' | 'updated_at'>;
 export type NewContactMessage = Omit<ContactMessage, 'id' | 'created_at' | 'updated_at'>;
