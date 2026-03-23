@@ -54,6 +54,33 @@ async function requireRows(queryPromise, failureMessage) {
   return Array.isArray(data) ? data : [];
 }
 
+async function requireMutation(queryPromise, failureMessage) {
+  const { error: mutationError } = await queryPromise;
+  if (mutationError) {
+    throw new Error(`${failureMessage}: ${mutationError.message}`);
+  }
+}
+
+async function loadExistingIds({
+  db,
+  table,
+  ids,
+  failureMessage,
+}) {
+  if (ids.length === 0) return [];
+
+  const rows = await requireRows(
+    db.from(table)
+      .select('id')
+      .in('id', ids),
+    failureMessage,
+  );
+
+  return rows
+    .map((row) => row.id)
+    .filter((id) => typeof id === 'string');
+}
+
 async function deleteRowsByIds({
   db,
   table,
@@ -67,31 +94,75 @@ async function deleteRowsByIds({
   let deletedCount = 0;
   const batches = chunkValues(ids, deleteBatchSize);
   for (const [batchIndex, batchIds] of batches.entries()) {
+    const existingIds = await loadExistingIds({
+      db,
+      table,
+      ids: batchIds,
+      failureMessage: `Failed to resolve rows before deleting from ${table}`,
+    });
+
     info(logger, 'client_prefix_delete_batch_started', 'Started delete batch', {
       email_prefix: emailPrefix,
       table,
       batch_index: batchIndex + 1,
       batch_count: batches.length,
       batch_size: batchIds.length,
+      pre_delete_existing_count: existingIds.length,
       branch_taken: 'delete_batch',
     });
 
-    const deletedRows = await requireRows(
-      db.from(table).delete().in('id', batchIds).select('id'),
+    if (existingIds.length === 0) {
+      info(logger, 'client_prefix_delete_batch_completed', 'Completed delete batch', {
+        email_prefix: emailPrefix,
+        table,
+        batch_index: batchIndex + 1,
+        batch_count: batches.length,
+        deleted_count: 0,
+        post_delete_remaining_count: 0,
+        branch_taken: 'delete_batch_noop_no_matching_rows',
+      });
+      continue;
+    }
+
+    await requireMutation(
+      db.from(table).delete().in('id', existingIds),
       `Failed to delete rows from ${table}`,
     );
 
-    if (deletedRows.length !== batchIds.length) {
-      throw new Error(`Delete count mismatch for ${table}: expected ${batchIds.length}, deleted ${deletedRows.length}`);
+    const remainingIds = await loadExistingIds({
+      db,
+      table,
+      ids: existingIds,
+      failureMessage: `Failed to verify rows after deleting from ${table}`,
+    });
+
+    const actuallyDeletedCount = existingIds.length - remainingIds.length;
+
+    if (remainingIds.length > 0) {
+      error(logger, 'client_prefix_delete_batch_verification_failed', 'Delete batch verification failed', {
+        email_prefix: emailPrefix,
+        table,
+        batch_index: batchIndex + 1,
+        batch_count: batches.length,
+        attempted_id_count: existingIds.length,
+        remaining_id_count: remainingIds.length,
+        remaining_ids: remainingIds,
+        branch_taken: 'delete_batch_verification_failed',
+        deny_reason: 'rows_still_present_after_delete',
+      });
+      throw new Error(
+        `Delete verification failed for ${table}: attempted ${existingIds.length}, remaining ${remainingIds.length}`,
+      );
     }
 
-    deletedCount += deletedRows.length;
+    deletedCount += actuallyDeletedCount;
     info(logger, 'client_prefix_delete_batch_completed', 'Completed delete batch', {
       email_prefix: emailPrefix,
       table,
       batch_index: batchIndex + 1,
       batch_count: batches.length,
-      deleted_count: deletedRows.length,
+      deleted_count: actuallyDeletedCount,
+      post_delete_remaining_count: remainingIds.length,
       branch_taken: 'delete_batch_completed',
     });
   }

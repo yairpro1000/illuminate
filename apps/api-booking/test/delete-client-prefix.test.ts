@@ -20,6 +20,7 @@ function makeDeletingDbFixture({
   reminderSubscriptions = [],
   apiLogs = [],
   exceptionLogs = [],
+  deleteSelectResponseLimitByTable = {},
 } = {}) {
   const deleteOrder: string[] = [];
   const rowsByTable = {
@@ -34,6 +35,9 @@ function makeDeletingDbFixture({
     api_logs: apiLogs,
     exception_logs: exceptionLogs,
   } as Record<string, Array<Record<string, unknown>>>;
+  const deleteResponseLimitByTableState = {
+    ...deleteSelectResponseLimitByTable,
+  } as Record<string, number>;
 
   return {
     deleteOrder,
@@ -73,7 +77,11 @@ function makeDeletingDbFixture({
               deleteOrder.push(table);
               const deleted = (rowsByTable[table] ?? []).filter((row) => state.ids.includes(String(row.id)));
               rowsByTable[table] = (rowsByTable[table] ?? []).filter((row) => !state.ids.includes(String(row.id)));
-              return Promise.resolve({ data: deleted, error: null });
+              const responseLimit = deleteResponseLimitByTableState[table];
+              return Promise.resolve({
+                data: typeof responseLimit === 'number' ? deleted.slice(0, responseLimit) : deleted,
+                error: null,
+              });
             }
             return this;
           },
@@ -96,6 +104,16 @@ function makeDeletingDbFixture({
             return this;
           },
           async then(resolve: (value: { data: Array<Record<string, unknown>>; error: null }) => unknown) {
+            if (state.mode === 'delete') {
+              deleteOrder.push(table);
+              const deleted = (rowsByTable[table] ?? []).filter((row) => state.ids.includes(String(row.id)));
+              rowsByTable[table] = (rowsByTable[table] ?? []).filter((row) => !state.ids.includes(String(row.id)));
+              const responseLimit = deleteResponseLimitByTableState[table];
+              return resolve({
+                data: typeof responseLimit === 'number' ? deleted.slice(0, responseLimit) : deleted,
+                error: null,
+              });
+            }
             const data = state.ids.length > 0
               ? (rowsByTable[table] ?? []).filter((row) =>
                 getKeyCandidates(row).some((key) => state.ids.includes(String(key))))
@@ -264,6 +282,48 @@ describe('delete client prefix maintenance script', () => {
         deleted_booking_count: 1,
         deleted_client_count: 1,
         branch_taken: 'client_prefix_purge_completed',
+      }),
+    }));
+  });
+
+  it('verifies deletion by re-query instead of trusting delete response row counts', async () => {
+    const logger = makeLogger();
+    const fixture = makeDeletingDbFixture({
+      clients: [
+        { id: 'c1', email: 'p4-clean-a@example.test', first_name: 'A', last_name: null },
+      ],
+      bookings: [
+        { id: 'b1', client_id: 'c1', current_status: 'PENDING', starts_at: '2026-03-30T10:00:00.000Z', ends_at: '2026-03-30T10:30:00.000Z' },
+      ],
+      bookingEvents: [
+        { id: 'be1', booking_id: 'b1', event_type: 'BOOKING_FORM_SUBMITTED', created_at: '2026-03-01T10:00:00.000Z' },
+      ],
+      bookingSideEffects: [
+        { id: 'se1', booking_event_id: 'be1', effect_intent: 'SEND_BOOKING_CONFIRMATION_REQUEST', status: 'SUCCESS' },
+      ],
+      bookingSideEffectAttempts: [
+        { id: 'sea1', booking_side_effect_id: 'se1', status: 'SUCCESS' },
+      ],
+      deleteSelectResponseLimitByTable: {
+        booking_side_effect_attempts: 0,
+      },
+    });
+
+    const summary = await purgeClientDataByEmailPrefix({
+      db: fixture.db as any,
+      emailPrefix: 'p4-clean',
+      execute: true,
+      logger,
+    });
+
+    expect(summary.deleted_counts.booking_side_effect_attempts).toBe(1);
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'client_prefix_delete_batch_completed',
+      context: expect.objectContaining({
+        table: 'booking_side_effect_attempts',
+        deleted_count: 1,
+        post_delete_remaining_count: 0,
+        branch_taken: 'delete_batch_completed',
       }),
     }));
   });
