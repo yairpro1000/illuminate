@@ -9,6 +9,7 @@ import { MockAntiBotProvider } from '../src/providers/antibot/mock.js';
 import { mockState } from '../src/providers/mock-state.js';
 import { createOperationContext } from '../src/lib/execution.js';
 import { makeEnv, makeLogger } from './admin-helpers.js';
+import * as bookingPublicActionService from '../src/services/booking-public-action-service.js';
 
 const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }));
 
@@ -226,6 +227,7 @@ describe('mock email inline preview contract', () => {
 
   it('includes a preview on confirm and resolves payment-settled previews through booking-event status linkage', async () => {
     const ctx = makeCtx();
+    const publicActionInfoSpy = vi.spyOn(bookingPublicActionService, 'getBookingPublicActionInfo');
     const email = 'same-recipient@example.test';
 
     const pendingA = await handleRequest(jsonRequest('/api/bookings/pay-later', {
@@ -291,6 +293,7 @@ describe('mock email inline preview contract', () => {
         branch_taken: 'return_booking_confirmation_response',
       }),
     }));
+    expect(publicActionInfoSpy).not.toHaveBeenCalled();
 
     const payNowAResponse = await handleRequest(jsonRequest('/api/bookings/pay-now', {
       slot_start: '2026-03-24T10:00:00.000Z',

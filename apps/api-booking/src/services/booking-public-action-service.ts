@@ -41,6 +41,39 @@ export interface ManageActionState {
   isPaid: boolean;
 }
 
+export async function buildBookingPublicActionInfoFromState(
+  booking: Booking,
+  payment: Payment | null,
+  ctx: BookingContext,
+): Promise<BookingPublicActionInfo> {
+  const actionState = await resolveBookingPublicActionState(booking, payment, ctx);
+  const event = booking.event_id
+    ? await ctx.providers.repository.getEventById(booking.event_id)
+    : null;
+
+  if (actionState.checkoutUrl) {
+    return {
+      booking,
+      checkoutUrl: actionState.checkoutUrl,
+      manageUrl: actionState.manageUrl,
+      nextActionUrl: actionState.checkoutUrl,
+      nextActionLabel: 'Complete Payment',
+      calendarEvent: buildPublicCalendarEventInfo(booking, event),
+      calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
+    };
+  }
+
+  return {
+    booking,
+    checkoutUrl: actionState.checkoutUrl,
+    manageUrl: actionState.manageUrl,
+    nextActionUrl: actionState.manageUrl,
+    nextActionLabel: actionState.manageUrl ? 'Manage Booking' : null,
+    calendarEvent: buildPublicCalendarEventInfo(booking, event),
+    calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(booking),
+  };
+}
+
 export async function getBookingPublicActionInfo(
   booking: Booking,
   ctx: BookingContext,
@@ -53,34 +86,7 @@ export async function getBookingPublicActionInfo(
         payment: 'latest',
       },
     }, ctx);
-  const bookingRecord = readModel.booking;
-  const payment = readModel.payment;
-  const actionState = await resolveBookingPublicActionState(bookingRecord, payment, ctx);
-  const event = bookingRecord.event_id
-    ? await ctx.providers.repository.getEventById(bookingRecord.event_id)
-    : null;
-
-  if (actionState.checkoutUrl) {
-    return {
-      booking: bookingRecord,
-      checkoutUrl: actionState.checkoutUrl,
-      manageUrl: actionState.manageUrl,
-      nextActionUrl: actionState.checkoutUrl,
-      nextActionLabel: 'Complete Payment',
-      calendarEvent: buildPublicCalendarEventInfo(bookingRecord, event),
-      calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(bookingRecord),
-    };
-  }
-
-  return {
-    booking: bookingRecord,
-    checkoutUrl: actionState.checkoutUrl,
-    manageUrl: actionState.manageUrl,
-    nextActionUrl: actionState.manageUrl,
-    nextActionLabel: actionState.manageUrl ? 'Manage Booking' : null,
-    calendarEvent: buildPublicCalendarEventInfo(bookingRecord, event),
-    calendarSyncPendingRetry: isSessionCalendarSyncPendingRetry(bookingRecord),
-  };
+  return buildBookingPublicActionInfoFromState(readModel.booking, readModel.payment, ctx);
 }
 
 export async function getBookingEventStatusSnapshot(

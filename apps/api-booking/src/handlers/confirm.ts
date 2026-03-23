@@ -1,8 +1,7 @@
 import type { AppContext } from '../router.js';
 import { ok, badRequest } from '../lib/errors.js';
 import { consumeLatestEmailDispatch } from '../lib/execution.js';
-import { confirmBookingEmail } from '../services/booking-service.js';
-import { getBookingPublicActionInfo } from '../services/booking-public-action-service.js';
+import { confirmBookingEmailResult } from '../services/booking-service.js';
 
 // GET /api/bookings/confirm?token=<raw>
 export async function handleConfirm(request: Request, ctx: AppContext): Promise<Response> {
@@ -48,7 +47,7 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
       deny_reason: null,
     },
   });
-  const booking = await confirmBookingEmail(token, {
+  const confirmation = await confirmBookingEmailResult(token, {
     providers: ctx.providers,
     env: ctx.env,
     logger: ctx.logger,
@@ -57,6 +56,8 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
     operation: ctx.operation,
     siteUrl: ctx.siteUrl,
   });
+  const booking = confirmation.booking;
+  const actionInfo = confirmation.actionInfo;
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_confirm_token_redemption_completed',
@@ -68,49 +69,6 @@ export async function handleConfirm(request: Request, ctx: AppContext): Promise<
       booking_type: booking.booking_type,
       branch_taken: 'booking_confirmation_redeemed',
       deny_reason: null,
-    },
-  });
-
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_confirm_public_action_resolution_started',
-    message: 'Started booking confirmation next-action resolution',
-    context: {
-      booking_id: booking.id,
-      booking_status: booking.current_status,
-      booking_kind: booking.event_id ? 'event' : 'session',
-      branch_taken: 'resolve_public_next_action',
-      deny_reason: null,
-    },
-  });
-  const actionInfo = await getBookingPublicActionInfo(booking, {
-    providers: ctx.providers,
-    env: ctx.env,
-    logger: ctx.logger,
-    requestId: ctx.requestId,
-    correlationId: ctx.correlationId,
-    operation: ctx.operation,
-    siteUrl: ctx.siteUrl,
-  });
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_confirm_public_action_resolution_completed',
-    message: 'Completed booking confirmation next-action resolution',
-    context: {
-      booking_id: booking.id,
-      booking_status: booking.current_status,
-      booking_kind: booking.event_id ? 'event' : 'session',
-      has_checkout_url: Boolean(actionInfo.checkoutUrl),
-      has_manage_url: Boolean(actionInfo.manageUrl),
-      has_next_action_url: Boolean(actionInfo.nextActionUrl),
-      next_action_label: actionInfo.nextActionLabel,
-      calendar_sync_pending_retry: actionInfo.calendarSyncPendingRetry,
-      branch_taken: actionInfo.checkoutUrl
-        ? 'return_complete_payment_action'
-        : actionInfo.manageUrl
-          ? 'return_manage_booking_action'
-          : 'return_confirmed_without_followup_action',
-      deny_reason: actionInfo.checkoutUrl || actionInfo.manageUrl ? null : 'no_public_followup_action_available',
     },
   });
   const emailDispatch = consumeLatestEmailDispatch(ctx.operation);

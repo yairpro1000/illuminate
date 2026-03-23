@@ -49,7 +49,10 @@ import {
 } from './booking-event-workflow.js';
 import { createBookingSideEffectExecutor } from './booking-side-effect-executor.js';
 import { resolveBookingManageAccess } from './booking-access-service.js';
-import { evaluateManageBookingPolicy } from './booking-public-action-service.js';
+import {
+  buildBookingPublicActionInfoFromState,
+  evaluateManageBookingPolicy,
+} from './booking-public-action-service.js';
 import {
   effectiveRefundStatus,
   evaluateCancellationRefundNoticeDecision,
@@ -397,6 +400,11 @@ export interface BookingPublicActionInfo {
   nextActionLabel: 'Complete Payment' | 'Manage Booking' | null;
   calendarEvent: PublicCalendarEventInfo | null;
   calendarSyncPendingRetry: boolean;
+}
+
+export interface BookingConfirmationResult {
+  booking: Booking;
+  actionInfo: BookingPublicActionInfo;
 }
 
 export interface ContinuePaymentActionInfo {
@@ -1018,6 +1026,14 @@ export async function confirmBookingEmail(
   rawToken: string,
   ctx: BookingContext,
 ): Promise<Booking> {
+  const result = await confirmBookingEmailResult(rawToken, ctx);
+  return result.booking;
+}
+
+export async function confirmBookingEmailResult(
+  rawToken: string,
+  ctx: BookingContext,
+): Promise<BookingConfirmationResult> {
   const policy = await loadBookingPolicy(ctx);
   const tokenHash = await hashToken(rawToken);
   const booking = await ctx.providers.repository.getBookingByConfirmTokenHash(tokenHash);
@@ -1072,7 +1088,12 @@ export async function confirmBookingEmail(
 
   if (booking.current_status !== 'PENDING') {
     if (booking.current_status === 'CONFIRMED') {
-      return retryCalendarSyncForConfirmedBookingIfMissing(booking, bookingCtx);
+      const confirmedBooking = await retryCalendarSyncForConfirmedBookingIfMissing(booking, bookingCtx);
+      const actionInfo = await resolveBookingConfirmationActionInfo(confirmedBooking, null, bookingCtx);
+      return {
+        booking: confirmedBooking,
+        actionInfo,
+      };
     }
     throw gone('This confirmation link is no longer valid');
   }
@@ -1109,8 +1130,9 @@ export async function confirmBookingEmail(
     },
     bookingCtx,
   )).booking;
+  let payment: Payment | null = null;
   if (booking.booking_type !== 'FREE') {
-    const payment = await ensurePayLaterPendingPaymentRecord(
+    payment = await ensurePayLaterPendingPaymentRecord(
       finalizedBooking,
       bookingCtx,
       'booking_email_confirmation',
@@ -1136,6 +1158,8 @@ export async function confirmBookingEmail(
     });
   }
 
+  const actionInfo = await resolveBookingConfirmationActionInfo(finalizedBooking, payment, bookingCtx);
+
   bookingCtx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_email_confirmation_sync_outcome',
@@ -1155,7 +1179,63 @@ export async function confirmBookingEmail(
     },
   });
 
-  return finalizedBooking;
+  return {
+    booking: finalizedBooking,
+    actionInfo,
+  };
+}
+
+async function resolveBookingConfirmationActionInfo(
+  booking: Booking,
+  payment: Payment | null,
+  ctx: BookingContext,
+): Promise<BookingPublicActionInfo> {
+  const resolvedPayment = payment ?? (
+    booking.booking_type === 'FREE'
+      ? null
+      : await ctx.providers.repository.getPaymentByBookingId(booking.id)
+  );
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_public_action_resolution_started',
+    message: 'Started booking confirmation next-action resolution',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      has_preloaded_payment: Boolean(payment),
+      booking_type: booking.booking_type,
+      branch_taken: payment
+        ? 'resolve_public_next_action_with_confirmed_workflow_state'
+        : 'resolve_public_next_action_after_confirmed_booking_lookup',
+      deny_reason: null,
+    },
+  });
+
+  const actionInfo = await buildBookingPublicActionInfoFromState(booking, resolvedPayment, ctx);
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_confirm_public_action_resolution_completed',
+    message: 'Completed booking confirmation next-action resolution',
+    context: {
+      booking_id: booking.id,
+      booking_status: booking.current_status,
+      booking_kind: booking.event_id ? 'event' : 'session',
+      has_checkout_url: Boolean(actionInfo.checkoutUrl),
+      has_manage_url: Boolean(actionInfo.manageUrl),
+      has_next_action_url: Boolean(actionInfo.nextActionUrl),
+      next_action_label: actionInfo.nextActionLabel,
+      calendar_sync_pending_retry: actionInfo.calendarSyncPendingRetry,
+      branch_taken: actionInfo.checkoutUrl
+        ? 'return_complete_payment_action'
+        : actionInfo.manageUrl
+          ? 'return_manage_booking_action'
+          : 'return_confirmed_without_followup_action',
+      deny_reason: actionInfo.checkoutUrl || actionInfo.manageUrl ? null : 'no_public_followup_action_available',
+    },
+  });
+  return actionInfo;
 }
 
 // ── Payment success (webhook/dev) ──────────────────────────────────────────
