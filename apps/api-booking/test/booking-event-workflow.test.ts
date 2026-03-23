@@ -104,11 +104,25 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
 describe('booking event workflow finalization', () => {
   it('does not reconcile processing side effects during realtime finalization unless explicitly requested', async () => {
     const ctx = makeCtx();
+    const event = {
+      id: 'be1',
+      booking_id: 'b1',
+      event_type: 'BOOKING_FORM_SUBMITTED',
+      source: 'PUBLIC_UI',
+      status: 'PROCESSING',
+      payload: {},
+      error_message: null,
+      completed_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
     await finalizeBookingEventStatus('be1', ctx, {
+      event,
       startedExecution: true,
     });
 
+    expect(ctx.providers.repository.getBookingEventById).not.toHaveBeenCalled();
     expect(ctx.providers.repository.getLastBookingSideEffectAttempt).not.toHaveBeenCalled();
     expect(ctx.providers.repository.updateBookingSideEffect).not.toHaveBeenCalled();
     expect(ctx.providers.repository.updateBookingEvent).toHaveBeenCalledWith(
