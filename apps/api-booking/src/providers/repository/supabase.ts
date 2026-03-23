@@ -141,6 +141,8 @@ type ContactMessageRow = ContactMessage & {
   } | null;
 };
 
+const POSTGREST_IN_FILTER_BATCH_SIZE = 200;
+
 export class SupabaseRepository implements IRepository {
   constructor(private readonly db: Db) {}
 
@@ -1225,18 +1227,22 @@ export class SupabaseRepository implements IRepository {
       }
 
       if (bookingEventIds.length > 0) {
-        const sideEffects = await requireData<Array<{
+        const sideEffects = await loadByIdsInBatches<{
           id: string;
           booking_event_id: string;
           effect_intent: string;
           created_at: string;
-        }>>(
-          this.db
-            .from('booking_side_effects')
-            .select('id, booking_event_id, effect_intent, created_at')
-            .in('booking_event_id', bookingEventIds)
-            .order('created_at', { ascending: false }),
-          'Failed to load organizer booking side effects',
+        }>(
+          bookingEventIds,
+          POSTGREST_IN_FILTER_BATCH_SIZE,
+          (batchIds) => requireData(
+            this.db
+              .from('booking_side_effects')
+              .select('id, booking_event_id, effect_intent, created_at')
+              .in('booking_event_id', batchIds)
+              .order('created_at', { ascending: false }),
+            'Failed to load organizer booking side effects',
+          ),
         );
 
         const bookingIdBySideEffectId = new Map<string, string>();
@@ -1254,17 +1260,21 @@ export class SupabaseRepository implements IRepository {
 
         const sideEffectIds = sideEffects.map((effect) => effect.id);
         if (sideEffectIds.length > 0) {
-          const attempts = await requireData<Array<{
+          const attempts = await loadByIdsInBatches<{
             booking_side_effect_id: string;
             status: OrganizerBookingRow['latest_side_effect_attempt_status'];
             created_at: string;
-          }>>(
-            this.db
-              .from('booking_side_effect_attempts')
-              .select('booking_side_effect_id, status, created_at')
-              .in('booking_side_effect_id', sideEffectIds)
-              .order('created_at', { ascending: false }),
-            'Failed to load organizer booking side effect attempts',
+          }>(
+            sideEffectIds,
+            POSTGREST_IN_FILTER_BATCH_SIZE,
+            (batchIds) => requireData(
+              this.db
+                .from('booking_side_effect_attempts')
+                .select('booking_side_effect_id, status, created_at')
+                .in('booking_side_effect_id', batchIds)
+                .order('created_at', { ascending: false }),
+              'Failed to load organizer booking side effect attempts',
+            ),
           );
 
           for (const attempt of attempts) {
@@ -1351,6 +1361,46 @@ export class SupabaseRepository implements IRepository {
         client_last_name: booking.client_last_name ?? null,
         client_email: booking.client_email,
         client_phone: booking.client_phone ?? null,
+      };
+    });
+  }
+
+  async getOrganizerBookingSummaries(filters: OrganizerBookingFilters): Promise<import('../../types.js').OrganizerBookingSummaryRow[]> {
+    let query: any = this.db.from('bookings').select(BOOKING_SELECT).order('starts_at', { ascending: true });
+
+    if (filters.event_id) query = query.eq('event_id', filters.event_id);
+    if (filters.client_id) query = query.eq('client_id', filters.client_id);
+    if (filters.client_ids && filters.client_ids.length > 0) query = query.in('client_id', filters.client_ids);
+    if (filters.current_status) query = query.eq('current_status', filters.current_status);
+    if (filters.booking_kind === 'event') query = query.not('event_id', 'is', null);
+    if (filters.booking_kind === 'session') query = query.is('event_id', null);
+    if (filters.date) {
+      query = query
+        .gte('starts_at', startOfDayIso(filters.date))
+        .lte('starts_at', endOfDayIso(filters.date));
+    }
+
+    const rows = await requireData<BookingRow[]>(query, 'Failed to load organizer booking summaries');
+    return rows.map((row) => {
+      const booking = toBooking(row);
+      if (!booking.client_first_name || !booking.client_email) {
+        throw new Error(`Booking ${booking.id} is missing organizer join data`);
+      }
+      return {
+        booking_id: booking.id,
+        current_status: booking.current_status,
+        event_id: booking.event_id,
+        event_title: booking.event_title ?? null,
+        session_type_title: booking.session_type_title ?? null,
+        starts_at: booking.starts_at,
+        client_id: booking.client_id,
+        client_first_name: booking.client_first_name,
+        client_last_name: booking.client_last_name ?? null,
+        client_email: booking.client_email,
+        notes: booking.notes ?? null,
+        booking_price: booking.price ?? null,
+        booking_currency: booking.currency ?? null,
+        booking_coupon_code: booking.coupon_code ?? null,
       };
     });
   }
@@ -1779,6 +1829,21 @@ async function requireMutation(
 ): Promise<void> {
   const { error } = await promise;
   if (error) throw new Error(`${message}: ${formatQueryError(error)}`);
+}
+
+async function loadByIdsInBatches<T>(
+  ids: string[],
+  batchSize: number,
+  loader: (batchIds: string[]) => Promise<T[]>,
+): Promise<T[]> {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (uniqueIds.length === 0) return [];
+
+  const rows: T[] = [];
+  for (let index = 0; index < uniqueIds.length; index += batchSize) {
+    rows.push(...await loader(uniqueIds.slice(index, index + batchSize)));
+  }
+  return rows;
 }
 
 interface QueryError {

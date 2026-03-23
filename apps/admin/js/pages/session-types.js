@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const R2_BASE = 'https://images.letsilluminate.co';
+  const R2_BASE = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
   const DRIVE_BASE = 'https://drive.google.com/file/d';
   const SESSION_TYPE_STATUSES = ['draft', 'active', 'hidden'];
   const AVAILABILITY_MODES = ['shared_default', 'dedicated'];

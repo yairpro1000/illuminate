@@ -79,12 +79,23 @@
     syncEditActionAvailability(row);
   }
 
+  async function fetchBookingDetail(bookingId) {
+    const data = await api(`/admin/bookings/${encodeURIComponent(bookingId)}`);
+    return data && data.row ? data.row : null;
+  }
+
   async function refreshEditingRow(bookingId, options = {}) {
     await loadRows();
-    const refreshed = state.allRows.find((row) => row.booking_id === bookingId) || null;
-    if (!refreshed) {
+    const refreshedSummary = state.allRows.find((row) => row.booking_id === bookingId) || null;
+    if (!refreshedSummary) {
       state.editing = null;
       setEditMessage('Booking updated, but it is no longer visible in the current filtered list.', 'err');
+      return null;
+    }
+    const refreshed = await fetchBookingDetail(bookingId);
+    if (!refreshed) {
+      state.editing = null;
+      setEditMessage('Booking detail could not be reloaded.', 'err');
       return null;
     }
     syncEditFormFromRow(refreshed, options);
@@ -243,7 +254,7 @@
       tr.appendChild(createCell(row.client_email || ''));
       tr.appendChild(createCell(row.current_status || ''));
       tr.appendChild(createCell(row.notes || '', 'notes-cell'));
-      tr.addEventListener('click', () => openEditModal(row));
+      tr.addEventListener('click', () => { void openEditModal(row); });
       rowsBody.appendChild(tr);
     }
   }
@@ -420,11 +431,24 @@
     renderRows();
   }
 
-  function openEditModal(row) {
-    syncEditFormFromRow(row);
-    setEditMessage('', 'muted');
+  async function openEditModal(row) {
+    state.saving = true;
+    setEditMessage('Loading booking details...', 'muted');
     editOverlayEl.classList.remove('hidden');
     editOverlayEl.setAttribute('aria-hidden', 'false');
+    try {
+      const detail = await fetchBookingDetail(row.booking_id);
+      if (!detail) throw new Error('Booking detail could not be loaded');
+      syncEditFormFromRow(detail);
+      setEditMessage('', 'muted');
+    } catch (err) {
+      state.editing = null;
+      editReadonlyDetailsEl.innerHTML = '';
+      setEditMessage(String(err), 'err');
+    } finally {
+      state.saving = false;
+      if (state.editing) syncEditActionAvailability(state.editing);
+    }
   }
 
   function closeEditModal() {

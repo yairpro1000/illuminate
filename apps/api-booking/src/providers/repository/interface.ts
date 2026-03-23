@@ -27,6 +27,7 @@ import type {
   NewPayment,
   AdminContactMessageRow,
   OrganizerBookingRow,
+  OrganizerBookingSummaryRow,
   Payment,
   PaymentUpdate,
   SessionTypeRecord,
@@ -208,6 +209,7 @@ export interface IRepository {
 
   // ── Organizer/admin reads ───────────────────────────────────────────────
 
+  getOrganizerBookingSummaries(filters: OrganizerBookingFilters): Promise<OrganizerBookingSummaryRow[]>;
   getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]>;
   getAdminContactMessages(filters: AdminContactMessageFilters): Promise<AdminContactMessageRow[]>;
   listApiLogsByReferenceIds(input: TechnicalObservabilityReferenceInput): Promise<TechnicalObservabilityRow[]>;

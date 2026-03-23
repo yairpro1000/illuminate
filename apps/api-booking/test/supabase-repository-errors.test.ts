@@ -131,4 +131,127 @@ describe('SupabaseRepository diagnosable errors', () => {
       },
     ])).resolves.toEqual(insertedRows);
   });
+
+  it('batches organizer side effect attempt lookups to avoid oversized in-filters', async () => {
+    const sideEffectIds = Array.from({ length: 201 }, (_, index) => `effect-${index + 1}`);
+    const attemptBatchSizes: number[] = [];
+
+    const repo = new SupabaseRepository({
+      from: (table: string) => {
+        if (table === 'bookings') {
+          return {
+            select: () => ({
+              order: async () => ({
+                data: [{
+                  id: 'booking-1',
+                  client_id: 'client-1',
+                  event_id: null,
+                  session_type_id: 'session-1',
+                  booking_type: 'PAY_NOW',
+                  starts_at: '2026-04-01T15:00:00.000Z',
+                  ends_at: '2026-04-01T16:00:00.000Z',
+                  timezone: 'Europe/Zurich',
+                  google_event_id: null,
+                  meeting_provider: null,
+                  meeting_link: null,
+                  address_line: 'Via Example 1, Lugano',
+                  maps_url: 'https://maps.example',
+                  price: 150,
+                  currency: 'CHF',
+                  coupon_code: null,
+                  current_status: 'CONFIRMED',
+                  notes: null,
+                  created_at: '2026-03-20T10:00:00.000Z',
+                  updated_at: '2026-03-20T10:00:00.000Z',
+                  client: {
+                    first_name: 'Maya',
+                    last_name: 'Doe',
+                    email: 'maya@example.com',
+                    phone: null,
+                  },
+                  event: null,
+                  session_type: {
+                    id: 'session-1',
+                    title: 'First Clarity Session',
+                  },
+                }],
+                error: null,
+              }),
+            }),
+          };
+        }
+
+        if (table === 'booking_events') {
+          return {
+            select: () => ({
+              in: () => ({
+                order: async () => ({
+                  data: [{
+                    id: 'event-1',
+                    booking_id: 'booking-1',
+                    event_type: 'PAYMENT_SETTLED',
+                    created_at: '2026-03-20T10:05:00.000Z',
+                  }],
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'payments') {
+          return {
+            select: () => ({
+              in: () => ({
+                order: async () => ({ data: [], error: null }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'booking_side_effects') {
+          return {
+            select: () => ({
+              in: () => ({
+                order: async () => ({
+                  data: sideEffectIds.map((id, index) => ({
+                    id,
+                    booking_event_id: 'event-1',
+                    effect_intent: index === 0 ? 'CREATE_STRIPE_CHECKOUT' : 'SEND_BOOKING_CONFIRMATION',
+                    created_at: `2026-03-20T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
+                  })),
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === 'booking_side_effect_attempts') {
+          return {
+            select: () => ({
+              in: (_column: string, ids: string[]) => {
+                attemptBatchSizes.push(ids.length);
+                return {
+                  order: async () => ({
+                    data: ids.map((id) => ({
+                      booking_side_effect_id: id,
+                      status: 'SUCCESS',
+                      created_at: '2026-03-20T10:10:00.000Z',
+                    })),
+                    error: null,
+                  }),
+                };
+              },
+            }),
+          };
+        }
+
+        throw new Error(`unexpected table ${table}`);
+      },
+    } as any);
+
+    await expect(repo.getOrganizerBookings({})).resolves.toHaveLength(1);
+    expect(attemptBatchSizes).toEqual([200, 1]);
+  });
 });

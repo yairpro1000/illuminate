@@ -757,6 +757,44 @@ export class MockRepository implements IRepository {
 
   // ── Organizer reads ───────────────────────────────────────────────────────
 
+  async getOrganizerBookingSummaries(filters: OrganizerBookingFilters): Promise<import('../../types.js').OrganizerBookingSummaryRow[]> {
+    const rows: import('../../types.js').OrganizerBookingSummaryRow[] = [];
+
+    for (const booking of mockState.bookings.values()) {
+      const hydrated = this.hydrateBooking(booking);
+      const bookingKind = hydrated.event_id ? 'event' : 'session';
+
+      if (filters.booking_kind && bookingKind !== filters.booking_kind) continue;
+      if (filters.event_id && hydrated.event_id !== filters.event_id) continue;
+      if (filters.client_id && hydrated.client_id !== filters.client_id) continue;
+      if (filters.client_ids && filters.client_ids.length > 0 && !filters.client_ids.includes(hydrated.client_id)) continue;
+      if (filters.current_status && hydrated.current_status !== filters.current_status) continue;
+      if (filters.date && hydrated.starts_at.slice(0, 10) !== filters.date) continue;
+
+      const client = mockState.clients.get(hydrated.client_id);
+      if (!client || !hydrated.client_first_name || !hydrated.client_email) continue;
+
+      rows.push({
+        booking_id: hydrated.id,
+        current_status: hydrated.current_status,
+        event_id: hydrated.event_id,
+        event_title: hydrated.event_title ?? null,
+        session_type_title: hydrated.session_type_title ?? null,
+        starts_at: hydrated.starts_at,
+        client_id: hydrated.client_id,
+        client_first_name: hydrated.client_first_name,
+        client_last_name: hydrated.client_last_name ?? null,
+        client_email: hydrated.client_email,
+        notes: hydrated.notes ?? null,
+        booking_price: hydrated.price ?? null,
+        booking_currency: hydrated.currency ?? null,
+        booking_coupon_code: hydrated.coupon_code ?? null,
+      });
+    }
+
+    return rows.sort((left, right) => new Date(left.starts_at).getTime() - new Date(right.starts_at).getTime());
+  }
+
   async getOrganizerBookings(filters: OrganizerBookingFilters): Promise<OrganizerBookingRow[]> {
     const rows: OrganizerBookingRow[] = [];
 

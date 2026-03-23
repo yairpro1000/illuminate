@@ -27,6 +27,7 @@ import {
   buildManageUrl,
   settleBookingPaymentManually,
 } from '../services/booking-service.js';
+import { loadBookingReadModel } from '../services/booking-read-model.js';
 import {
   SERVICE_MODES,
   getAllOverrides,
@@ -116,6 +117,15 @@ function parseContactMessageFilters(url: URL): AdminContactMessageFilters {
     client_id: clientId?.trim() || undefined,
     q: q?.trim() || undefined,
   };
+}
+
+function isPaymentRelatedBookingEventType(eventType: string | null | undefined): boolean {
+  return eventType === 'PAYMENT_SETTLED' || eventType === 'REFUND_COMPLETED';
+}
+
+function isPaymentRelatedSideEffectIntent(effectIntent: string): boolean {
+  const normalized = effectIntent.toLowerCase();
+  return normalized.includes('stripe') || normalized.includes('payment');
 }
 
 async function parseJsonBody(request: Request): Promise<Record<string, unknown>> {
@@ -411,12 +421,214 @@ function coerceEventMarketingContent(value: unknown): EventMarketingContent {
 
 // GET /api/admin/bookings
 export async function handleAdminGetBookings(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
   try {
-    await requireAdminAccess(request, ctx.env);
     const filters = parseBookingFilters(new URL(request.url));
-    const rows = await ctx.providers.repository.getOrganizerBookings(filters);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_list_request_started',
+      message: 'Started admin booking summary listing request',
+      context: {
+        path,
+        branch_taken: 'auth_check_pending',
+        booking_kind: filters.booking_kind ?? null,
+        event_id: filters.event_id ?? null,
+        date: filters.date ?? null,
+        client_id: filters.client_id ?? null,
+        current_status: filters.current_status ?? null,
+      },
+    });
+    await requireAdminAccess(request, ctx.env);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_list_auth_passed',
+      message: 'Admin booking summary listing auth passed',
+      context: {
+        path,
+        branch_taken: 'load_booking_summaries',
+        booking_kind: filters.booking_kind ?? null,
+        event_id: filters.event_id ?? null,
+        date: filters.date ?? null,
+        client_id: filters.client_id ?? null,
+        current_status: filters.current_status ?? null,
+      },
+    });
+    const rows = await ctx.providers.repository.getOrganizerBookingSummaries(filters);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_list_request_succeeded',
+      message: 'Admin booking summary listing request succeeded',
+      context: {
+        path,
+        branch_taken: 'return_booking_summaries',
+        row_count: rows.length,
+        booking_kind: filters.booking_kind ?? null,
+        event_id: filters.event_id ?? null,
+        date: filters.date ?? null,
+        client_id: filters.client_id ?? null,
+        current_status: filters.current_status ?? null,
+      },
+    });
     return ok({ rows });
   } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_booking_list_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        branch_taken: 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof Error ? err.message : String(err),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
+    throw err;
+  }
+}
+
+// GET /api/admin/bookings/:bookingId
+export async function handleAdminGetBookingDetail(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    const bookingId = params.bookingId?.trim();
+    if (!bookingId) throw badRequest('bookingId is required');
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_detail_request_started',
+      message: 'Started admin booking detail request',
+      context: {
+        path,
+        booking_id: bookingId,
+        branch_taken: 'auth_check_pending',
+      },
+    });
+    await requireAdminAccess(request, ctx.env);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_detail_auth_passed',
+      message: 'Admin booking detail auth passed',
+      context: {
+        path,
+        booking_id: bookingId,
+        branch_taken: 'load_booking_detail',
+      },
+    });
+    const booking = await ctx.providers.repository.getBookingById(bookingId);
+    if (!booking) throw notFound('Booking not found');
+    const readModel = await loadBookingReadModel({
+      booking,
+      include: {
+        payment: 'latest',
+        event: { mode: 'latest' },
+        sideEffects: { mode: 'all_events', attempts: 'latest' },
+      },
+    }, {
+      providers: ctx.providers,
+      env: ctx.env,
+      logger: ctx.logger,
+      requestId: ctx.requestId,
+      correlationId: ctx.correlationId,
+      operation: ctx.operation,
+      siteUrl: ctx.siteUrl,
+    });
+    const latestEvent = readModel.events[readModel.events.length - 1] ?? readModel.selectedEvent ?? null;
+    const paymentLatestEvent = [...readModel.events].reverse().find((event) =>
+      isPaymentRelatedBookingEventType(event.event_type),
+    ) ?? null;
+    const latestAttempt = [...readModel.sideEffects]
+      .map((effect) => effect.latestAttempt)
+      .filter((attempt): attempt is NonNullable<typeof attempt> => Boolean(attempt))
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0] ?? null;
+    const paymentLatestAttempt = [...readModel.sideEffects]
+      .filter((effect) => isPaymentRelatedSideEffectIntent(effect.effect_intent))
+      .map((effect) => effect.latestAttempt)
+      .filter((attempt): attempt is NonNullable<typeof attempt> => Boolean(attempt))
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0] ?? null;
+    const payment = readModel.payment;
+    const row = {
+      booking_id: readModel.booking.id,
+      current_status: readModel.booking.current_status,
+      event_id: readModel.booking.event_id,
+      event_title: readModel.booking.event_title ?? null,
+      session_type_id: readModel.booking.session_type_id,
+      session_type_title: readModel.booking.session_type_title ?? null,
+      starts_at: readModel.booking.starts_at,
+      ends_at: readModel.booking.ends_at,
+      timezone: readModel.booking.timezone,
+      google_event_id: readModel.booking.google_event_id,
+      address_line: readModel.booking.address_line,
+      maps_url: readModel.booking.maps_url,
+      booking_price: readModel.booking.price ?? null,
+      booking_currency: readModel.booking.currency ?? null,
+      booking_coupon_code: readModel.booking.coupon_code ?? null,
+      payment_amount: payment?.amount ?? null,
+      payment_currency: payment?.currency ?? null,
+      payment_status: payment?.status ?? null,
+      payment_provider: payment?.provider ?? null,
+      payment_checkout_url: payment?.checkout_url ?? null,
+      payment_invoice_url: payment?.invoice_url ?? null,
+      payment_refund_status: payment?.refund_status ?? null,
+      payment_refund_amount: payment?.refund_amount ?? null,
+      payment_refund_currency: payment?.refund_currency ?? null,
+      payment_stripe_customer_id: payment?.stripe_customer_id ?? null,
+      payment_stripe_checkout_session_id: payment?.stripe_checkout_session_id ?? null,
+      payment_stripe_payment_intent_id: payment?.stripe_payment_intent_id ?? null,
+      payment_stripe_invoice_id: payment?.stripe_invoice_id ?? null,
+      payment_stripe_payment_link_id: payment?.stripe_payment_link_id ?? null,
+      payment_stripe_refund_id: payment?.stripe_refund_id ?? null,
+      payment_stripe_credit_note_id: payment?.stripe_credit_note_id ?? null,
+      payment_stripe_receipt_url: payment?.stripe_receipt_url ?? null,
+      payment_stripe_credit_note_url: payment?.stripe_credit_note_url ?? null,
+      payment_paid_at: payment?.paid_at ?? null,
+      latest_event_type: latestEvent?.event_type ?? null,
+      latest_event_at: latestEvent?.created_at ?? null,
+      latest_side_effect_attempt_status: latestAttempt?.status ?? null,
+      latest_side_effect_attempt_at: latestAttempt?.created_at ?? null,
+      payment_latest_event_type: paymentLatestEvent?.event_type ?? null,
+      payment_latest_event_at: paymentLatestEvent?.created_at ?? null,
+      payment_latest_side_effect_attempt_status: paymentLatestAttempt?.status ?? null,
+      payment_latest_side_effect_attempt_at: paymentLatestAttempt?.created_at ?? null,
+      notes: readModel.booking.notes ?? null,
+      created_at: readModel.booking.created_at,
+      updated_at: readModel.booking.updated_at,
+      client_id: readModel.booking.client_id,
+      client_first_name: readModel.booking.client_first_name ?? '',
+      client_last_name: readModel.booking.client_last_name ?? null,
+      client_email: readModel.booking.client_email ?? '',
+      client_phone: readModel.booking.client_phone ?? null,
+    };
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_booking_detail_request_succeeded',
+      message: 'Admin booking detail request succeeded',
+      context: {
+        path,
+        booking_id: bookingId,
+        booking_status: row.current_status,
+        has_payment: Boolean(payment),
+        event_count: readModel.events.length,
+        side_effect_count: readModel.sideEffects.length,
+        branch_taken: 'return_booking_detail',
+      },
+    });
+    return ok({ row });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_booking_detail_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        booking_id: params.bookingId?.trim() || null,
+        branch_taken: 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof Error ? err.message : String(err),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
     throw err;
   }
 }

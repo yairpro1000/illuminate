@@ -428,6 +428,23 @@ export interface OrganizerBookingRow {
   client_phone: string | null;
 }
 
+export interface OrganizerBookingSummaryRow {
+  booking_id: string;
+  current_status: BookingCurrentStatus;
+  event_id: string | null;
+  event_title: string | null;
+  session_type_title: string | null;
+  starts_at: string;
+  client_id: string;
+  client_first_name: string;
+  client_last_name: string | null;
+  client_email: string;
+  notes: string | null;
+  booking_price: number | null;
+  booking_currency: string | null;
+  booking_coupon_code: string | null;
+}
+
 export interface AdminContactMessageRow {
   id: string;
   client_id: string;

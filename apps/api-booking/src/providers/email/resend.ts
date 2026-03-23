@@ -25,6 +25,8 @@ export interface BuiltEmailMessage {
 export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 export const EMAIL_REPLY_TO = 'hello@yairb.ch';
 const DEFAULT_SITE_URL = 'https://letsilluminate.co';
+const PUBLIC_EVENT_IMAGE_BASE_URL = 'https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev';
+const EMAIL_HERO_IMAGE_URL = `${PUBLIC_EVENT_IMAGE_BASE_URL}/ILLUMINATE_hero.png`;
 function sanitizeSiteUrl(siteUrl?: string | null): string {
   return String(siteUrl || DEFAULT_SITE_URL).replace(/\/+$/g, '');
 }
@@ -284,7 +286,7 @@ function htmlLayout(bodyContent: string): string {
 <body>
 <div class="wrap">
   <div class="header">
-    <img class="header__logo" src="https://letsilluminate.co/img/ILLUMINATE_hero.png" alt="ILLUMINATE by Yair Benharroch" />
+    <img class="header__logo" src="${EMAIL_HERO_IMAGE_URL}" alt="ILLUMINATE by Yair Benharroch" />
   </div>
   <div class="body">${bodyContent}</div>
   <div class="footer"><p class="footer__brand">ILLUMINATE <span class="footer__sub">by Yair Benharroch</span></p></div>

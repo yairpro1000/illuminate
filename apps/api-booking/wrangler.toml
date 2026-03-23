@@ -14,10 +14,10 @@ routes = [
 # unless intentionally overridden for a focused integration test.
 # PAYMENTS_MODE supports: mock, stripe_sandbox, stripe
 REPOSITORY_MODE = "supabase"
-EMAIL_MODE      = "mock"
+EMAIL_MODE      = "resend"
 CALENDAR_MODE   = "google"
-PAYMENTS_MODE   = "mock"
-ANTIBOT_MODE    = "mock"
+PAYMENTS_MODE   = "stripe_sandbox"
+ANTIBOT_MODE    = "turnstile"
 TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL = "2x0000000000000000000000000000000AB"
 TURNSTILE_TEST_SECRET_KEY_PASS = "1x0000000000000000000000000000000AA"
 TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL = "2x00000000000000000000AB"
@@ -29,9 +29,9 @@ API_ALLOWED_ORIGINS = "https://illuminate-tw9.pages.dev,https://illuminateadmin.
 API_ALLOW_PAGES_DEV_ORIGINS = "true"
 GOOGLE_CALENDAR_ID = "yairilluminate@gmail.com"
 TIMEZONE           = "Europe/Zurich"
-IMAGE_BASE_URL     = "https://images.letsilluminate.co" # CDN/public origin for R2 objects
+IMAGE_BASE_URL     = "https://pub-f85abd8d9116422ab218850bcd23aa61.r2.dev" # Public R2 origin for uploaded images
 OBSERVABILITY_SCHEMA = "public"
-ADMIN_AUTH_DISABLED = "true" # TEMPORARY ONLY: bypass /api/admin/* auth for manual testing
+ADMIN_AUTH_DISABLED = "false"
 ADMIN_PREVIEW_DEV_EMAIL = "yairpro@gmail.com"
 
 [[r2_buckets]]
