@@ -143,7 +143,9 @@ function previewEmailKindsForEventType(eventType: BookingEventType): string[] {
     case 'PAYMENT_SETTLED':
       return ['booking_confirmation', 'event_confirmation'];
     case 'BOOKING_CANCELED':
-      return ['booking_cancellation', 'booking_refund_confirmation'];
+      return ['booking_cancellation'];
+    case 'REFUND_COMPLETED':
+      return ['refund_confirmation'];
     default:
       return [];
   }

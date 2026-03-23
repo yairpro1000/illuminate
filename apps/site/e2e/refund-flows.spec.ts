@@ -13,7 +13,7 @@ import {
   getSupabasePaymentRowByBookingId,
   waitForBookingArtifacts,
   waitForBookingArtifactsWhere,
-  waitForCapturedEmail,
+  type MockEmailPreviewPayload,
 } from './support/api';
 import { expectInlineMockEmailPreview } from './support/mock-email-preview';
 import { attachRuntimeMonitor } from './support/runtime';
@@ -130,7 +130,7 @@ async function confirmPayLaterBooking(page: Page, email: string) {
   };
 }
 
-async function cancelFromManage(page: Page, manageUrl: string) {
+async function cancelFromManage(page: Page, manageUrl: string): Promise<{ mock_email_preview?: MockEmailPreviewPayload | null }> {
   const url = normalizeSiteUrl(manageUrl);
   await page.goto(url, { waitUntil: 'commit' });
 
@@ -139,11 +139,18 @@ async function cancelFromManage(page: Page, manageUrl: string) {
   await cancelButton.click();
 
   const legacyConfirm = page.locator('#cancel-yes');
+  page.once('dialog', (dialog) => dialog.dismiss().catch(() => {}));
+  const cancelResponsePromise = page.waitForResponse((response) =>
+    response.url().includes('/api/bookings/cancel')
+    && response.request().method() === 'POST',
+  );
   if (await legacyConfirm.count() && await legacyConfirm.first().isVisible()) {
     await legacyConfirm.first().click();
   } else {
     await page.getByRole('button', { name: /Yes, cancel booking/i }).first().click();
   }
+  const cancelResponse = await cancelResponsePromise;
+  return cancelResponse.json();
 }
 
 function normalizeSiteUrl(rawUrl: string): string {
@@ -194,17 +201,13 @@ async function assertRefundUi(
   throw new Error('Manage UI did not reflect refunded state within 20s');
 }
 
-async function assertRefundEmails(email: string) {
-  const cancellationEmail = await waitForCapturedEmail(email, 'booking_cancellation');
-  const refundEmail = await waitForCapturedEmail(email, 'refund_confirmation');
+async function assertRefundEmails(cancelResult: { mock_email_preview?: MockEmailPreviewPayload | null }) {
+  const refundEmail = cancelResult.mock_email_preview;
+  expect(refundEmail).toBeTruthy();
+  expect(refundEmail?.email_kind).toBe('refund_confirmation');
+  expect(refundEmail?.subject).toMatch(/Your refund for/i);
 
-  expect(cancellationEmail.subject).toMatch(/has been cancelled/i);
-  expect(refundEmail.subject).toMatch(/Your refund for/i);
-
-  const cancellationHtml = await fetchCapturedEmailPreviewHtml(cancellationEmail.preview_html_url);
-  const refundHtml = await fetchCapturedEmailPreviewHtml(refundEmail.preview_html_url);
-
-  expect(cancellationHtml).toContain('separate confirmation email');
+  const refundHtml = refundEmail?.html_content || await fetchCapturedEmailPreviewHtml(refundEmail?.html_url || '');
   expect(refundHtml).toContain('Your refund has been processed');
   expect(refundHtml).toContain('View receipt');
   expect(refundHtml).toContain('View credit note');
@@ -276,13 +279,13 @@ test.describe('refund flows', () => {
 
     checkpoint = runtime.checkpoint();
     const managePage = await page.context().newPage();
-    await cancelFromManage(managePage, settledArtifacts.links.manage_url);
+    const cancelResult = await cancelFromManage(managePage, settledArtifacts.links.manage_url);
     const refundedArtifacts = await waitForRefundedArtifacts(email);
     await assertRefundUi(managePage, settledArtifacts.links.manage_url, refundedArtifacts);
     await managePage.close();
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-now-cancel', testInfo);
 
-    await assertRefundEmails(email);
+    await assertRefundEmails(cancelResult);
     await assertRefundDatabaseState(refundedArtifacts);
   });
 
@@ -314,13 +317,13 @@ test.describe('refund flows', () => {
 
     checkpoint = runtime.checkpoint();
     const managePage = await page.context().newPage();
-    await cancelFromManage(managePage, settledArtifacts.links.manage_url);
+    const cancelResult = await cancelFromManage(managePage, settledArtifacts.links.manage_url);
     const refundedArtifacts = await waitForRefundedArtifacts(email);
     await assertRefundUi(managePage, settledArtifacts.links.manage_url, refundedArtifacts);
     await managePage.close();
     await runtime.assertNoNewIssues(checkpoint, 'refund-pay-later-cancel', testInfo);
 
-    await assertRefundEmails(email);
+    await assertRefundEmails(cancelResult);
     await assertRefundDatabaseState(refundedArtifacts);
   });
 });

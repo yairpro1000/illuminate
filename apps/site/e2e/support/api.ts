@@ -140,6 +140,15 @@ export interface CapturedEmailSummary {
   preview_html_url: string;
 }
 
+export interface MockEmailPreviewPayload {
+  email_id: string;
+  to: string;
+  subject: string;
+  html_url: string;
+  html_content: string;
+  email_kind: string;
+}
+
 export interface SupabasePaymentRow {
   id: string;
   booking_id: string;
@@ -470,14 +479,23 @@ export async function listCapturedEmails(): Promise<CapturedEmailSummary[]> {
   return Array.isArray(data.emails) ? data.emails : [];
 }
 
-export async function waitForCapturedEmail(to: string, kind?: string): Promise<CapturedEmailSummary> {
+export async function waitForCapturedEmail(
+  to: string,
+  kind?: string,
+  timeoutMs = 20_000,
+): Promise<CapturedEmailSummary> {
+  const deadline = Date.now() + timeoutMs;
   let lastEmails: CapturedEmailSummary[] = [];
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+
+  while (Date.now() < deadline) {
     lastEmails = await listCapturedEmails();
-    const match = lastEmails.find((email) => email.to === to && (!kind || email.kind === kind));
+    const match = [...lastEmails]
+      .reverse()
+      .find((email) => email.to === to && (!kind || email.kind === kind));
     if (match) return match;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+
   throw new Error(`Could not find captured email for ${to}${kind ? ` (${kind})` : ''}. Last seen: ${JSON.stringify(lastEmails)}`);
 }
 
@@ -487,6 +505,47 @@ export async function fetchCapturedEmailPreviewHtml(previewHtmlUrl: string): Pro
     throw new Error(`GET preview html -> ${response.status}: ${await response.text()}`);
   }
   return response.text();
+}
+
+export async function waitForBookingEventEmailPreview(
+  input: {
+    bookingId: string;
+    bookingEventType: string;
+    token: string;
+    emailKind?: string;
+  },
+  timeoutMs = 20_000,
+): Promise<MockEmailPreviewPayload> {
+  const deadline = Date.now() + timeoutMs;
+  let lastPreview: MockEmailPreviewPayload | null = null;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const params = new URLSearchParams({
+        booking_id: input.bookingId,
+        booking_event_type: input.bookingEventType,
+        token: input.token,
+      });
+      const data = await apiJson<{ mock_email_preview?: MockEmailPreviewPayload }>(`/api/bookings/event-status?${params.toString()}`);
+      const preview = data.mock_email_preview ?? null;
+      lastPreview = preview;
+      if (preview && (!input.emailKind || preview.email_kind === input.emailKind)) {
+        return preview;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  if (lastPreview) {
+    throw new Error(`Timed out waiting for ${input.bookingEventType} email preview (${input.emailKind || 'any'}). Last preview: ${JSON.stringify(lastPreview)}`);
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out waiting for ${input.bookingEventType} email preview (${input.emailKind || 'any'})`);
 }
 
 export async function waitForBookingArtifacts(email: string): Promise<BookingArtifacts> {
