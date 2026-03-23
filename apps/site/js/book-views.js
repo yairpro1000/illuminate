@@ -415,6 +415,10 @@
       `;
     }
 
+    function isSubmitDisabled() {
+      return state.submitting || (siteConfig.turnstileEnabled && !state.turnstileTokenReady);
+    }
+
     function buildBookingReview() {
       const confirmWindowMinutes = getNonPaidConfirmationWindowMinutes(state.publicConfig);
       const nonPaidHoldMessage = confirmWindowMinutes
@@ -458,7 +462,7 @@
             ? ''
             : `<div class="step-footer">
                 <button class="btn btn-ghost" data-back>← Back</button>
-                <button class="btn btn-primary" data-submit>
+                <button class="btn btn-primary" data-submit ${isSubmitDisabled() ? 'disabled' : ''}>
                   ${state.paymentMethod === 'pay-now' ? 'Proceed to Payment' : 'Confirm Booking'}
                 </button>
               </div>`}
@@ -575,7 +579,7 @@
             : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
-            <button class="btn btn-primary" data-submit>
+            <button class="btn btn-primary" data-submit ${isSubmitDisabled() ? 'disabled' : ''}>
               ${isPaid ? 'Proceed to Payment' : 'Complete Registration'}
             </button>
           </div>

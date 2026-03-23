@@ -550,6 +550,29 @@ body.theme-light .coupon-price__suffix {
   transform: translateY(-1px);
 }
 
+.btn:disabled,
+.btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+  box-shadow: none;
+  animation: none;
+}
+
+.btn-primary:disabled,
+.btn-primary[disabled] {
+  background: linear-gradient(135deg, oklch(64% 0.05 85), oklch(74% 0.04 87));
+  color: oklch(35% 0.015 85 / 0.92);
+}
+
+.btn-secondary:disabled,
+.btn-secondary[disabled],
+.btn-ghost:disabled,
+.btn-ghost[disabled] {
+  border-color: var(--color-border);
+  color: var(--color-text-soft);
+}
+
 .btn-secondary {
   background: transparent;
   color: var(--color-lake-light);
@@ -2802,6 +2825,13 @@ body.theme-light .text-lake {
     0 8px 24px oklch(0% 0 0 / 0.35);
 }
 
+:root .btn-primary:disabled,
+:root .btn-primary[disabled] {
+  background: linear-gradient(135deg, oklch(74% 0.06 85), oklch(82% 0.05 87));
+  color: oklch(32% 0.015 85 / 0.92);
+  box-shadow: none;
+}
+
 @keyframes brand-glow-btn {
   0%, 100% {
     box-shadow:
@@ -2900,4 +2930,3 @@ body.theme-light .calm-mirror__question.about-accent {
   color: var(--color-lake-light);
   text-shadow: none;
 }
-

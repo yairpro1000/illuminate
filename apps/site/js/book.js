@@ -170,7 +170,11 @@ function updateBookingSubmitBtnState() {
   const app = document.getElementById('booking-app');
   const btn = app && app.querySelector('[data-submit]');
   if (!btn) return;
-  btn.disabled = !!(SITE_CONFIG.turnstileEnabled && !S.turnstileTokenReady);
+  btn.disabled = isBookingSubmitBlocked();
+}
+
+function isBookingSubmitBlocked() {
+  return !!(S.submitting || (SITE_CONFIG.turnstileEnabled && !S.turnstileTokenReady));
 }
 
 function render() {
@@ -454,6 +458,7 @@ function scrollToApp() {
    ══════════════════════════════════════════════════════════ */
 
 async function handleSubmit() {
+  if (isBookingSubmitBlocked()) return;
   clearTurnstileSubmitError();
   S.submissionError = null;
   S.submissionManageUrl = null;

@@ -167,15 +167,19 @@ describe('booking turnstile integration', () => {
     await flush()
     await flush()
 
+    expect(document.querySelector('[data-submit]')?.disabled).toBe(true)
+
     const callCountBeforeCallbacks = renderVisibleWidget.mock.calls.length
     const options = renderVisibleWidget.mock.calls[callCountBeforeCallbacks - 1][0]
 
     options.onError(new Error('Please complete the anti-bot check before submitting.'))
     expect(document.querySelector('[data-turnstile-error]')?.textContent).toContain('Please complete the anti-bot check before submitting.')
+    expect(document.querySelector('[data-submit]')?.disabled).toBe(true)
     expect(renderVisibleWidget).toHaveBeenCalledTimes(callCountBeforeCallbacks)
 
     options.onToken('turnstile-token')
     expect(document.querySelector('[data-turnstile-error]')).toBeNull()
+    expect(document.querySelector('[data-submit]')?.disabled).toBe(false)
     expect(renderVisibleWidget).toHaveBeenCalledTimes(callCountBeforeCallbacks)
   })
 
