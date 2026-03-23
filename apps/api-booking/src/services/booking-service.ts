@@ -1680,14 +1680,15 @@ export async function cancelBooking(
     ctx,
   );
 
-  let finalBooking = (await runImmediateBookingEventWorkflow({
+  const cancellationExecution = await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
     transitionEventType: 'BOOKING_CANCELED',
     sourceOperation: 'cancel_booking',
     bookingBeforeTransition: booking,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx)).booking;
+  }, ctx);
+  const finalBooking = cancellationExecution.booking;
 
   const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   ctx.logger.logInfo?.({
@@ -1709,7 +1710,6 @@ export async function cancelBooking(
     },
   });
   const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
-  const finalizedEvent = await ctx.providers.repository.getBookingEventById(transitioned.event.id);
   const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
   const refundStatus = effectiveRefundStatus(refreshedPayment);
   const refundArtifacts = refundStatus !== 'NONE'
@@ -1733,7 +1733,7 @@ export async function cancelBooking(
     bookingEvent: {
       id: transitioned.event.id,
       type: transitioned.event.event_type,
-      status: finalizedEvent?.status ?? transitioned.event.status,
+      status: cancellationExecution.event.status,
     },
     refund: refundArtifacts,
   };
@@ -1882,15 +1882,15 @@ export async function rescheduleBooking(
     { booking: updated },
   );
 
-  const finalBooking = (await runImmediateBookingEventWorkflow({
+  const rescheduleExecution = await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
     transitionEventType: 'BOOKING_RESCHEDULED',
     sourceOperation: 'reschedule_booking',
     bookingBeforeTransition: updated,
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
-  }, ctx)).booking;
-  const finalizedEvent = await ctx.providers.repository.getBookingEventById(transitioned.event.id);
+  }, ctx);
+  const finalBooking = rescheduleExecution.booking;
   return {
     ok: true,
     code: 'RESCHEDULED',
@@ -1899,7 +1899,7 @@ export async function rescheduleBooking(
     bookingEvent: {
       id: transitioned.event.id,
       type: transitioned.event.event_type,
-      status: finalizedEvent?.status ?? transitioned.event.status,
+      status: rescheduleExecution.event.status,
     },
   };
 }
