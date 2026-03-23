@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPayLaterBooking, confirmBookingEmail } from '../src/services/booking-service.js';
-import { loadBookingReadModel } from '../src/services/booking-read-model.js';
+import {
+  loadBookingReadModel,
+  loadBookingWithLatestPayment,
+  loadBookingWithLatestPaymentAndSelectedEvent,
+} from '../src/services/booking-read-model.js';
 import { mockState } from '../src/providers/mock-state.js';
 import { makeCtx } from './admin-helpers.js';
 
@@ -74,6 +78,18 @@ describe('booking read model', () => {
 
     await confirmBookingEmail(String(submission?.payload?.['confirm_token'] ?? ''), ctx as any);
 
+    const repository = ctx.providers.repository as any;
+    const listSideEffectsForEventsSpy = vi.spyOn(repository, 'listBookingSideEffectsForEvents');
+    const listAttemptsForSideEffectsSpy = vi.spyOn(repository, 'listBookingSideEffectAttemptsForSideEffects');
+
+    const paymentSnapshot = await loadBookingWithLatestPayment({
+      bookingId: created.bookingId,
+    }, ctx as any);
+    const eventSnapshot = await loadBookingWithLatestPaymentAndSelectedEvent({
+      bookingId: created.bookingId,
+      event: { mode: 'latest_of_type', eventType: 'BOOKING_FORM_SUBMITTED' },
+    }, ctx as any);
+
     const readModel = await loadBookingReadModel({
       bookingId: created.bookingId,
       include: {
@@ -85,6 +101,8 @@ describe('booking read model', () => {
       },
     }, ctx as any);
 
+    expect(paymentSnapshot.payment?.status).toBe('PENDING');
+    expect(eventSnapshot.selectedEvent?.event_type).toBe('BOOKING_FORM_SUBMITTED');
     expect(readModel.booking.id).toBe(created.bookingId);
     expect(readModel.payment?.status).toBe('PENDING');
     expect(readModel.selectedEvent?.event_type).toBe('BOOKING_FORM_SUBMITTED');
@@ -107,5 +125,7 @@ describe('booking read model', () => {
     );
     expect(readModel.apiLogs).toEqual([]);
     expect(readModel.exceptionLogs).toEqual([]);
+    expect(listSideEffectsForEventsSpy).toHaveBeenCalledOnce();
+    expect(listAttemptsForSideEffectsSpy).toHaveBeenCalledOnce();
   });
 });

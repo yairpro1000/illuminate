@@ -126,6 +126,7 @@ export interface IRepository {
 
   getBookingSideEffectById(id: string): Promise<BookingSideEffect | null>;
   listBookingSideEffectsForEvent(eventId: string): Promise<BookingSideEffect[]>;
+  listBookingSideEffectsForEvents(eventIds: string[]): Promise<BookingSideEffect[]>;
   getLatestUnresolvedBookingSideEffectByIntent(
     bookingId: string,
     effectIntent: BookingEffectIntent,
@@ -152,6 +153,7 @@ export interface IRepository {
     updates: Partial<Pick<BookingSideEffectAttempt, 'api_log_id' | 'status' | 'error_message' | 'updated_at' | 'completed_at'>>,
   ): Promise<BookingSideEffectAttempt>;
   listBookingSideEffectAttempts(sideEffectId: string): Promise<BookingSideEffectAttempt[]>;
+  listBookingSideEffectAttemptsForSideEffects(sideEffectIds: string[]): Promise<BookingSideEffectAttempt[]>;
   getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null>;
 
   // ── Events ───────────────────────────────────────────────────────────────

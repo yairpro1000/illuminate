@@ -6,7 +6,10 @@ import {
 } from '../domain/payment-status.js';
 import { effectiveRefundStatus } from './refund-service.js';
 import { finalizeBookingEventStatus } from './booking-event-workflow.js';
-import { loadBookingReadModel } from './booking-read-model.js';
+import {
+  loadBookingWithLatestPayment,
+  loadBookingWithLatestPaymentAndSelectedEvent,
+} from './booking-read-model.js';
 import {
   buildContinuePaymentUrl,
   buildManageUrl,
@@ -80,11 +83,8 @@ export async function getBookingPublicActionInfo(
 ): Promise<BookingPublicActionInfo> {
   const readModel = booking.booking_type === 'FREE'
     ? { booking, payment: null as Payment | null }
-    : await loadBookingReadModel({
+    : await loadBookingWithLatestPayment({
       booking,
-      include: {
-        payment: 'latest',
-      },
     }, ctx);
   return buildBookingPublicActionInfoFromState(readModel.booking, readModel.payment, ctx);
 }
@@ -118,14 +118,11 @@ export async function getBookingEventStatusSnapshot(
         booking: await resolveBookingAccessByIdOrConfirmToken(selector.bookingId, rawToken, rawAdminToken, ctx),
         event: null,
       };
-  const readModel = await loadBookingReadModel({
+  const readModel = await loadBookingWithLatestPaymentAndSelectedEvent({
     booking: access.booking,
-    include: {
-      payment: 'latest',
-      event: selector.mode === 'by_id'
-        ? { mode: 'by_id', eventId: access.event?.id ?? selector.bookingEventId }
-        : { mode: 'latest_of_type', eventType: selector.eventType },
-    },
+    event: selector.mode === 'by_id'
+      ? { mode: 'by_id', eventId: access.event?.id ?? selector.bookingEventId }
+      : { mode: 'latest_of_type', eventType: selector.eventType },
   }, ctx);
   const booking = readModel.booking;
   const payment = readModel.payment;
@@ -137,14 +134,11 @@ export async function getBookingEventStatusSnapshot(
     reconcileProcessing: selectedEvent.status === 'PROCESSING',
   });
   if (reconciledEvent.status !== selectedEvent.status) {
-    const refreshedReadModel = await loadBookingReadModel({
+    const refreshedReadModel = await loadBookingWithLatestPaymentAndSelectedEvent({
       booking: access.booking,
-      include: {
-        payment: 'latest',
-        event: selector.mode === 'by_id'
-          ? { mode: 'by_id', eventId: access.event?.id ?? selector.bookingEventId }
-          : { mode: 'latest_of_type', eventType: selector.eventType },
-      },
+      event: selector.mode === 'by_id'
+        ? { mode: 'by_id', eventId: access.event?.id ?? selector.bookingEventId }
+        : { mode: 'latest_of_type', eventType: selector.eventType },
     }, ctx);
     resolvedEvent = refreshedReadModel.selectedEvent ?? reconciledEvent;
   } else {

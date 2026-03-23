@@ -7,7 +7,7 @@ import {
 } from '../services/booking-service.js';
 import { resolveBookingManageAccess } from '../services/booking-access-service.js';
 import { evaluateManageBookingPolicy, resolveManageActionState } from '../services/booking-public-action-service.js';
-import { loadBookingReadModel } from '../services/booking-read-model.js';
+import { loadBookingWithLatestPayment } from '../services/booking-read-model.js';
 import { effectiveRefundStatus } from '../services/refund-service.js';
 
 // GET /api/bookings/manage?token=<raw>
@@ -53,11 +53,8 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
     });
     const booking = access.booking;
     const bookingPolicy = await getBookingPolicyConfig(ctx.providers.repository);
-    const readModel = await loadBookingReadModel({
+    const readModel = await loadBookingWithLatestPayment({
       booking,
-      include: {
-        payment: 'latest',
-      },
     }, {
       providers: ctx.providers,
       env: ctx.env,

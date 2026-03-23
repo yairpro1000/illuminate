@@ -353,6 +353,16 @@ export class MockRepository implements IRepository {
       .map((effect) => stripBookingId(effect));
   }
 
+  async listBookingSideEffectsForEvents(eventIds: string[]): Promise<BookingSideEffect[]> {
+    const ids = new Set(eventIds.filter(Boolean));
+    if (ids.size === 0) return [];
+
+    return mockState.sideEffects
+      .filter((effect) => ids.has(effect.booking_event_id))
+      .sort((left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime())
+      .map((effect) => stripBookingId(effect));
+  }
+
   async getLatestUnresolvedBookingSideEffectByIntent(
     bookingId: string,
     effectIntent: import('../../types.js').BookingEffectIntent,
@@ -461,6 +471,18 @@ export class MockRepository implements IRepository {
     return mockState.sideEffectAttempts
       .filter((attempt) => attempt.booking_side_effect_id === sideEffectId)
       .sort((a, b) => a.attempt_num - b.attempt_num);
+  }
+
+  async listBookingSideEffectAttemptsForSideEffects(sideEffectIds: string[]): Promise<BookingSideEffectAttempt[]> {
+    const ids = new Set(sideEffectIds.filter(Boolean));
+    if (ids.size === 0) return [];
+
+    return mockState.sideEffectAttempts
+      .filter((attempt) => ids.has(attempt.booking_side_effect_id))
+      .sort((left, right) =>
+        left.attempt_num === right.attempt_num
+          ? new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+          : left.attempt_num - right.attempt_num);
   }
 
   async getLastBookingSideEffectAttempt(sideEffectId: string): Promise<BookingSideEffectAttempt | null> {

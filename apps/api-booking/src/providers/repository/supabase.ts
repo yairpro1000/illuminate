@@ -536,6 +536,20 @@ export class SupabaseRepository implements IRepository {
     );
   }
 
+  async listBookingSideEffectsForEvents(eventIds: string[]): Promise<BookingSideEffect[]> {
+    const ids = [...new Set(eventIds.filter(Boolean))];
+    if (ids.length === 0) return [];
+
+    return requireData<BookingSideEffect[]>(
+      this.db
+        .from('booking_side_effects')
+        .select('*')
+        .in('booking_event_id', ids)
+        .order('created_at', { ascending: true }),
+      'Failed to load booking side effects for events',
+    );
+  }
+
   async getLatestUnresolvedBookingSideEffectByIntent(
     bookingId: string,
     effectIntent: BookingEffectIntent,
@@ -704,6 +718,21 @@ export class SupabaseRepository implements IRepository {
         .eq('booking_side_effect_id', sideEffectId)
         .order('attempt_num', { ascending: true }),
       'Failed to load booking side effect attempts',
+    );
+    return rows.map((row) => toBookingSideEffectAttemptRecord(row));
+  }
+
+  async listBookingSideEffectAttemptsForSideEffects(sideEffectIds: string[]): Promise<BookingSideEffectAttempt[]> {
+    const ids = [...new Set(sideEffectIds.filter(Boolean))];
+    if (ids.length === 0) return [];
+
+    const rows = await requireData<BookingSideEffectAttemptRow[]>(
+      this.db
+        .from('booking_side_effect_attempts')
+        .select('*')
+        .in('booking_side_effect_id', ids)
+        .order('attempt_num', { ascending: true }),
+      'Failed to load booking side effect attempts for side effects',
     );
     return rows.map((row) => toBookingSideEffectAttemptRecord(row));
   }
