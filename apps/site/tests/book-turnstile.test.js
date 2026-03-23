@@ -65,8 +65,8 @@ describe('booking turnstile integration', () => {
           timezone: 'Europe/Zurich',
           slots: [{
             type: 'intro',
-            start: '2026-03-16T09:00:00+01:00',
-            end: '2026-03-16T08:30:00.000Z',
+            start: '2026-03-30T09:00:00+02:00',
+            end: '2026-03-30T09:30:00+02:00',
           }],
         });
       }
@@ -131,8 +131,8 @@ describe('booking turnstile integration', () => {
           timezone: 'Europe/Zurich',
           slots: [{
             type: 'intro',
-            start: '2026-03-16T09:00:00+01:00',
-            end: '2026-03-16T08:30:00.000Z',
+            start: '2026-03-30T09:00:00+02:00',
+            end: '2026-03-30T09:30:00+02:00',
           }],
         });
       }
@@ -202,8 +202,8 @@ describe('booking turnstile integration', () => {
           timezone: 'Europe/Zurich',
           slots: [{
             type: 'intro',
-            start: '2026-03-16T09:00:00+01:00',
-            end: '2026-03-16T08:30:00.000Z',
+            start: '2026-03-30T09:00:00+02:00',
+            end: '2026-03-30T09:30:00+02:00',
           }],
         });
       }

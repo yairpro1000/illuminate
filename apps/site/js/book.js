@@ -133,6 +133,9 @@ const S = {
   // Reschedule mode
   currentBooking: null,                  // { starts_at, ends_at, status, ... }
   rescheduleUpdated: null,               // { starts_at, ends_at }
+
+  // Turnstile
+  turnstileTokenReady: false,
 };
 
 const VIEWS = createBookPageViews({
@@ -162,12 +165,21 @@ const VIEWS = createBookPageViews({
    4. RENDER ENGINE
    ══════════════════════════════════════════════════════════ */
 
+function updateBookingSubmitBtnState() {
+  if (CTX.mode === 'reschedule') return;
+  const app = document.getElementById('booking-app');
+  const btn = app && app.querySelector('[data-submit]');
+  if (!btn) return;
+  btn.disabled = !!(SITE_CONFIG.turnstileEnabled && !S.turnstileTokenReady);
+}
+
 function render() {
   const app = document.getElementById('booking-app');
   if (!app) return;
   app.innerHTML = VIEWS.buildShell();
   attachListeners();
   mountTurnstileWidget();
+  updateBookingSubmitBtnState();
 }
 
 async function refreshSlots() {
@@ -583,6 +595,8 @@ function mountTurnstileWidget() {
   const widgetKey = host.getAttribute('data-turnstile-host');
   const action = widgetKey === 'event_registration_submit' ? 'event_registration_submit' : 'booking_submit';
 
+  S.turnstileTokenReady = false;
+  updateBookingSubmitBtnState();
   window.SiteTurnstile.renderVisibleWidget({
     key: widgetKey,
     container: host,
@@ -602,6 +616,8 @@ function mountTurnstileWidget() {
         }
         return;
       }
+      S.turnstileTokenReady = true;
+      updateBookingSubmitBtnState();
       delete S.errors.turnstile;
       syncTurnstileErrorUI(widgetKey);
     },
@@ -618,10 +634,14 @@ function mountTurnstileWidget() {
         }
         return;
       }
+      S.turnstileTokenReady = false;
+      updateBookingSubmitBtnState();
       S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
       syncTurnstileErrorUI(widgetKey);
     },
   }).catch(function (error) {
+    S.turnstileTokenReady = false;
+    updateBookingSubmitBtnState();
     S.errors.turnstile = error && error.message ? error.message : 'Anti-bot verification failed.';
     syncTurnstileErrorUI(widgetKey);
   });
