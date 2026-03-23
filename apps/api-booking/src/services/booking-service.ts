@@ -2071,42 +2071,12 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
   const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(booking, payment, ctx);
   const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
 
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_cancellation_email_dispatch_decision',
-    message: 'Evaluated booking cancellation email dispatch',
-    context: {
-      booking_id: booking.id,
-      booking_kind: bookingKind,
-      booking_status: booking.current_status,
-      event_id: booking.event_id ?? null,
-      include_refund_notice: includeRefundNotice,
-      refund_branch_taken: refundNoticeDecision.branchTaken,
-      branch_taken: booking.event_id
-        ? 'load_event_and_send_event_cancellation_email'
-        : 'send_session_cancellation_email',
-      deny_reason: null,
-    },
-  });
-
   if (!booking.event_id) {
     await ctx.providers.email.sendBookingCancellation(
       booking,
       buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
       { includeRefundNotice },
     );
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'booking_cancellation_email_dispatch_completed',
-      message: 'Session cancellation email sent',
-      context: {
-        booking_id: booking.id,
-        booking_kind: bookingKind,
-        booking_status: booking.current_status,
-        branch_taken: 'session_cancellation_email_sent',
-        deny_reason: null,
-      },
-    });
     return;
   }
 
@@ -2134,19 +2104,6 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     buildStartNewBookingUrl(bookingSiteUrl(ctx), booking),
     { includeRefundNotice },
   );
-  ctx.logger.logInfo?.({
-    source: 'backend',
-    eventType: 'booking_cancellation_email_dispatch_completed',
-    message: 'Event cancellation email sent',
-    context: {
-      booking_id: booking.id,
-      booking_kind: bookingKind,
-      booking_status: booking.current_status,
-      event_id: event.id,
-      branch_taken: 'event_cancellation_email_sent',
-      deny_reason: null,
-    },
-  });
 }
 
 export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
@@ -3116,8 +3073,8 @@ export const executeBookingSideEffectAction = createBookingSideEffectExecutor({
   sendBookingCancellationConfirmation,
   sendBookingFinalConfirmation,
   send24hBookingReminder,
-  sendRefundConfirmationEmailForBooking: async (booking, effect, ctx) => {
-    await sendRefundConfirmationEmailForBooking(booking, effect, ctx);
+  sendRefundConfirmationEmailForBooking: async (booking, event, ctx) => {
+    await sendRefundConfirmationEmailForBooking(booking, event, ctx);
   },
   retryCalendarSyncForBooking,
   ensureCheckoutForBooking,

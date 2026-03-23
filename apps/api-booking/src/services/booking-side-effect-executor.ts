@@ -27,7 +27,7 @@ interface ExecutorDeps {
   send24hBookingReminder: (booking: Booking, ctx: BookingContext) => Promise<void>;
   sendRefundConfirmationEmailForBooking: (
     booking: Booking,
-    effect: BookingSideEffectExecutorInput['effect'],
+    event: BookingSideEffectExecutorInput['event'],
     ctx: BookingContext,
   ) => Promise<void>;
   retryCalendarSyncForBooking: (
@@ -162,8 +162,8 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
       await deps.sendBookingFinalConfirmation(booking, ctx);
       return { booking };
     },
-    SEND_BOOKING_REFUND_CONFIRMATION: async ({ booking, effect, ctx }) => {
-      await deps.sendRefundConfirmationEmailForBooking(booking, effect, ctx);
+    SEND_BOOKING_REFUND_CONFIRMATION: async ({ booking, event, ctx }) => {
+      await deps.sendRefundConfirmationEmailForBooking(booking, event, ctx);
       return { booking };
     },
     SEND_EVENT_REMINDER: async ({ booking, ctx }) => {
@@ -181,31 +181,7 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
       };
     },
     CREATE_STRIPE_REFUND: async ({ booking, ctx }) => {
-      ctx.logger.logInfo?.({
-        source: 'backend',
-        eventType: 'side_effect_execution_step',
-        message: 'Dispatching CREATE_STRIPE_REFUND through refund service',
-        context: {
-          booking_id: booking.id,
-          side_effect_intent: 'CREATE_STRIPE_REFUND',
-          branch_taken: 'execute_create_stripe_refund_handler',
-          deny_reason: null,
-        },
-      });
       const refundResult = await deps.initiateAutomaticCancellationRefund(booking, ctx);
-      ctx.logger.logInfo?.({
-        source: 'backend',
-        eventType: 'side_effect_execution_step',
-        message: 'CREATE_STRIPE_REFUND returned from refund service',
-        context: {
-          booking_id: booking.id,
-          side_effect_intent: 'CREATE_STRIPE_REFUND',
-          refund_eligible: refundResult.decision.eligible,
-          next_side_effect_count: refundResult.nextSideEffects.length,
-          branch_taken: 'complete_create_stripe_refund_handler',
-          deny_reason: null,
-        },
-      });
       return {
         booking,
         nextSideEffects: refundResult.nextSideEffects,

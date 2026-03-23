@@ -52,18 +52,6 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       siteUrl: ctx.siteUrl,
     });
     const booking = access.booking;
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'manage_booking_cancel_started',
-      message: 'Starting public manage-booking cancel',
-      context: {
-        path,
-        booking_id: booking.id,
-        booking_status: booking.current_status,
-        branch_taken: 'cancel_booking',
-      },
-    });
-
     const result = await cancelBooking(booking, {
       providers: ctx.providers,
       env: ctx.env,
@@ -96,36 +84,8 @@ export async function handleManageCancel(request: Request, ctx: AppContext): Pro
       throw badRequest(result.message, result.code);
     }
 
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'manage_booking_cancel_completed',
-      message: 'Public manage-booking cancel completed',
-      context: {
-        path,
-        booking_id: result.booking.id,
-        booking_status: result.booking.current_status,
-        branch_taken: 'return_cancel_success',
-      },
-    });
-
     const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
     const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
-    ctx.logger.logInfo?.({
-      source: 'backend',
-      eventType: 'manage_booking_cancel_mock_email_preview_decision',
-      message: 'Evaluated inline mock email preview for manage-booking cancellation',
-      context: {
-        path,
-        booking_id: result.booking.id,
-        booking_status: result.booking.current_status,
-        email_mode: ctx.env.EMAIL_MODE,
-        ui_test_mode: emailDispatch?.uiTestMode ?? null,
-        has_mock_email_preview: Boolean(mockEmailPreview),
-        email_kind: emailDispatch?.emailKind ?? null,
-        branch_taken: emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
-        deny_reason: emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
-      },
-    });
 
     return ok({
       booking_id: result.booking.id,
