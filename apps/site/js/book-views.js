@@ -615,6 +615,7 @@
             <h2 class="confirmation__title">Booking rescheduled</h2>
             <p class="confirmation__message">
               Your new session time is <strong>${startsAt ? `${escHtml(formatDateLong(startsAt))} · ${escHtml(formatTime(startsAt))}` : 'saved'}</strong>.
+              A confirmation email with the updated booking details is on its way to <strong>${escHtml(state.email)}</strong>.
             </p>
             <a href="${homepageHref}" class="btn btn-ghost confirmation__back">← Back to homepage</a>
           </div>

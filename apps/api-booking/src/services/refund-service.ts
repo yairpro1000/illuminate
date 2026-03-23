@@ -1,4 +1,11 @@
-import { runImmediateBookingEventWorkflow, type BookingContext } from './booking-service.js';
+import {
+  loadCachedEventById,
+  loadCachedPaymentForBooking,
+  loadCachedSessionTypeById,
+  runImmediateBookingEventWorkflow,
+  storeCachedPayment,
+  type BookingContext,
+} from './booking-service.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { getBookingPolicyConfig } from '../config/booking-policy.js';
 import { isPaymentSettledStatus } from '../domain/payment-status.js';
@@ -335,7 +342,7 @@ export async function initiateAutomaticCancellationRefund(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<CancellationRefundExecutionResult> {
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const payment = await loadCachedPaymentForBooking(booking.id, ctx);
   const decision = await evaluateCancellationRefundDecision(booking, payment, ctx);
 
   ctx.logger.logInfo?.({
@@ -409,7 +416,7 @@ export async function initiateAutomaticCancellationRefund(
     },
   });
 
-  const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
+  const updatedPayment = storeCachedPayment(await ctx.providers.repository.updatePayment(payment.id, {
     status: refundRecord.refundStatus === 'SUCCEEDED' ? 'REFUNDED' : payment.status,
     refund_status: refundRecord.refundStatus,
     refund_amount: refundRecord.amount,
@@ -422,7 +429,7 @@ export async function initiateAutomaticCancellationRefund(
       ? (payment.refunded_at ?? new Date().toISOString())
       : payment.refunded_at,
     refund_reason: decision.refundReasonText,
-  });
+  }), ctx);
   let nextSideEffects: BookingSideEffectQueueEntry[] = [];
   if (refundRecord.refundStatus === 'SUCCEEDED') {
     const transition = await appendRefundCompletedEventIfNeeded(
@@ -535,7 +542,7 @@ export async function reconcileStripeRefundWebhook(
     return { updated: false, branchTaken, denyReason };
   }
 
-  const updatedPayment = await ctx.providers.repository.updatePayment(payment.id, {
+  const updatedPayment = storeCachedPayment(await ctx.providers.repository.updatePayment(payment.id, {
     status: nextRefundStatus === 'SUCCEEDED' ? 'REFUNDED' : payment.status,
     refund_status: nextRefundStatus,
     refund_amount: event.amount ?? payment.refund_amount,
@@ -547,7 +554,7 @@ export async function reconcileStripeRefundWebhook(
     refunded_at: nextRefundStatus === 'SUCCEEDED'
       ? (payment.refunded_at ?? new Date().toISOString())
       : payment.refunded_at,
-  });
+  }), ctx);
 
   if (nextRefundStatus === 'SUCCEEDED') {
     const booking = await ctx.providers.repository.getBookingById(payment.booking_id);
@@ -635,7 +642,7 @@ export async function sendRefundConfirmationEmailForBooking(
   ctx: BookingContext,
 ): Promise<void> {
   const payload = event.payload ?? {};
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const payment = await loadCachedPaymentForBooking(booking.id, ctx);
 
   if (!payment || effectiveRefundStatus(payment) !== 'SUCCEEDED') {
     ctx.logger.logInfo?.({
@@ -695,10 +702,10 @@ async function persistRefundDecisionState(
   const needsUpdate = (payment.refund_status ?? null) !== nextRefundStatus || payment.refund_reason !== nextReason;
   if (!needsUpdate) return;
 
-  await ctx.providers.repository.updatePayment(payment.id, {
+  storeCachedPayment(await ctx.providers.repository.updatePayment(payment.id, {
     refund_status: nextRefundStatus,
     refund_reason: nextReason,
-  });
+  }), ctx);
 }
 
 async function appendRefundCompletedEventIfNeeded(
@@ -740,13 +747,13 @@ async function appendRefundCompletedEventIfNeeded(
 
 async function resolveRefundSubjectTitle(booking: Booking, ctx: BookingContext): Promise<string> {
   if (booking.event_id) {
-    const event = await ctx.providers.repository.getEventById(booking.event_id);
+    const event = await loadCachedEventById(booking.event_id, ctx);
     return event?.title ?? 'your booking';
   }
 
   if (booking.session_type_title?.trim()) return booking.session_type_title.trim();
   if (booking.session_type_id) {
-    const sessionType = await ctx.providers.repository.getSessionTypeById(booking.session_type_id);
+    const sessionType = await loadCachedSessionTypeById(booking.session_type_id, ctx);
     if (sessionType?.title?.trim()) return sessionType.title.trim();
   }
 

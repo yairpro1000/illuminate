@@ -56,6 +56,26 @@ describe('booking effect policy', () => {
     ]);
   });
 
+  it('maps reschedule to calendar update plus refreshed confirmation email', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b2r',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'CONFIRMED',
+        booking_type: 'FREE',
+      },
+      eventType: 'BOOKING_RESCHEDULED',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+    }, policy);
+
+    expect(effects.map((effect) => effect.effect_intent)).toEqual([
+      'UPDATE_CALENDAR_SLOT',
+      'SEND_BOOKING_CONFIRMATION',
+    ]);
+  });
+
   it('maps payment settled to confirmed booking state and downstream work', async () => {
     const next = currentStatusForEvent('PAYMENT_SETTLED', 'PENDING', 'PAY_NOW', 'SUCCEEDED');
     expect(next).toBe('CONFIRMED');

@@ -192,7 +192,12 @@ export function getEffectsForEvent(
       }
       return [];
     case 'BOOKING_RESCHEDULED':
-      return [make('UPDATE_CALENDAR_SLOT', null)];
+      return nextStatus === 'CONFIRMED'
+        ? [
+            make('UPDATE_CALENDAR_SLOT', null),
+            make('SEND_BOOKING_CONFIRMATION', null),
+          ]
+        : [make('UPDATE_CALENDAR_SLOT', null)];
     case 'BOOKING_CANCELED': {
       const effects: BookingEffectSpec[] = [
         make('CANCEL_CALENDAR_SLOT', null),

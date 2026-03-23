@@ -156,6 +156,8 @@ test.describe('P4 manage and admin interactions', () => {
     await advanceRescheduleToSubmit(page);
     await page.locator('button[data-submit]').click();
     await expect(page.locator('.confirmation__title')).toContainText('Booking rescheduled');
+    await expect(page.locator('.confirmation__message')).toContainText('A confirmation email with the updated booking details is on its way');
+    await expect(page.locator('iframe.mock-email-preview__frame')).toBeVisible();
     await runtime.assertNoNewIssues(checkpoint, 'manage-reschedule-submit', testInfo);
 
     const updated = await expectManageStatus(email, 'CONFIRMED');

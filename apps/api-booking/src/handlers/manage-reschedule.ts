@@ -1,5 +1,6 @@
 import type { AppContext } from '../router.js';
 import { ApiError, ok, badRequest } from '../lib/errors.js';
+import { consumeLatestEmailDispatch } from '../lib/execution.js';
 import { rescheduleBooking } from '../services/booking-service.js';
 import { resolveBookingManageAccess } from '../services/booking-access-service.js';
 
@@ -93,18 +94,22 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
         branch_taken: 'return_reschedule_success',
       },
     });
+    const emailDispatch = consumeLatestEmailDispatch(ctx.operation);
+    const mockEmailPreview = emailDispatch?.mockEmailPreview ?? null;
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_reschedule_mock_email_preview_decision',
-      message: 'Skipped inline mock email preview because rescheduling does not send a synchronous public email',
+      message: 'Evaluated inline mock email preview for manage-booking reschedule',
       context: {
         path,
         booking_id: updated.id,
         booking_status: updated.current_status,
         email_mode: ctx.env.EMAIL_MODE,
-        has_mock_email_preview: false,
-        branch_taken: 'skip_mock_email_preview_no_synchronous_email',
-        deny_reason: 'no_synchronous_email_sent_for_reschedule',
+        ui_test_mode: emailDispatch?.uiTestMode ?? null,
+        has_mock_email_preview: Boolean(mockEmailPreview),
+        email_kind: emailDispatch?.emailKind ?? null,
+        branch_taken: emailDispatch?.branchTaken ?? 'skip_mock_email_preview_email_not_dispatched',
+        deny_reason: emailDispatch?.denyReason ?? 'email_not_dispatched_in_request',
       },
     });
 
@@ -116,6 +121,7 @@ export async function handleManageReschedule(request: Request, ctx: AppContext):
       starts_at: updated.starts_at,
       ends_at: updated.ends_at,
       timezone: updated.timezone,
+      ...(mockEmailPreview ? { mock_email_preview: mockEmailPreview } : {}),
     });
   } catch (err) {
     const statusCode = err instanceof ApiError ? err.statusCode : 500;

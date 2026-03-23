@@ -19,6 +19,7 @@ export interface ConfirmationEmailOptions {
   paymentSettled?: boolean;
   paymentDueAt?: string | null;
   receiptUrl?: string | null;
+  rescheduled?: boolean;
 }
 
 export interface CancellationEmailOptions {

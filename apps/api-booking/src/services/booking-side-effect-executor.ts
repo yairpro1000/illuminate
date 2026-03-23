@@ -23,7 +23,11 @@ interface ExecutorDeps {
   buildStartNewBookingUrl: (siteUrl: string, booking: Booking) => string;
   sendEmailConfirmation: (booking: Booking, confirmUrl: string, ctx: BookingContext) => Promise<void>;
   sendBookingCancellationConfirmation: (booking: Booking, ctx: BookingContext) => Promise<void>;
-  sendBookingFinalConfirmation: (booking: Booking, ctx: BookingContext) => Promise<void>;
+  sendBookingFinalConfirmation: (
+    booking: Booking,
+    ctx: BookingContext,
+    options?: { rescheduled?: boolean },
+  ) => Promise<void>;
   send24hBookingReminder: (booking: Booking, ctx: BookingContext) => Promise<void>;
   sendRefundConfirmationEmailForBooking: (
     booking: Booking,
@@ -158,8 +162,10 @@ function makeHandlerMap(deps: ExecutorDeps): Record<BookingEffectIntent, EffectH
       await deps.sendBookingCancellationConfirmation(booking, ctx);
       return { booking };
     },
-    SEND_BOOKING_CONFIRMATION: async ({ booking, ctx }) => {
-      await deps.sendBookingFinalConfirmation(booking, ctx);
+    SEND_BOOKING_CONFIRMATION: async ({ booking, event, ctx }) => {
+      await deps.sendBookingFinalConfirmation(booking, ctx, {
+        rescheduled: booking.event_id == null && event.event_type === 'BOOKING_RESCHEDULED',
+      });
       return { booking };
     },
     SEND_BOOKING_REFUND_CONFIRMATION: async ({ booking, event, ctx }) => {

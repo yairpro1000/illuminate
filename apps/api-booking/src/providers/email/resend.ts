@@ -132,6 +132,9 @@ function bookingConfirmationSubject(
   booking: Booking,
   options: ConfirmationEmailOptions = {},
 ): string {
+  if (options.rescheduled) {
+    return `Your session has been rescheduled to ${fmtSubjectDate(booking.starts_at, booking.timezone)}`;
+  }
   const isPendingPayment = options.paymentSettled === false && Boolean(options.paymentDueAt);
   return (options.paymentSettled === false || isPendingPayment)
     ? `Your session on ${fmtSubjectDate(booking.starts_at, booking.timezone)} is confirmed`
@@ -157,7 +160,9 @@ function bookingConfirmationBody(
     const lines = [
       `Hi ${clientName(booking)},`,
       '',
-      `Your session booking has been received, and payment is still pending for ${sessionLabel(booking)}.`,
+      options.rescheduled
+        ? `Your session has been rescheduled, and payment is still pending for ${sessionLabel(booking)}.`
+        : `Your session booking has been received, and payment is still pending for ${sessionLabel(booking)}.`,
       '',
       `Session: ${sessionLabel(booking)}`,
       `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
@@ -192,9 +197,11 @@ function bookingConfirmationBody(
   const lines = [
     `Hi ${clientName(booking)},`,
     '',
-    options.paymentSettled === false
-      ? 'Your session is confirmed.'
-      : 'Your session is confirmed and payment has been settled.',
+    options.rescheduled
+      ? 'Your session has been rescheduled.'
+      : options.paymentSettled === false
+        ? 'Your session is confirmed.'
+        : 'Your session is confirmed and payment has been settled.',
     '',
     `Session: ${sessionLabel(booking)}`,
     `Date: ${fmtBodyDate(booking.starts_at, booking.timezone)}`,
@@ -430,7 +437,9 @@ function bookingConfirmationHtml(
 
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
-      <p>Your session booking has been received, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong></p>
+      <p>${options.rescheduled
+        ? `Your session has been rescheduled, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong>`
+        : `Your session booking has been received, and payment is still pending for<br /><strong style="color:#4fc3d8;">${esc(sessionLabel(booking))}</strong>`}</p>
       ${detailBlock(rows)}
       <p style="font-size:14px;color:#88abb5;">${paymentDueLabel
         ? `Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>, which is 24 hours before your session.`
@@ -468,15 +477,18 @@ function bookingConfirmationHtml(
   rows.push(['Calendar', `<a href="${esc(calendarUrl)}">Add to Google Calendar</a>`]);
 
   const extraLinks = [
-    `<p class="secondary-link"><a href="${esc(calendarUrl)}">Add to Google Calendar &rarr;</a></p>`,
-    payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
     invoiceUrl ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>` : '',
+    payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">Complete payment &rarr;</a></p>` : '',
     receiptUrl ? `<p class="secondary-link"><a href="${esc(receiptUrl)}">View receipt &rarr;</a></p>` : '',
   ].join('');
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
-    <p>${options.paymentSettled === false ? 'Your session is confirmed.' : 'Your session is confirmed and payment has been settled.'}</p>
+    <p>${options.rescheduled
+      ? 'Your session has been rescheduled.'
+      : options.paymentSettled === false
+        ? 'Your session is confirmed.'
+        : 'Your session is confirmed and payment has been settled.'}</p>
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     ${extraLinks}

@@ -117,8 +117,42 @@ describe('Resend payment-due email payload', () => {
     const payload = sendMock.mock.calls[0][0] as Record<string, string>;
     expect(payload.text).toContain('Receipt: https://pay.stripe.com/receipts/ch_123');
     expect(payload.text).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+    expect(payload.html).toContain('View invoice');
     expect(payload.html).toContain('View receipt');
+    expect(payload.html.match(/Add to Google Calendar/g)?.length ?? 0).toBe(1);
     expect(payload.html).toContain('For online sessions, a video conference link will be sent at the day of the session.');
+  });
+
+  it('uses rescheduled confirmation copy when the booking confirmation email is triggered by a reschedule', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendBookingConfirmation({
+      id: 'bk-2c',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-21T14:00:00.000Z',
+      ends_at: '2026-03-21T15:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any,
+    'https://letsilluminate.co/manage.html?token=m1.test',
+    null,
+    null,
+    '',
+    {
+      paymentSettled: true,
+      rescheduled: true,
+    });
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, string>;
+    expect(payload.subject).toBe('Your session has been rescheduled to Mar 21');
+    expect(payload.text).toContain('Your session has been rescheduled.');
+    expect(payload.html).toContain('Your session has been rescheduled.');
+    expect(payload.html).toContain('Manage booking');
   });
 
   it('includes the hold-window copy in event confirmation-request emails', async () => {

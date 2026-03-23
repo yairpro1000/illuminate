@@ -98,6 +98,11 @@ export interface BookingContext {
   siteUrl?: string;
   bookingPolicyConfig?: Awaited<ReturnType<typeof getBookingPolicyConfig>>;
   bookingPolicyConfigPromise?: Promise<Awaited<ReturnType<typeof getBookingPolicyConfig>>>;
+  requestCache?: {
+    paymentsByBookingId: Map<string, Payment | null>;
+    eventsById: Map<string, Event | null>;
+    sessionTypesById: Map<string, SessionTypeRecord | null>;
+  };
 }
 
 async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
@@ -110,6 +115,67 @@ async function loadBookingPolicy(ctx: Pick<BookingContext, 'providers'>) {
     });
   }
   return cached.bookingPolicyConfigPromise;
+}
+
+function bookingRequestCache(ctx: Pick<BookingContext, 'requestCache'>): NonNullable<BookingContext['requestCache']> {
+  const cached = ctx as BookingContext;
+  if (!cached.requestCache) {
+    cached.requestCache = {
+      paymentsByBookingId: new Map(),
+      eventsById: new Map(),
+      sessionTypesById: new Map(),
+    };
+  }
+  return cached.requestCache;
+}
+
+export async function loadCachedPaymentForBooking(
+  bookingId: string,
+  ctx: Pick<BookingContext, 'providers' | 'requestCache'>,
+): Promise<Payment | null> {
+  const cache = bookingRequestCache(ctx);
+  if (cache.paymentsByBookingId.has(bookingId)) {
+    return cache.paymentsByBookingId.get(bookingId) ?? null;
+  }
+  const payment = await ctx.providers.repository.getPaymentByBookingId(bookingId);
+  cache.paymentsByBookingId.set(bookingId, payment);
+  return payment;
+}
+
+export function storeCachedPayment<T extends Payment | null>(
+  payment: T,
+  ctx: Pick<BookingContext, 'requestCache'>,
+): T {
+  if (payment) {
+    bookingRequestCache(ctx).paymentsByBookingId.set(payment.booking_id, payment);
+  }
+  return payment;
+}
+
+export async function loadCachedEventById(
+  eventId: string,
+  ctx: Pick<BookingContext, 'providers' | 'requestCache'>,
+): Promise<Event | null> {
+  const cache = bookingRequestCache(ctx);
+  if (cache.eventsById.has(eventId)) {
+    return cache.eventsById.get(eventId) ?? null;
+  }
+  const event = await ctx.providers.repository.getEventById(eventId);
+  cache.eventsById.set(eventId, event);
+  return event;
+}
+
+export async function loadCachedSessionTypeById(
+  sessionTypeId: string,
+  ctx: Pick<BookingContext, 'providers' | 'requestCache'>,
+): Promise<SessionTypeRecord | null> {
+  const cache = bookingRequestCache(ctx);
+  if (cache.sessionTypesById.has(sessionTypeId)) {
+    return cache.sessionTypesById.get(sessionTypeId) ?? null;
+  }
+  const sessionType = await ctx.providers.repository.getSessionTypeById(sessionTypeId);
+  cache.sessionTypesById.set(sessionTypeId, sessionType);
+  return sessionType;
 }
 
 export function bookingSiteUrl(ctx: Pick<BookingContext, 'siteUrl' | 'env'>): string {
@@ -1661,15 +1727,18 @@ export async function cancelBooking(
     };
   }
 
+  const paymentBeforeImmediateEffects = await loadCachedPaymentForBooking(booking.id, ctx);
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_CANCELED',
     source,
     { reason: 'user_cancelled' },
     ctx,
-    { booking },
+    {
+      booking,
+      payment: paymentBeforeImmediateEffects,
+    },
   );
-  const paymentBeforeImmediateEffects = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(
     transitioned.booking,
     paymentBeforeImmediateEffects,
@@ -1686,7 +1755,7 @@ export async function cancelBooking(
   }, ctx);
   const finalBooking = cancellationExecution.booking;
 
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const payment = await loadCachedPaymentForBooking(booking.id, ctx);
   ctx.logger.logInfo?.({
     source: 'backend',
     eventType: 'cancel_booking_refund_branch_decision',
@@ -1705,21 +1774,20 @@ export async function cancelBooking(
       deny_reason: refundNoticeDecision.denyReason,
     },
   });
-  const refreshedPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
   const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
-  const refundStatus = effectiveRefundStatus(refreshedPayment);
+  const refundStatus = effectiveRefundStatus(payment);
   const refundArtifacts = refundStatus !== 'NONE'
     ? {
         status: refundStatus,
-        invoiceUrl: refreshedPayment?.invoice_url ?? null,
-        receiptUrl: refreshedPayment?.stripe_receipt_url ?? null,
-        creditNoteUrl: refreshedPayment?.stripe_credit_note_url ?? null,
+        invoiceUrl: payment?.invoice_url ?? null,
+        receiptUrl: payment?.stripe_receipt_url ?? null,
+        creditNoteUrl: payment?.stripe_credit_note_url ?? null,
       }
     : null;
 
   return {
     ok: true,
-    code: refreshedPayment?.status === 'REFUNDED' ? 'CANCELED_AND_REFUNDED' : 'CANCELED',
+    code: payment?.status === 'REFUNDED' ? 'CANCELED_AND_REFUNDED' : 'CANCELED',
     message: refundStatus === 'SUCCEEDED'
       ? 'Booking cancelled and refund processed. Your refund documents are ready below, and you\'ll receive a separate confirmation email.'
       : includeRefundNotice
@@ -2063,7 +2131,7 @@ export async function send24hBookingReminder(booking: Booking, ctx: BookingConte
 
 export async function sendBookingCancellationConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
   const bookingKind: 'session' | 'event' = booking.event_id ? 'event' : 'session';
-  const payment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
+  const payment = await loadCachedPaymentForBooking(booking.id, ctx);
   const refundNoticeDecision = await evaluateCancellationRefundNoticeDecision(booking, payment, ctx);
   const includeRefundNotice = refundNoticeDecision.includeRefundNotice;
 
@@ -2090,7 +2158,7 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
     return;
   }
 
-  const event = await ctx.providers.repository.getEventById(booking.event_id);
+  const event = await loadCachedEventById(booking.event_id, ctx);
   if (!event) {
     ctx.logger.logError?.({
       source: 'backend',
@@ -2131,7 +2199,11 @@ export async function sendBookingCancellationConfirmation(booking: Booking, ctx:
   });
 }
 
-export async function sendBookingFinalConfirmation(booking: Booking, ctx: BookingContext): Promise<void> {
+export async function sendBookingFinalConfirmation(
+  booking: Booking,
+  ctx: BookingContext,
+  options: { rescheduled?: boolean } = {},
+): Promise<void> {
   const policy = await loadBookingPolicy(ctx);
   const siteUrl = bookingSiteUrl(ctx);
   const manageUrl = await buildManageUrl(siteUrl, booking);
@@ -2176,6 +2248,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
   const paymentDueAt = isPayLaterPendingConfirmation
     ? getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours)
     : null;
+  const emailReason = options.rescheduled ? 'rescheduled' : 'confirmation';
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -2193,8 +2266,13 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       has_receipt_url: Boolean(receiptUrl),
       has_pay_url: Boolean(payUrl),
       calendar_sync_pending_retry: !booking.event_id && !booking.google_event_id,
+      email_reason: emailReason,
       email_variant: isPayLaterPendingConfirmation ? 'confirmed_payment_pending' : 'confirmed_paid_or_free',
-      branch_taken: isPayLaterPendingConfirmation
+      branch_taken: options.rescheduled
+        ? (isPayLaterPendingConfirmation
+          ? 'allow_reschedule_confirmation_email_payment_pending'
+          : 'allow_reschedule_confirmation_email')
+        : isPayLaterPendingConfirmation
         ? 'allow_pay_later_confirmation_email'
         : !booking.event_id && !booking.google_event_id
         ? 'allow_session_confirmation_email_while_calendar_sync_pending_retry'
@@ -2237,6 +2315,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
         paymentSettled: paymentSettledForEmail,
         paymentDueAt,
         receiptUrl,
+        rescheduled: options.rescheduled,
       },
     );
     ctx.logger.logInfo?.({
@@ -2249,8 +2328,13 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
         booking_status: booking.current_status,
         payment_mode: paymentMode,
         payment_status: payment?.status ?? null,
+        email_reason: emailReason,
         email_variant: isPayLaterPendingConfirmation ? 'confirmed_payment_pending' : 'confirmed_paid_or_free',
-        branch_taken: isPayLaterPendingConfirmation
+        branch_taken: options.rescheduled
+          ? (isPayLaterPendingConfirmation
+            ? 'session_reschedule_confirmation_email_sent_payment_pending'
+            : 'session_reschedule_confirmation_email_sent')
+          : isPayLaterPendingConfirmation
           ? 'session_pay_later_confirmation_email_sent'
           : 'session_confirmation_email_sent',
         deny_reason: null,
@@ -2287,6 +2371,7 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       paymentSettled: paymentSettledForEmail,
       paymentDueAt,
       receiptUrl,
+      rescheduled: options.rescheduled,
     },
   );
   ctx.logger.logInfo?.({
@@ -2299,8 +2384,11 @@ export async function sendBookingFinalConfirmation(booking: Booking, ctx: Bookin
       booking_status: booking.current_status,
       event_id: event.id,
       payment_status: payment?.status ?? null,
+      email_reason: emailReason,
       email_variant: isPayLaterPendingConfirmation ? 'confirmed_payment_pending' : 'confirmed_paid_or_free',
-      branch_taken: isPayLaterPendingConfirmation
+      branch_taken: options.rescheduled
+        ? 'event_reschedule_confirmation_email_sent'
+        : isPayLaterPendingConfirmation
         ? 'event_pay_later_confirmation_email_sent'
         : 'event_confirmation_email_sent',
       deny_reason: null,

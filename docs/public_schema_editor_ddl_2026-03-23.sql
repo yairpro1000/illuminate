@@ -1,5 +1,5 @@
--- Editor-ready public schema DDL snapshot generated from the live Supabase public dump on 2026-03-22.
--- This companion is derived directly from docs/public_schema_snapshot_2026-03-22.sql.
+-- Editor-ready public schema DDL snapshot generated from the live Supabase public dump on 2026-03-23.
+-- This companion is derived directly from docs/public_schema_snapshot_2026-03-23.sql.
 -- Postgres enum type declarations are normalized to text columns/casts for authored DDL readability.
 
 
@@ -302,7 +302,7 @@ CREATE TABLE IF NOT EXISTS "public"."booking_side_effect_attempts" (
     "booking_side_effect_id" "uuid" NOT NULL,
     "attempt_num" integer NOT NULL,
     "api_log_id" "uuid",
-    "status" "text" NOT NULL,
+    "status" "text",
     "error_message" "text",
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     CONSTRAINT "booking_side_effect_attempts_attempt_num_check" CHECK (("attempt_num" >= 1)),
@@ -929,6 +929,10 @@ CREATE INDEX "idx_booking_events_booking_created" ON "public"."booking_events" U
 
 
 CREATE INDEX "idx_booking_events_confirm_token_hash" ON "public"."booking_events" USING "btree" ((("payload" ->> 'confirm_token_hash'::"text")), "created_at" DESC) WHERE ("payload" ? 'confirm_token_hash'::"text");
+
+
+
+CREATE INDEX "idx_booking_events_status_created" ON "public"."booking_events" USING "btree" ("status", "created_at" DESC);
 
 
 
@@ -1572,7 +1576,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
 
 
 

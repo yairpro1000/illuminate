@@ -13,7 +13,7 @@ Excluded:
 
 - Confirmed documentation folder: `docs/`
 - Governing pay-later refinement: [pay_later_refined_flow_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/pay_later_refined_flow_2026-03-15.md)
-- Live schema reference used during this pass: [public_schema_snapshot_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-15.sql)
+- Live schema reference used during this pass: [public_schema_snapshot_2026-03-15.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/old/public_schema_snapshot_2026-03-15.sql)
 
 ## Iteration Summary
 

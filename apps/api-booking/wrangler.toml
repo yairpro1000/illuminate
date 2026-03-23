@@ -40,11 +40,11 @@ bucket_name = "illuminate-images"
 
 # Local-only overrides (used by `wrangler dev --env local`)
 [env.local.vars]
-REPOSITORY_MODE = "mock"
-EMAIL_MODE      = "mock"
-CALENDAR_MODE   = "mock"
-PAYMENTS_MODE   = "mock"
-ANTIBOT_MODE    = "mock"
+REPOSITORY_MODE = "supabase"
+EMAIL_MODE      = "resend"
+CALENDAR_MODE   = "google"
+PAYMENTS_MODE   = "stripe_sandbox"
+ANTIBOT_MODE    = "turnstile"
 TURNSTILE_TEST_SECRET_KEY_ALWAYS_FAIL = "2x0000000000000000000000000000000AB"
 TURNSTILE_TEST_SECRET_KEY_PASS = "1x0000000000000000000000000000000AA"
 TURNSTILE_TEST_SITE_KEY_ALWAYS_FAIL = "2x00000000000000000000AB"

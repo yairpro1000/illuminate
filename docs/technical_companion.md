@@ -41,8 +41,8 @@ Primary references for this scope:
 - requirements: [requirements.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/requirements.md)
 - user-facing acceptance: [expected_user_scenarios_freeze_illuminate_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/expected_user_scenarios_freeze_illuminate_2026-03-15.md)
 - pay-later refinement: [pay_later_refined_flow_2026-03-15.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/pay_later_refined_flow_2026-03-15.md)
-- live schema snapshot: [public_schema_snapshot_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-22.sql)
-- editor-ready DDL companion: [public_schema_editor_ddl_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-22.sql)
+- live schema snapshot: [public_schema_snapshot_2026-03-23.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-23.sql)
+- editor-ready DDL companion: [public_schema_editor_ddl_2026-03-23.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-23.sql)
 - manual testing companion: [manual_testing_companion.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/manual_testing_companion.md)
 - E2E UI matrix: [e2e_ui_test_matrix.xlsx](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/test-plans/e2e_ui_test_matrix.xlsx)
 
@@ -207,8 +207,8 @@ Current intended pay-later architecture:
 
 ### 6.1 Live references
 
-- full remote snapshot: [public_schema_snapshot_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-22.sql)
-- shorter editor DDL: [public_schema_editor_ddl_2026-03-22.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-22.sql)
+- full remote snapshot: [public_schema_snapshot_2026-03-23.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_snapshot_2026-03-23.sql)
+- shorter editor DDL: [public_schema_editor_ddl_2026-03-23.sql](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/public_schema_editor_ddl_2026-03-23.sql)
 
 ### 6.2 Booking-domain tables in scope
 

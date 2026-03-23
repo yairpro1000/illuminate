@@ -393,7 +393,7 @@ describe('mock email inline preview contract', () => {
     expect(listSystemSettingsSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('includes a preview on manage cancel and skips it on manage reschedule', async () => {
+  it('includes a preview on manage reschedule and manage cancel when a synchronous email is sent', async () => {
     const ctx = makeCtx();
     const createResponse = await handleRequest(jsonRequest('/api/bookings/pay-later', {
       slot_start: '2026-03-26T10:00:00.000Z',
@@ -408,6 +408,15 @@ describe('mock email inline preview contract', () => {
     }), ctx);
     const bookingData = await createResponse.json() as { booking_id: string };
     const manageToken = `m1.${bookingData.booking_id}`;
+    const submission = mockState.bookingEvents.find((event) =>
+      event.booking_id === bookingData.booking_id && event.event_type === 'BOOKING_FORM_SUBMITTED',
+    );
+    const confirmToken = String(submission?.payload?.['confirm_token'] ?? '');
+    const confirmResponse = await handleRequest(
+      jsonRequest(`/api/bookings/confirm?token=${encodeURIComponent(confirmToken)}`),
+      ctx,
+    );
+    expect(confirmResponse.status).toBe(200);
 
     const rescheduleResponse = await handleRequest(jsonRequest('/api/bookings/reschedule', {
       token: manageToken,
@@ -416,11 +425,16 @@ describe('mock email inline preview contract', () => {
       timezone: 'Europe/Zurich',
     }), ctx);
     const rescheduleData = await rescheduleResponse.json() as Record<string, unknown>;
-    expect(rescheduleData).not.toHaveProperty('mock_email_preview');
+    expect(rescheduleData).toEqual(expect.objectContaining({
+      mock_email_preview: expect.objectContaining({
+        email_kind: 'booking_confirmation',
+        html_content: expect.stringContaining('rescheduled'),
+      }),
+    }));
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'manage_booking_reschedule_mock_email_preview_decision',
       context: expect.objectContaining({
-        branch_taken: 'skip_mock_email_preview_no_synchronous_email',
+        branch_taken: 'include_mock_email_preview',
       }),
     }));
 
