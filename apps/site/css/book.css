@@ -11,14 +11,33 @@
   padding-top: 6rem;   /* clear fixed nav */
   padding-bottom: 5rem;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
 }
 
 .book-container {
   width: min(38rem, 100% - 3rem);
   margin-inline: auto;
   padding-top: 2rem;
+}
+
+.book-contact-fallback {
+  width: min(38rem, 100% - 3rem);
+  margin-inline: auto;
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.book-contact-fallback a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.book-contact-fallback a:hover {
+  opacity: 0.8;
 }
 
 /* ── Booking card shell ──────────────────────────────────── */
