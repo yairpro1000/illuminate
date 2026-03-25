@@ -293,9 +293,9 @@
 
           <div class="event-card__facts">
             ${renderFact('When', `${escapeHtml(formatDateLabel(event.starts_at))}`, 'wide')}
-            ${renderFact('Time', `${escapeHtml(formatTimeLabel(event.starts_at))}${durationLabel ? ` <span class="event-card__fact-meta">${escapeHtml(durationLabel)}</span>` : ''}`)}
+            ${durationLabel ? renderFact('Duration', escapeHtml(durationLabel), 'wide') : ''}
             ${renderFact('Where', escapeHtml(event.address_line), 'wide')}
-            ${renderFact('Price', formatPrice(event))}
+            ${renderFact('Price', formatPrice(event), 'wide')}
             ${seatsLeft ? renderFact('Seats left', escapeHtml(String(seatsLeft)), 'emphasis') : ''}
           </div>
 
