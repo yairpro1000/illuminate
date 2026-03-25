@@ -2,6 +2,7 @@
   'use strict';
 
   const STORAGE_KEY = 'couponCode';
+  const COUPON_DATA_KEY = 'couponData';
   const CHF_TO_ILS_DISPLAY_RATE = 4;
   const SITE_CLIENT = window.siteClient || null;
   const ISRAEL_COUPON = Object.freeze({
@@ -26,7 +27,18 @@
 
   function getSupportedCoupon(rawCode) {
     const normalized = normalizeCouponCode(rawCode);
-    return normalized === ISRAEL_COUPON.code ? ISRAEL_COUPON : null;
+    if (!normalized) return null;
+    if (normalized === ISRAEL_COUPON.code) return ISRAEL_COUPON;
+    try {
+      const stored = localStorage.getItem(COUPON_DATA_KEY);
+      if (stored) {
+        const data = JSON.parse(stored);
+        if (data && data.code === normalized && typeof data.discountPercent === 'number') {
+          return Object.freeze({ code: data.code, discountPercent: data.discountPercent });
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   function getAppliedCoupon() {
@@ -47,11 +59,21 @@
     }));
   }
 
-  function setAppliedCouponCode(rawCode, source) {
-    const coupon = getSupportedCoupon(rawCode);
+  function setAppliedCouponCode(rawCode, source, discountPercent) {
+    const normalized = normalizeCouponCode(rawCode);
+    if (!normalized) return false;
+    let coupon = getSupportedCoupon(rawCode);
+    if (!coupon && discountPercent !== undefined && discountPercent !== null) {
+      coupon = Object.freeze({ code: normalized, discountPercent: Number(discountPercent) });
+    }
     if (!coupon) return false;
     try {
       localStorage.setItem(STORAGE_KEY, coupon.code);
+      if (coupon.code !== ISRAEL_COUPON.code) {
+        localStorage.setItem(COUPON_DATA_KEY, JSON.stringify({ code: coupon.code, discountPercent: coupon.discountPercent }));
+      } else {
+        localStorage.removeItem(COUPON_DATA_KEY);
+      }
     } catch (_) {
       return false;
     }
@@ -63,6 +85,7 @@
   function clearAppliedCouponCode(source) {
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COUPON_DATA_KEY);
     } catch (_) {}
     renderAppliedIndicator();
     emitCouponChange(source || 'remove');
@@ -245,9 +268,12 @@
     indicator.style.left = 'auto';
     indicator.style.top = 'auto';
 
+    const label = coupon.code === ISRAEL_COUPON.code
+      ? `🇮🇱 ${coupon.code} coupon applied`
+      : `${coupon.code} coupon applied`;
     indicator.innerHTML = `
-      <span class="coupon-indicator__label">🇮🇱 Israel discount applied</span>
-      <button type="button" class="coupon-indicator__remove" data-coupon-remove="true" aria-label="Remove Israel discount">✕</button>
+      <span class="coupon-indicator__label">${label}</span>
+      <button type="button" class="coupon-indicator__remove" data-coupon-remove="true" aria-label="Remove ${coupon.code} coupon">✕</button>
     `;
   }
 
@@ -326,7 +352,9 @@
 
     const removeButton = event.target.closest('[data-coupon-remove]');
     if (removeButton) {
-      const shouldRemove = window.confirm('Remove Israel discount and return to standard pricing?');
+      const activeCoupon = getAppliedCoupon();
+      const removeLabel = activeCoupon ? activeCoupon.code : 'coupon';
+      const shouldRemove = window.confirm(`Remove ${removeLabel} coupon and return to standard pricing?`);
       if (!shouldRemove) return;
       clearAppliedCouponCode('indicator_remove');
       applyStaticPrices(document);

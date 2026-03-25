@@ -418,9 +418,10 @@ async function handleCouponApply() {
   render();
 
   try {
-    await validateCouponCode(normalized);
+    const couponResult = await validateCouponCode(normalized);
+    const discountPercent = couponResult && couponResult.coupon && couponResult.coupon.discount_percent;
     if (SITE_COUPON && typeof SITE_COUPON.setAppliedCouponCode === 'function') {
-      SITE_COUPON.setAppliedCouponCode(normalized, 'review_apply');
+      SITE_COUPON.setAppliedCouponCode(normalized, 'review_apply', discountPercent);
     } else {
       S.appliedCouponCode = normalized;
       refreshCouponPreview();
@@ -437,7 +438,8 @@ async function handleCouponApply() {
 
 function handleCouponRemove() {
   if (SITE_COUPON && typeof SITE_COUPON.clearAppliedCouponCode === 'function') {
-    const shouldRemove = window.confirm('Remove Israel discount and return to standard pricing?');
+    const removeLabel = S.appliedCouponCode || 'coupon';
+    const shouldRemove = window.confirm(`Remove ${removeLabel} coupon and return to standard pricing?`);
     if (!shouldRemove) return;
     SITE_COUPON.clearAppliedCouponCode('review_remove');
   } else {
