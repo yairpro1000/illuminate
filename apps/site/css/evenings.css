@@ -379,6 +379,28 @@ body.theme-light .evenings-hero::after {
   color: var(--color-text-muted);
 }
 
+a.event-card__fact--link {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+a.event-card__fact--link:hover {
+  border-color: var(--color-border-hover);
+}
+
+a.event-card__fact--link:hover .event-card__fact-value {
+  color: var(--color-lake-light);
+}
+
+.event-card__map-icon {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  margin-right: 0.3em;
+  flex-shrink: 0;
+  color: var(--color-text-subtle);
+}
+
 .event-card__intro {
   font-size: 1.1rem;
   line-height: 1.7;

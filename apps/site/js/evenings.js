@@ -294,7 +294,14 @@
           <div class="event-card__facts">
             ${renderFact('When', `${escapeHtml(formatDateLabel(event.starts_at))}`, 'wide')}
             ${durationLabel ? renderFact('Duration', escapeHtml(durationLabel), 'wide') : ''}
-            ${renderFact('Where', escapeHtml(event.address_line), 'wide')}
+            ${event.maps_url
+              ? `<a href="${escapeAttr(event.maps_url)}" target="_blank" rel="noopener noreferrer" class="event-card__fact event-card__fact--wide event-card__fact--link">
+                  <span class="event-card__fact-label">Where</span>
+                  <span class="event-card__fact-value">
+                    <svg class="event-card__map-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>${escapeHtml(event.address_line)}
+                  </span>
+                </a>`
+              : renderFact('Where', escapeHtml(event.address_line), 'wide')}
             ${renderFact('Price', formatPrice(event), 'wide')}
             ${seatsLeft ? renderFact('Seats left', escapeHtml(String(seatsLeft)), 'emphasis') : ''}
           </div>
