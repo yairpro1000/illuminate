@@ -588,7 +588,9 @@ function eventConfirmationHtml(
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
       : null;
-    const rows = eventDetailRows(booking, event);
+    const rows = eventDetailRows(booking, event, {
+      includeMap: true,
+    });
     if (paymentMethodLabel) {
       rows.push(['Payment method', esc(paymentMethodLabel)]);
     }
@@ -601,8 +603,7 @@ function eventConfirmationHtml(
 
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
-      <p>Your booking for <strong style="color:#4fc3d8;">${esc(event.title)}</strong> is confirmed, and payment is still pending.</p>
-      ${paymentMethodMessage ? `<p style="font-size:14px;color:#88abb5;">${esc(paymentMethodMessage)}</p>` : ''}
+      <p>Your booking for <strong style="color:#4fc3d8;">${esc(event.title)}</strong> is confirmed.</p>
       ${detailBlock(rows)}
       <p style="font-size:14px;color:#88abb5;">${paymentDueLabel
         ? `Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>.`
@@ -1034,7 +1035,7 @@ export function buildEventConfirmationEmail(
   const text = paymentSettled
     ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${receiptUrl ? `\nReceipt: ${receiptUrl}` : ''}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`
     : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}${paymentMethodLabel ? `\nPayment method: ${paymentMethodLabel}` : ''}${paymentMethodMessage ? `\n${paymentMethodMessage}` : ''}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\n${optionalOnlinePaymentMessage ?? 'Complete payment:'} ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed.` : `You're confirmed for ${event.title}.`}${paymentMethodLabel ? `\nPayment method: ${paymentMethodLabel}` : ''}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\n${optionalOnlinePaymentMessage ?? 'Complete payment:'} ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
       : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
