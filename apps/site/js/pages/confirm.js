@@ -54,6 +54,16 @@
     const isEvent = data.source === 'event';
     const awaitsPayment = String(data.next_action_label || '').toLowerCase() === 'complete payment';
     const calendarHtml = renderCalendarSection(data.calendar_event);
+    const primaryHref = awaitsPayment
+      ? homepageHref
+      : (siteClient && typeof siteClient.resolveSiteActionHref === 'function'
+        ? siteClient.resolveSiteActionHref(data.next_action_url || null, data.next_action_label || null)
+        : (data.next_action_url || homepageHref));
+    const primaryText = awaitsPayment
+      ? '← Back to homepage'
+      : (data.next_action_label || '← Back to homepage');
+    const secondaryHref = awaitsPayment ? data.next_action_url : homepageHref;
+    const secondaryText = awaitsPayment ? 'You can complete payment online here' : '← Back to homepage';
     show(
       checkSvg,
       'Confirmed!',
@@ -62,12 +72,10 @@
         : (awaitsPayment
           ? 'Your booking is confirmed and awaiting payment.'
           : 'Your booking is confirmed.'),
-      siteClient && typeof siteClient.resolveSiteActionHref === 'function'
-        ? siteClient.resolveSiteActionHref(data.next_action_url || null, data.next_action_label || null)
-        : (data.next_action_url || homepageHref),
-      data.next_action_label || '← Back to homepage',
-      homepageHref,
-      '← Back to homepage',
+      primaryHref,
+      primaryText,
+      secondaryHref,
+      secondaryText,
       calendarHtml,
     );
   } catch (err) {
