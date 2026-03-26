@@ -90,6 +90,9 @@
       coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
         ? (args.state.appliedCouponCode || null)
         : null,
+      payment_mode: args.context.isPaid
+        ? 'pay_at_event'
+        : undefined,
     };
 
     if (args.observability) args.observability.logMilestone('registration_started', { event_slug: args.context.eventSlug });

@@ -188,6 +188,8 @@
     data.payment_due_at ? ['Payment due', formatDt(data.payment_due_at)] : null,
   ].filter(Boolean) : [
     ['Status',      statusBadge(data.status)],
+    data.payment_method_label ? ['Payment method', escapeHtml(data.payment_method_label)] : null,
+    data.payment_status ? ['Payment', statusBadge(data.payment_status)] : null,
     ['Event',       data.title || data.event?.title || '—'],
     ['Date',        formatDt(data.starts_at)],
   ].filter(Boolean);
@@ -200,6 +202,7 @@
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
+    ${data.payment_method_message ? `<div class="policy-box policy-box--text">${escapeHtml(data.payment_method_message)}</div>` : ''}
     ${policyText ? bookingPolicyHtml(policyText) : ''}
     ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
     ${renderRefundLinks(data.refund || null)}

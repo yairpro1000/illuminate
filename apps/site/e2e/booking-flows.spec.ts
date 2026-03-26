@@ -264,7 +264,7 @@ test.describe('P4 core booking flows', () => {
     await expectManageStatus(email, 'CONFIRMED');
   });
 
-  test('paid evening registration reaches mock checkout and confirms after success', async ({ page }, testInfo) => {
+  test('paid evening registration confirms by email and keeps pay-at-event wording', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
     const email = makeScenarioEmail('p4-evening-paid');
     const paidEvent = (await getEvents()).find((event) =>
@@ -286,20 +286,28 @@ test.describe('P4 core booking flows', () => {
       email,
       phone: '',
     });
+    await expect(page.locator('.review-table')).toContainText('Payment method');
+    await expect(page.locator('.review-table')).toContainText('Pay at the event');
+    await expect(page.locator('button[data-submit]')).toContainText('Reserve your spot');
     await page.locator('button[data-submit]').click();
-    await page.waitForURL(/\/dev-pay\?session_id=/);
-    await page.locator('#btn-success').click();
-    await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
     await expectInlineMockEmailPreview(page, {
-      title: /Confirmed!|Payment confirmed|Payment received/,
-      frameText: /confirmed|Manage booking/i,
+      title: 'Registration received',
+      frameText: /No online payment is required now|Please confirm your spot/i,
+      actionName: 'Confirm my spot',
+      actionHref: /confirm\.html\?token=/,
+    });
+    const artifacts = await waitForBookingArtifacts(email);
+    checkpoint = runtime.checkpoint();
+    await page.goto(artifacts.links.confirm_url!);
+    await expectInlineMockEmailPreview(page, {
+      title: /Confirmed!/,
+      frameText: /Pay at the event|pay on location|Manage booking/i,
       actionName: /Manage booking/i,
       actionHref: /manage\.html\?token=/,
     });
-    await runtime.assertNoNewIssues(checkpoint, 'paid-evening-success', testInfo);
+    await runtime.assertNoNewIssues(checkpoint, 'paid-evening-confirm', testInfo);
 
-    const artifacts = await waitForBookingArtifacts(email);
-    expect(artifacts.payment?.session_id).toBeTruthy();
+    expect(artifacts.payment?.status).toBe('CASH_OK');
     expect(['CONFIRMED', 'COMPLETED']).toContain(artifacts.booking.status);
   });
 });

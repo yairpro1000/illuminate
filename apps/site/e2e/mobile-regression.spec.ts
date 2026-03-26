@@ -509,7 +509,7 @@ test.describe('@mobile P4 mobile regression', () => {
     await runtime.assertNoNewIssues(checkpoint, 'mobile-free-evening-confirm', testInfo);
   });
 
-  test('@mobile paid evening registration reaches mock checkout and confirms after success', async ({ page }, testInfo) => {
+  test('@mobile paid evening registration confirms by email and keeps pay-at-event wording', async ({ page }, testInfo) => {
     const runtime = attachRuntimeMonitor(page);
     const email = makeScenarioEmail('p4m-evening-paid');
     const paidEvent = (await getEvents()).find((event) => event && event.is_paid === true && event.render?.public_registration_open === true);
@@ -521,17 +521,25 @@ test.describe('@mobile P4 mobile regression', () => {
 
     const checkpoint = runtime.checkpoint();
     await fillContactDetails(page, { firstName: 'P4', lastName: 'EveningPaid', email, phone: '' });
+    await expect(page.locator('.review-table')).toContainText('Pay at the event');
+    await expect(page.locator('button[data-submit]')).toContainText('Reserve your spot');
     await page.locator('button[data-submit]').click();
-    await page.waitForURL(/\/dev-pay\?session_id=/);
-    await page.locator('#btn-success').click();
-    await page.waitForURL(/\/payment-success(\.html)?\?session_id=/);
     await expectInlineMockEmailPreview(page, {
-      title: /Confirmed!|Payment confirmed|Payment received/,
-      frameText: /confirmed|Manage booking/i,
+      title: 'Registration received',
+      frameText: /No online payment is required now|Please confirm your spot/i,
+      actionName: 'Confirm my spot',
+      actionHref: /confirm\.html\?token=/,
+    });
+    const artifacts = await waitForBookingArtifacts(email);
+    await page.goto(artifacts.links.confirm_url!);
+    await expectInlineMockEmailPreview(page, {
+      title: /Confirmed!/,
+      frameText: /Pay at the event|pay on location|Manage booking/i,
       actionName: /Manage booking/i,
       actionHref: /manage\.html\?token=/,
     });
-    await runtime.assertNoNewIssues(checkpoint, 'mobile-paid-evening-success', testInfo);
+    expect(artifacts.payment?.status).toBe('CASH_OK');
+    await runtime.assertNoNewIssues(checkpoint, 'mobile-paid-evening-confirm', testInfo);
   });
 
   test('@mobile contact form valid submit', async ({ page }, testInfo) => {

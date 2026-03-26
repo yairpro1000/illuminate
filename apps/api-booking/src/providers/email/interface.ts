@@ -20,6 +20,10 @@ export interface ConfirmationEmailOptions {
   paymentDueAt?: string | null;
   receiptUrl?: string | null;
   rescheduled?: boolean;
+  paymentMethod?: 'pay_now' | 'pay_later' | 'pay_at_event' | 'free' | null;
+  paymentMethodLabel?: string | null;
+  paymentMethodMessage?: string | null;
+  optionalOnlinePaymentMessage?: string | null;
 }
 
 export interface CancellationEmailOptions {
@@ -99,6 +103,7 @@ export interface IEmailProvider {
     event: Event,
     confirmUrl: string,
     confirmationWindowMinutes: number,
+    options?: ConfirmationEmailOptions,
   ): Promise<SendResult>;
 
   /** Event confirmation for free-confirmed or paid-success. */

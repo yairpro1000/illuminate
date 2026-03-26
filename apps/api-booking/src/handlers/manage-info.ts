@@ -109,6 +109,23 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         branch_taken: 'return_manage_booking_payload',
       },
     });
+    const paymentMethod = booking.event_id && booking.booking_type === 'PAY_LATER' && payment?.status === 'CASH_OK'
+      ? 'pay_at_event'
+      : booking.booking_type === 'PAY_NOW'
+        ? 'pay_now'
+        : booking.booking_type === 'PAY_LATER'
+          ? 'pay_later'
+          : 'free';
+    const paymentMethodLabel = paymentMethod === 'pay_at_event'
+      ? 'Pay at the event'
+      : paymentMethod === 'pay_now'
+        ? 'Pay now'
+        : paymentMethod === 'pay_later'
+          ? 'Pay later'
+          : 'Free';
+    const paymentMethodMessage = paymentMethod === 'pay_at_event'
+      ? 'No online payment is required now. Your place will be confirmed after email confirmation.'
+      : null;
 
     return ok({
       booking_id: booking.id,
@@ -134,9 +151,12 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         continue_payment_url: actions.continuePaymentUrl,
       },
       is_paid: actions.isPaid,
+      payment_method: paymentMethod,
+      payment_method_label: paymentMethodLabel,
+      payment_method_message: paymentMethodMessage,
       payment_status: payment?.status ?? null,
       refund,
-      payment_due_at: payment ? paymentDueAt : null,
+      payment_due_at: paymentMethod === 'pay_at_event' ? null : (payment ? paymentDueAt : null),
       policy: {
         text: getBookingPolicyText(bookingPolicy.selfServiceLockWindowHours),
         can_self_serve_change: access.bypassPolicyWindow ? true : policy.canSelfServeChange,

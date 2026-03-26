@@ -419,6 +419,9 @@ function bookingConfirmationHtml(
   const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
+  const paymentMethodLabel = options.paymentMethodLabel ?? null;
+  const paymentMethodMessage = options.paymentMethodMessage ?? null;
+  const optionalOnlinePaymentMessage = options.optionalOnlinePaymentMessage ?? null;
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
@@ -578,11 +581,17 @@ function eventConfirmationHtml(
   const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
+  const paymentMethodLabel = options.paymentMethodLabel ?? null;
+  const paymentMethodMessage = options.paymentMethodMessage ?? null;
+  const optionalOnlinePaymentMessage = options.optionalOnlinePaymentMessage ?? null;
   if (isPendingPayment) {
     const paymentDueLabel = options.paymentDueAt
       ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
       : null;
     const rows = eventDetailRows(booking, event);
+    if (paymentMethodLabel) {
+      rows.push(['Payment method', esc(paymentMethodLabel)]);
+    }
     if (paymentDueLabel) {
       rows.push(['Payment due', esc(paymentDueLabel)]);
     }
@@ -593,10 +602,13 @@ function eventConfirmationHtml(
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
       <p>Your booking for <strong style="color:#4fc3d8;">${esc(event.title)}</strong> is confirmed, and payment is still pending.</p>
+      ${paymentMethodMessage ? `<p style="font-size:14px;color:#88abb5;">${esc(paymentMethodMessage)}</p>` : ''}
       ${detailBlock(rows)}
       <p style="font-size:14px;color:#88abb5;">${paymentDueLabel
         ? `Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>.`
-        : 'Please complete payment to finalize your event payment.'}</p>
+        : optionalOnlinePaymentMessage
+          ? esc(optionalOnlinePaymentMessage)
+          : 'Please complete payment to finalize your event payment.'}</p>
       ${payUrl ? `<p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>` : ''}
       <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
       <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
@@ -969,13 +981,20 @@ export function buildEventConfirmRequestEmail(
   event: Event,
   confirmUrl: string,
   confirmationWindowMinutes: number,
+  options: ConfirmationEmailOptions = {},
 ): BuiltEmailMessage {
   const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
-  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+  const paymentMethodLabel = options.paymentMethodLabel ? `\nPayment method: ${options.paymentMethodLabel}` : '';
+  const paymentMethodMessage = options.paymentMethodMessage ? `\n${options.paymentMethodMessage}` : '';
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.${paymentMethodLabel}${paymentMethodMessage}\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+  const introLines = ['Please confirm your spot.'];
+  if (options.paymentMethodLabel) introLines.push(`Payment method: ${esc(options.paymentMethodLabel)}`);
+  if (options.paymentMethodMessage) introLines.push(esc(options.paymentMethodMessage));
+  introLines.push(`Your spot is kindly held for the next ${esc(windowLabel)} before expiring.`);
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
     eventDetailRows(booking, event),
-    ['Please confirm your spot.', `Your spot is kindly held for the next ${esc(windowLabel)} before expiring.`],
+    introLines,
     'Confirm my spot',
     confirmUrl,
   );
@@ -1000,6 +1019,9 @@ export function buildEventConfirmationEmail(
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
   const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
   const receiptUrl = paymentSettled ? options.receiptUrl ?? null : null;
+  const paymentMethodLabel = options.paymentMethodLabel ?? null;
+  const paymentMethodMessage = options.paymentMethodMessage ?? null;
+  const optionalOnlinePaymentMessage = options.optionalOnlinePaymentMessage ?? null;
   const paymentDueLabel = options.paymentDueAt
     ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
     : null;
@@ -1012,7 +1034,7 @@ export function buildEventConfirmationEmail(
   const text = paymentSettled
     ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${receiptUrl ? `\nReceipt: ${receiptUrl}` : ''}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`
     : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\nComplete payment: ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
+      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed, and payment is still pending.` : `You're confirmed for ${event.title}.`}${paymentMethodLabel ? `\nPayment method: ${paymentMethodLabel}` : ''}${paymentMethodMessage ? `\n${paymentMethodMessage}` : ''}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\n${optionalOnlinePaymentMessage ?? 'Complete payment:'} ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
       : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
@@ -1214,8 +1236,9 @@ export class ResendEmailProvider implements IEmailProvider {
     event: Event,
     confirmUrl: string,
     confirmationWindowMinutes: number,
+    options: ConfirmationEmailOptions = {},
   ): Promise<SendResult> {
-    return this.sendEmail(buildEventConfirmRequestEmail(booking, event, confirmUrl, confirmationWindowMinutes));
+    return this.sendEmail(buildEventConfirmRequestEmail(booking, event, confirmUrl, confirmationWindowMinutes, options));
   }
 
   async sendEventConfirmation(

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleRequest } from '../src/router.js';
-import { confirmBookingEmail, createPayLaterBooking } from '../src/services/booking-service.js';
+import { confirmBookingEmail, createEventBooking, createPayLaterBooking } from '../src/services/booking-service.js';
 import { mockState } from '../src/providers/mock-state.js';
 import { makeCtx } from './admin-helpers.js';
 
@@ -242,6 +242,71 @@ describe('Manage booking token diagnostics', () => {
         booking_id: created.bookingId,
       }),
     }));
+  });
+
+  it('includes pay-at-event payment method details on event manage payloads', async () => {
+    const ctx = makeCtx({
+      providers: {
+        antibot: { verify: vi.fn().mockResolvedValue(undefined) },
+        calendar: {
+          getBusyTimes: vi.fn().mockResolvedValue([]),
+          createEvent: vi.fn().mockResolvedValue(undefined),
+          updateEvent: vi.fn().mockResolvedValue(undefined),
+          deleteEvent: vi.fn().mockResolvedValue(undefined),
+        },
+        payments: { createCheckoutSession: vi.fn() },
+        email: {
+          sendEventConfirmRequest: vi.fn().mockResolvedValue({ messageId: 'msg-event-confirm' }),
+          sendEventConfirmation: vi.fn().mockResolvedValue({ messageId: 'msg-event-booking-confirmed' }),
+        },
+      } as any,
+    });
+    const paidEvent = [...mockState.events.values()].find((event) => event.is_paid)!;
+    const created = await createEventBooking({
+      event: paidEvent,
+      paymentMode: 'pay_at_event',
+      firstName: 'Manage',
+      lastName: 'Event',
+      email: 'manage-event@example.com',
+      phone: null,
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx as any);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    await confirmBookingEmail(String(submission?.payload?.confirm_token ?? ''), ctx as any);
+
+    const res = await handleRequest(
+      new Request(`https://api.local/api/bookings/manage?token=m1.${created.bookingId}`, { method: 'GET' }),
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual(expect.objectContaining({
+      booking_id: created.bookingId,
+      payment_status: 'CASH_OK',
+      payment_method: 'pay_at_event',
+      payment_method_label: 'Pay at the event',
+      payment_method_message: 'No online payment is required now. Your place will be confirmed after email confirmation.',
+      actions: expect.objectContaining({
+        can_complete_payment: true,
+      }),
+    }));
+    expect(ctx.providers.email.sendEventConfirmation).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.any(String),
+      null,
+      expect.stringContaining('/continue-payment.html?token='),
+      expect.any(String),
+      expect.objectContaining({
+        paymentMethod: 'pay_at_event',
+        paymentMethodLabel: 'Pay at the event',
+      }),
+    );
   });
 
   it('returns latest-of-type booking-event snapshots for tokenized polling clients', async () => {

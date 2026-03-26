@@ -184,6 +184,76 @@ describe('Resend payment-due email payload', () => {
     expect(payload.html).toContain('Your spot is kindly held for the next 15 minutes before expiring.');
   });
 
+  it('includes pay-at-event wording in event confirmation-request emails', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendEventConfirmRequest({
+      id: 'bk-3a',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      event_id: 'evt-1',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, {
+      id: 'evt-1',
+      title: 'ILLUMINATE Evening',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, 'https://letsilluminate.co/confirm.html?token=abc', 15, {
+      paymentMethod: 'pay_at_event',
+      paymentMethodLabel: 'Pay at the event',
+      paymentMethodMessage: 'No online payment is required now. Your place will be confirmed after email confirmation.',
+    });
+
+    const payload = sendMock.mock.calls.at(-1)?.[0] as Record<string, string>;
+    expect(payload.text).toContain('Payment method: Pay at the event');
+    expect(payload.text).toContain('No online payment is required now. Your place will be confirmed after email confirmation.');
+    expect(payload.html).toContain('Payment method: Pay at the event');
+  });
+
+  it('uses pay-at-event confirmation copy for CASH_OK event confirmations', async () => {
+    const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendEventConfirmation({
+      id: 'bk-3c',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      event_id: 'evt-1',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, {
+      id: 'evt-1',
+      title: 'ILLUMINATE Evening',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, 'https://letsilluminate.co/manage.html?token=m1.test', null, 'https://letsilluminate.co/continue-payment.html?token=m1.test', '', {
+      paymentSettled: false,
+      paymentDueAt: null,
+      paymentMethod: 'pay_at_event',
+      paymentMethodLabel: 'Pay at the event',
+      paymentMethodMessage: 'No online payment is required now. Your place will be confirmed after email confirmation.',
+      optionalOnlinePaymentMessage: 'You can pay on location. At your convenience you can also pay online here:',
+    });
+
+    const payload = sendMock.mock.calls.at(-1)?.[0] as Record<string, string>;
+    expect(payload.text).toContain('Payment method: Pay at the event');
+    expect(payload.text).toContain('You can pay on location. At your convenience you can also pay online here: https://letsilluminate.co/continue-payment.html?token=m1.test');
+    expect(payload.html).toContain('Payment method');
+    expect(payload.html).toContain('You can pay on location. At your convenience you can also pay online here:');
+  });
+
   it('uses the updated session cancellation copy and rebooking links', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');

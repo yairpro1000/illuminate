@@ -399,6 +399,7 @@ export interface PayLaterResult {
 
 export interface EventBookingInput {
   event: Event;
+  paymentMode: 'free' | 'pay_now' | 'pay_at_event';
   firstName: string;
   lastName: string | null;
   email: string;
@@ -512,7 +513,7 @@ async function resolveCommercialTerms(
     basePrice: number;
     couponCode?: string | null;
     bookingKind: 'session' | 'event';
-    paymentMode: 'free' | 'pay_now' | 'pay_later';
+    paymentMode: 'free' | 'pay_now' | 'pay_later' | 'pay_at_event';
     subjectId: string;
   },
   ctx: BookingContext,
@@ -993,15 +994,38 @@ async function createEventBookingInternal(
     basePrice: eventBasePrice,
     couponCode: input.couponCode,
     bookingKind: 'event',
-    paymentMode: input.event.is_paid ? 'pay_now' : 'free',
+    paymentMode: input.paymentMode,
     subjectId: input.event.id,
   }, ctx);
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'event_booking_creation_mode_decision',
+    message: 'Resolved public event booking payment mode',
+    context: {
+      event_id: input.event.id,
+      event_slug: input.event.slug,
+      event_is_paid: input.event.is_paid,
+      via_late_access: options.viaLateAccess,
+      requested_payment_mode: input.paymentMode,
+      branch_taken: !input.event.is_paid
+        ? 'free_event_confirm_by_email'
+        : input.paymentMode === 'pay_now'
+          ? 'paid_event_pay_now'
+          : 'paid_event_pay_at_event_confirm_by_email',
+      deny_reason: null,
+    },
+  });
 
   const booking = await providers.repository.createBooking({
     client_id: client.id,
     event_id: input.event.id,
     session_type_id: null,
-    booking_type: input.event.is_paid ? 'PAY_NOW' : 'FREE',
+    booking_type: input.paymentMode === 'pay_now'
+      ? 'PAY_NOW'
+      : input.paymentMode === 'pay_at_event'
+        ? 'PAY_LATER'
+        : 'FREE',
     starts_at: input.event.starts_at,
     ends_at: input.event.ends_at,
     timezone: input.event.timezone,
@@ -1054,6 +1078,38 @@ async function createEventBookingInternal(
     }
 
     return { bookingId: createdWithImmediateEffects.id, status: createdWithImmediateEffects.current_status };
+  }
+
+  if (input.paymentMode === 'pay_at_event') {
+    const confirmToken = generateToken();
+    const confirmTokenHash = await hashToken(confirmToken);
+    const transitioned = await appendBookingEventWithEffects(
+      booking.id,
+      'BOOKING_FORM_SUBMITTED',
+      'PUBLIC_UI',
+      {
+        payment_mode: 'pay_at_event',
+        event_id: input.event.id,
+        confirm_token: confirmToken,
+        confirm_token_hash: confirmTokenHash,
+      },
+      bookingCtx,
+      { booking },
+    );
+
+    const finalizedBooking = (await runImmediateBookingEventWorkflow({
+      transitionEvent: transitioned.event,
+      transitionEventType: 'BOOKING_FORM_SUBMITTED',
+      sourceOperation: 'create_event_booking_pay_at_event',
+      bookingBeforeTransition: booking,
+      bookingAfterTransition: transitioned.booking,
+      transitionSideEffects: transitioned.sideEffects,
+    }, bookingCtx)).booking;
+
+    return {
+      bookingId: finalizedBooking.id,
+      status: finalizedBooking.current_status,
+    };
   }
 
   const transitioned = await appendBookingEventWithEffects(
@@ -1169,6 +1225,19 @@ export async function confirmBookingEmailResult(
   }
 
   const verificationEffects = await listPendingEmailVerificationEffects(submissionWithToken.id, bookingCtx);
+  const submittedPaymentMode = typeof submissionWithToken.payload?.['payment_mode'] === 'string'
+    ? String(submissionWithToken.payload['payment_mode'])
+    : null;
+  let payment: Payment | null = null;
+  if (booking.booking_type !== 'FREE' && submittedPaymentMode === 'pay_at_event') {
+    payment = await ensurePayLaterPaymentRecord(
+      booking,
+      bookingCtx,
+      'booking_email_confirmation',
+      'CASH_OK',
+      { payment_mode: 'pay_at_event' },
+    );
+  }
   bookingCtx.logger.logInfo?.({
     source: 'backend',
     eventType: 'booking_email_confirmation_verification_effects_decision',
@@ -1196,15 +1265,15 @@ export async function confirmBookingEmailResult(
     },
     bookingCtx,
   )).booking;
-  let payment: Payment | null = null;
   if (booking.booking_type !== 'FREE') {
-    payment = await ensurePayLaterPendingPaymentRecord(
+    payment = payment ?? await ensurePayLaterPaymentRecord(
       finalizedBooking,
       bookingCtx,
       'booking_email_confirmation',
+      'PENDING',
     );
 
-    await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, bookingCtx);
+    await schedulePayLaterPaymentFollowups(finalizedBooking, submissionWithToken.id, payment, bookingCtx);
 
     bookingCtx.logger.logInfo?.({
       source: 'backend',
@@ -2239,13 +2308,14 @@ export async function sendBookingFinalConfirmation(
 
   const isPayLaterPendingConfirmation = paymentMode === 'pay_later' && !isPaymentSettledStatus(payment?.status ?? null);
   const paymentSettledForEmail = isPaymentSettledStatus(payment?.status ?? null);
+  const isPayAtEventArrangement = booking.event_id !== null && payment?.status === 'CASH_OK';
   const paymentEmailLinks = paymentMode === 'pay_later'
     ? paymentEmailUrl({ booking, payment, siteUrl })
     : { invoiceUrl: payment?.invoice_url ?? null, payUrl: null };
   const payUrl = paymentSettledForEmail ? null : paymentEmailLinks.payUrl;
   const invoiceUrl = paymentEmailLinks.invoiceUrl;
   const receiptUrl = paymentSettledForEmail ? payment?.stripe_receipt_url ?? null : null;
-  const paymentDueAt = isPayLaterPendingConfirmation
+  const paymentDueAt = isPayLaterPendingConfirmation && !isPayAtEventArrangement
     ? getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours)
     : null;
   const emailReason = options.rescheduled ? 'rescheduled' : 'confirmation';
@@ -2316,6 +2386,14 @@ export async function sendBookingFinalConfirmation(
         paymentDueAt,
         receiptUrl,
         rescheduled: options.rescheduled,
+        paymentMethod: isPayAtEventArrangement ? 'pay_at_event' : paymentMode,
+        paymentMethodLabel: isPayAtEventArrangement ? 'Pay at the event' : null,
+        paymentMethodMessage: isPayAtEventArrangement
+          ? 'No online payment is required now. Your place will be confirmed after email confirmation.'
+          : null,
+        optionalOnlinePaymentMessage: isPayAtEventArrangement
+          ? 'You can pay on location. At your convenience you can also pay online here:'
+          : null,
       },
     );
     ctx.logger.logInfo?.({
@@ -2372,6 +2450,14 @@ export async function sendBookingFinalConfirmation(
       paymentDueAt,
       receiptUrl,
       rescheduled: options.rescheduled,
+      paymentMethod: isPayAtEventArrangement ? 'pay_at_event' : paymentMode,
+      paymentMethodLabel: isPayAtEventArrangement ? 'Pay at the event' : null,
+      paymentMethodMessage: isPayAtEventArrangement
+        ? 'No online payment is required now. Your place will be confirmed after email confirmation.'
+        : null,
+      optionalOnlinePaymentMessage: isPayAtEventArrangement
+        ? 'You can pay on location. At your convenience you can also pay online here:'
+        : null,
     },
   );
   ctx.logger.logInfo?.({
@@ -2606,6 +2692,27 @@ function buildStartNewBookingUrl(siteUrl: string, booking: Booking): string {
   return booking.event_id ? `${base}/evenings.html` : `${base}/sessions.html`;
 }
 
+function eventConfirmationRequestCopyFromPayment(
+  paymentMode: string | null,
+): {
+  paymentMethod: 'pay_at_event' | null;
+  paymentMethodLabel: string | null;
+  paymentMethodMessage: string | null;
+} {
+  if (paymentMode === 'pay_at_event') {
+    return {
+      paymentMethod: 'pay_at_event',
+      paymentMethodLabel: 'Pay at the event',
+      paymentMethodMessage: 'No online payment is required now. Your place will be confirmed after email confirmation.',
+    };
+  }
+  return {
+    paymentMethod: null,
+    paymentMethodLabel: null,
+    paymentMethodMessage: null,
+  };
+}
+
 async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: BookingContext): Promise<void> {
   const policy = await loadBookingPolicy(ctx);
   if (!booking.event_id) {
@@ -2615,11 +2722,19 @@ async function sendEmailConfirmation(booking: Booking, confirmUrl: string, ctx: 
 
   const event = await ctx.providers.repository.getEventById(booking.event_id);
   if (!event) return;
+  const bookingEvents = await ctx.providers.repository.listBookingEvents(booking.id);
+  const latestSubmission = [...bookingEvents]
+    .reverse()
+    .find((eventRecord) => eventRecord.event_type === 'BOOKING_FORM_SUBMITTED');
+  const paymentMode = typeof latestSubmission?.payload?.['payment_mode'] === 'string'
+    ? String(latestSubmission.payload['payment_mode'])
+    : null;
   await ctx.providers.email.sendEventConfirmRequest(
     booking,
     event,
     confirmUrl,
     policy.nonPaidConfirmationWindowMinutes,
+    eventConfirmationRequestCopyFromPayment(paymentMode),
   );
 }
 
@@ -2632,8 +2747,25 @@ function getPaymentDueAtIso(startsAtIso: string, paymentDueBeforeStartHours: num
 async function schedulePayLaterPaymentFollowups(
   booking: Booking,
   bookingEventId: string,
+  payment: Payment | null,
   ctx: BookingContext,
 ): Promise<void> {
+  if (payment?.status === 'CASH_OK') {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'pay_later_followup_side_effects_decision',
+      message: 'Skipped pay-later reminder and due verification follow-ups for pay-at-event bookings',
+      context: {
+        booking_id: booking.id,
+        booking_event_id: bookingEventId,
+        payment_status: payment.status,
+        branch_taken: 'skip_followups_for_pay_at_event_manual_arrangement',
+        deny_reason: 'manual_on_location_payment_does_not_require_due_followups',
+      },
+    });
+    return;
+  }
+
   const policy = await loadBookingPolicy(ctx);
   const paymentDueAt = getPaymentDueAtIso(booking.starts_at, policy.paymentDueBeforeStartHours);
   const reminderAt = computePaymentDueReminderTime(
@@ -3327,10 +3459,12 @@ async function resolveChargeableForBooking(
   };
 }
 
-async function ensurePayLaterPendingPaymentRecord(
+async function ensurePayLaterPaymentRecord(
   booking: Booking,
   ctx: BookingContext,
   bootstrapSource: string,
+  targetStatus: Payment['status'] = 'PENDING',
+  extraRawPayload: Record<string, unknown> | null = null,
 ): Promise<Payment> {
   const { logger } = ctx;
   const existingPayment = await ctx.providers.repository.getPaymentByBookingId(booking.id);
@@ -3344,6 +3478,7 @@ async function ensurePayLaterPendingPaymentRecord(
       bootstrap_source: bootstrapSource,
       payment_exists: Boolean(existingPayment),
       payment_status: existingPayment?.status ?? null,
+      target_payment_status: targetStatus,
       amount: Math.max(0, booking.price),
       currency: booking.currency || 'CHF',
       branch_taken: existingPayment ? 'reuse_existing_payment_row' : 'create_pending_payment_row',
@@ -3352,16 +3487,25 @@ async function ensurePayLaterPendingPaymentRecord(
   });
 
   if (existingPayment) {
+    if (existingPayment.status === 'CASH_OK' && targetStatus === 'PENDING') {
+      return existingPayment;
+    }
     if (
       !isPaymentSettledStatus(existingPayment.status)
-      && (existingPayment.amount !== Math.max(0, booking.price) || existingPayment.currency !== (booking.currency || 'CHF'))
+      && (
+        existingPayment.amount !== Math.max(0, booking.price)
+        || existingPayment.currency !== (booking.currency || 'CHF')
+        || existingPayment.status !== targetStatus
+      )
     ) {
       return ctx.providers.repository.updatePayment(existingPayment.id, {
         amount: Math.max(0, booking.price),
         currency: booking.currency || 'CHF',
+        status: targetStatus,
         raw_payload: {
           ...(existingPayment.raw_payload ?? {}),
           bootstrap_source: bootstrapSource,
+          ...(extraRawPayload ?? {}),
         },
       });
     }
@@ -3373,11 +3517,12 @@ async function ensurePayLaterPendingPaymentRecord(
     provider: 'stripe',
     amount: Math.max(0, booking.price),
     currency: booking.currency || 'CHF',
-    status: 'PENDING',
+    status: targetStatus,
     checkout_url: null,
     invoice_url: null,
     raw_payload: {
       bootstrap_source: bootstrapSource,
+      ...(extraRawPayload ?? {}),
     },
     paid_at: null,
     stripe_customer_id: null,

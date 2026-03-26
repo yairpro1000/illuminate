@@ -333,7 +333,7 @@ function handleNext() {
   let errs = {};
 
   if (isEvent && S.step === 1) {
-    errs = validateFields(S, { name: true, email: true, phone: !CTX.isPaid });
+    errs = validateFields(S, { name: true, email: true, phone: true });
   } else if (!isEvent) {
     if (S.step === 2) errs = validateFields(S, { name: true, email: true });
     if (!isReschedule && !isIntroFlow() && S.step === 3) errs = validateFields(S, { paymentMethod: true });

@@ -116,6 +116,7 @@ describe('booking domain model', () => {
     const freeEvent = [...mockState.events.values()].find((event) => !event.is_paid)!;
     const free = await createEventBooking({
       event: freeEvent,
+      paymentMode: 'free',
       firstName: 'Alice',
       lastName: 'Example',
       email: 'alice@example.com',
@@ -978,6 +979,7 @@ describe('booking domain model', () => {
 
     const created = await createEventBooking({
       event: paidEvent,
+      paymentMode: 'pay_now',
       firstName: 'Paid',
       lastName: 'Event',
       email: 'paid-event@example.com',
@@ -1015,6 +1017,48 @@ describe('booking domain model', () => {
     expect(confirmationEmail?.body).toContain('For online sessions, a video conference link will be sent at the day of the session.');
     expect(confirmationEmail?.html).toContain('View invoice');
     expect(confirmationEmail?.html).toContain('View receipt');
+  });
+
+  it('creates pay-at-event evening bookings on the confirm-by-email, pay-later path with CASH_OK payment status', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-10T12:00:00.000Z'));
+    const ctx = makeCtx();
+    const paidEvent = [...mockState.events.values()].find((event) => event.is_paid)!;
+
+    const created = await createEventBooking({
+      event: paidEvent,
+      paymentMode: 'pay_at_event',
+      firstName: 'Pay',
+      lastName: 'AtEvent',
+      email: 'pay-at-event@example.com',
+      phone: null,
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+    }, ctx);
+
+    const booking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const submission = mockState.bookingEvents
+      .filter((event) => event.booking_id === created.bookingId)
+      .find((event) => event.event_type === 'BOOKING_FORM_SUBMITTED');
+    const confirmEmail = mockState.sentEmails.find(
+      (email) => email.kind === 'event_confirm_request' && email.to === 'pay-at-event@example.com',
+    );
+
+    expect(created.status).toBe('PENDING');
+    expect(booking?.booking_type).toBe('PAY_LATER');
+    expect(await ctx.providers.repository.getPaymentByBookingId(created.bookingId)).toBeNull();
+    expect(submission?.payload?.['payment_mode']).toBe('pay_at_event');
+    expect(submission?.payload?.['confirm_token']).toBeTruthy();
+    expect(confirmEmail?.body).toContain('Payment method: Pay at the event');
+    expect(confirmEmail?.body).toContain('No online payment is required now. Your place will be confirmed after email confirmation.');
+    expect(mockState.sideEffects.some((effect) => effect.booking_id === created.bookingId && effect.effect_intent === 'CREATE_STRIPE_CHECKOUT')).toBe(false);
+
+    await confirmBookingEmail(String(submission?.payload?.['confirm_token'] ?? ''), ctx);
+    const paymentAfterConfirm = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(paymentAfterConfirm?.status).toBe('CASH_OK');
+    expect(paymentAfterConfirm?.checkout_url).toBeNull();
   });
 
   it('still sends the pay-now confirmation email when calendar reservation is retryable and queued', async () => {
@@ -1256,6 +1300,7 @@ describe('booking domain model', () => {
 
     const created = await createEventBooking({
       event: freeEvent,
+      paymentMode: 'free',
       firstName: 'Cal',
       lastName: 'User',
       email: 'cal-user@example.com',
@@ -1460,6 +1505,7 @@ describe('booking domain model', () => {
 
     const created = await createEventBooking({
       event: freeEvent,
+      paymentMode: 'free',
       firstName: 'Cancel',
       lastName: 'Event',
       email: 'cancel-event@example.com',

@@ -526,17 +526,13 @@
           <div class="form-group">
             <label class="form-label" for="f-phone">
               Phone
-              ${!isPaid
-                ? '<span class="required-star" aria-hidden="true">*</span>'
-                : '<span class="form-optional">(optional)</span>'}
+              <span class="required-star" aria-hidden="true">*</span>
+              <span class="form-optional">(so I can let you know if something changes)</span>
             </label>
             <input id="f-phone" class="form-input ${state.errors.phone ? 'form-input--error' : ''}"
                    type="tel" placeholder="+41 79 000 00 00" autocomplete="tel"
                    value="${escHtml(state.phone)}" data-field="phone" />
             ${state.errors.phone ? `<p class="form-error" role="alert">${escHtml(state.errors.phone)}</p>` : ''}
-            ${!isPaid
-              ? `<p class="form-hint">Required for free events — we may reach out if needed.</p>`
-              : ''}
           </div>
 
           <div class="step-footer">
@@ -560,8 +556,9 @@
         ['Email', state.email],
         state.phone ? ['Phone', state.phone] : null,
         ['Type', isPaid
-          ? 'Paid — Stripe checkout'
+          ? 'Paid — confirm by email, pay later'
           : 'Free — email confirmation required'],
+        isPaid ? ['Payment method', 'Pay at the event'] : null,
         isPaid && state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
           ? { label: 'Price', value: buildCouponPriceSummary(), html: true }
           : null,
@@ -572,15 +569,15 @@
           <p class="step-eyebrow">Review your registration</p>
           ${isPaid ? buildCouponEditor() : ''}
           ${buildReviewTable(rows)}
-          ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
-          ${buildTurnstileBlock('event_registration_submit')}
           ${isPaid
-            ? ''
-            : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
+            ? `<p class="form-hint">No online payment is required now. Your spot will be reserved after email confirmation.</p>`
+            : ''}
+          ${buildTurnstileBlock('event_registration_submit')}
+          ${isPaid ? '' : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           <div class="step-footer">
             <button class="btn btn-ghost" data-back>← Back</button>
             <button class="btn btn-primary" data-submit ${isSubmitDisabled() ? 'disabled' : ''}>
-              ${isPaid ? 'Proceed to Payment' : 'Complete Registration'}
+              ${isPaid ? 'Reserve your spot' : 'Complete Registration'}
             </button>
           </div>
         </div>
@@ -602,7 +599,7 @@
     function buildConfirmation() {
       const isEvent = ctx.source === 'evening';
       const isReschedule = ctx.mode === 'reschedule';
-      const isPaid = isEvent ? ctx.isPaid : isSessionPayNowFlow();
+      const isPaid = isEvent ? false : isSessionPayNowFlow();
       const homepageHref = resolveHomepageHref();
 
       if (isReschedule) {
@@ -674,7 +671,9 @@
                   ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.`
                   : `A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.
               ${
-                confirmWindowMinutes
+                isEvent && ctx.isPaid
+                  ? 'No online payment is required now. Your place will be confirmed after email confirmation.'
+                  : confirmWindowMinutes
                   ? `Please confirm your ${noun} within ${formatMinutesLabel(confirmWindowMinutes)}.`
                   : `Please confirm your ${noun} using the link in that email.`
               }`

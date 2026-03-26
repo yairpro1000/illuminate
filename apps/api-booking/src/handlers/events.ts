@@ -97,14 +97,46 @@ export async function handleEventBook(
   const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
   const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
   const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const paymentModeRaw = typeof body['payment_mode'] === 'string' ? body['payment_mode'].trim() : '';
+  const paymentMode = event.is_paid
+    ? (paymentModeRaw === 'pay_now' || paymentModeRaw === 'pay_at_event' ? paymentModeRaw : null)
+    : 'free';
 
-  if (!event.is_paid && !phoneRaw) {
-    throw badRequest('phone is required for free events');
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'event_booking_payment_mode_decision',
+    message: 'Evaluated public event booking payment mode',
+    context: {
+      event_id: event.id,
+      event_slug: event.slug,
+      event_is_paid: event.is_paid,
+      requested_payment_mode: paymentModeRaw || null,
+      branch_taken: !event.is_paid
+        ? 'free_event_confirm_by_email'
+        : paymentMode === 'pay_now'
+          ? 'paid_event_pay_now'
+          : paymentMode === 'pay_at_event'
+            ? 'paid_event_pay_at_event_confirm_by_email'
+            : 'deny_invalid_paid_event_payment_mode',
+      deny_reason: event.is_paid && !paymentMode ? 'payment_mode_invalid_for_paid_event' : null,
+    },
+  });
+
+  if (event.is_paid && !paymentMode) {
+    throw badRequest('payment_mode must be pay_now or pay_at_event for paid events');
+  }
+  if (!paymentMode) {
+    throw badRequest('payment_mode could not be resolved');
+  }
+
+  if (!phoneRaw) {
+    throw badRequest('phone is required for event bookings');
   }
 
   const result = await createEventBooking(
     {
       event,
+      paymentMode,
       firstName,
       lastName: lastNameRaw || null,
       email,
@@ -250,6 +282,7 @@ export async function handleEventBookWithAccess(
     const result = await createEventBookingWithAccess(
       {
         event,
+        paymentMode: event.is_paid ? 'pay_now' : 'free',
         firstName,
         lastName: lastNameRaw || null,
         email,
