@@ -22,6 +22,7 @@
   const eventEl = document.getElementById('eventId');
   const dateEl = document.getElementById('date');
   const clientNameEl = document.getElementById('clientName');
+  const bookingStatusFilterEl = document.getElementById('bookingStatusFilter');
   const rowsBody = document.getElementById('rowsBody');
   const lateAccessInfoEl = document.getElementById('lateAccessInfo');
   const rotateLateAccessEl = document.getElementById('rotateLateAccess');
@@ -382,6 +383,7 @@
       p.set('source', source);
       if (source === 'event' && eventEl.value) p.set('event_id', eventEl.value);
       if (source === 'session' && dateEl.value) p.set('date', dateEl.value);
+      if (bookingStatusFilterEl.value) p.set('status', bookingStatusFilterEl.value);
 
       const data = await api(`/admin/bookings?${p.toString()}`);
       state.allRows = Array.isArray(data.rows) ? data.rows : [];
@@ -594,6 +596,10 @@
 
   clientNameEl.addEventListener('change', () => {
     applyClientFilter();
+  });
+
+  bookingStatusFilterEl.addEventListener('change', () => {
+    void loadRows();
   });
 
   document.getElementById('searchInput').addEventListener('input', (e) => {

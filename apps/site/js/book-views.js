@@ -556,7 +556,7 @@
         ['Email', state.email],
         state.phone ? ['Phone', state.phone] : null,
         isPaid && state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
-          ? { label: 'Contribution', value: `${buildCouponPriceSummary()}<br><span style="font-size:0.8em;opacity:0.7">You're welcome to bring a +1 with you (same price).</span>`, html: true }
+          ? { label: 'Contribution', value: `${buildCouponPriceSummary()}${ctx.eventSlug === 'ev-01-body' ? '<br><span style="font-size:0.8em;opacity:0.7">You\'re welcome to bring a +1 with you (same price).</span>' : ''}`, html: true }
           : null,
       ].filter(Boolean);
 

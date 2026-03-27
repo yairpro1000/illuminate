@@ -324,6 +324,18 @@
               <option value="">All clients</option>
             </select>
           </div>
+          <div class="col" style="min-width: 180px;">
+            <label for="bookingStatusFilter">Status</label>
+            <select id="bookingStatusFilter">
+              <option value="">All statuses</option>
+              <option value="PENDING">PENDING</option>
+              <option value="CONFIRMED">CONFIRMED</option>
+              <option value="EXPIRED">EXPIRED</option>
+              <option value="CANCELED">CANCELED</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="NO_SHOW">NO_SHOW</option>
+            </select>
+          </div>
           <div class="col">
             <button id="loadRows" type="button">Load bookings</button>
           </div>

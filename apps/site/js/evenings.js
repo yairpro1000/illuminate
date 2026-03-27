@@ -302,7 +302,7 @@
                   </span>
                 </a>`
               : renderFact('Where', escapeHtml(event.address_line), 'wide')}
-            ${renderFact('Contribution', `${formatPrice(event)}<br><span class="event-card__fact-meta">You're welcome to bring a +1 with you (same price).</span>`, 'wide')}
+            ${renderFact('Contribution', `${formatPrice(event)}${event.slug === 'ev-01-body' ? '<br><span class="event-card__fact-meta">You\'re welcome to bring a +1 with you (same price).</span>' : ''}`, 'wide')}
             ${seatsLeft ? renderFact('Seats left', escapeHtml(String(seatsLeft)), 'emphasis') : ''}
           </div>
 

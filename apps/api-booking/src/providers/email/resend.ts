@@ -586,7 +586,7 @@ function eventConfirmationHtml(
       includeMeetingLink: true,
       includeCalendar: true,
     });
-    rows.push(['CONTRIBUTION', 'CHF 10<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>']);
+    rows.push(['CONTRIBUTION', `CHF 10${event.slug === 'ev-01-body' ? '<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>' : ''}`]);
 
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
@@ -605,7 +605,7 @@ function eventConfirmationHtml(
     includeMeetingLink: true,
     includeCalendar: true,
   });
-  rows.push(['CONTRIBUTION', 'CHF 10<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>']);
+  rows.push(['CONTRIBUTION', `CHF 10${event.slug === 'ev-01-body' ? '<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>' : ''}`]);
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
@@ -992,7 +992,7 @@ export function buildEventConfirmationEmail(
     includeMeetingLink: true,
     includeCalendar: true,
   });
-  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\nYou're welcome to bring a +1 with you (same price).\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`;
+  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10${event.slug === 'ev-01-body' ? '\nYou\'re welcome to bring a +1 with you (same price).' : ''}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),
