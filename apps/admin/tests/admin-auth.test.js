@@ -12,6 +12,7 @@ describe('admin auth helpers', () => {
     document.documentElement.innerHTML = adminIndexHtml
     window.getAdminApiBase = () => 'https://api.letsilluminate.co/api'
     window.adminAuth = undefined
+    window.ENV = undefined
   })
 
   it('builds Cloudflare Access login and logout URLs from the shared admin API base', () => {
@@ -22,6 +23,25 @@ describe('admin auth helpers', () => {
     )
     expect(window.adminAuth.buildAccessLogoutUrl()).toBe(
       'https://api.letsilluminate.co/cdn-cgi/access/logout?returnTo=https%3A%2F%2Fapi.letsilluminate.co%2Fcdn-cgi%2Faccess%2Flogin%3FreturnTo%3Dhttps%253A%252F%252Fapi.letsilluminate.co%252Fapi%252Fhealth',
+    )
+  })
+
+  it('builds Cloudflare Access team-domain login and logout URLs when configured', () => {
+    window.ENV = {
+      VITE_CLOUDFLARE_ACCESS_TEAM_DOMAIN: 'yairpro.cloudflareaccess.com',
+    }
+    Object.defineProperty(window, 'location', {
+      value: new URL('https://admin.letsilluminate.co/index.html?tab=bookings#today'),
+      configurable: true,
+    })
+
+    evalCode(adminAuthCode)
+
+    expect(window.adminAuth.buildAccessLoginUrl()).toBe(
+      'https://yairpro.cloudflareaccess.com/cdn-cgi/access/login/admin.letsilluminate.co?redirect_url=%2Findex.html%3Ftab%3Dbookings%23today',
+    )
+    expect(window.adminAuth.buildAccessLogoutUrl()).toBe(
+      'https://yairpro.cloudflareaccess.com/cdn-cgi/access/logout?returnTo=https%3A%2F%2Fyairpro.cloudflareaccess.com%2Fcdn-cgi%2Faccess%2Flogin%2Fadmin.letsilluminate.co%3Fredirect_url%3D%252Findex.html%253Ftab%253Dbookings%2523today',
     )
   })
 

@@ -858,6 +858,11 @@
   line-height: 1.5;
 }
 
+.review-row dd .coupon-price--standard,
+.review-row dd .coupon-price--free {
+  color: inherit;
+}
+
 .review-row--highlight dt,
 .review-row--highlight dd {
   color: var(--color-lake-light);

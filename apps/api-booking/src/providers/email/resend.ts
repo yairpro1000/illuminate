@@ -622,7 +622,7 @@ function eventConfirmationHtml(
     includeMeetingLink: true,
     includeCalendar: true,
   });
-  rows.push(['CONTRIBUTION', 'CHF 10']);
+  rows.push(['CONTRIBUTION', 'CHF 10<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>']);
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
@@ -1005,26 +1005,16 @@ export function buildEventConfirmationEmail(
   policyText = '',
   options: ConfirmationEmailOptions = {},
 ): BuiltEmailMessage {
-  const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
-  const paymentSettled = !isPendingPayment && options.paymentSettled !== false;
-  const receiptUrl = paymentSettled ? options.receiptUrl ?? null : null;
-  const paymentMethodLabel = options.paymentMethodLabel ?? null;
-  const paymentMethodMessage = options.paymentMethodMessage ?? null;
-  const optionalOnlinePaymentMessage = options.optionalOnlinePaymentMessage ?? null;
-  const paymentDueLabel = options.paymentDueAt
-    ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
-    : null;
-  const calUrl = buildGoogleCalendarUrl(event);
   const eventDetailLines = eventDetailTextLines(booking, event, {
-    includeMap: paymentSettled || !isPendingPayment,
-    includeMeetingLink: paymentSettled || !isPendingPayment,
-    includeCalendar: paymentSettled || !isPendingPayment,
+    includeMap: true,
+    includeMeetingLink: true,
+    includeCalendar: true,
   });
-  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
+  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\nYou're welcome to bring a +1 with you (same price).\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),
-    paymentSettled ? `You're confirmed and paid – ${eventSubjectTitle(event)}` : `You're confirmed – ${eventSubjectTitle(event)}`,
+    `You're confirmed – ${eventSubjectTitle(event)}`,
     text,
     { html: eventConfirmationHtml(booking, event, manageUrl, invoiceUrl, payUrl, policyText, options) },
   );

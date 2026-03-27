@@ -1,6 +1,23 @@
 (function(){
   'use strict';
 
+  function getEnvValue(key) {
+    try {
+      return String((window.ENV && window.ENV[key]) || '').trim();
+    } catch (_) {}
+    return '';
+  }
+
+  function getCurrentReturnPath() {
+    try {
+      var path = String(location.pathname || '/');
+      var search = String(location.search || '');
+      var hash = String(location.hash || '');
+      return path + search + hash;
+    } catch (_) {}
+    return '/';
+  }
+
   function getRootApiBase() {
     try {
       // Prefer the same root base used by api-base.js
@@ -16,6 +33,13 @@
   }
 
   function buildAccessLoginUrl() {
+    var accessTeamDomain = getEnvValue('VITE_CLOUDFLARE_ACCESS_TEAM_DOMAIN');
+    if (accessTeamDomain) {
+      var protectedHostname = getEnvValue('VITE_CLOUDFLARE_ACCESS_APP_HOSTNAME') || location.hostname;
+      return 'https://' + accessTeamDomain
+        + '/cdn-cgi/access/login/' + protectedHostname
+        + '?redirect_url=' + encodeURIComponent(getCurrentReturnPath());
+    }
     var root = getRootApiBase();
     // Cloudflare Access supports /cdn-cgi/access/login on the application domain
     var returnTo = encodeURIComponent(root + '/api/health');
@@ -23,7 +47,8 @@
   }
 
   function buildAccessLogoutUrl() {
-    var root = getRootApiBase();
+    var accessTeamDomain = getEnvValue('VITE_CLOUDFLARE_ACCESS_TEAM_DOMAIN');
+    var root = accessTeamDomain ? ('https://' + accessTeamDomain) : getRootApiBase();
     var returnTo = encodeURIComponent(buildAccessLoginUrl());
     return root + '/cdn-cgi/access/logout?returnTo=' + returnTo;
   }

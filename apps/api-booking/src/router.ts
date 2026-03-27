@@ -22,6 +22,7 @@ import {
   handleCreateEventReminderSubscription,
 } from './handlers/events.js';
 import { handleContact } from './handlers/contact.js';
+import { handleFrontendObservability } from './handlers/observability.js';
 import { handleTurnstileVerify } from './handlers/turnstile.js';
 import { handleAdminUploadImage } from './handlers/upload.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
@@ -96,12 +97,26 @@ interface Route {
   keys: string[];
   handler: Handler;
   executionLayer: 'default' | 'booking';
+  suppressSuccessRequestLog?: boolean;
 }
 
-function route(method: string, path: string, handler: Handler, executionLayer: Route['executionLayer'] = 'default'): Route {
+function route(
+  method: string,
+  path: string,
+  handler: Handler,
+  executionLayer: Route['executionLayer'] = 'default',
+  options: Pick<Route, 'suppressSuccessRequestLog'> = {},
+): Route {
   const keys: string[] = [];
   const src = path.replace(/:([^/]+)/g, (_, k) => { keys.push(k); return '([^/]+)'; });
-  return { method, pattern: new RegExp('^' + src + '$'), keys, handler, executionLayer };
+  return {
+    method,
+    pattern: new RegExp('^' + src + '$'),
+    keys,
+    handler,
+    executionLayer,
+    suppressSuccessRequestLog: options.suppressSuccessRequestLog ?? false,
+  };
 }
 
 const ROUTES: Route[] = [
@@ -128,6 +143,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/session-types', handleGetSessionTypes),
 
   route('POST', '/api/contact', handleContact),
+  route('POST', '/api/observability/frontend', handleFrontendObservability, 'default', { suppressSuccessRequestLog: true }),
   route('POST', '/api/antibot/turnstile/verify', handleTurnstileVerify),
   route('GET', '/api/admin/events', handleAdminGetEvents),
   route('GET', '/api/admin/events/all', handleAdminGetAllEvents),
@@ -308,16 +324,18 @@ export async function handleRequest(request: Request, ctx: AppContext): Promise<
 
     try {
       const res = await executeObservedRoute(request, { ...ctx, siteUrl }, params, r.handler, r.executionLayer);
-      ctx.logger.logRequest?.({
-        method: request.method,
-        url: request.url,
-        path: url.pathname,
-        statusCode: res.status,
-        durationMs: Date.now() - startedAt,
-        success: res.status < 500,
-        requestSizeBytes,
-        responseSizeBytes: headerByteLength(res.headers),
-      });
+      if (!(r.suppressSuccessRequestLog && res.status < 400)) {
+        ctx.logger.logRequest?.({
+          method: request.method,
+          url: request.url,
+          path: url.pathname,
+          statusCode: res.status,
+          durationMs: Date.now() - startedAt,
+          success: res.status < 500,
+          requestSizeBytes,
+          responseSizeBytes: headerByteLength(res.headers),
+        });
+      }
       const finalRes = origin ? addCors(res, origin) : res;
       if (isAdminEventsPath) {
         console.log('[admin-events-debug] matched_route_response', JSON.stringify({

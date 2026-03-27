@@ -190,7 +190,7 @@
     ['Status',      statusBadge(data.status)],
     ['Event',       data.title || data.event?.title || '—'],
     ['Date',        formatDt(data.starts_at)],
-    ['Contribution', 'CHF 10'],
+    ['Contribution', 'CHF 10<br><small style="opacity:0.7">You\'re welcome to bring a +1 with you (same price).</small>'],
   ].filter(Boolean);
 
   card.innerHTML = `

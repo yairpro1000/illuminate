@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="ILLUMINATE Evening — A guided social space to listen deeply, speak authentically, and rediscover how fascinating people can be." />
+  <title>ILLUMINATE Evening</title>
+
+  <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
+
+  <!-- Preconnect for Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <link rel="stylesheet" href="css/main.css" />
+  <link rel="stylesheet" href="css/evenings.css" />
+  <link rel="stylesheet" href="css/add-to-calendar.css" />
+</head>
+
+<body>
+  <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
+  <script>
+    (function () {
+      var t = localStorage.getItem('yb-theme') || 'dark';
+      if (t === 'light') document.body.classList.add('theme-light');
+    })();
+  </script>
+
+  <!-- ── Fixed background image layer (light mode) ── -->
+  <div id="bg-layer" aria-hidden="true"></div>
+
+  <!-- ── Canvas wave background ── -->
+  <canvas id="background-waves" aria-hidden="true"></canvas>
+
+  <!-- ══════════════════════════════════════════════════════
+       NAVIGATION
+  ══════════════════════════════════════════════════════ -->
+  <nav
+    class="nav"
+    role="navigation"
+    aria-label="Main navigation"
+    data-nav-variant="default"
+    data-home-links="index"
+    data-current-page="evenings"
+    data-logo-href="index.html"
+    data-cta-href="sessions.html"
+    data-inline-theme-toggle="true"></nav>
+
+  <!-- ══════════════════════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════════════════════ -->
+  <main id="main">
+
+    <section class="section section--alt" style="padding-top: 6rem;" aria-label="Evening event">
+      <div class="container">
+        <!-- Card injected here by js/evening.js -->
+        <div id="events-grid" aria-live="polite"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════ -->
+  <footer class="footer" data-footer-variant="default" data-home-links="index" data-current-page="evenings"></footer>
+
+  <script src="js/api-base.js"></script>
+  <script src="js/client.js"></script>
+  <script src="js/site-nav.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/add-to-calendar.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/evenings.js"></script>
+  <script src="js/evening.js"></script>
+</body>
+
+</html>

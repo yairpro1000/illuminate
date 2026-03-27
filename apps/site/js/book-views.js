@@ -555,12 +555,8 @@
         ['Name', [state.firstName, state.lastName].filter(Boolean).join(' ')],
         ['Email', state.email],
         state.phone ? ['Phone', state.phone] : null,
-        ['Type', isPaid
-          ? 'Paid — confirm by email, pay later'
-          : 'Free — email confirmation required'],
-        isPaid ? ['Payment method', 'Pay at the event'] : null,
         isPaid && state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
-          ? { label: 'Contribution', value: buildCouponPriceSummary(), html: true }
+          ? { label: 'Contribution', value: `${buildCouponPriceSummary()}<br><span style="font-size:0.8em;opacity:0.7">You're welcome to bring a +1 with you (same price).</span>`, html: true }
           : null,
       ].filter(Boolean);
 
@@ -668,9 +664,7 @@
                   ? `Your ${noun} is confirmed. A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.`
                   : `A confirmation email is on its way to <strong>${escHtml(state.email)}</strong>.
               ${
-                isEvent && ctx.isPaid
-                  ? 'No online payment is required now. Your place will be confirmed after email confirmation.'
-                  : confirmWindowMinutes
+                confirmWindowMinutes
                   ? `Please confirm your ${noun} within ${formatMinutesLabel(confirmWindowMinutes)}.`
                   : `Please confirm your ${noun} using the link in that email.`
               }`

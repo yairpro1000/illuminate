@@ -224,3 +224,16 @@ export function createCronObservability(
     correlationId: requestId,
   };
 }
+
+export async function persistFrontendLog(
+  _env: Env,
+  payload: Record<string, unknown>,
+  request: Request,
+  _executionCtx?: ExecutionContext,
+): Promise<void> {
+  console.log('[frontend-observability]', JSON.stringify({
+    path: new URL(request.url).pathname,
+    content_type: request.headers.get('content-type'),
+    payload,
+  }));
+}
