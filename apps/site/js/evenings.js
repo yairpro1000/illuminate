@@ -251,7 +251,7 @@
 
     let actionHtml = '';
     if (publicOpen) {
-      actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary event-card__cta-primary">Book your spot</a>`;
+      actionHtml = `<a href="${bookingUrl(event)}" class="btn btn-primary event-card__cta-primary">I want to join</a>`;
     } else if (showReminder) {
       actionHtml = `<button class="btn btn-secondary event-card__cta-reminder" data-open-reminder="${escapeAttr(event.id)}" aria-expanded="false" aria-controls="event-reminder-${escapeAttr(event.id)}">Join reminders list</button>`;
     } else {
