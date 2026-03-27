@@ -437,7 +437,7 @@
             ? 'Pay now via Stripe'
             : 'Pay later — payment due 24h before')],
         state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
-          ? { label: 'Price', value: buildCouponPriceSummary(), html: true }
+          ? { label: 'Contribution', value: buildCouponPriceSummary(), html: true }
           : null,
       ].filter(Boolean);
       const hasSlotConflict = state.submissionError && state.submissionError.kind === 'slot-unavailable';
@@ -560,7 +560,7 @@
           : 'Free — email confirmation required'],
         isPaid ? ['Payment method', 'Pay at the event'] : null,
         isPaid && state.pricePreview && Number(state.pricePreview.baseChf || 0) > 0
-          ? { label: 'Price', value: buildCouponPriceSummary(), html: true }
+          ? { label: 'Contribution', value: buildCouponPriceSummary(), html: true }
           : null,
       ].filter(Boolean);
 
@@ -569,9 +569,6 @@
           <p class="step-eyebrow">Review your registration</p>
           ${isPaid ? buildCouponEditor() : ''}
           ${buildReviewTable(rows)}
-          ${isPaid
-            ? `<p class="form-hint">No online payment is required now. Your spot will be reserved after email confirmation.</p>`
-            : ''}
           ${buildTurnstileBlock('event_registration_submit')}
           ${isPaid ? '' : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           <div class="step-footer">

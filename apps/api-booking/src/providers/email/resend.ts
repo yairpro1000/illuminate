@@ -622,21 +622,13 @@ function eventConfirmationHtml(
     includeMeetingLink: true,
     includeCalendar: true,
   });
-
-  const invoiceLine = invoiceUrl
-    ? `<p class="secondary-link"><a href="${esc(invoiceUrl)}">View invoice &rarr;</a></p>`
-    : '';
-  const receiptLine = receiptUrl
-    ? `<p class="secondary-link"><a href="${esc(receiptUrl)}">View receipt &rarr;</a></p>`
-    : '';
+  rows.push(['CONTRIBUTION', 'CHF 10']);
 
   const body = `
     <p>Hi ${esc(clientName(booking))},</p>
-    <p>${options.paymentSettled === false ? `You're confirmed for ${esc(event.title)}.` : 'You\'re confirmed and payment has been settled.'}</p>
+    <p>You're confirmed for ${esc(event.title)}.</p>
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
-    ${invoiceLine}
-    ${receiptLine}
     <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
     ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
@@ -985,12 +977,8 @@ export function buildEventConfirmRequestEmail(
   options: ConfirmationEmailOptions = {},
 ): BuiltEmailMessage {
   const windowLabel = confirmationWindowMinutes === 1 ? '1 minute' : `${confirmationWindowMinutes} minutes`;
-  const paymentMethodLabel = options.paymentMethodLabel ? `\nPayment method: ${options.paymentMethodLabel}` : '';
-  const paymentMethodMessage = options.paymentMethodMessage ? `\n${options.paymentMethodMessage}` : '';
-  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.${paymentMethodLabel}${paymentMethodMessage}\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
+  const text = `Hi ${clientName(booking)},\n\nPlease confirm your booking for ${event.title}.\n\n${eventDetailTextLines(booking, event).join('\n')}\n\nYour spot is kindly held for the next ${windowLabel} before expiring.\n\nConfirm: ${confirmUrl}`;
   const introLines = ['Please confirm your spot.'];
-  if (options.paymentMethodLabel) introLines.push(`Payment method: ${esc(options.paymentMethodLabel)}`);
-  if (options.paymentMethodMessage) introLines.push(esc(options.paymentMethodMessage));
   introLines.push(`Your spot is kindly held for the next ${esc(windowLabel)} before expiring.`);
   const html = simpleHtml(
     `Hi ${clientName(booking)}`,
@@ -1032,11 +1020,7 @@ export function buildEventConfirmationEmail(
     includeMeetingLink: paymentSettled || !isPendingPayment,
     includeCalendar: paymentSettled || !isPendingPayment,
   });
-  const text = paymentSettled
-    ? `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}, and payment has been settled.\n\n${eventDetailLines.join('\n')}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${receiptUrl ? `\nReceipt: ${receiptUrl}` : ''}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`
-    : options.paymentSettled === false
-      ? `Hi ${clientName(booking)},\n\n${isPendingPayment ? `Your booking for ${event.title} is confirmed.` : `You're confirmed for ${event.title}.`}${paymentMethodLabel ? `\nPayment method: ${paymentMethodLabel}` : ''}\n\n${eventDetailLines.join('\n')}${paymentDueLabel ? `\nPayment due: ${paymentDueLabel}` : ''}${invoiceUrl ? `\nInvoice: ${invoiceUrl}` : ''}${payUrl ? `\n\n${optionalOnlinePaymentMessage ?? 'Complete payment:'} ${payUrl}` : ''}\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`
-      : `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
+  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),

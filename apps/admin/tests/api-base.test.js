@@ -43,8 +43,9 @@ describe('admin api-base.js', () => {
   it('ignores and clears stale override on non-localhost domains', () => {
     window.localStorage.setItem('admin_api_base', 'https://bad.example.com/api')
     window.__ADMIN_API_BASE_HOSTNAME__ = 'admin.letsilluminate.co'
+    window.location = new URL('https://admin.letsilluminate.co')
     evalCode(adminApiBaseCode)
-    expect(window.getAdminApiBase()).toBe('https://api.letsilluminate.co/api')
+    expect(window.getAdminApiBase()).toBe('https://admin.letsilluminate.co/api')
     expect(window.localStorage.getItem('admin_api_base')).toBe(null)
   })
 

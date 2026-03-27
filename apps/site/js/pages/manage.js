@@ -188,10 +188,9 @@
     data.payment_due_at ? ['Payment due', formatDt(data.payment_due_at)] : null,
   ].filter(Boolean) : [
     ['Status',      statusBadge(data.status)],
-    data.payment_method_label ? ['Payment method', escapeHtml(data.payment_method_label)] : null,
-    data.payment_status ? ['Payment', statusBadge(data.payment_status)] : null,
     ['Event',       data.title || data.event?.title || '—'],
     ['Date',        formatDt(data.starts_at)],
+    ['Contribution', 'CHF 10'],
   ].filter(Boolean);
 
   card.innerHTML = `
@@ -202,14 +201,14 @@
         ${rows.map(([label, val]) => `<tr><th>${label}</th><td>${val}</td></tr>`).join('')}
       </tbody>
     </table>
-    ${data.payment_method_message ? `<div class="policy-box policy-box--text">${escapeHtml(data.payment_method_message)}</div>` : ''}
-    ${policyText ? bookingPolicyHtml(policyText) : ''}
+    ${isBooking && data.payment_method_message ? `<div class="policy-box policy-box--text">${escapeHtml(data.payment_method_message)}</div>` : ''}
+    ${isBooking && policyText ? bookingPolicyHtml(policyText) : ''}
     ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
     ${renderRefundLinks(data.refund || null)}
     ${calendarHtml}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
-      ${completablePayment ? `<a href="${escapeHtml(data.actions.continue_payment_url)}" class="btn btn-primary">Complete payment</a>` : ''}
+      ${completablePayment ? `<a href="${escapeHtml(data.actions.continue_payment_url)}" class="btn btn-primary">${isBooking ? 'Complete payment' : 'Contribute here'}</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
       <a href="${contactHref}" class="btn btn-ghost">Contact Yair</a>
       <a href="${homepageHref}" class="btn btn-ghost">← Homepage</a>

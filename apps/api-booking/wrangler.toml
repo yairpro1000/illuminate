@@ -6,6 +6,7 @@ preview_urls = true
 
 routes = [
   { pattern = "letsilluminate.co/api/*", zone_name = "letsilluminate.co" },
+  { pattern = "admin.letsilluminate.co/api/*", zone_name = "letsilluminate.co" },
   { pattern = "api.letsilluminate.co", zone_name = "letsilluminate.co", custom_domain = true }
 ]
 

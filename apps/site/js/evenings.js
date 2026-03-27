@@ -302,7 +302,7 @@
                   </span>
                 </a>`
               : renderFact('Where', escapeHtml(event.address_line), 'wide')}
-            ${renderFact('Price', formatPrice(event), 'wide')}
+            ${renderFact('Contribution', formatPrice(event), 'wide')}
             ${seatsLeft ? renderFact('Seats left', escapeHtml(String(seatsLeft)), 'emphasis') : ''}
           </div>
 

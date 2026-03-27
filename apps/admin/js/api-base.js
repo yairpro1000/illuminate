@@ -57,7 +57,7 @@
     if (String(envBase).trim()) return sanitizeBase(envBase);
     if (isLocalhost()) return 'http://localhost:8788';
     if (getHostname().endsWith(PAGES_DEV_SUFFIX)) return PREVIEW_WORKER_ROOT;
-    return 'https://api.letsilluminate.co';
+    return location.origin;
   }
 
   function computeAdminApiBase() {

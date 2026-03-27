@@ -63,7 +63,7 @@
       ? '← Back to homepage'
       : (data.next_action_label || '← Back to homepage');
     const secondaryHref = awaitsPayment ? data.next_action_url : homepageHref;
-    const secondaryText = awaitsPayment ? 'You can complete payment online here' : '← Back to homepage';
+    const secondaryText = awaitsPayment ? 'Contribute here' : '← Back to homepage';
     show(
       checkSvg,
       'Confirmed!',
