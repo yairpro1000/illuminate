@@ -580,39 +580,22 @@ function eventConfirmationHtml(
 ): string {
   const siteUrl = siteUrlFromKnownLink(manageUrl);
   const isPendingPayment = options.paymentSettled === false && Boolean(payUrl || invoiceUrl || options.paymentDueAt);
-  const receiptUrl = options.paymentSettled === false ? null : options.receiptUrl ?? null;
-  const paymentMethodLabel = options.paymentMethodLabel ?? null;
-  const paymentMethodMessage = options.paymentMethodMessage ?? null;
-  const optionalOnlinePaymentMessage = options.optionalOnlinePaymentMessage ?? null;
   if (isPendingPayment) {
-    const paymentDueLabel = options.paymentDueAt
-      ? fmtBodyDateTime(options.paymentDueAt, booking.timezone)
-      : null;
     const rows = eventDetailRows(booking, event, {
       includeMap: true,
+      includeMeetingLink: true,
+      includeCalendar: true,
     });
-    if (paymentMethodLabel) {
-      rows.push(['Payment method', esc(paymentMethodLabel)]);
-    }
-    if (paymentDueLabel) {
-      rows.push(['Payment due', esc(paymentDueLabel)]);
-    }
-    if (invoiceUrl) {
-      rows.push(['Invoice', `<a href="${esc(invoiceUrl)}">Click here</a>`]);
-    }
+    rows.push(['CONTRIBUTION', 'CHF 10<br><span style="font-size:0.85em;opacity:0.75">You\'re welcome to bring a +1 with you (same price).</span>']);
 
     const body = `
       <p>Hi ${esc(clientName(booking))},</p>
-      <p>Your booking for <strong style="color:#4fc3d8;">${esc(event.title)}</strong> is confirmed.</p>
+      <p>You're confirmed for ${esc(event.title)}.</p>
       ${detailBlock(rows)}
-      <p style="font-size:14px;color:#88abb5;">${paymentDueLabel
-        ? `Please complete payment by <strong style="color:#4fc3d8;">${esc(paymentDueLabel)}</strong>.`
-        : optionalOnlinePaymentMessage
-          ? esc(optionalOnlinePaymentMessage)
-          : 'Please complete payment to finalize your event payment.'}</p>
-      ${payUrl ? `<p><a class="btn" href="${esc(payUrl)}">Complete payment</a></p>` : ''}
-      <p class="secondary-link"><a href="${esc(manageUrl)}">Manage booking &rarr;</a></p>
+      ${payUrl ? `<p class="secondary-link"><a href="${esc(payUrl)}">You can pay your contribution here &rarr;</a></p>` : ''}
+      <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
       <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
+      <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
     `;
     return htmlLayout(body);
   }
@@ -630,7 +613,6 @@ function eventConfirmationHtml(
     ${detailBlock(rows)}
     <p><a class="btn" href="${esc(manageUrl)}">Manage booking</a></p>
     <p style="font-size:14px;color:#88abb5;">${esc(ONLINE_SESSION_FOLLOWUP_NOTE)}</p>
-    ${bookingPolicyHtml(policyText, siteUrl)}
     <p style="margin-top:28px;">Looking forward to seeing you,<br /><strong style="color:#4fc3d8;">Yair</strong></p>
   `;
   return htmlLayout(body);
@@ -1010,7 +992,7 @@ export function buildEventConfirmationEmail(
     includeMeetingLink: true,
     includeCalendar: true,
   });
-  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\nYou're welcome to bring a +1 with you (same price).\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}\n\n${policyText}`;
+  const text = `Hi ${clientName(booking)},\n\nYou're confirmed for ${event.title}.\n\n${eventDetailLines.join('\n')}\nCONTRIBUTION: CHF 10\nYou're welcome to bring a +1 with you (same price).\n\nManage: ${manageUrl}\n\n${ONLINE_SESSION_FOLLOWUP_NOTE}`;
   return buildEmailMessage(
     'event_confirmation',
     clientEmail(booking),
