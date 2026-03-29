@@ -479,7 +479,6 @@
           },
           booking: {
             current_status: editStatusEl.value,
-            price: editPriceEl.value === '' ? null : Number(editPriceEl.value),
             notes: editNotesEl.value || null,
           },
         }),
