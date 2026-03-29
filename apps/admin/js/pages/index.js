@@ -11,6 +11,7 @@
     loadingRows: false,
     rotatingLateAccess: false,
     search: '',
+    autoSaveTimer: null,
   };
 
   const statusEl = document.getElementById('status');
@@ -454,13 +455,15 @@
   }
 
   function closeEditModal() {
+    clearTimeout(state.autoSaveTimer);
+    state.autoSaveTimer = null;
     state.editing = null;
     setEditMessage('', 'muted');
     editOverlayEl.classList.add('hidden');
     editOverlayEl.setAttribute('aria-hidden', 'true');
   }
 
-  async function saveEdit() {
+  async function saveEdit({ refresh = true } = {}) {
     if (!state.editing || state.saving) return;
     const bookingId = state.editing.booking_id;
     state.saving = true;
@@ -484,7 +487,9 @@
         }),
       });
 
-      await refreshEditingRow(bookingId);
+      if (refresh) {
+        await refreshEditingRow(bookingId);
+      }
       setEditMessage('Saved.', 'ok');
     } catch (err) {
       setEditMessage(String(err), 'err');
@@ -492,6 +497,11 @@
       state.saving = false;
       if (state.editing) syncEditActionAvailability(state.editing);
     }
+  }
+
+  function scheduleAutoSave() {
+    clearTimeout(state.autoSaveTimer);
+    state.autoSaveTimer = setTimeout(() => { void saveEdit({ refresh: false }); }, 1000);
   }
 
   async function openManageBooking() {
@@ -617,6 +627,11 @@
   document.getElementById('rotateLateAccess').addEventListener('click', () => {
     void rotateLateAccess();
   });
+
+  [editFirstNameEl, editLastNameEl, editEmailEl, editPhoneEl, editNotesEl].forEach((el) => {
+    el.addEventListener('input', scheduleAutoSave);
+  });
+  editStatusEl.addEventListener('change', scheduleAutoSave);
 
   document.getElementById('editClose').addEventListener('click', closeEditModal);
   document.getElementById('editSave').addEventListener('click', () => { void saveEdit(); });
