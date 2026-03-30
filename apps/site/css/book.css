@@ -410,6 +410,12 @@
   outline-offset: 2px;
 }
 
+.time-slot--blocked {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .time-slots-empty {
   margin-top: 0.5rem;
   padding: 1rem 1.25rem;

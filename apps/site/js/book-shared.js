@@ -30,6 +30,10 @@
         eventStart: p.get('eventStart') || '',
         eventEnd: p.get('eventEnd') || '',
         eventLocation: p.get('eventLocation') || '',
+        prefillFirstName: p.get('prefill_first') || '',
+        prefillLastName: p.get('prefill_last') || '',
+        prefillEmail: p.get('prefill_email') || '',
+        prefillPhone: p.get('prefill_phone') || '',
       };
     }
 
@@ -41,6 +45,10 @@
       manageToken: p.get('token') || '',
       adminToken: p.get('admin_token') || '',
       bookingId: p.get('id') || '',
+      prefillFirstName: p.get('prefill_first') || '',
+      prefillLastName: p.get('prefill_last') || '',
+      prefillEmail: p.get('prefill_email') || '',
+      prefillPhone: p.get('prefill_phone') || '',
     };
   }
 

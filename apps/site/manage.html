@@ -76,6 +76,25 @@
     .policy-box a {
       color: var(--color-lake-light);
     }
+    .rebook-section { margin: 0 0 1.5rem; }
+    .rebook-section__label { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--color-text-muted); margin: 0 0 .5rem; }
+    .rebook-pill {
+      display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+      padding: .75rem 1rem;
+      border: 1px solid var(--color-border);
+      border-radius: .75rem;
+      text-decoration: none;
+      color: var(--color-text);
+      margin-bottom: .5rem;
+      transition: border-color .15s;
+    }
+    .rebook-pill:hover { border-color: var(--color-lake-light); }
+    .rebook-pill__content { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+    .rebook-pill__title { font-weight: 600; font-size: .95rem; }
+    .rebook-pill__meta  { font-size: .8rem; color: var(--color-text-muted); }
+    .rebook-pill__price { font-size: .875rem; color: var(--color-text-muted); white-space: nowrap; flex-shrink: 0; }
+    .rebook-section__browse { font-size: .82rem; color: var(--color-lake-light); text-decoration: none; display: inline-block; margin-top: .25rem; }
+    .rebook-section__browse:hover { text-decoration: underline; }
     .confirm-dialog {
       position: fixed; inset: 0;
       background: oklch(0% 0 0 / 0.6);

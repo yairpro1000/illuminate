@@ -51,6 +51,18 @@ function getSlots(from, to, type, tz = 'Europe/Zurich', offerSlug = '', sessionT
   return _get('/api/slots?' + params.toString());
 }
 
+/**
+ * GET /api/slots/admin?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=...&admin_token=...&booking_id=...
+ * Returns all 15-min slots 08:00–22:00; each slot has a `blocked` flag when
+ * the slot overlaps a calendar event.  booking_id is optional.
+ */
+function getAdminSlots(from, to, tz = 'Europe/Zurich', adminToken = '', bookingId = '') {
+  const params = new URLSearchParams({ from, to, tz });
+  if (adminToken) params.set('admin_token', adminToken);
+  if (bookingId)  params.set('booking_id', bookingId);
+  return _get('/api/slots/admin?' + params.toString());
+}
+
 /* ── 1:1 Bookings ────────────────────────────────────────── */
 
 /**

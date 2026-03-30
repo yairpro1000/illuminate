@@ -4,6 +4,7 @@ import type { Logger } from './lib/logger.js';
 import { headerByteLength } from '../../shared/observability/backend.js';
 
 import { handleGetSlots } from './handlers/slots.js';
+import { handleGetAdminSlots } from './handlers/admin-slots.js';
 import { handleHealth } from './handlers/health.js';
 import { handleGetPublicConfig } from './handlers/config.js';
 import { handleValidateCoupon } from './handlers/coupons.js';
@@ -124,6 +125,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/config', handleGetPublicConfig),
   route('POST', '/api/coupons/validate', handleValidateCoupon),
   route('GET', '/api/slots', handleGetSlots, 'booking'),
+  route('GET', '/api/slots/admin', handleGetAdminSlots, 'booking'),
 
   route('POST', '/api/bookings/pay-now', handlePayNow, 'booking'),
   route('POST', '/api/bookings/pay-later', handlePayLater, 'booking'),

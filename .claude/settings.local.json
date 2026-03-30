@@ -32,7 +32,8 @@
       "Skill(illuminate-ui)",
       "Bash(npx --prefix apps/site vitest run apps/site/tests/contact-turnstile.test.js apps/site/tests/book-turnstile.test.js)",
       "Bash(npx vitest:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(find /Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude -path */api-booking/src* -type f \\\\\\(-name types.ts -o -name manage-info.ts -o -name *events*.ts \\\\\\))"
     ]
   }
 }

@@ -20,6 +20,7 @@
       helpers,
       isIntroFlow,
       isSessionPayNowFlow,
+      isAdminMode,
       slotWindowMonths,
     } = deps;
     const {
@@ -165,12 +166,15 @@
         cells += '<div class="cal-day cal-day--empty" aria-hidden="true"></div>';
       }
 
+      const adminMode = typeof isAdminMode === 'function' && isAdminMode();
+
       for (let d = 1; d <= lastDay.getDate(); d++) {
         const date = new Date(year, month, d);
         date.setHours(0, 0, 0, 0);
         const ymd = toYMD(date);
         const isPast = date < today;
-        const isAvailable = !isPast && state.availableDates.has(ymd);
+        // In admin mode every non-past day is selectable regardless of slot availability.
+        const isAvailable = !isPast && (adminMode || state.availableDates.has(ymd));
         const isToday = ymd === toYMD(today);
         const cls = [
           'cal-day',
@@ -220,9 +224,14 @@
 
       const slotBtns = daySlots.map((slot) => {
         const isSelected = state.selectedSlot && state.selectedSlot.start === slot.start;
+        const isBlocked  = !!slot.blocked;
+        const cls = [
+          'time-slot',
+          isSelected ? 'time-slot--selected' : '',
+          isBlocked  ? 'time-slot--blocked'  : '',
+        ].filter(Boolean).join(' ');
         return `
-          <button class="time-slot ${isSelected ? 'time-slot--selected' : ''}"
-                  data-slot='${JSON.stringify(slot)}'
+          <button class="${cls}" ${isBlocked ? 'disabled aria-disabled="true"' : `data-slot='${JSON.stringify(slot)}'`}
                   aria-pressed="${isSelected}">
             ${formatTime(slot.start)}
           </button>
@@ -230,7 +239,7 @@
       }).join('');
 
       const slotsContent = daySlots.length === 0
-        ? `<p class="time-slots-empty">No other times are available on this day. Please choose another day.</p>`
+        ? `<p class="time-slots-empty">No times are available on this day. Please choose another day.</p>`
         : `<div class="time-slots" role="group" aria-label="Available times">${slotBtns}</div>`;
 
       return `

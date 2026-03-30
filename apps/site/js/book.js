@@ -154,6 +154,7 @@ const VIEWS = createBookPageViews({
   },
   isIntroFlow,
   isSessionPayNowFlow,
+  isAdminMode,
   slotWindowMonths: SLOT_WINDOW_MONTHS,
 });
 
@@ -186,6 +187,10 @@ function render() {
   updateBookingSubmitBtnState();
 }
 
+function isAdminMode() {
+  return !!(CTX.adminToken);
+}
+
 async function refreshSlots() {
   if (CTX.source === 'evening') return;
 
@@ -193,14 +198,22 @@ async function refreshSlots() {
   const future = new Date();
   future.setMonth(future.getMonth() + SLOT_WINDOW_MONTHS);
   const to = toYMD(future);
-  const data = await getSlots(
-    from,
-    to,
-    CTX.slotType,
-    SITE_CONFIG.timezone || 'Europe/Zurich',
-    CTX.offerSlug || '',
-    S.selectedSessionType && S.selectedSessionType.id ? S.selectedSessionType.id : '',
-  );
+  const tz = SITE_CONFIG.timezone || 'Europe/Zurich';
+
+  let data;
+  if (isAdminMode() && typeof getAdminSlots === 'function') {
+    data = await getAdminSlots(from, to, tz, CTX.adminToken, CTX.bookingId || '');
+  } else {
+    data = await getSlots(
+      from,
+      to,
+      CTX.slotType,
+      tz,
+      CTX.offerSlug || '',
+      S.selectedSessionType && S.selectedSessionType.id ? S.selectedSessionType.id : '',
+    );
+  }
+
   const nextSlots = Array.isArray(data.slots) ? data.slots : [];
   S.slots = nextSlots;
   S.slotsByDate = {};
@@ -209,7 +222,11 @@ async function refreshSlots() {
     const day = slot.start.slice(0, 10);
     if (!S.slotsByDate[day]) S.slotsByDate[day] = [];
     S.slotsByDate[day].push(slot);
-    S.availableDates.add(day);
+    // In admin mode every day with any slot (including blocked) is selectable.
+    // In normal mode only unblocked slots make a date available.
+    if (isAdminMode() || !slot.blocked) {
+      S.availableDates.add(day);
+    }
   });
 }
 
@@ -701,6 +718,11 @@ async function init() {
     S.calYear  = now.getFullYear();
     S.calMonth = now.getMonth();
   }
+
+  if (CTX.prefillFirstName) S.firstName = CTX.prefillFirstName;
+  if (CTX.prefillLastName)  S.lastName  = CTX.prefillLastName;
+  if (CTX.prefillEmail)     S.email     = CTX.prefillEmail;
+  if (CTX.prefillPhone)     S.phone     = CTX.prefillPhone;
 
   refreshCouponPreview();
   render();
