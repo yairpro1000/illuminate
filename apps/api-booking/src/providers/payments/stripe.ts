@@ -154,6 +154,19 @@ export class StripePaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async updateCustomer(input: {
+    customerId: string;
+    email: string;
+    name?: string | null;
+  }): Promise<void> {
+    const form = new URLSearchParams();
+    form.set('email', input.email.trim().toLowerCase());
+    if (input.name && input.name.trim()) {
+      form.set('name', input.name.trim());
+    }
+    await this.postForm(`/customers/${encodeURIComponent(input.customerId)}`, form);
+  }
+
   async getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails> {
     const invoice = await this.getJson<StripeObject>(`/invoices/${encodeURIComponent(invoiceId)}`);
     return {

@@ -28,10 +28,10 @@ Excluded:
 - `S03` Reminder signup works for unavailable evenings without creating a booking
 - `S04` Contact form succeeds when contact capture is accepted
 - `S05` Free intro booking submits into email confirmation, not instant confirmation
-- `S06` Paid 1:1 pay-now booking reaches checkout immediately
-- `S07` Paid 1:1 pay-later booking uses email confirmation first, then starts payment
+- `S06` Paid 1:1 booking reaches either checkout, email confirmation, or effective-free handling based on final price and trusted actor state
+- `S07` Paid 1:1 pay-later booking uses email confirmation first unless a trusted admin actor confirms it immediately
 - `S08` Free evening registration submits into email confirmation
-- `S09` Paid evening registration reaches checkout immediately
+- `S09` Paid evening registration reaches either checkout, email confirmation, or effective-free handling based on final price and trusted actor state
 - `S10` Valid late-access links can still open closed free evenings for registration
 - `S11` Confirmation links advance the visitor to the next valid public action
 - `S12` Payment-success recovery works even when email is delayed
@@ -46,6 +46,7 @@ Excluded:
 - `S21` Organizer can create and edit session types, including image-backed fields
 - `S22` Organizer can edit event records and timing/config values
 - `S23` Slot contention, slot holds, and slot release behave consistently across users
+- `S24` Organizer-authorized booking creation can skip confirmation-request email and finalize directly
 
 ## Scenarios By Domain
 
@@ -161,30 +162,34 @@ Behind-the-scenes dependencies:
 - slot availability check
 - tokenized email confirmation flow
 
-### `S06` Visitor can submit a paid 1:1 booking with Pay Now and is redirected into checkout
+### `S06` Visitor can submit a paid 1:1 booking and the final computed price decides whether payment is skipped
 
 Given: A visitor chooses a valid paid 1:1 session slot and selects Pay Now.
 
-Expected: Submission creates the booking and payment hold, then redirects the visitor into checkout immediately.
+Expected: Submission creates either a normal paid checkout path for a positive final price or a free-booking confirmation path when coupon application reduces the final price to zero.
 
 Visible steps:
 - Visitor opens a paid session booking flow
 - Visitor chooses a slot
 - Visitor enters contact details
 - Visitor selects Pay Now
-- Visitor reviews the booking and proceeds to payment
+- Visitor reviews the booking and either proceeds to payment or sees the non-paid confirmation path when the final price is zero
+
+Clarification:
+Coupon evaluation happens before the effective booking mode is finalized. If a paid 1:1 booking ends with `finalPrice = 0`, it must not create a payment row, must not schedule payment side effects, must skip payment-choice handling, and must behave like a free booking from submit onward while still preserving the coupon snapshot on the booking.
 
 Artifacts:
 - pending booking
-- pending payment row
-- checkout session URL
-- payment success / cancel return URLs
+- pending payment row only when final price is positive
+- checkout session URL only when final price is positive
+- payment success / cancel return URLs only when final price is positive
+- no payment row and no payment side effects when final price is zero
 
 Behind-the-scenes dependencies:
 - `POST /api/bookings/pay-now`
 - payments provider checkout bootstrap
 
-### `S07` Visitor can submit a paid 1:1 session booking with Pay Later and confirmation starts the payment flow
+### `S07` Visitor can submit a paid 1:1 session booking with Pay Later and confirmation starts the payment flow unless a trusted admin actor confirms it immediately
 
 Given: A visitor chooses a valid paid 1:1 session slot and selects Pay Later.
 
@@ -201,6 +206,8 @@ Visible steps:
 
 Clarification:
 The March 15, 2026 pay-later refinement governs this scenario. On submit, the booking remains `PENDING` and no Stripe invoice is created yet. On confirmation, the booking becomes `CONFIRMED`, a payment row is created immediately, Stripe invoice bootstrap is attempted synchronously, and the visitor receives a confirmed-style subject line with payment still pending. If Stripe bootstrap fails, confirmation still succeeds and later `continue-payment` must bootstrap payment from scratch. `continue-payment` is a checkout recovery path, not an invoice-document redirect.
+
+If the creation request carries a valid admin token, the confirmation-request step is skipped entirely. The booking is treated as already confirmed by a trusted actor and immediately reuses the normal confirmation/finalization owner for reservation, confirmed email dispatch, and downstream side effects. Invalid admin tokens fail closed with the standard auth failure outcome instead of downgrading to the public flow.
 
 Artifacts:
 - pending booking after submit
@@ -234,11 +241,11 @@ Artifacts:
 Behind-the-scenes dependencies:
 - `POST /api/events/:slug/book`
 
-### `S09` Visitor can submit a paid evening registration and is redirected into checkout
+### `S09` Visitor can submit a paid evening registration and the final computed price plus actor state decide the next path
 
 Given: A visitor opens a paid public evening and completes the registration form.
 
-Expected: Submission creates the booking and payment hold, then redirects the visitor into checkout immediately.
+Expected: Submission redirects into checkout for a positive final price when the booking is using the pay-now path, uses the email-confirm path for pay-at-event, and behaves like a free registration when coupon application reduces the final price to zero.
 
 Visible steps:
 - Visitor opens the paid evening booking flow
@@ -247,8 +254,11 @@ Visible steps:
 
 Artifacts:
 - pending booking
-- pending payment row
-- checkout session URL
+- pending payment row only when final price is positive and the booking mode needs payment work
+- checkout session URL only for checkout-backed positive-price paths
+
+Clarification:
+If coupon application reduces a paid event registration to `0`, the booking must be handled as free from submit onward: no payment row, no payment side effects, and the non-paid confirmation path applies. A valid admin-authorized create may also skip the confirmation-request step and finalize directly through the shared confirmed-booking owner.
 
 Behind-the-scenes dependencies:
 - `POST /api/events/:slug/book`
@@ -558,6 +568,30 @@ Behind-the-scenes dependencies:
 - overlap guard in booking persistence
 - held-slot visibility in slot generation
 
+### `S24` Organizer-authorized booking creation can skip confirmation-request email and finalize directly
+
+Given: An organizer creates a booking through a surface that carries a valid admin token for creation.
+
+Expected: The booking skips the confirmation-request email and is finalized immediately through the same shared confirmation/finalization path used after normal confirmation.
+
+Visible steps:
+- Organizer opens an admin-authorized booking creation flow
+- Organizer submits the booking with a valid admin token
+- The recipient receives the confirmed email directly
+
+Clarification:
+This applies independently of coupon pricing. If the final computed price is `0`, the result is a confirmed free booking with no payment row or payment side effects. If the final price is positive, the booking still skips the confirmation-request step but retains the correct paid or pay-later commercial semantics. Invalid admin tokens fail closed with the normal auth error envelope.
+
+Artifacts:
+- confirmed booking
+- confirmed email
+- absence of confirmation-request email
+- absence of payment row and payment side effects when final price is `0`
+
+Behind-the-scenes dependencies:
+- admin-token verification on booking creation
+- shared booking confirmation/finalization owner
+
 ## Scenarios By Flow
 
 ### Discovery and lead capture
@@ -593,6 +627,7 @@ Behind-the-scenes dependencies:
 - `S20`
 - `S21`
 - `S22`
+- `S24`
 
 ### Cross-user integrity
 
@@ -621,10 +656,11 @@ Strengths:
 
 Remaining weakness:
 
-- A few older automated tests still encode pre-refinement pay-later expectations; this freeze intentionally follows the March 15 source-of-truth refinement instead of those stale expectations
+- Coupon-driven effective-free paths and admin-authorized direct-confirm paths were added after the original March 15 pass, so older tests or notes may still reflect endpoint-shaped pay-now or pay-later assumptions rather than the newer shared post-pricing branch rules
 
 ## Follow-up Notes
 
 - This freeze supersedes [expected_user_scenarios_freeze_illuminate_2026-03-12.md](/Users/Yair/Documents/Business2025/Website/yairb_website_2026_claude/docs/expected_user_scenarios_freeze_illuminate_2026-03-12.md) where they conflict.
 - The March 15 pay-later refinement is an intentional product change, not a regression.
+- Effective-free coupon handling and admin-authorized direct confirmation are also intentional product changes and must be treated as shared-orchestration behavior, not endpoint-specific behavior.
 - Future refactors must compare against this file first and treat the pay-later doc as governing detail for that subflow.

@@ -75,6 +75,14 @@ export class MockPaymentsProvider implements IPaymentsProvider {
     };
   }
 
+  async updateCustomer(_input: {
+    customerId: string;
+    email: string;
+    name?: string | null;
+  }): Promise<void> {
+    return;
+  }
+
   async getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails> {
     return {
       invoiceId,

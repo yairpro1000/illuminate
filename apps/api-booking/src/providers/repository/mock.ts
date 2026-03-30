@@ -21,6 +21,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminClientRow,
   AdminContactMessageRow,
   OrganizerBookingRow,
   Payment,
@@ -78,6 +79,21 @@ export class MockRepository implements IRepository {
       if (normalizeEmail(client.email) === normalized) return client;
     }
     return null;
+  }
+
+  async getAdminClientRowById(id: string): Promise<AdminClientRow | null> {
+    const client = mockState.clients.get(id);
+    return client ? this.toAdminClientRow(client) : null;
+  }
+
+  async listAdminClients(): Promise<AdminClientRow[]> {
+    return [...mockState.clients.values()]
+      .map((client) => this.toAdminClientRow(client))
+      .sort((left, right) => {
+        const leftName = [left.first_name, left.last_name || ''].join(' ').trim().toLowerCase();
+        const rightName = [right.first_name, right.last_name || ''].join(' ').trim().toLowerCase();
+        return leftName.localeCompare(rightName) || left.email.localeCompare(right.email);
+      });
   }
 
   async listClientsByEmailPrefix(prefix: string): Promise<Client[]> {
@@ -1078,6 +1094,41 @@ export class MockRepository implements IRepository {
       throw new Error(`System setting ${keyname} is not a positive integer`);
     }
     return parsed;
+  }
+
+  private toAdminClientRow(client: Client): AdminClientRow {
+    let sessionsCount = 0;
+    let eventsCount = 0;
+    let lastSessionAt: string | null = null;
+    let lastEventAt: string | null = null;
+
+    for (const booking of mockState.bookings.values()) {
+      if (booking.client_id !== client.id) continue;
+      if (booking.session_type_id) {
+        sessionsCount += 1;
+        if (!lastSessionAt || new Date(booking.starts_at).getTime() > new Date(lastSessionAt).getTime()) {
+          lastSessionAt = booking.starts_at;
+        }
+      }
+      if (booking.event_id) {
+        eventsCount += 1;
+        if (!lastEventAt || new Date(booking.starts_at).getTime() > new Date(lastEventAt).getTime()) {
+          lastEventAt = booking.starts_at;
+        }
+      }
+    }
+
+    return {
+      id: client.id,
+      first_name: client.first_name,
+      last_name: client.last_name,
+      email: client.email,
+      phone: client.phone,
+      sessions_count: sessionsCount,
+      last_session_at: lastSessionAt,
+      events_count: eventsCount,
+      last_event_at: lastEventAt,
+    };
   }
 }
 

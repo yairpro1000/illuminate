@@ -43,6 +43,7 @@ describe('book event review UI', () => {
       },
       isIntroFlow: () => false,
       isSessionPayNowFlow: () => false,
+      isZeroPriceFlow: () => false,
       slotWindowMonths: 4,
     })
 

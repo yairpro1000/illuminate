@@ -12,6 +12,7 @@
     rotatingLateAccess: false,
     search: '',
     autoSaveTimer: null,
+    forcedClientId: '',
   };
 
   const statusEl = document.getElementById('status');
@@ -42,6 +43,15 @@
   const editSetCashOkEl = document.getElementById('editSetCashOk');
   const editSettlePaymentEl = document.getElementById('editSettlePayment');
   const editReadonlyDetailsEl = document.getElementById('editReadonlyDetails');
+
+  function readForcedClientId() {
+    try {
+      const params = new URLSearchParams(window.location.search || '');
+      return String(params.get('client_id') || '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
 
   function api(path, init) {
     return window.adminClient.requestJson(path, init);
@@ -384,6 +394,7 @@
       p.set('source', source);
       if (source === 'event' && eventEl.value) p.set('event_id', eventEl.value);
       if (source === 'session' && dateEl.value) p.set('date', dateEl.value);
+      if (state.forcedClientId) p.set('client_id', state.forcedClientId);
       if (bookingStatusFilterEl.value) p.set('status', bookingStatusFilterEl.value);
 
       const data = await api(`/admin/bookings?${p.toString()}`);
@@ -667,6 +678,11 @@
   renderRows();
 
   syncSourceMode();
+  state.forcedClientId = readForcedClientId();
+  if (state.forcedClientId) {
+    clientWrapEl.classList.remove('hidden');
+    clientNameEl.disabled = true;
+  }
   loadEvents()
     .then(() => loadRows())
     .then(() => setStatus('Ready.', false))

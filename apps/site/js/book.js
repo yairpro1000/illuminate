@@ -49,6 +49,16 @@ function isSessionPayNowFlow() {
   return CTX.source !== 'evening' && CTX.mode !== 'reschedule' && CTX.slotType === 'session' && S.paymentMethod === 'pay-now';
 }
 
+function isZeroPriceFlow() {
+  const finalChf = S.pricePreview ? Number(S.pricePreview.finalChf) : NaN;
+  return Boolean(
+    S.pricePreview
+    && Number(S.pricePreview.baseChf || 0) > 0
+    && Number.isFinite(finalChf)
+    && finalChf === 0
+  );
+}
+
 function getBasePriceChf() {
   if (CTX.source === 'evening') return Number(CTX.price || 0);
   if (CTX.slotType === 'intro') return 0;
@@ -154,6 +164,7 @@ const VIEWS = createBookPageViews({
   },
   isIntroFlow,
   isSessionPayNowFlow,
+  isZeroPriceFlow,
   isAdminMode,
   slotWindowMonths: SLOT_WINDOW_MONTHS,
 });
@@ -349,13 +360,13 @@ function handleNext() {
   const isReschedule = CTX.mode === 'reschedule';
   let errs = {};
 
-  if (isEvent && S.step === 1) {
-    errs = validateFields(S, { name: true, email: true, phone: true });
-  } else if (!isEvent) {
-    if (S.step === 2) errs = validateFields(S, { name: true, email: true });
-    if (!isReschedule && !isIntroFlow() && S.step === 3) errs = validateFields(S, { paymentMethod: true });
-    // Step 1 (calendar): "Continue" only appears once a slot is selected — no extra guard needed
-  }
+    if (isEvent && S.step === 1) {
+      errs = validateFields(S, { name: true, email: true, phone: true });
+    } else if (!isEvent) {
+      if (S.step === 2) errs = validateFields(S, { name: true, email: true });
+      if (!isReschedule && !isIntroFlow() && !isZeroPriceFlow() && S.step === 3) errs = validateFields(S, { paymentMethod: true });
+      // Step 1 (calendar): "Continue" only appears once a slot is selected — no extra guard needed
+    }
 
   if (Object.keys(errs).length) {
     S.errors = errs;
@@ -365,7 +376,11 @@ function handleNext() {
 
   S.errors = {};
   S.submissionError = null;
-  S.step++;
+  if (!isEvent && !isReschedule && !isIntroFlow() && S.step === 2 && isZeroPriceFlow()) {
+    S.step = 4;
+  } else {
+    S.step++;
+  }
   render();
   scrollToApp();
 }

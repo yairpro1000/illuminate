@@ -145,6 +145,11 @@ export type StripeWebhookEvent = StripePaymentWebhookEvent | StripeRefundWebhook
 export interface IPaymentsProvider {
   createCheckoutSession(params: CreateCheckoutParams): Promise<CheckoutSession>;
   createInvoice(params: CreateInvoiceParams): Promise<InvoiceRecord>;
+  updateCustomer(input: {
+    customerId: string;
+    email: string;
+    name?: string | null;
+  }): Promise<void>;
   getInvoiceDetails(invoiceId: string): Promise<InvoiceDetails>;
   getPaymentArtifactDetails(input: {
     paymentIntentId?: string | null;

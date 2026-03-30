@@ -97,6 +97,7 @@ export async function handleEventBook(
   const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
   const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
   const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
   const paymentModeRaw = typeof body['payment_mode'] === 'string' ? body['payment_mode'].trim() : '';
   const paymentMode = event.is_paid
     ? (paymentModeRaw === 'pay_now' || paymentModeRaw === 'pay_at_event' ? paymentModeRaw : null)
@@ -146,6 +147,7 @@ export async function handleEventBook(
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
       couponCode,
+      adminToken,
     },
     {
       providers: ctx.providers,
@@ -208,6 +210,7 @@ export async function handleEventBookWithAccess(
     const lastNameRaw = typeof body['last_name'] === 'string' ? body['last_name'].trim() : '';
     const phoneRaw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
     const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+    const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
 
     const isPhoneRequired = !event.is_paid;
     const hasPhone = Boolean(phoneRaw);
@@ -292,6 +295,7 @@ export async function handleEventBookWithAccess(
         turnstileToken: (body['turnstile_token'] as string) ?? '',
         remoteIp: request.headers.get('CF-Connecting-IP'),
         couponCode,
+        adminToken,
       },
       {
         providers: ctx.providers,

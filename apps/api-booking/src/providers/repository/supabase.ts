@@ -30,6 +30,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminClientRow,
   AdminContactMessageRow,
   OrganizerBookingRow,
   Payment,
@@ -141,6 +142,12 @@ type ContactMessageRow = ContactMessage & {
   } | null;
 };
 
+type AdminClientBookingAggregateRow = Pick<Booking, 'event_id' | 'session_type_id' | 'starts_at'>;
+
+type AdminClientDbRow = Client & {
+  bookings?: AdminClientBookingAggregateRow[] | null;
+};
+
 const POSTGREST_IN_FILTER_BATCH_SIZE = 200;
 
 export class SupabaseRepository implements IRepository {
@@ -172,6 +179,32 @@ export class SupabaseRepository implements IRepository {
       this.db.from('clients').select('*').eq('email', normalizeEmail(email)).limit(1).maybeSingle(),
       'Failed to load client by email',
     );
+  }
+
+  async getAdminClientRowById(id: string): Promise<AdminClientRow | null> {
+    const row = await maybeSingle<AdminClientDbRow>(
+      this.db
+        .from('clients')
+        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at)')
+        .eq('id', id)
+        .limit(1)
+        .maybeSingle(),
+      `Failed to load admin client ${id}`,
+    );
+    return row ? toAdminClientRow(row) : null;
+  }
+
+  async listAdminClients(): Promise<AdminClientRow[]> {
+    const rows = await requireData<AdminClientDbRow[]>(
+      this.db
+        .from('clients')
+        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at)')
+        .order('first_name', { ascending: true })
+        .order('last_name', { ascending: true })
+        .order('email', { ascending: true }),
+      'Failed to load admin clients',
+    );
+    return rows.map((row) => toAdminClientRow(row));
   }
 
   async listClientsByEmailPrefix(prefix: string): Promise<Client[]> {
@@ -1757,6 +1790,40 @@ function toBookingSideEffectAttemptRecord(
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+function toAdminClientRow(row: AdminClientDbRow): AdminClientRow {
+  let sessionsCount = 0;
+  let eventsCount = 0;
+  let lastSessionAt: string | null = null;
+  let lastEventAt: string | null = null;
+
+  for (const booking of row.bookings ?? []) {
+    if (booking.session_type_id) {
+      sessionsCount += 1;
+      if (!lastSessionAt || new Date(booking.starts_at).getTime() > new Date(lastSessionAt).getTime()) {
+        lastSessionAt = booking.starts_at;
+      }
+    }
+    if (booking.event_id) {
+      eventsCount += 1;
+      if (!lastEventAt || new Date(booking.starts_at).getTime() > new Date(lastEventAt).getTime()) {
+        lastEventAt = booking.starts_at;
+      }
+    }
+  }
+
+  return {
+    id: row.id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    email: row.email,
+    phone: row.phone,
+    sessions_count: sessionsCount,
+    last_session_at: lastSessionAt,
+    events_count: eventsCount,
+    last_event_at: lastEventAt,
+  };
 }
 
 function nowIso(): string {

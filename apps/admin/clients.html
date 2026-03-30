@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ILLUMINATE Admin</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>if(localStorage.getItem('yb-theme')==='light')document.documentElement.classList.add('theme-light');</script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      :root {
+        --color-bg: oklch(11% 0.022 210);
+        --color-bg-alt: oklch(14% 0.025 208);
+        --color-bg-card: oklch(17% 0.030 207);
+        --color-lake-deep: oklch(44% 0.155 204);
+        --color-lake: oklch(59% 0.160 200);
+        --color-lake-lt: oklch(73% 0.130 195);
+        --color-lake-mist: oklch(59% 0.160 200 / 0.14);
+        --color-text: oklch(91% 0.015 200);
+        --color-text-muted: oklch(65% 0.020 207);
+        --color-text-subtle: oklch(48% 0.018 210);
+        --color-border: oklch(59% 0.160 200 / 0.18);
+        --color-border-hover: oklch(59% 0.160 200 / 0.42);
+        --color-ok: oklch(75% 0.14 145);
+        --color-danger: oklch(72% 0.18 25);
+        --radius-sm: 0.375rem;
+        --radius-md: 0.75rem;
+        --admin-sidebar-w: 15rem;
+        --admin-header-h: 3.5rem;
+        --admin-content-p: 1.5rem;
+        --admin-row-h: 2.75rem;
+        --font: 'Inter', system-ui, -apple-system, sans-serif;
+      }
+      html.theme-light {
+        --color-bg: oklch(97% 0.006 210);
+        --color-bg-alt: oklch(93% 0.008 210);
+        --color-bg-card: oklch(100% 0 0);
+        --color-text: oklch(15% 0.025 210);
+        --color-text-muted: oklch(40% 0.020 207);
+        --color-text-subtle: oklch(55% 0.018 210);
+        --color-border: oklch(44% 0.155 204 / 0.20);
+        --color-border-hover: oklch(44% 0.155 204 / 0.45);
+        --color-ok: oklch(35% 0.14 145);
+        --color-danger: oklch(45% 0.18 25);
+      }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: var(--font); background: var(--color-bg); color: var(--color-text); line-height: 1.6; }
+      .admin-shell { display: grid; grid-template-columns: var(--admin-sidebar-w) 1fr; grid-template-rows: var(--admin-header-h) 1fr; min-height: 100dvh; }
+      .admin-header { grid-column: 1 / -1; background: var(--color-bg-alt); border-bottom: 1px solid var(--color-border); display: flex; align-items: center; padding-inline: 1rem; gap: 1rem; }
+      .admin-header__logo { font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; color: var(--color-lake-lt); }
+      .admin-header__spacer { flex: 1; }
+      .theme-toggle { background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text-muted); padding: 0.25rem 0.625rem; font-family: var(--font); font-size: 0.8125rem; cursor: pointer; line-height: 1.5; }
+      .admin-sidebar { background: var(--color-bg-alt); border-right: 1px solid var(--color-border); padding: 1rem 0; overflow-y: auto; }
+      .admin-content { padding: var(--admin-content-p); overflow-y: auto; }
+      .admin-nav { display: flex; flex-direction: column; }
+      .admin-nav-link { display: flex; align-items: center; padding: 0.5rem 1rem; color: var(--color-text-muted); font-size: 0.875rem; font-weight: 500; border-left: 2px solid transparent; text-decoration: none; }
+      .admin-nav-link:hover { color: var(--color-text); background: var(--color-lake-mist); }
+      .admin-nav-link.active { color: var(--color-lake-lt); border-left-color: var(--color-lake); background: var(--color-lake-mist); }
+      .card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 0.75rem; }
+      h1 { margin: 0 0 0.625rem; font-size: 1.25rem; font-weight: 600; }
+      .muted { color: var(--color-text-muted); font-size: 0.875rem; }
+      .hidden { display: none !important; }
+      label { display: block; font-size: 0.75rem; margin-bottom: 0.25rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+      input, select { font-family: var(--font); font-size: 0.875rem; background: var(--color-bg-alt); border: 1px solid var(--color-border); border-radius: var(--radius-sm); color: var(--color-text); padding: 0.5rem 0.75rem; width: 100%; }
+      button { font-family: var(--font); font-size: 0.875rem; font-weight: 600; cursor: pointer; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 0.5rem 1rem; background: var(--color-lake-deep); color: var(--color-text); }
+      button.secondary { background: transparent; border-color: var(--color-border); color: var(--color-lake-lt); font-weight: 500; }
+      button.pill { background: transparent; border-color: var(--color-border); color: var(--color-text-muted); border-radius: 999px; }
+      button.pill.active { background: var(--color-lake-mist); border-color: var(--color-border-hover); color: var(--color-text); }
+      table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+      th { text-align: left; padding: 0.625rem 0.75rem; color: var(--color-text-subtle); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--color-border); }
+      td { padding: 0.625rem 0.75rem; color: var(--color-text); border-bottom: 1px solid var(--color-border); height: var(--admin-row-h); vertical-align: top; }
+      tbody tr.clickable { cursor: pointer; }
+      tbody tr.clickable:hover td { background: var(--color-lake-mist); }
+      .row { display: flex; gap: 0.625rem; flex-wrap: wrap; align-items: flex-end; }
+      .col { display: flex; flex-direction: column; }
+      .btnrow { display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap; }
+      .status { margin-top: 0.5rem; min-height: 1.4em; }
+      .ok { color: var(--color-ok); }
+      .err { color: var(--color-danger); white-space: pre-wrap; }
+      .overlay { position: fixed; inset: 0; background: oklch(0% 0 0 / 0.65); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+      .modal { width: min(720px, 96vw); max-height: min(92vh, 860px); overflow: auto; }
+      @media (max-width: 48rem) {
+        .admin-shell { grid-template-columns: 1fr; }
+        .admin-sidebar { display: none; }
+      }
+      @media (max-width: 820px) {
+        th:nth-child(3), td:nth-child(3) { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="admin-shell">
+      <header class="admin-header">
+        <span class="admin-header__logo">Admin</span>
+        <span class="admin-header__spacer"></span>
+        <button class="theme-toggle" id="admin-logout-button" type="button">Logout</button>
+        <button class="theme-toggle" id="themeToggle" type="button">Light</button>
+      </header>
+      <nav class="admin-sidebar">
+        <div class="admin-nav">
+          <a href="index.html" class="admin-nav-link" data-page="index">Bookings</a>
+          <a href="clients.html" class="admin-nav-link" data-page="clients">Clients</a>
+          <a href="session-types.html" class="admin-nav-link" data-page="session-types">Edit Offers</a>
+          <a href="contact-messages.html" class="admin-nav-link" data-page="contact-messages">Contact Messages</a>
+          <a href="config.html" class="admin-nav-link" data-page="config">Config</a>
+        </div>
+      </nav>
+      <main class="admin-content">
+        <section class="card">
+          <div class="row" style="justify-content: space-between; align-items: center;">
+            <div class="col">
+              <h1>Clients</h1>
+              <div class="muted">Clients come from the dedicated `clients` table.</div>
+            </div>
+            <div class="btnrow">
+              <button id="sessionsToggle" type="button" class="pill">Sessions</button>
+              <button id="eventsToggle" type="button" class="pill">Events</button>
+              <button id="createClient" type="button">+</button>
+            </div>
+          </div>
+          <div id="status" class="status muted"></div>
+        </section>
+
+        <section class="card">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Sessions</th>
+                <th>Last Session</th>
+                <th>Events</th>
+                <th>Last Event</th>
+              </tr>
+            </thead>
+            <tbody id="rowsBody"></tbody>
+          </table>
+        </section>
+      </main>
+    </div>
+
+    <div id="clientOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="card modal" role="dialog" aria-modal="true">
+        <h1 id="modalTitle" style="font-size: 1.125rem; margin-bottom: 0.75rem;">Client</h1>
+        <div class="row">
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="firstName">First name</label>
+            <input id="firstName" />
+          </div>
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="lastName">Last name</label>
+            <input id="lastName" />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 0.625rem;">
+          <div class="col" style="flex: 1 1 260px;">
+            <label for="email">Email</label>
+            <input id="email" type="email" />
+          </div>
+          <div class="col" style="flex: 1 1 220px;">
+            <label for="phone">Phone</label>
+            <input id="phone" />
+          </div>
+        </div>
+        <div id="modalStatus" class="status muted"></div>
+        <div class="btnrow" style="margin-top: 0.75rem;">
+          <button id="openBookings" type="button" class="secondary hidden">Bookings</button>
+          <button id="bookSession" type="button" class="secondary hidden">Book Session</button>
+          <button id="bookEvent" type="button" class="secondary hidden">Book Event</button>
+          <button id="closeModal" type="button" class="secondary">Close</button>
+          <button id="saveClient" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function() {
+        var btn = document.getElementById('themeToggle');
+        function update() {
+          var isLight = document.documentElement.classList.contains('theme-light');
+          if (btn) btn.textContent = isLight ? 'Dark' : 'Light';
+        }
+        update();
+        if (btn) btn.addEventListener('click', function() {
+          document.documentElement.classList.toggle('theme-light');
+          localStorage.setItem('yb-theme', document.documentElement.classList.contains('theme-light') ? 'light' : 'dark');
+          update();
+        });
+      })();
+    </script>
+    <script src="js/layout.js"></script>
+    <script src="js/api-base.js"></script>
+    <script src="js/admin-auth.js"></script>
+    <script src="js/client.js"></script>
+    <script src="js/pages/clients.js"></script>
+  </body>
+</html>

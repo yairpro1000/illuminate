@@ -104,6 +104,16 @@ describe('Router integration (admin)', () => {
     expect(Array.isArray(body.services)).toBe(true);
   });
 
+  it('routes GET /api/admin/clients to the admin clients handler', async () => {
+    const ctx = makeCtx();
+    const req = adminRequest('GET', 'https://api.local/api/admin/clients');
+    const res = await handleRequest(req, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(body.rows)).toBe(true);
+  });
+
   it('routes GET /api/admin/session-types/:id to the session-type detail handler', async () => {
     const ctx = makeCtx();
     const req = adminRequest('GET', 'https://api.local/api/admin/session-types/mock-st-1');

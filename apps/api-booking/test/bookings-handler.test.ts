@@ -118,4 +118,43 @@ describe('bookings handler intro limits', () => {
       }),
     }));
   });
+
+  it('fails closed for invalid admin token on booking creation with the standard auth envelope and diagnostics', async () => {
+    const ctx = makeCtx();
+
+    const response = await handleRequest(
+      jsonRequest('/api/bookings/pay-later', {
+        slot_start: '2026-03-24T09:00:00+01:00',
+        slot_end: '2026-03-24T09:45:00+01:00',
+        timezone: 'Europe/Zurich',
+        type: 'session',
+        offer_slug: 'cycle-session',
+        client_name: 'Admin Fail',
+        client_email: 'admin-fail@example.com',
+        client_phone: '+41000000104',
+        reminder_email_opt_in: true,
+        reminder_whatsapp_opt_in: false,
+        turnstile_token: 'ok',
+        admin_token: 'invalid-token',
+      }),
+      ctx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://letsilluminate.co');
+    await expect(response.json()).resolves.toEqual({
+      error: 'UNAUTHORIZED',
+      message: 'Invalid or expired admin token',
+      request_id: 'req-bookings-handler',
+    });
+    expect(ctx.logger.logWarn).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_submission_admin_token_decision_completed',
+      context: expect.objectContaining({
+        has_admin_token: true,
+        admin_token_valid: false,
+        branch_taken: 'deny_invalid_admin_token_for_creation',
+        deny_reason: 'admin_token_invalid_or_expired',
+      }),
+    }));
+  });
 });

@@ -51,6 +51,7 @@ describe('book pay-later confirmation UI', () => {
       },
       isIntroFlow: () => false,
       isSessionPayNowFlow: () => false,
+      isZeroPriceFlow: () => false,
       slotWindowMonths: 4,
     })
 
@@ -97,6 +98,7 @@ describe('book pay-later confirmation UI', () => {
       },
       isIntroFlow: () => false,
       isSessionPayNowFlow: () => false,
+      isZeroPriceFlow: () => false,
       slotWindowMonths: 4,
     })
 
@@ -147,6 +149,7 @@ describe('book pay-later confirmation UI', () => {
       },
       isIntroFlow: () => false,
       isSessionPayNowFlow: () => false,
+      isZeroPriceFlow: () => false,
       slotWindowMonths: 4,
     })
 

@@ -20,6 +20,7 @@
       helpers,
       isIntroFlow,
       isSessionPayNowFlow,
+      isZeroPriceFlow,
       isAdminMode,
       slotWindowMonths,
     } = deps;
@@ -37,7 +38,7 @@
     function buildShell() {
       const isEvent = ctx.source === 'evening';
       const isReschedule = ctx.mode === 'reschedule';
-      const totalSteps = isEvent ? 3 : (isReschedule ? 4 : (isIntroFlow() ? 4 : 5));
+      const totalSteps = isEvent ? 3 : (isReschedule ? 4 : (isIntroFlow() || isZeroPriceFlow() ? 4 : 5));
       const isFinal =
         (isEvent && state.step === 3) ||
         (!isEvent && isReschedule && state.step === 4) ||
@@ -125,7 +126,7 @@
       switch (state.step) {
         case 1: return buildCalendar();
         case 2: return buildContactForm(false);
-        case 3: return buildPaymentChoice();
+        case 3: return isZeroPriceFlow() ? buildBookingReview() : buildPaymentChoice();
         case 4: return buildBookingReview();
         case 5: return buildConfirmation();
         default: return '';
@@ -442,6 +443,8 @@
         state.phone ? ['Phone', state.phone] : null,
         ['Payment', isIntroFlow()
           ? 'Free intro — email confirmation required'
+          : isZeroPriceFlow()
+            ? 'Free booking — email confirmation required'
           : (state.paymentMethod === 'pay-now'
             ? 'Pay now via Stripe'
             : 'Pay later — payment due 24h before')],
@@ -464,7 +467,7 @@
           ${buildReviewTable(rows)}
           ${buildBookingPolicyBlock(state.publicConfig?.booking_policy_text)}
           ${buildTurnstileBlock('booking_submit')}
-          ${state.paymentMethod === 'pay-now'
+          ${(state.paymentMethod === 'pay-now' && !isZeroPriceFlow())
             ? ''
             : `<p class="form-hint">${escHtml(nonPaidHoldMessage)}</p>`}
           ${hasSlotConflict
@@ -472,7 +475,7 @@
             : `<div class="step-footer">
                 <button class="btn btn-ghost" data-back>← Back</button>
                 <button class="btn btn-primary" data-submit ${isSubmitDisabled() ? 'disabled' : ''}>
-                  ${state.paymentMethod === 'pay-now' ? 'Proceed to Payment' : 'Confirm Booking'}
+                  ${(state.paymentMethod === 'pay-now' && !isZeroPriceFlow()) ? 'Proceed to Payment' : 'Confirm Booking'}
                 </button>
               </div>`}
         </div>
@@ -601,7 +604,7 @@
     function buildConfirmation() {
       const isEvent = ctx.source === 'evening';
       const isReschedule = ctx.mode === 'reschedule';
-      const isPaid = isEvent ? false : isSessionPayNowFlow();
+      const isPaid = isEvent ? false : (isSessionPayNowFlow() && !isZeroPriceFlow());
       const homepageHref = resolveHomepageHref();
 
       if (isReschedule) {
@@ -629,6 +632,7 @@
         const isConfirmedNow = state.submissionStatus === 'CONFIRMED';
         const isPayLaterSubmission = !isEvent
           && !isIntroFlow()
+          && !isZeroPriceFlow()
           && state.paymentMethod === 'pay-later'
           && Boolean(state.submissionContinuePaymentUrl);
         const noun = isEvent ? 'registration' : 'booking';

@@ -17,6 +17,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
   const clientEmail = requireString(body, 'client_email');
   const clientName = resolveClientName(body);
   const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
   const offerSlug = typeof body['offer_slug'] === 'string' ? body['offer_slug'].trim() : null;
 
   const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
@@ -37,6 +38,7 @@ export async function handlePayNow(request: Request, ctx: AppContext): Promise<R
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
       couponCode,
+      adminToken,
     },
     {
       providers: ctx.providers,
@@ -64,6 +66,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
   const clientEmail = requireString(body, 'client_email');
   const clientName = resolveClientName(body);
   const couponCode = typeof body['coupon_code'] === 'string' ? body['coupon_code'] : null;
+  const adminToken = typeof body['admin_token'] === 'string' ? body['admin_token'] : null;
   const offerSlug = typeof body['offer_slug'] === 'string' ? body['offer_slug'].trim() : null;
 
   const sessionTypeRaw = typeof body['type'] === 'string' ? body['type'].trim().toLowerCase() : 'intro';
@@ -84,6 +87,7 @@ export async function handlePayLater(request: Request, ctx: AppContext): Promise
       turnstileToken: (body['turnstile_token'] as string) ?? '',
       remoteIp: request.headers.get('CF-Connecting-IP'),
       couponCode,
+      adminToken,
     },
     {
       providers: ctx.providers,

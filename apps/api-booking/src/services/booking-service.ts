@@ -21,8 +21,8 @@ import type {
   SessionTypeRecord,
 } from '../types.js';
 import { isRetryableCalendarWriteError, type CalendarEvent } from '../providers/calendar/interface.js';
-import { createAdminManageToken, generateToken, hashToken } from './token-service.js';
-import { ApiError, badRequest, conflict, gone, notFound } from '../lib/errors.js';
+import { createAdminManageToken, generateToken, hashToken, verifyAdminManageToken } from './token-service.js';
+import { ApiError, badRequest, conflict, gone, notFound, unauthorized } from '../lib/errors.js';
 import { isEventPublished, normalizeEventRow } from '../lib/content-status.js';
 import { appendBookingEventWithEffects } from './booking-transition.js';
 import { isTerminalStatus } from '../domain/booking-domain.js';
@@ -366,6 +366,7 @@ export interface PayNowInput {
   turnstileToken: string;
   remoteIp: string | null;
   couponCode?: string | null;
+  adminToken?: string | null;
 }
 
 export interface PayNowResult {
@@ -388,6 +389,7 @@ export interface PayLaterInput {
   turnstileToken: string;
   remoteIp: string | null;
   couponCode?: string | null;
+  adminToken?: string | null;
 }
 
 export interface PayLaterResult {
@@ -409,6 +411,7 @@ export interface EventBookingInput {
   turnstileToken: string;
   remoteIp: string | null;
   couponCode?: string | null;
+  adminToken?: string | null;
 }
 
 export interface EventBookingResult {
@@ -547,6 +550,147 @@ async function resolveCommercialTerms(
     finalPrice: pricing.finalPrice,
     couponCode: pricing.couponCode,
     currency: 'CHF',
+  };
+}
+
+interface SharedSubmissionDecisionInput {
+  bookingKind: 'session' | 'event';
+  subjectId: string;
+  intendedPaymentMode: 'free' | 'pay_now' | 'pay_later' | 'pay_at_event';
+  finalPrice: number;
+  adminToken?: string | null;
+}
+
+interface SharedSubmissionDecision {
+  adminAuthorized: boolean;
+  isEffectiveFree: boolean;
+  effectivePaymentMode: 'free' | 'pay_now' | 'pay_later' | 'pay_at_event';
+  effectiveBookingType: 'FREE' | 'PAY_NOW' | 'PAY_LATER';
+  skipConfirmationRequest: boolean;
+  finalizeImmediately: boolean;
+}
+
+async function resolveSharedSubmissionDecision(
+  input: SharedSubmissionDecisionInput,
+  ctx: BookingContext,
+): Promise<SharedSubmissionDecision> {
+  const rawAdminToken = typeof input.adminToken === 'string' ? input.adminToken.trim() : '';
+  const hasAdminToken = rawAdminToken.length > 0;
+  let adminAuthorized = false;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_submission_admin_token_decision_started',
+    message: 'Evaluating admin-token authorization for booking creation',
+    context: {
+      booking_kind: input.bookingKind,
+      booking_subject_id: input.subjectId,
+      intended_payment_mode: input.intendedPaymentMode,
+      has_admin_token: hasAdminToken,
+      branch_taken: hasAdminToken ? 'verify_admin_token_for_creation' : 'skip_admin_token_verification',
+      deny_reason: hasAdminToken ? null : 'admin_token_not_provided',
+    },
+  });
+
+  if (hasAdminToken) {
+    const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
+    if (!secret) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'booking_submission_admin_token_decision_completed',
+        message: 'Denied admin-token booking creation because verification secret is missing',
+        context: {
+          booking_kind: input.bookingKind,
+          booking_subject_id: input.subjectId,
+          intended_payment_mode: input.intendedPaymentMode,
+          has_admin_token: true,
+          admin_token_valid: false,
+          branch_taken: 'deny_admin_token_verification_not_configured',
+          deny_reason: 'admin_token_verification_not_configured',
+        },
+      });
+      throw unauthorized('Admin token verification is not configured');
+    }
+    const verified = await verifyAdminManageToken(rawAdminToken, secret);
+    if (!verified) {
+      ctx.logger.logWarn?.({
+        source: 'backend',
+        eventType: 'booking_submission_admin_token_decision_completed',
+        message: 'Denied admin-token booking creation because token is invalid or expired',
+        context: {
+          booking_kind: input.bookingKind,
+          booking_subject_id: input.subjectId,
+          intended_payment_mode: input.intendedPaymentMode,
+          has_admin_token: true,
+          admin_token_valid: false,
+          branch_taken: 'deny_invalid_admin_token_for_creation',
+          deny_reason: 'admin_token_invalid_or_expired',
+        },
+      });
+      throw unauthorized('Invalid or expired admin token');
+    }
+    adminAuthorized = true;
+  }
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_submission_admin_token_decision_completed',
+    message: 'Completed admin-token authorization evaluation for booking creation',
+    context: {
+      booking_kind: input.bookingKind,
+      booking_subject_id: input.subjectId,
+      intended_payment_mode: input.intendedPaymentMode,
+      has_admin_token: hasAdminToken,
+      admin_token_valid: adminAuthorized,
+      branch_taken: adminAuthorized ? 'allow_admin_token_for_creation' : 'continue_public_creation_flow',
+      deny_reason: adminAuthorized ? null : 'admin_token_not_provided',
+    },
+  });
+
+  const isEffectiveFree = input.finalPrice === 0;
+  const effectivePaymentMode = isEffectiveFree ? 'free' : input.intendedPaymentMode;
+  const effectiveBookingType = effectivePaymentMode === 'free'
+    ? 'FREE'
+    : effectivePaymentMode === 'pay_now'
+      ? 'PAY_NOW'
+      : 'PAY_LATER';
+  const skipConfirmationRequest = adminAuthorized;
+  const finalizeImmediately = adminAuthorized;
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'booking_submission_branch_decision',
+    message: 'Resolved shared booking submission branch',
+    context: {
+      booking_kind: input.bookingKind,
+      booking_subject_id: input.subjectId,
+      intended_payment_mode: input.intendedPaymentMode,
+      final_price_chf: input.finalPrice,
+      has_admin_token: hasAdminToken,
+      admin_authorized: adminAuthorized,
+      is_effective_free: isEffectiveFree,
+      effective_payment_mode: effectivePaymentMode,
+      effective_booking_type: effectiveBookingType,
+      skip_confirmation_request: skipConfirmationRequest,
+      finalize_immediately: finalizeImmediately,
+      branch_taken: adminAuthorized
+        ? isEffectiveFree
+          ? 'admin_confirmed_free_booking'
+          : 'admin_confirmed_paid_booking'
+        : isEffectiveFree
+          ? 'public_effective_free_booking'
+          : 'public_standard_paid_booking',
+      deny_reason: null,
+    },
+  });
+
+  return {
+    adminAuthorized,
+    isEffectiveFree,
+    effectivePaymentMode,
+    effectiveBookingType,
+    skipConfirmationRequest,
+    finalizeImmediately,
   };
 }
 
@@ -794,11 +938,22 @@ export async function createPayNowBooking(
     paymentMode: 'pay_now',
     subjectId: sessionType.id,
   }, ctx);
+  const submissionDecision = await resolveSharedSubmissionDecision({
+    bookingKind: 'session',
+    subjectId: sessionType.id,
+    intendedPaymentMode: 'pay_now',
+    finalPrice: commercialTerms.finalPrice,
+    adminToken: input.adminToken,
+  }, ctx);
+  const confirmToken = submissionDecision.isEffectiveFree && !submissionDecision.skipConfirmationRequest
+    ? generateToken()
+    : null;
+  const confirmTokenHash = confirmToken ? await hashToken(confirmToken) : null;
   const booking = await providers.repository.createBooking({
     client_id: client.id,
     event_id: null,
     session_type_id: sessionType.id,
-    booking_type: 'PAY_NOW',
+    booking_type: submissionDecision.effectiveBookingType,
     starts_at: input.slotStart,
     ends_at: input.slotEnd,
     timezone: input.timezone,
@@ -818,15 +973,46 @@ export async function createPayNowBooking(
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_FORM_SUBMITTED',
-    'PUBLIC_UI',
+    submissionDecision.adminAuthorized ? 'ADMIN_UI' : 'PUBLIC_UI',
     {
-      payment_mode: 'pay_now',
+      payment_mode: submissionDecision.effectivePaymentMode,
       session_type_id: sessionType.id,
       session_type_slug: sessionType.slug,
+      ...(confirmToken ? { confirm_token: confirmToken, confirm_token_hash: confirmTokenHash } : {}),
     },
     bookingCtx,
     { booking },
   );
+
+  if (submissionDecision.finalizeImmediately) {
+    const confirmed = await finalizeTrustedSubmissionFromEvent({
+      booking: transitioned.booking,
+      submissionEvent: transitioned.event,
+      submittedPaymentMode: submissionDecision.effectivePaymentMode,
+      sourceOperation: 'create_pay_now_booking:trusted_submission',
+    }, bookingCtx);
+    return {
+      bookingId: confirmed.id,
+      checkoutUrl: '',
+      checkoutHoldExpiresAt: '',
+    };
+  }
+
+  if (submissionDecision.isEffectiveFree) {
+    const executed = await runImmediateBookingEventWorkflow({
+      transitionEvent: transitioned.event,
+      transitionEventType: 'BOOKING_FORM_SUBMITTED',
+      sourceOperation: 'create_pay_now_booking',
+      bookingBeforeTransition: booking,
+      bookingAfterTransition: transitioned.booking,
+      transitionSideEffects: transitioned.sideEffects,
+    }, bookingCtx);
+    return {
+      bookingId: executed.booking.id,
+      checkoutUrl: '',
+      checkoutHoldExpiresAt: '',
+    };
+  }
 
   const executed = await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
@@ -836,6 +1022,7 @@ export async function createPayNowBooking(
     bookingAfterTransition: transitioned.booking,
     transitionSideEffects: transitioned.sideEffects,
   }, bookingCtx);
+
   const checkout = requireCheckoutWorkflowResult(executed);
 
   return {
@@ -897,14 +1084,21 @@ export async function createPayLaterBooking(
     paymentMode: input.sessionType === 'intro' ? 'free' : 'pay_later',
     subjectId: sessionType.id,
   }, ctx);
-  const confirmToken = generateToken();
-  const confirmTokenHash = await hashToken(confirmToken);
+  const submissionDecision = await resolveSharedSubmissionDecision({
+    bookingKind: 'session',
+    subjectId: sessionType.id,
+    intendedPaymentMode: input.sessionType === 'intro' ? 'free' : 'pay_later',
+    finalPrice: commercialTerms.finalPrice,
+    adminToken: input.adminToken,
+  }, ctx);
+  const confirmToken = submissionDecision.skipConfirmationRequest ? null : generateToken();
+  const confirmTokenHash = confirmToken ? await hashToken(confirmToken) : null;
 
   const booking = await providers.repository.createBooking({
     client_id: client.id,
     event_id: null,
     session_type_id: sessionType.id,
-    booking_type: input.sessionType === 'intro' ? 'FREE' : 'PAY_LATER',
+    booking_type: submissionDecision.effectiveBookingType,
     starts_at: input.slotStart,
     ends_at: input.slotEnd,
     timezone: input.timezone,
@@ -923,18 +1117,30 @@ export async function createPayLaterBooking(
 
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
-    input.sessionType === 'intro' ? 'BOOKING_FORM_SUBMITTED' : 'BOOKING_FORM_SUBMITTED',
-    'PUBLIC_UI',
+    'BOOKING_FORM_SUBMITTED',
+    submissionDecision.adminAuthorized ? 'ADMIN_UI' : 'PUBLIC_UI',
     {
-      payment_mode: input.sessionType === 'intro' ? 'free' : 'pay_later',
+      payment_mode: submissionDecision.effectivePaymentMode,
       session_type_id: sessionType.id,
       session_type_slug: sessionType.slug,
-      confirm_token: confirmToken,
-      confirm_token_hash: confirmTokenHash,
+      ...(confirmToken ? { confirm_token: confirmToken, confirm_token_hash: confirmTokenHash } : {}),
     },
     bookingCtx,
     { booking },
   );
+
+  if (submissionDecision.finalizeImmediately) {
+    const confirmed = await finalizeTrustedSubmissionFromEvent({
+      booking: transitioned.booking,
+      submissionEvent: transitioned.event,
+      submittedPaymentMode: submissionDecision.effectivePaymentMode,
+      sourceOperation: 'create_pay_later_booking:trusted_submission',
+    }, bookingCtx);
+    return {
+      bookingId: confirmed.id,
+      status: confirmed.current_status,
+    };
+  }
 
   const finalizedBooking = (await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
@@ -997,6 +1203,13 @@ async function createEventBookingInternal(
     paymentMode: input.paymentMode,
     subjectId: input.event.id,
   }, ctx);
+  const submissionDecision = await resolveSharedSubmissionDecision({
+    bookingKind: 'event',
+    subjectId: input.event.id,
+    intendedPaymentMode: input.paymentMode,
+    finalPrice: commercialTerms.finalPrice,
+    adminToken: input.adminToken,
+  }, ctx);
 
   ctx.logger.logInfo?.({
     source: 'backend',
@@ -1008,11 +1221,15 @@ async function createEventBookingInternal(
       event_is_paid: input.event.is_paid,
       via_late_access: options.viaLateAccess,
       requested_payment_mode: input.paymentMode,
-      branch_taken: !input.event.is_paid
-        ? 'free_event_confirm_by_email'
-        : input.paymentMode === 'pay_now'
-          ? 'paid_event_pay_now'
-          : 'paid_event_pay_at_event_confirm_by_email',
+      branch_taken: submissionDecision.adminAuthorized
+        ? submissionDecision.isEffectiveFree
+          ? 'admin_confirmed_free_event'
+          : 'admin_confirmed_paid_event'
+        : submissionDecision.effectivePaymentMode === 'free'
+          ? 'free_event_confirm_by_email'
+          : submissionDecision.effectivePaymentMode === 'pay_now'
+            ? 'paid_event_pay_now'
+            : 'paid_event_pay_at_event_confirm_by_email',
       deny_reason: null,
     },
   });
@@ -1021,11 +1238,7 @@ async function createEventBookingInternal(
     client_id: client.id,
     event_id: input.event.id,
     session_type_id: null,
-    booking_type: input.paymentMode === 'pay_now'
-      ? 'PAY_NOW'
-      : input.paymentMode === 'pay_at_event'
-        ? 'PAY_LATER'
-        : 'FREE',
+    booking_type: submissionDecision.effectiveBookingType,
     starts_at: input.event.starts_at,
     ends_at: input.event.ends_at,
     timezone: input.event.timezone,
@@ -1042,32 +1255,22 @@ async function createEventBookingInternal(
   });
   const bookingCtx = withBookingOperationContext(ctx, booking.id);
 
-  if (!input.event.is_paid) {
-    const confirmToken = options.viaLateAccess ? null : generateToken();
+  if (submissionDecision.effectivePaymentMode === 'free') {
+    const confirmToken = submissionDecision.skipConfirmationRequest || options.viaLateAccess ? null : generateToken();
     const confirmTokenHash = confirmToken ? await hashToken(confirmToken) : null;
 
     const created = await appendBookingEventWithEffects(
       booking.id,
       'BOOKING_FORM_SUBMITTED',
-      'PUBLIC_UI',
+      submissionDecision.adminAuthorized ? 'ADMIN_UI' : 'PUBLIC_UI',
       {
         payment_mode: 'free',
-        confirm_token: confirmToken,
-        confirm_token_hash: confirmTokenHash,
+        ...(confirmToken ? { confirm_token: confirmToken, confirm_token_hash: confirmTokenHash } : {}),
         via_late_access: options.viaLateAccess,
       },
       bookingCtx,
       { booking },
     );
-    const createdWithImmediateEffects = (await runImmediateBookingEventWorkflow({
-      transitionEvent: created.event,
-      transitionEventType: 'BOOKING_FORM_SUBMITTED',
-      sourceOperation: options.viaLateAccess ? 'create_event_booking_with_access' : 'create_event_booking',
-      bookingBeforeTransition: booking,
-      bookingAfterTransition: created.booking,
-      transitionSideEffects: created.sideEffects,
-    }, bookingCtx)).booking;
-
     if (options.viaLateAccess) {
       const confirmed = await bookingCtx.providers.repository.updateBooking(booking.id, {
         current_status: 'CONFIRMED',
@@ -1077,25 +1280,56 @@ async function createEventBookingInternal(
       return { bookingId: finalized.id, status: finalized.current_status };
     }
 
+    if (submissionDecision.finalizeImmediately) {
+      const confirmed = await finalizeTrustedSubmissionFromEvent({
+        booking: created.booking,
+        submissionEvent: created.event,
+        submittedPaymentMode: submissionDecision.effectivePaymentMode,
+        sourceOperation: options.viaLateAccess ? 'create_event_booking_with_access:trusted_submission' : 'create_event_booking:trusted_submission',
+      }, bookingCtx);
+      return { bookingId: confirmed.id, status: confirmed.current_status };
+    }
+
+    const createdWithImmediateEffects = (await runImmediateBookingEventWorkflow({
+      transitionEvent: created.event,
+      transitionEventType: 'BOOKING_FORM_SUBMITTED',
+      sourceOperation: options.viaLateAccess ? 'create_event_booking_with_access' : 'create_event_booking',
+      bookingBeforeTransition: booking,
+      bookingAfterTransition: created.booking,
+      transitionSideEffects: created.sideEffects,
+    }, bookingCtx)).booking;
+
     return { bookingId: createdWithImmediateEffects.id, status: createdWithImmediateEffects.current_status };
   }
 
-  if (input.paymentMode === 'pay_at_event') {
-    const confirmToken = generateToken();
-    const confirmTokenHash = await hashToken(confirmToken);
+  if (submissionDecision.effectivePaymentMode === 'pay_at_event') {
+    const confirmToken = submissionDecision.skipConfirmationRequest ? null : generateToken();
+    const confirmTokenHash = confirmToken ? await hashToken(confirmToken) : null;
     const transitioned = await appendBookingEventWithEffects(
       booking.id,
       'BOOKING_FORM_SUBMITTED',
-      'PUBLIC_UI',
+      submissionDecision.adminAuthorized ? 'ADMIN_UI' : 'PUBLIC_UI',
       {
         payment_mode: 'pay_at_event',
         event_id: input.event.id,
-        confirm_token: confirmToken,
-        confirm_token_hash: confirmTokenHash,
+        ...(confirmToken ? { confirm_token: confirmToken, confirm_token_hash: confirmTokenHash } : {}),
       },
       bookingCtx,
       { booking },
     );
+
+    if (submissionDecision.finalizeImmediately) {
+      const confirmed = await finalizeTrustedSubmissionFromEvent({
+        booking: transitioned.booking,
+        submissionEvent: transitioned.event,
+        submittedPaymentMode: submissionDecision.effectivePaymentMode,
+        sourceOperation: 'create_event_booking_pay_at_event:trusted_submission',
+      }, bookingCtx);
+      return {
+        bookingId: confirmed.id,
+        status: confirmed.current_status,
+      };
+    }
 
     const finalizedBooking = (await runImmediateBookingEventWorkflow({
       transitionEvent: transitioned.event,
@@ -1115,7 +1349,7 @@ async function createEventBookingInternal(
   const transitioned = await appendBookingEventWithEffects(
     booking.id,
     'BOOKING_FORM_SUBMITTED',
-    'PUBLIC_UI',
+    submissionDecision.adminAuthorized ? 'ADMIN_UI' : 'PUBLIC_UI',
     {
       payment_mode: 'pay_now',
       event_id: input.event.id,
@@ -1123,6 +1357,19 @@ async function createEventBookingInternal(
     bookingCtx,
     { booking },
   );
+
+  if (submissionDecision.finalizeImmediately) {
+    const confirmed = await finalizeTrustedSubmissionFromEvent({
+      booking: transitioned.booking,
+      submissionEvent: transitioned.event,
+      submittedPaymentMode: submissionDecision.effectivePaymentMode,
+      sourceOperation: 'create_event_booking_pay_now:trusted_submission',
+    }, bookingCtx);
+    return {
+      bookingId: confirmed.id,
+      status: confirmed.current_status,
+    };
+  }
 
   const executed = await runImmediateBookingEventWorkflow({
     transitionEvent: transitioned.event,
@@ -1730,16 +1977,24 @@ export async function buildAdminManageUrl(
   booking: Booking,
   ctx: BookingContext,
 ): Promise<{ url: string; adminToken: string; expiresAt: string }> {
+  const token = await buildAdminBookingToken(booking.id, ctx);
+  const manageToken = buildStableManageToken(booking.id);
+  const url = `${bookingSiteUrl(ctx)}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(token.adminToken)}`;
+  return { url, adminToken: token.adminToken, expiresAt: token.expiresAt };
+}
+
+export async function buildAdminBookingToken(
+  subjectId: string,
+  ctx: Pick<BookingContext, 'providers' | 'env'>,
+): Promise<{ adminToken: string; expiresAt: string }> {
   const policy = await loadBookingPolicy(ctx);
   const secret = String(ctx.env.ADMIN_MANAGE_TOKEN_SECRET || ctx.env.JOB_SECRET || '').trim();
   if (!secret) throw badRequest('Admin manage token secret is not configured');
   const expiresAt = new Date(
     Date.now() + policy.adminManageTokenExpiryMinutes * 60_000,
   ).toISOString();
-  const adminToken = await createAdminManageToken(booking.id, secret, expiresAt);
-  const manageToken = buildStableManageToken(booking.id);
-  const url = `${bookingSiteUrl(ctx)}/manage.html?token=${encodeURIComponent(manageToken)}&admin_token=${encodeURIComponent(adminToken)}`;
-  return { url, adminToken, expiresAt };
+  const adminToken = await createAdminManageToken(subjectId, secret, expiresAt);
+  return { adminToken, expiresAt };
 }
 
 export async function cancelBooking(
@@ -2165,6 +2420,90 @@ async function completeEmailVerificationWithinEvent(
     booking: bookingAfterVerification,
     nextSideEffects: [...existingDownstreamSideEffects, ...createdDownstreamSideEffects],
   };
+}
+
+async function finalizeTrustedSubmissionFromEvent(
+  input: {
+    booking: Booking;
+    submissionEvent: BookingEventRecord;
+    submittedPaymentMode: 'free' | 'pay_now' | 'pay_later' | 'pay_at_event';
+    sourceOperation: string;
+  },
+  ctx: BookingContext,
+): Promise<Booking> {
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'trusted_booking_submission_finalization_started',
+    message: 'Starting trusted booking submission finalization through shared confirmation owner',
+    context: {
+      booking_id: input.booking.id,
+      booking_type: input.booking.booking_type,
+      booking_status: input.booking.current_status,
+      booking_event_id: input.submissionEvent.id,
+      submitted_payment_mode: input.submittedPaymentMode,
+      branch_taken: 'complete_confirmation_via_shared_event_owner',
+      deny_reason: null,
+    },
+  });
+
+  const verificationResult = await completeEmailVerificationWithinEvent(
+    input.submissionEvent.id,
+    input.booking,
+    ctx,
+  );
+  let bookingAfterVerification = verificationResult.booking;
+  let payment: Payment | null = null;
+
+  if (bookingAfterVerification.booking_type !== 'FREE') {
+    payment = await ensurePayLaterPaymentRecord(
+      bookingAfterVerification,
+      ctx,
+      input.sourceOperation,
+      input.submittedPaymentMode === 'pay_at_event' ? 'CASH_OK' : 'PENDING',
+      input.submittedPaymentMode === 'pay_at_event' ? { payment_mode: 'pay_at_event' } : undefined,
+    );
+    await schedulePayLaterPaymentFollowups(
+      bookingAfterVerification,
+      input.submissionEvent.id,
+      payment,
+      ctx,
+    );
+  }
+
+  const finalized = await runBookingEventEffects(
+    {
+      booking: bookingAfterVerification,
+      event: input.submissionEvent,
+      sideEffects: verificationResult.nextSideEffects.map((effect) => ({
+        effect,
+        event: input.submissionEvent,
+        isFresh: true,
+      })),
+      sourceOperation: input.sourceOperation,
+      triggerSource: 'realtime',
+      executeEffect: executeBookingSideEffectAction,
+    },
+    ctx,
+  );
+
+  ctx.logger.logInfo?.({
+    source: 'backend',
+    eventType: 'trusted_booking_submission_finalization_completed',
+    message: 'Completed trusted booking submission finalization through shared confirmation owner',
+    context: {
+      booking_id: finalized.booking.id,
+      booking_type: finalized.booking.booking_type,
+      booking_status: finalized.booking.current_status,
+      booking_event_id: input.submissionEvent.id,
+      submitted_payment_mode: input.submittedPaymentMode,
+      payment_id: payment?.id ?? null,
+      payment_status: payment?.status ?? null,
+      branch_taken: 'trusted_submission_finalized_via_shared_event_owner',
+      deny_reason: null,
+    },
+  });
+
+  return finalized.booking;
 }
 
 export async function sendPendingBookingFollowup(booking: Booking, ctx: BookingContext): Promise<void> {

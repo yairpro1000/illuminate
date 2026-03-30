@@ -25,6 +25,7 @@ import type {
   NewEventLateAccessLink,
   NewEventReminderSubscription,
   NewPayment,
+  AdminClientRow,
   AdminContactMessageRow,
   OrganizerBookingRow,
   OrganizerBookingSummaryRow,
@@ -82,6 +83,8 @@ export interface IRepository {
   createClient(data: NewClient): Promise<Client>;
   getClientById(id: string): Promise<Client | null>;
   getClientByEmail(email: string): Promise<Client | null>;
+  getAdminClientRowById(id: string): Promise<AdminClientRow | null>;
+  listAdminClients(): Promise<AdminClientRow[]>;
   listClientsByEmailPrefix(prefix: string): Promise<Client[]>;
   listBookingsByClientTagPrefix(prefix: string): Promise<Booking[]>;
   updateClient(id: string, updates: ClientUpdate): Promise<Client>;

@@ -20,9 +20,18 @@
   }
 
   async function submitBooking(args) {
+    const finalChf = args.state.pricePreview ? Number(args.state.pricePreview.finalChf) : NaN;
+    const isZeroPriceFlow = Boolean(
+      args.state.pricePreview
+      && Number(args.state.pricePreview.baseChf || 0) > 0
+      && Number.isFinite(finalChf)
+      && finalChf === 0
+    );
     const turnstileToken = await resolveSubmitTurnstileToken(
       args,
-      args.isIntroFlow() ? 'booking_intro_submit' : (args.state.paymentMethod === 'pay-now' ? 'booking_pay_now_submit' : 'booking_pay_later_submit'),
+      args.isIntroFlow() || isZeroPriceFlow
+        ? 'booking_intro_submit'
+        : (args.state.paymentMethod === 'pay-now' ? 'booking_pay_now_submit' : 'booking_pay_later_submit'),
     );
     const payload = {
       slot_start: args.state.selectedSlot.start,
@@ -39,11 +48,16 @@
       coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
         ? (args.state.appliedCouponCode || null)
         : null,
+      ...(args.context.adminToken ? { admin_token: args.context.adminToken } : {}),
     };
 
     let result;
-    if (args.isIntroFlow()) {
-      if (args.observability) args.observability.logMilestone('confirmation_email_requested', { flow: 'site_booking_intro', slot_start: payload.slot_start });
+    if (args.isIntroFlow() || isZeroPriceFlow) {
+      if (args.observability) args.observability.logMilestone('confirmation_email_requested', {
+        flow: isZeroPriceFlow ? 'site_booking_effective_free' : 'site_booking_intro',
+        slot_start: payload.slot_start,
+        branch_taken: isZeroPriceFlow ? 'submit_effective_free_booking' : 'submit_intro_booking',
+      });
       result = await bookingPayLater(payload);
     } else if (args.state.paymentMethod === 'pay-now') {
       if (args.observability) args.observability.logMilestone('checkout_started', { flow: 'site_booking_pay_now', slot_start: payload.slot_start });
@@ -79,6 +93,13 @@
 
   async function submitEventRegistration(args) {
     const turnstileToken = await resolveSubmitTurnstileToken(args, 'event_registration_submit');
+    const finalChf = args.state.pricePreview ? Number(args.state.pricePreview.finalChf) : NaN;
+    const isZeroPriceFlow = Boolean(
+      args.state.pricePreview
+      && Number(args.state.pricePreview.baseChf || 0) > 0
+      && Number.isFinite(finalChf)
+      && finalChf === 0
+    );
     const payload = {
       first_name: args.state.firstName.trim(),
       last_name: args.state.lastName.trim() || null,
@@ -90,9 +111,10 @@
       coupon_code: args.state.pricePreview && Number(args.state.pricePreview.baseChf || 0) > 0
         ? (args.state.appliedCouponCode || null)
         : null,
-      payment_mode: args.context.isPaid
+      payment_mode: args.context.isPaid && !isZeroPriceFlow
         ? 'pay_at_event'
         : undefined,
+      ...(args.context.adminToken ? { admin_token: args.context.adminToken } : {}),
     };
 
     if (args.observability) args.observability.logMilestone('registration_started', { event_slug: args.context.eventSlug });

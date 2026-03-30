@@ -29,6 +29,10 @@ import { handleAdminUploadImage } from './handlers/upload.js';
 import { handleStripeWebhook } from './handlers/webhook.js';
 import { handleJobTrigger } from './handlers/jobs.js';
 import {
+  handleAdminGetClients,
+  handleAdminCreateClient,
+  handleAdminUpdateClient,
+  handleAdminCreateClientBookingToken,
   handleAdminGetEvents,
   handleAdminGetAllEvents,
   handleAdminUpdateEvent,
@@ -147,6 +151,10 @@ const ROUTES: Route[] = [
   route('POST', '/api/contact', handleContact),
   route('POST', '/api/observability/frontend', handleFrontendObservability, 'default', { suppressSuccessRequestLog: true }),
   route('POST', '/api/antibot/turnstile/verify', handleTurnstileVerify),
+  route('GET', '/api/admin/clients', handleAdminGetClients),
+  route('POST', '/api/admin/clients', handleAdminCreateClient),
+  route('PATCH', '/api/admin/clients/:clientId', handleAdminUpdateClient),
+  route('POST', '/api/admin/clients/:clientId/booking-token', handleAdminCreateClientBookingToken),
   route('GET', '/api/admin/events', handleAdminGetEvents),
   route('GET', '/api/admin/events/all', handleAdminGetAllEvents),
   route('PATCH', '/api/admin/events/:eventId', handleAdminUpdateEvent),

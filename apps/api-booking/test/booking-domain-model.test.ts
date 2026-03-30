@@ -16,6 +16,7 @@ import { RetryableCalendarWriteError } from '../src/providers/calendar/interface
 import { MockPaymentsProvider } from '../src/providers/payments/mock.js';
 import { MockAntiBotProvider } from '../src/providers/antibot/mock.js';
 import { mockState } from '../src/providers/mock-state.js';
+import { createAdminManageToken } from '../src/services/token-service.js';
 
 const seededEvents = [...mockState.events.values()].map((event) => ({ ...event }));
 
@@ -56,6 +57,8 @@ function makeCtx(overrides?: { email?: any; calendar?: any }) {
       SESSION_ADDRESS: 'Somewhere 1, Zurich',
       SESSION_MAPS_URL: 'https://maps.example',
       TIMEZONE: 'Europe/Zurich',
+      ADMIN_MANAGE_TOKEN_SECRET: 'admin-secret',
+      JOB_SECRET: 'admin-secret',
     } as any,
     logger: {
       logInfo: vi.fn(),
@@ -204,6 +207,122 @@ describe('booking domain model', () => {
     expect(payLaterBooking?.price).toBe(90);
     expect(payLaterBooking?.coupon_code).toBe('ISRAEL');
     expect(payLaterPayment).toBeNull();
+  });
+
+  it('treats zero-price coupon bookings as free regardless of original requested mode', async () => {
+    const ctx = makeCtx();
+    mockState.coupons.set('FREE100', { code: 'FREE100', discount_percent: 100 });
+    const paidEvent = [...mockState.events.values()].find((event) => event.is_paid)!;
+
+    const payNow = await createPayNowBooking({
+      slotStart: '2026-03-17T10:00:00.000Z',
+      slotEnd: '2026-03-17T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      offerSlug: 'first-clarity-session',
+      clientName: 'Jane Doe',
+      clientEmail: 'jane-free@example.com',
+      clientPhone: '+41000000011',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'FREE100',
+    }, ctx);
+
+    const payLater = await createPayLaterBooking({
+      slotStart: '2026-03-18T12:00:00.000Z',
+      slotEnd: '2026-03-18T13:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      offerSlug: 'cycle-session',
+      clientName: 'John Doe',
+      clientEmail: 'john-free@example.com',
+      clientPhone: '+41000000012',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'FREE100',
+    }, ctx);
+
+    const eventBooking = await createEventBooking({
+      event: paidEvent,
+      paymentMode: 'pay_at_event',
+      firstName: 'Event',
+      lastName: 'Free',
+      email: 'event-free@example.com',
+      phone: '+41000000014',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      couponCode: 'FREE100',
+    }, ctx);
+
+    const payNowBooking = await ctx.providers.repository.getBookingById(payNow.bookingId);
+    const payLaterBooking = await ctx.providers.repository.getBookingById(payLater.bookingId);
+    const eventFreeBooking = await ctx.providers.repository.getBookingById(eventBooking.bookingId);
+    expect(payNowBooking?.booking_type).toBe('FREE');
+    expect(payLaterBooking?.booking_type).toBe('FREE');
+    expect(eventFreeBooking?.booking_type).toBe('FREE');
+    expect(payNowBooking?.price).toBe(0);
+    expect(payLaterBooking?.price).toBe(0);
+    expect(eventFreeBooking?.price).toBe(0);
+    expect(payNowBooking?.coupon_code).toBe('FREE100');
+    expect(payLaterBooking?.coupon_code).toBe('FREE100');
+    expect(eventFreeBooking?.coupon_code).toBe('FREE100');
+    expect(await ctx.providers.repository.getPaymentByBookingId(payNow.bookingId)).toBeNull();
+    expect(await ctx.providers.repository.getPaymentByBookingId(payLater.bookingId)).toBeNull();
+    expect(await ctx.providers.repository.getPaymentByBookingId(eventBooking.bookingId)).toBeNull();
+
+    const payNowSideEffects = mockState.sideEffects.filter((effect) => effect.booking_id === payNow.bookingId);
+    const payLaterSideEffects = mockState.sideEffects.filter((effect) => effect.booking_id === payLater.bookingId);
+    const eventSideEffects = mockState.sideEffects.filter((effect) => effect.booking_id === eventBooking.bookingId);
+    expect(payNowSideEffects.map((effect) => effect.effect_intent)).not.toEqual(expect.arrayContaining(['CREATE_STRIPE_CHECKOUT', 'VERIFY_STRIPE_PAYMENT', 'SEND_PAYMENT_LINK', 'SEND_PAYMENT_REMINDER']));
+    expect(payLaterSideEffects.map((effect) => effect.effect_intent)).not.toEqual(expect.arrayContaining(['CREATE_STRIPE_CHECKOUT', 'VERIFY_STRIPE_PAYMENT', 'SEND_PAYMENT_LINK', 'SEND_PAYMENT_REMINDER']));
+    expect(eventSideEffects.map((effect) => effect.effect_intent)).not.toEqual(expect.arrayContaining(['CREATE_STRIPE_CHECKOUT', 'VERIFY_STRIPE_PAYMENT', 'SEND_PAYMENT_LINK', 'SEND_PAYMENT_REMINDER']));
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_submission_branch_decision',
+      context: expect.objectContaining({
+        is_effective_free: true,
+        branch_taken: 'public_effective_free_booking',
+      }),
+    }));
+  });
+
+  it('confirms admin-token pay-later bookings immediately and skips confirmation-request email', async () => {
+    const ctx = makeCtx();
+    const adminToken = await createAdminManageToken('admin-new-booking', 'admin-secret', '2026-12-31T00:00:00.000Z');
+
+    const created = await createPayLaterBooking({
+      slotStart: '2026-03-21T10:00:00.000Z',
+      slotEnd: '2026-03-21T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      sessionType: 'session',
+      clientName: 'Admin Booked',
+      clientEmail: 'admin-booked@example.com',
+      clientPhone: '+41000000013',
+      reminderEmailOptIn: true,
+      reminderWhatsappOptIn: false,
+      turnstileToken: 'ok',
+      remoteIp: null,
+      adminToken,
+    }, ctx);
+
+    const booking = await ctx.providers.repository.getBookingById(created.bookingId);
+    const payment = await ctx.providers.repository.getPaymentByBookingId(created.bookingId);
+    expect(booking?.current_status).toBe('CONFIRMED');
+    expect(payment?.status).toBe('PENDING');
+    expect(mockState.sentEmails.find((email) => email.kind === 'booking_confirm_request' && email.to === 'admin-booked@example.com')).toBeFalsy();
+    expect(mockState.sentEmails.find((email) => email.kind === 'booking_confirmation' && email.to === 'admin-booked@example.com')).toBeTruthy();
+    expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'booking_submission_branch_decision',
+      context: expect.objectContaining({
+        admin_authorized: true,
+        branch_taken: 'admin_confirmed_paid_booking',
+      }),
+    }));
   });
 
   it('rejects invalid coupon codes during booking creation', async () => {

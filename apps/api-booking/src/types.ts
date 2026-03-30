@@ -61,6 +61,7 @@ export interface Client {
   last_name: string | null;
   email: string;
   phone: string | null;
+  stripe_customer_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -458,6 +459,18 @@ export interface AdminContactMessageRow {
   client_last_name: string | null;
   client_email: string;
   client_phone: string | null;
+}
+
+export interface AdminClientRow {
+  id: string;
+  first_name: string;
+  last_name: string | null;
+  email: string;
+  phone: string | null;
+  sessions_count: number;
+  last_session_at: string | null;
+  events_count: number;
+  last_event_at: string | null;
 }
 
 // ── Repository input types ──────────────────────────────────────────────────

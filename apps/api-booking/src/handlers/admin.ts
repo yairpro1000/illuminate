@@ -3,8 +3,10 @@ import type { Env } from '../env.js';
 import type { AdminContactMessageFilters, OrganizerBookingFilters } from '../providers/repository/interface.js';
 import type {
   BookingCurrentStatus,
+  ClientUpdate,
   EventMarketingContent,
   EventUpdate,
+  NewClient,
   NewSystemSetting,
   PaymentStatus,
   SystemSetting,
@@ -23,6 +25,7 @@ import {
 import { BOOKING_POLICY_CONFIG_SOURCE } from '../config/booking-policy.js';
 import { generateToken, hashToken } from '../services/token-service.js';
 import {
+  buildAdminBookingToken,
   buildAdminManageUrl,
   buildManageUrl,
   settleBookingPaymentManually,
@@ -137,6 +140,32 @@ async function parseJsonBody(request: Request): Promise<Record<string, unknown>>
   const raw = await request.text();
   if (!raw.trim()) return {};
   return JSON.parse(raw) as Record<string, unknown>;
+}
+
+function parseAdminClientCreatePayload(body: Record<string, unknown>): NewClient {
+  return {
+    first_name: coerceRequiredString(body.first_name, 'first_name'),
+    last_name: coerceOptionalString(body.last_name),
+    email: normalizeEmail(coerceRequiredString(body.email, 'email')),
+    phone: coerceOptionalString(body.phone),
+  };
+}
+
+function parseAdminClientUpdatePayload(body: Record<string, unknown>): ClientUpdate {
+  const updates: ClientUpdate = {};
+  if (typeof body.first_name === 'string') {
+    updates.first_name = coerceRequiredString(body.first_name, 'first_name');
+  }
+  if (body.last_name === null || typeof body.last_name === 'string') {
+    updates.last_name = coerceOptionalString(body.last_name);
+  }
+  if (typeof body.email === 'string') {
+    updates.email = normalizeEmail(coerceRequiredString(body.email, 'email'));
+  }
+  if (body.phone === null || typeof body.phone === 'string') {
+    updates.phone = coerceOptionalString(body.phone);
+  }
+  return updates;
 }
 
 function coerceRequiredString(value: unknown, fieldName: string): string {
@@ -267,6 +296,285 @@ function toAdminSystemSettingRow(setting: SystemSetting) {
 
 function isServiceOverridePayload(body: Record<string, unknown>): body is { key: ServiceKey; mode: string } {
   return typeof body.key === 'string' && typeof body.mode === 'string';
+}
+
+// GET /api/admin/clients
+export async function handleAdminGetClients(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_clients_list_request_started',
+      message: 'Started admin clients listing request',
+      context: {
+        path,
+        branch_taken: 'auth_check_pending',
+      },
+    });
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_clients_list_auth_passed',
+      message: 'Admin clients listing auth passed',
+      context: {
+        path,
+        branch_taken: 'load_clients',
+      },
+    });
+    const rows = await ctx.providers.repository.listAdminClients();
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_clients_list_request_succeeded',
+      message: 'Admin clients listing request succeeded',
+      context: {
+        path,
+        row_count: rows.length,
+        branch_taken: 'return_clients',
+      },
+    });
+    return ok({ rows });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_clients_list_request_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        branch_taken: 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof Error ? err.message : String(err),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
+    throw err;
+  }
+}
+
+// POST /api/admin/clients
+export async function handleAdminCreateClient(request: Request, ctx: AppContext): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    const body = await parseJsonBody(request);
+    const payload = parseAdminClientCreatePayload(body);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_create_started',
+      message: 'Started admin client create request',
+      context: {
+        path,
+        email: payload.email,
+        has_last_name: Boolean(payload.last_name),
+        has_phone: Boolean(payload.phone),
+        branch_taken: 'create_client_record',
+      },
+    });
+    const client = await ctx.providers.repository.createClient(payload);
+    const row = await ctx.providers.repository.getAdminClientRowById(client.id);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_create_succeeded',
+      message: 'Admin client create request succeeded',
+      context: {
+        path,
+        client_id: client.id,
+        email: client.email,
+        branch_taken: 'return_created_client',
+      },
+    });
+    return created({ client: row ?? client });
+  } catch (err) {
+    const normalizedError = isDuplicateClientEmailError(err)
+      ? conflict('A client with this email already exists')
+      : err;
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_client_create_failed',
+      message: normalizedError instanceof Error ? normalizedError.message : String(normalizedError),
+      context: {
+        path,
+        branch_taken: normalizedError instanceof ApiError ? 'handled_api_error' : 'propagate_error_to_shared_wrapper',
+        deny_reason: normalizedError instanceof ApiError ? normalizedError.code : (normalizedError instanceof Error ? normalizedError.message : String(normalizedError)),
+        status_code: (normalizedError as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
+    throw normalizedError;
+  }
+}
+
+// PATCH /api/admin/clients/:clientId
+export async function handleAdminUpdateClient(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    const clientId = params.clientId?.trim();
+    if (!clientId) throw badRequest('clientId is required');
+    const existing = await ctx.providers.repository.getClientById(clientId);
+    if (!existing) throw notFound('Client not found');
+    const body = await parseJsonBody(request);
+    const updates = parseAdminClientUpdatePayload(body);
+    if (Object.keys(updates).length === 0) throw badRequest('No changes provided');
+    const nextEmail = typeof updates.email === 'string' ? updates.email : existing.email;
+    const fullName = [
+      typeof updates.first_name === 'string' ? updates.first_name : existing.first_name,
+      Object.prototype.hasOwnProperty.call(updates, 'last_name') ? (updates.last_name ?? '') : (existing.last_name ?? ''),
+    ].filter(Boolean).join(' ').trim();
+    const shouldSyncStripeEmail = typeof updates.email === 'string'
+      && updates.email !== existing.email
+      && Boolean(existing.stripe_customer_id);
+
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_update_started',
+      message: 'Started admin client update request',
+      context: {
+        path,
+        client_id: clientId,
+        email_changed: typeof updates.email === 'string' && updates.email !== existing.email,
+        stripe_customer_id_present: Boolean(existing.stripe_customer_id),
+        stripe_sync_required: shouldSyncStripeEmail,
+        branch_taken: 'update_client_record',
+      },
+    });
+    const updated = await ctx.providers.repository.updateClient(clientId, updates);
+    if (shouldSyncStripeEmail) {
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'admin_client_update_stripe_sync_started',
+        message: 'Started Stripe customer email sync after admin client update',
+        context: {
+          path,
+          client_id: clientId,
+          stripe_customer_id: existing.stripe_customer_id ?? null,
+          next_email: nextEmail,
+          branch_taken: 'sync_stripe_customer_email',
+        },
+      });
+      await ctx.providers.payments.updateCustomer({
+        customerId: String(existing.stripe_customer_id),
+        email: nextEmail,
+        name: fullName || null,
+      });
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'admin_client_update_stripe_sync_succeeded',
+        message: 'Completed Stripe customer email sync after admin client update',
+        context: {
+          path,
+          client_id: clientId,
+          stripe_customer_id: existing.stripe_customer_id ?? null,
+          next_email: nextEmail,
+          branch_taken: 'stripe_customer_email_synced',
+        },
+      });
+    } else {
+      ctx.logger.logInfo?.({
+        source: 'backend',
+        eventType: 'admin_client_update_stripe_sync_skipped',
+        message: 'Skipped Stripe customer email sync after admin client update',
+        context: {
+          path,
+          client_id: clientId,
+          stripe_customer_id_present: Boolean(existing.stripe_customer_id),
+          email_changed: typeof updates.email === 'string' && updates.email !== existing.email,
+          branch_taken: 'skip_stripe_customer_email_sync',
+          deny_reason: !existing.stripe_customer_id ? 'stripe_customer_id_missing' : 'email_not_changed',
+        },
+      });
+    }
+    const row = await ctx.providers.repository.getAdminClientRowById(updated.id);
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_update_succeeded',
+      message: 'Admin client update request succeeded',
+      context: {
+        path,
+        client_id: updated.id,
+        branch_taken: 'return_updated_client',
+      },
+    });
+    return ok({ client: row ?? updated });
+  } catch (err) {
+    const normalizedError = isDuplicateClientEmailError(err)
+      ? conflict('A client with this email already exists')
+      : err;
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_client_update_failed',
+      message: normalizedError instanceof Error ? normalizedError.message : String(normalizedError),
+      context: {
+        path,
+        client_id: params.clientId?.trim() || null,
+        branch_taken: normalizedError instanceof ApiError ? 'handled_api_error' : 'propagate_error_to_shared_wrapper',
+        deny_reason: normalizedError instanceof ApiError ? normalizedError.code : (normalizedError instanceof Error ? normalizedError.message : String(normalizedError)),
+        status_code: (normalizedError as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
+    throw normalizedError;
+  }
+}
+
+// POST /api/admin/clients/:clientId/booking-token
+export async function handleAdminCreateClientBookingToken(
+  request: Request,
+  ctx: AppContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  try {
+    await requireAdminAccess(request, ctx.env, ctx.logger);
+    const clientId = params.clientId?.trim();
+    if (!clientId) throw badRequest('clientId is required');
+    const client = await ctx.providers.repository.getClientById(clientId);
+    if (!client) throw notFound('Client not found');
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_booking_token_create_started',
+      message: 'Started admin client booking-token generation',
+      context: {
+        path,
+        client_id: client.id,
+        branch_taken: 'build_admin_booking_token',
+      },
+    });
+    const token = await buildAdminBookingToken(client.id, {
+      providers: ctx.providers,
+      env: ctx.env,
+    });
+    ctx.logger.logInfo?.({
+      source: 'backend',
+      eventType: 'admin_client_booking_token_create_succeeded',
+      message: 'Admin client booking-token generation succeeded',
+      context: {
+        path,
+        client_id: client.id,
+        expires_at: token.expiresAt,
+        branch_taken: 'return_admin_booking_token',
+      },
+    });
+    return ok({
+      client_id: client.id,
+      token: token.adminToken,
+      expires_at: token.expiresAt,
+    });
+  } catch (err) {
+    ctx.logger.logWarn?.({
+      source: 'backend',
+      eventType: 'admin_client_booking_token_create_failed',
+      message: err instanceof Error ? err.message : String(err),
+      context: {
+        path,
+        client_id: params.clientId?.trim() || null,
+        branch_taken: err instanceof ApiError ? 'handled_api_error' : 'propagate_error_to_shared_wrapper',
+        deny_reason: err instanceof ApiError ? err.code : (err instanceof Error ? err.message : String(err)),
+        status_code: (err as { statusCode?: number })?.statusCode ?? 500,
+      },
+    });
+    throw err;
+  }
 }
 
 // GET /api/admin/events
