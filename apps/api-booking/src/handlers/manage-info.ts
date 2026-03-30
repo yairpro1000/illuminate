@@ -87,15 +87,6 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
       siteUrl: ctx.siteUrl,
     });
 
-    const nowIso = new Date().toISOString();
-    const rebookSessionTypes = actions.source === 'session'
-      ? await ctx.providers.repository.getPublicSessionTypes()
-      : [];
-    const rebookEvents = actions.source === 'event'
-      ? (await ctx.providers.repository.getPublishedEvents())
-          .filter(e => e.starts_at > nowIso)
-          .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-      : [];
     ctx.logger.logInfo?.({
       source: 'backend',
       eventType: 'manage_booking_actions_gate_decision',
@@ -183,28 +174,6 @@ export async function handleManageInfo(request: Request, ctx: AppContext): Promi
         : null,
       calendar_event: buildPublicCalendarEventInfo(booking, event),
       calendar_sync_pending_retry: isSessionCalendarSyncPendingRetry(booking),
-      rebook: {
-        session_types: rebookSessionTypes.map(st => ({
-          id: st.id,
-          title: st.title,
-          slug: st.slug,
-          duration_minutes: st.duration_minutes,
-          price: st.price,
-          currency: st.currency,
-          short_description: st.short_description,
-        })),
-        events: rebookEvents.map(e => ({
-          id: e.id,
-          slug: e.slug,
-          title: e.title,
-          starts_at: e.starts_at,
-          ends_at: e.ends_at,
-          is_paid: e.is_paid,
-          price_per_person: e.price_per_person,
-          currency: e.currency,
-          address_line: e.address_line,
-        })),
-      },
     });
   } catch (err) {
     const statusCode = err instanceof ApiError ? err.statusCode : 500;

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Again – ILLUMINATE</title>
+  <link rel="icon" type="image/png" href="img/Rosenlaui_icon.jpeg" />
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    .rebook-page {
+      min-height: 100dvh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 3rem 1rem;
+    }
+    .rebook-card {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem 2rem;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: var(--shadow-card);
+    }
+    .rebook-title    { font-size: 1.5rem; font-weight: 700; margin: 0 0 .25rem; color: var(--color-text); }
+    .rebook-subtitle { color: var(--color-text-muted); margin: 0 0 2rem; }
+    .rebook-list     { display: flex; flex-direction: column; gap: .625rem; margin: 0 0 1rem; }
+    .rebook-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .75rem;
+      padding: .875rem 1.125rem;
+      border-radius: .875rem;
+      text-decoration: none;
+      color: var(--color-text);
+      background: oklch(55% 0.13 195 / 0.10);
+      border: 1px solid oklch(60% 0.13 195 / 0.30);
+      transition: background .15s, border-color .15s;
+    }
+    .rebook-pill:hover {
+      background: oklch(55% 0.13 195 / 0.20);
+      border-color: oklch(65% 0.15 195 / 0.55);
+    }
+    .rebook-pill__content { display: flex; flex-direction: column; gap: .2rem; min-width: 0; }
+    .rebook-pill__title   { font-weight: 600; font-size: .975rem; }
+    .rebook-pill__meta    { font-size: .82rem; color: var(--color-text-muted); }
+    .rebook-pill__price   { font-size: .875rem; color: var(--color-text-muted); white-space: nowrap; flex-shrink: 0; }
+    .rebook-browse  { font-size: .85rem; color: var(--color-lake-light); text-decoration: none; display: inline-block; margin-bottom: 1.5rem; }
+    .rebook-browse:hover { text-decoration: underline; }
+    .rebook-actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .5rem; }
+  </style>
+</head>
+<body>
+<main class="rebook-page">
+  <div class="rebook-card" id="rebook-card">
+    <p style="color:var(--color-muted,#888)">Loading…</p>
+  </div>
+</main>
+<script src="js/api-base.js"></script>
+<script src="js/client.js"></script>
+<script src="js/pages/rebook.js"></script>
+</body>
+</html>

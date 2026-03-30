@@ -109,87 +109,6 @@
     return `<div class="manage-actions" style="margin-top:1rem">${links}</div>`;
   }
 
-  function formatEventShortDate(iso) {
-    return new Date(iso).toLocaleString('en-GB', {
-      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
-  }
-
-  function buildRebookSection(rebook, client) {
-    if (!rebook) return '';
-    const sessionTypes = Array.isArray(rebook.session_types) ? rebook.session_types : [];
-    const events = Array.isArray(rebook.events) ? rebook.events : [];
-    if (!sessionTypes.length && !events.length) return '';
-
-    const prefillParams = new URLSearchParams();
-    if (client && client.first_name) prefillParams.set('prefill_first', client.first_name);
-    if (client && client.last_name)  prefillParams.set('prefill_last',  client.last_name);
-    if (client && client.email)      prefillParams.set('prefill_email', client.email);
-    if (client && client.phone)      prefillParams.set('prefill_phone', client.phone);
-
-    if (sessionTypes.length) {
-      const pills = sessionTypes.map(st => {
-        const isIntro  = String(st.slug || '').includes('intro') || Number(st.price || 0) === 0;
-        const params   = new URLSearchParams({ type: isIntro ? 'intro' : 'session' });
-        for (const [k, v] of prefillParams.entries()) params.set(k, v);
-        const price    = Number(st.price || 0) === 0 ? 'Free' : `${st.currency || 'CHF'} ${st.price}`;
-        const duration = st.duration_minutes ? `${st.duration_minutes} min` : '';
-        const meta     = [duration, st.short_description].filter(Boolean).join(' · ');
-        return `
-          <a href="book.html?${escapeHtml(params.toString())}" class="rebook-pill">
-            <span class="rebook-pill__content">
-              <span class="rebook-pill__title">${escapeHtml(st.title)}</span>
-              ${meta ? `<span class="rebook-pill__meta">${escapeHtml(meta)}</span>` : ''}
-            </span>
-            <span class="rebook-pill__price">${escapeHtml(price)}</span>
-          </a>`;
-      }).join('');
-      return `
-        <div class="rebook-section">
-          <p class="rebook-section__label">Book another session</p>
-          ${pills}
-          <a href="${escapeHtml(sessionsHref)}" class="rebook-section__browse">Browse sessions →</a>
-        </div>`;
-    }
-
-    if (events.length) {
-      const pills = events.map(ev => {
-        const display  = formatEventShortDate(ev.starts_at);
-        const evParams = new URLSearchParams({
-          source: 'evening',
-          eventSlug:    ev.slug,
-          eventTitle:   ev.title,
-          eventDate:    ev.starts_at.slice(0, 10),
-          eventDisplay: display,
-          eventStart:   ev.starts_at,
-          eventEnd:     ev.ends_at,
-          eventLocation: ev.address_line || '',
-          isPaid: String(Boolean(ev.is_paid)),
-          price:  String(Number(ev.price_per_person || 0)),
-        });
-        for (const [k, v] of prefillParams.entries()) evParams.set(k, v);
-        const price = Number(ev.price_per_person || 0) === 0 ? 'Free' : `${ev.currency || 'CHF'} ${ev.price_per_person}`;
-        return `
-          <a href="book.html?${escapeHtml(evParams.toString())}" class="rebook-pill">
-            <span class="rebook-pill__content">
-              <span class="rebook-pill__title">${escapeHtml(ev.title)}</span>
-              <span class="rebook-pill__meta">${escapeHtml(display)}</span>
-            </span>
-            <span class="rebook-pill__price">${escapeHtml(price)}</span>
-          </a>`;
-      }).join('');
-      return `
-        <div class="rebook-section">
-          <p class="rebook-section__label">Book another event</p>
-          ${pills}
-          <a href="${escapeHtml(eveningsHref)}" class="rebook-section__browse">Browse all evenings →</a>
-        </div>`;
-    }
-
-    return '';
-  }
-
   function renderCalendarSection(calendarEvent) {
     if (!calendarEvent || typeof buildAtcWidget !== 'function') return '';
     return `
@@ -262,7 +181,15 @@
   const lockedMessage = data.policy?.locked_message || '';
   const showLockedMessage = Boolean(data.policy && data.policy.can_self_serve_change === false);
   const calendarHtml = renderCalendarSection(data.calendar_event);
-  const rebookHtml   = buildRebookSection(data.rebook || null, data.client || null);
+
+  const rebookParams = new URLSearchParams({ source: isBooking ? 'session' : 'event' });
+  if (token) rebookParams.set('token', token);
+  if (adminToken) rebookParams.set('admin_token', adminToken);
+  if (data.client?.first_name) rebookParams.set('prefill_first', data.client.first_name);
+  if (data.client?.last_name)  rebookParams.set('prefill_last',  data.client.last_name);
+  if (data.client?.email)      rebookParams.set('prefill_email', data.client.email);
+  if (data.client?.phone)      rebookParams.set('prefill_phone', data.client.phone);
+  const rebookHref = `rebook.html?${rebookParams.toString()}`;
 
   const rows = isBooking ? [
     ['Status',   statusBadge(data.status)],
@@ -290,11 +217,11 @@
     ${showLockedMessage ? `<div class="policy-box policy-box--text">${withContactLink(lockedMessage)}</div>` : ''}
     ${renderRefundLinks(data.refund || null)}
     ${calendarHtml}
-    ${rebookHtml}
     <div class="manage-actions">
       ${reschedulable ? `<a href="${rescheduleHref}" class="btn btn-primary">Reschedule</a>` : ''}
       ${completablePayment ? `<a href="${escapeHtml(data.actions.continue_payment_url)}" class="btn btn-primary">${isBooking ? 'Complete payment' : 'Contribute here'}</a>` : ''}
       ${cancellable ? `<button class="btn btn-ghost" id="cancel-btn" style="border-color:oklch(70% 0.12 25);color:oklch(45% 0.15 25)">Cancel booking</button>` : ''}
+      <a href="${escapeHtml(rebookHref)}" class="btn btn-ghost">${isBooking ? 'Book another session' : 'Book another event'}</a>
       <a href="${contactHref}" class="btn btn-ghost">Contact Yair</a>
       <a href="${homepageHref}" class="btn btn-ghost">← Homepage</a>
     </div>

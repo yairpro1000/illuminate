@@ -1,6 +1,7 @@
 import type { AppContext } from '../router.js';
 import { badRequest, unauthorized, internalError, jsonResponse } from '../lib/errors.js';
 import { verifyAdminManageToken } from '../services/token-service.js';
+import { localDateTimeToIso } from '../services/session-availability.js';
 import type { TimeSlot } from '../types.js';
 
 const ADMIN_SLOT_START_HOUR = 8;   // 08:00
@@ -72,43 +73,47 @@ export async function handleGetAdminSlots(request: Request, ctx: AppContext): Pr
     throw internalError('Calendar temporarily unavailable');
   });
 
+  const now = new Date();
+
   // Generate every 15-minute slot for each day in [from, to].
   const slots: Array<{ start: string; end: string; blocked: boolean }> = [];
 
-  const fromDate = new Date(from + 'T00:00:00');
-  const toDate   = new Date(to   + 'T00:00:00');
+  // Iterate day by day using UTC-based dates so we never cross DST boundaries mid-loop.
+  const fromDate = new Date(from + 'T12:00:00Z');
+  const toDate   = new Date(to   + 'T12:00:00Z');
 
-  // Iterate day by day.
-  for (const cur = new Date(fromDate); cur <= toDate; cur.setDate(cur.getDate() + 1)) {
-    const yyyy = cur.getFullYear();
-    const mm   = String(cur.getMonth() + 1).padStart(2, '0');
-    const dd   = String(cur.getDate()).padStart(2, '0');
-    const dayPrefix = `${yyyy}-${mm}-${dd}`;
+  for (const cur = new Date(fromDate); cur <= toDate; cur.setUTCDate(cur.getUTCDate() + 1)) {
+    const yyyy = cur.getUTCFullYear();
+    const mm   = String(cur.getUTCMonth() + 1).padStart(2, '0');
+    const dd   = String(cur.getUTCDate()).padStart(2, '0');
+    const dayStr = `${yyyy}-${mm}-${dd}`;
 
     for (let minuteOfDay = ADMIN_SLOT_START_HOUR * 60;
          minuteOfDay < ADMIN_SLOT_END_HOUR * 60;
          minuteOfDay += ADMIN_SLOT_STEP_MIN) {
-      const startH = String(Math.floor(minuteOfDay / 60)).padStart(2, '0');
-      const startM = String(minuteOfDay % 60).padStart(2, '0');
-      const endMin = minuteOfDay + ADMIN_SLOT_STEP_MIN;
-      const endH   = String(Math.floor(endMin / 60)).padStart(2, '0');
-      const endMStr = String(endMin % 60).padStart(2, '0');
+      const startHour = Math.floor(minuteOfDay / 60);
+      const startMin  = minuteOfDay % 60;
+      const endMin    = minuteOfDay + ADMIN_SLOT_STEP_MIN;
+      const endHour   = Math.floor(endMin / 60);
+      const endMinute = endMin % 60;
 
-      const startIso = `${dayPrefix}T${startH}:${startM}:00`;
-      const endIso   = `${dayPrefix}T${endH}:${endMStr}:00`;
+      // Use localDateTimeToIso so the ISO strings carry the correct UTC offset
+      // for the requested timezone (e.g. "2026-03-30T16:00:00+02:00").
+      // This ensures new Date(startIso) gives the correct UTC instant for both
+      // the past-time check and the calendar busy-time overlap comparison.
+      const startIso = localDateTimeToIso(dayStr, startHour, startMin, tz);
+      const endIso   = localDateTimeToIso(dayStr, endHour, endMinute, tz);
 
-      // We build Date objects in the requested timezone using a known-safe trick:
-      // append the tz offset by formatting the local time as-is and letting the
-      // caller (frontend) interpret it in the booking timezone.
-      // For busy-time comparison we use wall-clock Date objects (treating the
-      // ISO string as if it were UTC, which is consistent across both sides).
       const slotStart = new Date(startIso);
       const slotEnd   = new Date(endIso);
+
+      const isPast    = slotStart < now;
+      const isBusy    = overlapsBusy(slotStart, slotEnd, busyTimes);
 
       slots.push({
         start:   startIso,
         end:     endIso,
-        blocked: overlapsBusy(slotStart, slotEnd, busyTimes),
+        blocked: isPast || isBusy,
       });
     }
   }
