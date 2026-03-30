@@ -173,6 +173,9 @@ export function getEffectsForEvent(
 
   switch (input.eventType) {
     case 'BOOKING_FORM_SUBMITTED':
+      if (input.eventSource === 'ADMIN_UI') {
+        return [];
+      }
       switch (input.booking.booking_type) {
         case 'FREE':
           return [

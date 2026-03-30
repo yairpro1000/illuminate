@@ -56,6 +56,24 @@ describe('booking effect policy', () => {
     ]);
   });
 
+  it('does not create confirmation-request or verification side effects for admin-authorized submission', async () => {
+    const policy = await getBookingPolicyConfig(new MockRepository());
+    const effects = getEffectsForEvent({
+      booking: {
+        id: 'b2-admin',
+        event_id: null,
+        starts_at: '2026-03-20T10:00:00.000Z',
+        current_status: 'PENDING',
+        booking_type: 'PAY_LATER',
+      },
+      eventType: 'BOOKING_FORM_SUBMITTED',
+      eventSource: 'ADMIN_UI',
+      eventAtIso: '2026-03-10T10:00:00.000Z',
+    }, policy);
+
+    expect(effects).toEqual([]);
+  });
+
   it('maps reschedule to calendar update plus refreshed confirmation email', async () => {
     const policy = await getBookingPolicyConfig(new MockRepository());
     const effects = getEffectsForEvent({

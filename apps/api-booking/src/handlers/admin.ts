@@ -559,6 +559,7 @@ export async function handleAdminCreateClientBookingToken(
       client_id: client.id,
       token: token.adminToken,
       expires_at: token.expiresAt,
+      site_url: ctx.siteUrl,
     });
   } catch (err) {
     ctx.logger.logWarn?.({

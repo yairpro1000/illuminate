@@ -313,7 +313,23 @@ function attachListeners() {
   // Slot selection
   app.querySelectorAll('[data-slot]').forEach(btn => {
     btn.addEventListener('click', () => {
-      S.selectedSlot = JSON.parse(btn.dataset.slot);
+      const raw = JSON.parse(btn.dataset.slot);
+      if (isAdminMode()) {
+        // In admin mode the slot step is 15 min, but the booking duration must
+        // match the session type (new booking) or the original booking (reschedule).
+        const startMs = new Date(raw.start).getTime();
+        let durationMs = 0;
+        if (CTX.mode === 'reschedule' && S.currentBooking && S.currentBooking.starts_at && S.currentBooking.ends_at) {
+          durationMs = new Date(S.currentBooking.ends_at).getTime() - new Date(S.currentBooking.starts_at).getTime();
+        } else if (S.selectedSessionType && S.selectedSessionType.duration_minutes > 0) {
+          durationMs = S.selectedSessionType.duration_minutes * 60000;
+        }
+        S.selectedSlot = durationMs > 0
+          ? { start: raw.start, end: new Date(startMs + durationMs).toISOString(), blocked: raw.blocked }
+          : raw;
+      } else {
+        S.selectedSlot = raw;
+      }
       S.submissionError = null;
       render();
     });

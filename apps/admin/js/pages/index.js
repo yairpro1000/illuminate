@@ -221,6 +221,15 @@
     if (selected && [...clientNameEl.options].some((o) => o.value === selected)) {
       clientNameEl.value = selected;
     }
+    if (state.forcedClientId) {
+      const match = state.allRows.find((r) => r.client_id === state.forcedClientId);
+      if (match) {
+        const key = clientOptionKey(match);
+        if ([...clientNameEl.options].some((o) => o.value === key)) {
+          clientNameEl.value = key;
+        }
+      }
+    }
   }
 
   function applyClientFilter() {
@@ -681,7 +690,6 @@
   state.forcedClientId = readForcedClientId();
   if (state.forcedClientId) {
     clientWrapEl.classList.remove('hidden');
-    clientNameEl.disabled = true;
   }
   loadEvents()
     .then(() => loadRows())

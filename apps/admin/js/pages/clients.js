@@ -6,12 +6,14 @@
     rows: [],
     sessionsOnly: false,
     eventsOnly: false,
+    search: '',
     editing: null,
     saving: false,
   };
 
   const statusEl = document.getElementById('status');
   const rowsBody = document.getElementById('rowsBody');
+  const searchEl = document.getElementById('searchInput');
   const sessionsToggleEl = document.getElementById('sessionsToggle');
   const eventsToggleEl = document.getElementById('eventsToggle');
   const createClientEl = document.getElementById('createClient');
@@ -60,6 +62,13 @@
     let rows = [...state.allRows];
     if (state.sessionsOnly) rows = rows.filter((row) => Number(row.sessions_count || 0) > 0);
     if (state.eventsOnly) rows = rows.filter((row) => Number(row.events_count || 0) > 0);
+    if (state.search) {
+      const q = state.search;
+      rows = rows.filter((row) => {
+        const haystack = [row.first_name, row.last_name, row.email, row.phone].join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
     state.rows = rows;
     renderRows();
   }
@@ -180,6 +189,7 @@
       const data = await api(`/admin/clients/${encodeURIComponent(state.editing.id)}/booking-token`, {
         method: 'POST',
       });
+      const siteUrl = String(data.site_url || '').replace(/\/+$/, '');
       const params = new URLSearchParams({
         source,
         admin_token: String(data.token || ''),
@@ -188,13 +198,20 @@
         prefill_email: emailEl.value.trim(),
         prefill_phone: phoneEl.value.trim(),
       });
-      window.location.assign(`/rebook.html?${params.toString()}`);
+      window.open(`${siteUrl}/rebook.html?${params.toString()}`, '_blank', 'noopener,noreferrer');
+      state.saving = false;
+      syncModalButtons();
     } catch (err) {
       setModalStatus(String(err), 'err');
       state.saving = false;
       syncModalButtons();
     }
   }
+
+  searchEl.addEventListener('input', (e) => {
+    state.search = e.target.value.trim().toLowerCase();
+    applyFilters();
+  });
 
   sessionsToggleEl.addEventListener('click', () => {
     state.sessionsOnly = !state.sessionsOnly;
