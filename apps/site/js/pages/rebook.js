@@ -56,6 +56,17 @@
     return p;
   }
 
+  function isBookableFutureEvent(event) {
+    const render = event && typeof event.render === 'object' && event.render !== null
+      ? event.render
+      : {};
+    const isPast = Boolean(render.is_past);
+    const isFuture = Object.prototype.hasOwnProperty.call(render, 'is_future')
+      ? Boolean(render.is_future)
+      : !isPast;
+    return isFuture && !Boolean(render.sold_out);
+  }
+
   function renderActions() {
     const back = manageBackHref
       ? `<a href="${escapeHtml(manageBackHref)}" class="btn btn-ghost">← Back to booking</a>`
@@ -95,6 +106,7 @@
       const pills = types.map(st => {
         const isIntro = String(st.slug || '').includes('intro') || Number(st.price || 0) === 0;
         const p = new URLSearchParams({ type: isIntro ? 'intro' : 'session' });
+        if (!isIntro && st.slug) p.set('offer', st.slug);
         for (const [k, v] of prefill.entries()) p.set(k, v);
         const price    = Number(st.price || 0) === 0 ? 'Free' : `${st.currency || 'CHF'} ${st.price}`;
         const duration = st.duration_minutes ? `${st.duration_minutes} min` : '';
@@ -121,9 +133,9 @@
       const data   = await siteClient.requestJson('/api/events');
       const all    = Array.isArray(data.events) ? data.events : [];
       const events = all
-        .filter(e => e.render && e.render.is_future && !e.render.sold_out)
+        .filter(isBookableFutureEvent)
         .sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)));
-      const prefill = buildPrefillParams();
+      const prefill = buildForwardParams();
 
       if (!events.length) {
         card.innerHTML = `

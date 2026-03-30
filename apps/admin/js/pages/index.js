@@ -364,7 +364,6 @@
     eventWrapEl.classList.toggle('hidden', !isEvent);
     eventActionsCardEl.classList.toggle('hidden', !isEvent);
     dateWrapEl.classList.toggle('hidden', isEvent);
-    clientWrapEl.classList.toggle('hidden', isEvent);
     rotateLateAccessEl.disabled = !isEvent || !eventEl.value || state.rotatingLateAccess;
     if (!isEvent) {
       lateAccessInfoEl.textContent = 'Late-access links are available for event mode.';
@@ -408,7 +407,7 @@
 
       const data = await api(`/admin/bookings?${p.toString()}`);
       state.allRows = Array.isArray(data.rows) ? data.rows : [];
-      if (source === 'session') populateClientDropdown();
+      populateClientDropdown();
       applyClientFilter();
       setStatus(`Loaded ${state.allRows.length} bookings.`, false);
     } catch (err) {
@@ -690,6 +689,7 @@
   state.forcedClientId = readForcedClientId();
   if (state.forcedClientId) {
     clientWrapEl.classList.remove('hidden');
+    bookingStatusFilterEl.value = '';
   }
   loadEvents()
     .then(() => loadRows())

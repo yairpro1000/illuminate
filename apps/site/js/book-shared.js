@@ -30,6 +30,7 @@
         eventStart: p.get('eventStart') || '',
         eventEnd: p.get('eventEnd') || '',
         eventLocation: p.get('eventLocation') || '',
+        adminToken: p.get('admin_token') || '',
         prefillFirstName: p.get('prefill_first') || '',
         prefillLastName: p.get('prefill_last') || '',
         prefillEmail: p.get('prefill_email') || '',
