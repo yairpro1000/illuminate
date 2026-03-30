@@ -1,7 +1,7 @@
 import type { AppContext } from '../router.js';
 import { badRequest, unauthorized, internalError, jsonResponse } from '../lib/errors.js';
 import { verifyAdminManageToken } from '../services/token-service.js';
-import { localDateTimeToIso } from '../services/session-availability.js';
+import { getUtcOffsetMinutes } from '../services/session-availability.js';
 import type { TimeSlot } from '../types.js';
 
 const ADMIN_SLOT_START_HOUR = 8;   // 08:00
@@ -88,6 +88,16 @@ export async function handleGetAdminSlots(request: Request, ctx: AppContext): Pr
     const dd   = String(cur.getUTCDate()).padStart(2, '0');
     const dayStr = `${yyyy}-${mm}-${dd}`;
 
+    // Compute timezone offset once per day — DST can change between days but
+    // is constant within a day, so this is correct and avoids ~112x redundant
+    // Intl.DateTimeFormat calls over a multi-month range.
+    const dayRef       = new Date(`${dayStr}T12:00:00Z`);
+    const offsetMin    = getUtcOffsetMinutes(tz, dayRef);
+    const sign         = offsetMin >= 0 ? '+' : '-';
+    const absH         = Math.floor(Math.abs(offsetMin) / 60);
+    const absM         = Math.abs(offsetMin) % 60;
+    const tzSuffix     = `${sign}${String(absH).padStart(2, '0')}:${String(absM).padStart(2, '0')}`;
+
     for (let minuteOfDay = ADMIN_SLOT_START_HOUR * 60;
          minuteOfDay < ADMIN_SLOT_END_HOUR * 60;
          minuteOfDay += ADMIN_SLOT_STEP_MIN) {
@@ -97,12 +107,8 @@ export async function handleGetAdminSlots(request: Request, ctx: AppContext): Pr
       const endHour   = Math.floor(endMin / 60);
       const endMinute = endMin % 60;
 
-      // Use localDateTimeToIso so the ISO strings carry the correct UTC offset
-      // for the requested timezone (e.g. "2026-03-30T16:00:00+02:00").
-      // This ensures new Date(startIso) gives the correct UTC instant for both
-      // the past-time check and the calendar busy-time overlap comparison.
-      const startIso = localDateTimeToIso(dayStr, startHour, startMin, tz);
-      const endIso   = localDateTimeToIso(dayStr, endHour, endMinute, tz);
+      const startIso = `${dayStr}T${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}:00${tzSuffix}`;
+      const endIso   = `${dayStr}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00${tzSuffix}`;
 
       const slotStart = new Date(startIso);
       const slotEnd   = new Date(endIso);

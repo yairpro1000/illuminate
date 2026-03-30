@@ -43,9 +43,11 @@
     });
   }
 
+  // admin_token is forwarded so book.html uses admin slots for new bookings made
+  // from the admin manage flow. manage token (token) is not forwarded — it is only
+  // meaningful for reschedule mode and would not apply to a fresh booking.
   function buildForwardParams() {
     const p = new URLSearchParams();
-    if (token)        p.set('token',         token);
     if (adminToken)   p.set('admin_token',   adminToken);
     if (prefillFirst) p.set('prefill_first', prefillFirst);
     if (prefillLast)  p.set('prefill_last',  prefillLast);
