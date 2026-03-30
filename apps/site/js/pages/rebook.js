@@ -43,8 +43,10 @@
     });
   }
 
-  function buildPrefillParams() {
+  function buildForwardParams() {
     const p = new URLSearchParams();
+    if (token)        p.set('token',         token);
+    if (adminToken)   p.set('admin_token',   adminToken);
     if (prefillFirst) p.set('prefill_first', prefillFirst);
     if (prefillLast)  p.set('prefill_last',  prefillLast);
     if (prefillEmail) p.set('prefill_email', prefillEmail);
@@ -76,7 +78,7 @@
     if (source === 'session') {
       const data     = await siteClient.requestJson('/api/session-types');
       const types    = Array.isArray(data.session_types) ? data.session_types : [];
-      const prefill  = buildPrefillParams();
+      const prefill  = buildForwardParams();
 
       if (!types.length) {
         card.innerHTML = `
