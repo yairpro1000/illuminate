@@ -2504,6 +2504,11 @@ body:not(.theme-light) .section--alt.section-in-view {
   background-color: transparent;
 }
 
+/* ── Light mode: push hero intro content to ~50% from viewport top ── */
+body.theme-light .hero__intro {
+  padding-top: calc(55svh - 0.75rem);
+}
+
 /* ── Light mode: hero::after provides full-width bg for hero__content
      (leaves hero__intro fully transparent so the lake shines through) ── */
 body.theme-light .hero::after {
