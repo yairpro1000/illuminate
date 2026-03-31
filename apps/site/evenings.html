@@ -19,14 +19,9 @@
   <link rel="stylesheet" href="css/add-to-calendar.css" />
 </head>
 
-<body>
-  <!-- Restore saved theme immediately — before any element renders (prevents FOUC) -->
-  <script>
-    (function () {
-      var t = localStorage.getItem('yb-theme') || 'dark';
-      if (t === 'light') document.body.classList.add('theme-light');
-    })();
-  </script>
+<body data-force-theme="light">
+  <!-- Force light mode on this page — before any element renders (prevents FOUC) -->
+  <script>document.body.classList.add('theme-light');</script>
 
 <!-- ── Fixed background image layer (light mode) ── -->
   <div id="bg-layer" aria-hidden="true"></div>

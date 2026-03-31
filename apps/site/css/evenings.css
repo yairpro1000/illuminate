@@ -336,6 +336,14 @@ body.theme-light .evenings-hero::after {
   font-style: italic;
 }
 
+body.theme-light .event-card__subtitle {
+  color: oklch(62% 0.165 188);
+  text-shadow:
+    0 0 8px  oklch(74% 0.165 188 / 0.60),
+    0 0 22px oklch(74% 0.165 188 / 0.30);
+  font-size: 1.1rem;
+}
+
 .event-card__facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -548,6 +556,24 @@ a.event-card__fact--link:hover .event-card__fact-value {
 }
 
 /* ── Light mode overrides ────────────────────────────────────── */
+body.theme-light .event-card__month,
+body.theme-light .event-tag,
+body.theme-light .event-card__intro,
+body.theme-light a.event-card__fact--link:hover .event-card__fact-value,
+body.theme-light .evenings-practices li::before {
+  color: oklch(62% 0.165 188);
+}
+
+body.theme-light .event-card__title,
+body.theme-light .event-card__fact-value,
+body.theme-light .event-card__list li {
+  color: oklch(18% 0.05 188);
+}
+
+body.theme-light .event-tag {
+  background: oklch(25% 0.06 230 / 0.08);
+}
+
 body.theme-light .event-card {
   background: oklch(100% 0 0 / 0.55);
   border-color: oklch(59% 0.160 200 / 0.15);

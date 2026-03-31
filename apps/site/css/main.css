@@ -504,6 +504,13 @@ body.theme-light .coupon-price__suffix {
   100% { background-position: 0% 50%; }
 }
 
+body.theme-light .gradient-text {
+  background: none;
+  -webkit-text-fill-color: oklch(74% 0.165 188);
+  color: oklch(74% 0.165 188);
+  animation: none;
+}
+
 /* ============================================================
    BUTTONS
    ============================================================ */
@@ -663,10 +670,11 @@ body.theme-light .coupon-price__suffix {
 }
 
 body.theme-light .nav__logo-brand {
-  color: var(--color-text);
+  color: oklch(74% 0.165 188);
   text-shadow:
-    0 0 8px  color-mix(in oklab, var(--color-lake) 65%, transparent),
-    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
+    0 0 8px  oklch(94% 0.16 85 / 0.90),
+    0 0 22px oklch(88% 0.20 82 / 0.60),
+    0 0 50px oklch(84% 0.22 80 / 0.35);
 }
 
 .nav__links {
@@ -890,28 +898,14 @@ body.theme-light .nav__mobile-theme .icon-sun { display: none; }
   }
 }
 
-/* Light mode: ice-white text stays, glow shifts to teal color-mix */
+/* Light mode: white + strong yellow glow — same as dark mode */
 body.theme-light .hero__brand {
+  color: oklch(74% 0.165 188);
   text-shadow:
-    0 0 12px color-mix(in oklab, var(--color-lake) 75%, transparent),
-    0 0 36px color-mix(in oklab, var(--color-lake) 45%, transparent),
-    0 0 80px color-mix(in oklab, var(--color-lake) 25%, transparent);
-  animation: brand-glow-light 5s ease-in-out infinite;
-}
-
-@keyframes brand-glow-light {
-  0%, 100% {
-    text-shadow:
-      0 0 10px color-mix(in oklab, var(--color-lake) 65%, transparent),
-      0 0 28px color-mix(in oklab, var(--color-lake) 38%, transparent),
-      0 0 65px color-mix(in oklab, var(--color-lake) 20%, transparent);
-  }
-  50% {
-    text-shadow:
-      0 0 18px color-mix(in oklab, var(--color-lake) 85%, transparent),
-      0 0 52px color-mix(in oklab, var(--color-lake) 55%, transparent),
-      0 0 110px color-mix(in oklab, var(--color-lake) 32%, transparent);
-  }
+    0 0 12px oklch(94% 0.16 85 / 0.90),
+    0 0 36px oklch(88% 0.20 82 / 0.55),
+    0 0 80px oklch(84% 0.22 80 / 0.30);
+  animation: brand-glow 5s ease-in-out infinite;
 }
 
 .hero__label {
@@ -1374,11 +1368,16 @@ body.theme-light .who__check {
   letter-spacing: 0.015em;
 }
 
+body.theme-light .evenings-intro__name {
+  color: oklch(74% 0.165 188);
+}
+
 body.theme-light .evenings-intro__brand {
-  color: var(--color-text);
+  color: oklch(74% 0.165 188);
   text-shadow:
-    0 0 8px color-mix(in oklab, var(--color-lake) 65%, transparent),
-    0 0 20px color-mix(in oklab, var(--color-lake) 35%, transparent);
+    0 0 8px  oklch(94% 0.16 85 / 0.90),
+    0 0 22px oklch(88% 0.20 82 / 0.60),
+    0 0 50px oklch(84% 0.22 80 / 0.35);
 }
 
 .pricing-card {

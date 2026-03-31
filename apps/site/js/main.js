@@ -513,8 +513,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Read saved preference (set in <head> inline script to avoid FOUC,
-  // but also initialise here in case script order differs)
-  const saved = localStorage.getItem('yb-theme') || 'dark';
+  // but also initialise here in case script order differs).
+  // Pages with data-force-theme always use that theme regardless of saved pref.
+  const forced = document.body.dataset.forceTheme;
+  const saved = forced || localStorage.getItem('yb-theme') || 'dark';
   setTheme(saved, false);
 
   // First-visit: pulse + tooltip
