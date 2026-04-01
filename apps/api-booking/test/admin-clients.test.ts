@@ -6,6 +6,7 @@ import {
   handleAdminUpdateClient,
 } from '../src/handlers/admin.js';
 import { adminRequest, makeCtx } from './admin-helpers.js';
+import { MockRepository } from '../src/providers/repository/mock.js';
 
 describe('Admin clients', () => {
   it('lists admin clients and logs the success branch', async () => {
@@ -130,6 +131,77 @@ describe('Admin clients', () => {
     expect(ctx.logger.logInfo).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'admin_client_booking_token_create_succeeded',
       context: expect.objectContaining({ branch_taken: 'return_admin_booking_token', client_id: 'c1' }),
+    }));
+  });
+
+  it('counts only confirmed, completed, and no-show bookings in client aggregates', async () => {
+    const repository = new MockRepository();
+    const client = await repository.createClient({
+      first_name: 'Maya',
+      last_name: 'Doe',
+      email: 'maya@example.com',
+      phone: null,
+    });
+
+    await repository.createBooking({
+      client_id: client.id,
+      event_id: null,
+      session_type_id: 'session-1',
+      booking_type: 'PAY_LATER',
+      starts_at: '2026-03-20T10:00:00.000Z',
+      ends_at: '2026-03-20T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      google_event_id: null,
+      address_line: 'A',
+      maps_url: 'https://maps.example',
+      price: 100,
+      currency: 'CHF',
+      coupon_code: null,
+      current_status: 'CONFIRMED',
+      notes: null,
+    });
+    await repository.createBooking({
+      client_id: client.id,
+      event_id: 'event-1',
+      session_type_id: null,
+      booking_type: 'FREE',
+      starts_at: '2026-03-21T10:00:00.000Z',
+      ends_at: '2026-03-21T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      google_event_id: null,
+      address_line: 'A',
+      maps_url: 'https://maps.example',
+      price: 0,
+      currency: 'CHF',
+      coupon_code: null,
+      current_status: 'NO_SHOW',
+      notes: null,
+    });
+    await repository.createBooking({
+      client_id: client.id,
+      event_id: null,
+      session_type_id: 'session-2',
+      booking_type: 'PAY_LATER',
+      starts_at: '2026-03-22T10:00:00.000Z',
+      ends_at: '2026-03-22T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      google_event_id: null,
+      address_line: 'A',
+      maps_url: 'https://maps.example',
+      price: 100,
+      currency: 'CHF',
+      coupon_code: null,
+      current_status: 'PENDING',
+      notes: null,
+    });
+
+    const row = await repository.getAdminClientRowById(client.id);
+
+    expect(row).toEqual(expect.objectContaining({
+      sessions_count: 1,
+      events_count: 1,
+      last_session_at: '2026-03-20T10:00:00.000Z',
+      last_event_at: '2026-03-21T10:00:00.000Z',
     }));
   });
 });

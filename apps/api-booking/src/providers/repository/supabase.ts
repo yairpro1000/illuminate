@@ -143,10 +143,17 @@ type ContactMessageRow = ContactMessage & {
 };
 
 type AdminClientBookingAggregateRow = Pick<Booking, 'event_id' | 'session_type_id' | 'starts_at'>;
+type AdminClientBookingAggregateStatusRow = AdminClientBookingAggregateRow & Pick<Booking, 'current_status'>;
 
 type AdminClientDbRow = Client & {
-  bookings?: AdminClientBookingAggregateRow[] | null;
+  bookings?: AdminClientBookingAggregateStatusRow[] | null;
 };
+
+const ADMIN_CLIENT_BOOKING_STATUSES = new Set<BookingCurrentStatus>([
+  'CONFIRMED',
+  'COMPLETED',
+  'NO_SHOW',
+]);
 
 const POSTGREST_IN_FILTER_BATCH_SIZE = 200;
 
@@ -185,7 +192,7 @@ export class SupabaseRepository implements IRepository {
     const row = await maybeSingle<AdminClientDbRow>(
       this.db
         .from('clients')
-        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at)')
+        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at, current_status)')
         .eq('id', id)
         .limit(1)
         .maybeSingle(),
@@ -198,7 +205,7 @@ export class SupabaseRepository implements IRepository {
     const rows = await requireData<AdminClientDbRow[]>(
       this.db
         .from('clients')
-        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at)')
+        .select('*, bookings:bookings!left(event_id, session_type_id, starts_at, current_status)')
         .order('first_name', { ascending: true })
         .order('last_name', { ascending: true })
         .order('email', { ascending: true }),
@@ -1799,6 +1806,7 @@ function toAdminClientRow(row: AdminClientDbRow): AdminClientRow {
   let lastEventAt: string | null = null;
 
   for (const booking of row.bookings ?? []) {
+    if (!ADMIN_CLIENT_BOOKING_STATUSES.has(booking.current_status)) continue;
     if (booking.session_type_id) {
       sessionsCount += 1;
       if (!lastSessionAt || new Date(booking.starts_at).getTime() > new Date(lastSessionAt).getTime()) {

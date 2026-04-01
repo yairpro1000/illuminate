@@ -54,6 +54,12 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+const ADMIN_CLIENT_BOOKING_STATUSES = new Set<BookingCurrentStatus>([
+  'CONFIRMED',
+  'COMPLETED',
+  'NO_SHOW',
+]);
+
 export class MockRepository implements IRepository {
   // ── Clients ───────────────────────────────────────────────────────────────
 
@@ -1104,6 +1110,7 @@ export class MockRepository implements IRepository {
 
     for (const booking of mockState.bookings.values()) {
       if (booking.client_id !== client.id) continue;
+      if (!ADMIN_CLIENT_BOOKING_STATUSES.has(booking.current_status)) continue;
       if (booking.session_type_id) {
         sessionsCount += 1;
         if (!lastSessionAt || new Date(booking.starts_at).getTime() > new Date(lastSessionAt).getTime()) {

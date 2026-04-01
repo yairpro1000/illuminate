@@ -41,8 +41,7 @@ describe('admin clients page', () => {
 
     document.getElementById('eventsToggle').click()
     await flush()
-    expect(document.querySelectorAll('#rowsBody tr.clickable')).toHaveLength(1)
-    expect(document.querySelector('#rowsBody tr.clickable').textContent).toContain('Noa Both')
+    expect(document.querySelectorAll('#rowsBody tr.clickable')).toHaveLength(3)
   })
 
   it('sorts rows from clickable headers', async () => {

@@ -107,8 +107,13 @@
 
   function applyFilters() {
     let rows = [...state.allRows];
-    if (state.sessionsOnly) rows = rows.filter((row) => Number(row.sessions_count || 0) > 0);
-    if (state.eventsOnly) rows = rows.filter((row) => Number(row.events_count || 0) > 0);
+    if (state.sessionsOnly && state.eventsOnly) {
+      rows = rows.filter((row) => Number(row.sessions_count || 0) > 0 || Number(row.events_count || 0) > 0);
+    } else if (state.sessionsOnly) {
+      rows = rows.filter((row) => Number(row.sessions_count || 0) > 0);
+    } else if (state.eventsOnly) {
+      rows = rows.filter((row) => Number(row.events_count || 0) > 0);
+    }
     if (state.search) {
       const q = state.search;
       rows = rows.filter((row) => {
