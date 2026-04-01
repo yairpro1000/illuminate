@@ -15,7 +15,7 @@ async function flush() {
 
 // book.js captures BookPageEffects references at eval time (line ~30),
 // so the mock must be in place before evalCode(bookPageCode).
-function setupBookStack({ getSlots, rescheduleBooking }) {
+function setupBookStack({ getSlots, rescheduleBooking, bookingRescheduleImpl }) {
   evalCode("const SITE_CLIENT = window.siteClient || null;")
   evalCode(`
     function getPublicConfig() {
@@ -29,6 +29,12 @@ function setupBookStack({ getSlots, rescheduleBooking }) {
       return (${JSON.stringify(getSlots)}) ? Promise.resolve(${JSON.stringify(getSlots)}) : Promise.resolve({ slots: [] });
     }
   `)
+  window.bookingReschedule = bookingRescheduleImpl || vi.fn(async () => ({
+    booking_id: 'bk-1',
+    status: 'CONFIRMED',
+    starts_at: '2026-05-10T11:00:00.000Z',
+    ends_at: '2026-05-10T12:30:00.000Z',
+  }))
   evalCode(bookSharedCode)
   evalCode(bookEffectsCode)
   evalCode(bookViewsCode)
@@ -65,6 +71,7 @@ describe('day slots empty state', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="booking-app"></div>'
     window.history.replaceState({}, '', '/book?type=session&mode=reschedule&token=tok-abc&id=bk-1')
+    Element.prototype.scrollIntoView = vi.fn()
     window.siteClient = {
       config: {
         timezone: 'Europe/Zurich',
@@ -95,7 +102,7 @@ describe('day slots empty state', () => {
 
     const emptyMsg = document.querySelector('.time-slots-empty')
     expect(emptyMsg).not.toBeNull()
-    expect(emptyMsg.textContent.trim()).toContain('No other times are available on this day')
+    expect(emptyMsg.textContent.trim()).toContain('No times are available on this day')
     expect(emptyMsg.textContent.trim()).toContain('Please choose another day')
   })
 
@@ -119,5 +126,45 @@ describe('day slots empty state', () => {
 
     expect(document.querySelector('.time-slots-empty')).toBeNull()
     expect(document.querySelectorAll('.time-slot').length).toBeGreaterThan(0)
+  })
+
+  it('allows reschedule submission when turnstile is enabled but the flow has no turnstile widget', async () => {
+    const bookingReschedule = vi.fn(async () => ({
+      booking_id: 'bk-1',
+      status: 'CONFIRMED',
+      starts_at: '2026-05-10T11:00:00.000Z',
+      ends_at: '2026-05-10T12:30:00.000Z',
+    }))
+    window.siteClient.config.turnstileEnabled = true
+
+    setupBookStack({
+      getSlots: {
+        ok: true,
+        timezone: 'Europe/Zurich',
+        slots: [
+          { type: 'session', start: '2026-05-10T11:00:00.000Z', end: '2026-05-10T12:30:00.000Z' },
+        ],
+      },
+      rescheduleBooking: BOOKING,
+      bookingRescheduleImpl: bookingReschedule,
+    })
+
+    document.dispatchEvent(new Event('DOMContentLoaded'))
+    await flush()
+    await flush()
+    await flush()
+
+    document.querySelector('.time-slot')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    document.querySelector('[data-next]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    document.querySelector('[data-submit]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush()
+    await flush()
+
+    expect(bookingReschedule).toHaveBeenCalledTimes(1)
+    expect(document.getElementById('booking-app').textContent).toContain('Booking rescheduled')
   })
 })

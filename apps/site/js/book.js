@@ -186,7 +186,8 @@ function updateBookingSubmitBtnState() {
 }
 
 function isBookingSubmitBlocked() {
-  return !!(S.submitting || (SITE_CONFIG.turnstileEnabled && !S.turnstileTokenReady));
+  const requiresTurnstile = SITE_CONFIG.turnstileEnabled && CTX.mode !== 'reschedule';
+  return !!(S.submitting || (requiresTurnstile && !S.turnstileTokenReady));
 }
 
 function render() {
