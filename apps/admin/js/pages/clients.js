@@ -7,6 +7,8 @@
     sessionsOnly: false,
     eventsOnly: false,
     search: '',
+    sortKey: 'name',
+    sortDir: 'asc',
     editing: null,
     saving: false,
   };
@@ -58,6 +60,51 @@
     return td;
   }
 
+  function sortValue(row) {
+    switch (state.sortKey) {
+      case 'name':
+        return fullName(row).toLowerCase();
+      case 'email':
+        return String(row.email || '').toLowerCase();
+      case 'phone':
+        return String(row.phone || '').toLowerCase();
+      case 'sessions_count':
+        return Number(row.sessions_count || 0);
+      case 'last_session_at':
+        return row.last_session_at ? new Date(row.last_session_at).getTime() : 0;
+      case 'events_count':
+        return Number(row.events_count || 0);
+      case 'last_event_at':
+        return row.last_event_at ? new Date(row.last_event_at).getTime() : 0;
+      default:
+        return '';
+    }
+  }
+
+  function sortRows(rows) {
+    const sorted = [...rows];
+    sorted.sort((left, right) => {
+      const leftValue = sortValue(left);
+      const rightValue = sortValue(right);
+      if (leftValue < rightValue) return state.sortDir === 'asc' ? -1 : 1;
+      if (leftValue > rightValue) return state.sortDir === 'asc' ? 1 : -1;
+      return fullName(left).localeCompare(fullName(right));
+    });
+    return sorted;
+  }
+
+  function toggleSort(sortKey) {
+    if (!sortKey) return;
+    if (state.sortKey === sortKey) {
+      state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.sortKey = sortKey;
+      state.sortDir = sortKey === 'name' || sortKey === 'email' || sortKey === 'phone' ? 'asc' : 'desc';
+    }
+    state.rows = sortRows(state.rows);
+    renderRows();
+  }
+
   function applyFilters() {
     let rows = [...state.allRows];
     if (state.sessionsOnly) rows = rows.filter((row) => Number(row.sessions_count || 0) > 0);
@@ -69,7 +116,7 @@
         return haystack.includes(q);
       });
     }
-    state.rows = rows;
+    state.rows = sortRows(rows);
     renderRows();
   }
 
@@ -232,6 +279,9 @@
   });
   bookSessionEl.addEventListener('click', () => { void redirectToRebook('session'); });
   bookEventEl.addEventListener('click', () => { void redirectToRebook('event'); });
+  document.querySelectorAll('.sort-btn').forEach((button) => {
+    button.addEventListener('click', () => toggleSort(button.getAttribute('data-sort')));
+  });
   clientOverlayEl.addEventListener('click', (event) => {
     if (event.target === clientOverlayEl) closeModal();
   });

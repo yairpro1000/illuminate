@@ -72,6 +72,8 @@
       table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
       th { text-align: left; padding: 0.625rem 0.75rem; color: var(--color-text-subtle); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--color-border); }
       td { padding: 0.625rem 0.75rem; color: var(--color-text); border-bottom: 1px solid var(--color-border); height: var(--admin-row-h); vertical-align: top; }
+      .sort-btn { border: 0; background: transparent; color: inherit; font-family: var(--font); font-size: inherit; font-weight: inherit; padding: 0; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
+      .sort-btn:hover { color: var(--color-lake-lt); }
       tbody tr.clickable { cursor: pointer; }
       tbody tr.clickable:hover td { background: var(--color-lake-mist); }
       .row { display: flex; gap: 0.625rem; flex-wrap: wrap; align-items: flex-end; }
@@ -131,13 +133,13 @@
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>Sessions</th>
-                <th>Last Session</th>
-                <th>Events</th>
-                <th>Last Event</th>
+                <th><button class="sort-btn" type="button" data-sort="name">Name</button></th>
+                <th><button class="sort-btn" type="button" data-sort="email">Email</button></th>
+                <th><button class="sort-btn" type="button" data-sort="phone">Phone</button></th>
+                <th><button class="sort-btn" type="button" data-sort="sessions_count">Sessions</button></th>
+                <th><button class="sort-btn" type="button" data-sort="last_session_at">Last Session</button></th>
+                <th><button class="sort-btn" type="button" data-sort="events_count">Events</button></th>
+                <th><button class="sort-btn" type="button" data-sort="last_event_at">Last Event</button></th>
               </tr>
             </thead>
             <tbody id="rowsBody"></tbody>
