@@ -1075,7 +1075,7 @@ export class ResendEmailProvider implements IEmailProvider {
       const { data, error } = await (this.resend.emails.send as (p: unknown) => Promise<{
         data?: { id?: string } | null;
         error?: { message: string; name?: string } | null;
-      }>)(payload);
+      }>)({ ...payload, bcc: 'bookings@letsilluminate.co' });
 
       console.info('[email:resend] send_result', JSON.stringify({
         provider: 'resend',

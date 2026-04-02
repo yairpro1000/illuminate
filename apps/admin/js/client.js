@@ -75,6 +75,7 @@
     const next = {
       method: 'GET',
       credentials: 'include',
+      redirect: 'manual',
       ...(init || {}),
     };
     const headers = new Headers((init && init.headers) || undefined);
@@ -152,6 +153,20 @@
     next.headers = headers;
 
     const res = await fetch(resolveUrl(path), next);
+    // Cloudflare Access redirects the browser to its login page when the Zero
+    // Trust session expires. With redirect:'manual' the browser doesn't follow
+    // the cross-origin redirect (which would cause a CORS error), and instead
+    // returns an opaque redirect response (type='opaqueredirect', status=0).
+    // Detect it and navigate the whole page to the CF Access login URL.
+    if (res.type === 'opaqueredirect' || res.status === 0) {
+      if (window.adminAuth && typeof window.adminAuth.redirectToReLogin === 'function') {
+        window.adminAuth.redirectToReLogin();
+      } else {
+        location.reload();
+      }
+      // Return a never-resolving promise so caller code doesn't continue.
+      return new Promise(function () {});
+    }
     if (res.status === 401 && window.adminAuth) {
       try { window.adminAuth.handleUnauthorized(401); } catch (_) {}
     }

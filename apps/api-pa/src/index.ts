@@ -795,6 +795,7 @@ app.post("/email", async (c) => {
     result = await resend.emails.send({
       from: "bookings@letsilluminate.co",
       to: body.to,
+      bcc: "bookings@letsilluminate.co",
       replyTo: "hello@yairb.ch",
       subject: body.subject,
       html: body.html,
