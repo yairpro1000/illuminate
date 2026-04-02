@@ -1,13 +1,6 @@
 (function(){
   'use strict';
 
-  function getEnvValue(key) {
-    try {
-      return String((window.ENV && window.ENV[key]) || '').trim();
-    } catch (_) {}
-    return '';
-  }
-
   function getCurrentReturnPath() {
     try {
       var path = String(location.pathname || '/');
@@ -18,39 +11,17 @@
     return '/';
   }
 
-  function getRootApiBase() {
-    try {
-      // Prefer the same root base used by api-base.js
-      if (typeof window.getAdminApiBase === 'function') {
-        var full = String(window.getAdminApiBase() || '');
-        // getAdminApiBase() typically returns root+'/api'
-        var m = full.match(/^(.*?)(?:\/api)?$/);
-        return m ? m[1] : full.replace(/\/$/, '');
-      }
-    } catch (_) {}
-    // Fallback to current origin
-    return location.origin;
-  }
+  var CF_TEAM_DOMAIN = 'yairpro.cloudflareaccess.com';
 
   function buildAccessLoginUrl() {
-    var accessTeamDomain = getEnvValue('VITE_CLOUDFLARE_ACCESS_TEAM_DOMAIN');
-    if (accessTeamDomain) {
-      var protectedHostname = getEnvValue('VITE_CLOUDFLARE_ACCESS_APP_HOSTNAME') || location.hostname;
-      return 'https://' + accessTeamDomain
-        + '/cdn-cgi/access/login/' + protectedHostname
-        + '?redirect_url=' + encodeURIComponent(getCurrentReturnPath());
-    }
-    var root = getRootApiBase();
-    // Cloudflare Access supports /cdn-cgi/access/login on the application domain
-    var returnTo = encodeURIComponent(root + '/api/health');
-    return root + '/cdn-cgi/access/login?returnTo=' + returnTo;
+    return 'https://' + CF_TEAM_DOMAIN
+      + '/cdn-cgi/access/login/' + location.hostname
+      + '?redirect_url=' + encodeURIComponent(getCurrentReturnPath());
   }
 
   function buildAccessLogoutUrl() {
-    var accessTeamDomain = getEnvValue('VITE_CLOUDFLARE_ACCESS_TEAM_DOMAIN');
-    var root = accessTeamDomain ? ('https://' + accessTeamDomain) : getRootApiBase();
     var returnTo = encodeURIComponent(buildAccessLoginUrl());
-    return root + '/cdn-cgi/access/logout?returnTo=' + returnTo;
+    return 'https://' + CF_TEAM_DOMAIN + '/cdn-cgi/access/logout?returnTo=' + returnTo;
   }
 
   function redirectToReLogin() {
@@ -170,7 +141,6 @@
   }
 
   window.adminAuth = {
-    getRootApiBase: getRootApiBase,
     buildAccessLoginUrl: buildAccessLoginUrl,
     buildAccessLogoutUrl: buildAccessLogoutUrl,
     redirectToReLogin: redirectToReLogin,
