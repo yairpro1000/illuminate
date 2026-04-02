@@ -1,31 +1,8 @@
 (function(){
   'use strict';
 
-  function getCurrentReturnPath() {
-    try {
-      var path = String(location.pathname || '/');
-      var search = String(location.search || '');
-      var hash = String(location.hash || '');
-      return path + search + hash;
-    } catch (_) {}
-    return '/';
-  }
-
-  var CF_TEAM_DOMAIN = 'yairpro.cloudflareaccess.com';
-
-  function buildAccessLoginUrl() {
-    return 'https://' + CF_TEAM_DOMAIN
-      + '/cdn-cgi/access/login/' + location.hostname
-      + '?redirect_url=' + encodeURIComponent(getCurrentReturnPath());
-  }
-
-  function buildAccessLogoutUrl() {
-    var returnTo = encodeURIComponent(buildAccessLoginUrl());
-    return 'https://' + CF_TEAM_DOMAIN + '/cdn-cgi/access/logout?returnTo=' + returnTo;
-  }
-
   function redirectToReLogin() {
-    location.assign(buildAccessLogoutUrl());
+    location.assign(location.origin + '/');
   }
 
   function ensureHeaderLogoutButton() {
@@ -107,8 +84,7 @@
     loginBtn.style.padding = '8px 12px';
     loginBtn.style.cursor = 'pointer';
     loginBtn.addEventListener('click', function(){
-      var url = buildAccessLoginUrl();
-      window.open(url, '_blank', 'noopener');
+      window.open(location.origin + '/', '_blank', 'noopener');
     });
 
     var refreshBtn = document.createElement('button');
@@ -141,8 +117,6 @@
   }
 
   window.adminAuth = {
-    buildAccessLoginUrl: buildAccessLoginUrl,
-    buildAccessLogoutUrl: buildAccessLogoutUrl,
     redirectToReLogin: redirectToReLogin,
     ensureHeaderLogoutButton: ensureHeaderLogoutButton,
     showSignIn: showSignIn,
