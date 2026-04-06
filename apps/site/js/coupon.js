@@ -6,8 +6,8 @@
   const CHF_TO_ILS_DISPLAY_RATE = 4;
   const SITE_CLIENT = window.siteClient || null;
   const ISRAEL_COUPON = Object.freeze({
-    code: 'ISRAEL',
-    discountPercent: 25,
+    code: 'ISRAELPROMO',
+    discountPercent: 40,
   });
   const HOME_SUGGESTION_SECTION_ID = 'how-we-work';
   let homeSuggestionTriggered = false;

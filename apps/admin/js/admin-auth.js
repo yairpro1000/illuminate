@@ -2,7 +2,7 @@
   'use strict';
 
   function redirectToReLogin() {
-    location.assign(location.origin + '/');
+    location.assign('https://yairpro.cloudflareaccess.com/cdn-cgi/access/logout?returnTo=' + location.hostname);
   }
 
   function ensureHeaderLogoutButton() {
