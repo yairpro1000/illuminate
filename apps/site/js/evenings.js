@@ -33,6 +33,7 @@
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Europe/Zurich',
     });
   }
 
@@ -40,14 +41,14 @@
     return new Date(iso).toLocaleString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Europe/Zurich',
     });
   }
 
   function formatDateBadge(iso) {
-    const date = new Date(iso);
     return {
-      day: date.toLocaleString('en-GB', { day: '2-digit' }),
-      month: date.toLocaleString('en-GB', { month: 'short' }).toUpperCase(),
+      day: new Date(iso).toLocaleString('en-GB', { day: '2-digit', timeZone: 'Europe/Zurich' }),
+      month: new Date(iso).toLocaleString('en-GB', { month: 'short', timeZone: 'Europe/Zurich' }).toUpperCase(),
     };
   }
 
