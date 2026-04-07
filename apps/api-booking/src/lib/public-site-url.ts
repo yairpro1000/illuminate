@@ -3,7 +3,7 @@ import type { Logger } from './logger.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const PREVIEW_SUFFIX = '.pages.dev';
-const ADMIN_PREVIEW_SITE_URL = 'https://illuminate-tw9.pages.dev';
+const CANONICAL_PUBLIC_SITE_URL = 'https://letsilluminate.co';
 
 function isAdminPreviewHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -18,7 +18,7 @@ function sanitizeSiteUrl(value: string): string {
 
 function canonicalSiteUrlForHost(hostname: string, protocol: string, port: string): string | null {
   const host = hostname.toLowerCase();
-  if (isAdminPreviewHost(host)) return sanitizeSiteUrl(ADMIN_PREVIEW_SITE_URL);
+  if (isAdminPreviewHost(host)) return sanitizeSiteUrl(CANONICAL_PUBLIC_SITE_URL);
   const hostWithPort = port ? `${host}:${port}` : host;
   if (
     host === 'letsilluminate.co'

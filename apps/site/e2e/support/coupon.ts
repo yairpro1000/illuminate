@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 
 export async function clearAppliedCouponState(page: Page): Promise<void> {
-  const siteBaseUrl = process.env.E2E_SITE_BASE_URL || 'https://illuminate-tw9.pages.dev';
+  const siteBaseUrl = process.env.E2E_SITE_BASE_URL || 'https://letsilluminate.co';
   await page.goto(siteBaseUrl);
   await page.evaluate(() => {
     try {

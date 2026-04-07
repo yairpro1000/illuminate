@@ -46,7 +46,7 @@ describe('public site URL resolution', () => {
     }));
   });
 
-  it('maps admin-site origins to the temporary public Pages host', () => {
+  it('maps admin-site origins to the canonical public site', () => {
     const logger = makeLogger();
     const siteUrl = resolvePublicSiteUrl(
       new Request('https://api.local/api/admin/bookings/123/manage-link', {
@@ -58,12 +58,12 @@ describe('public site URL resolution', () => {
       logger,
     );
 
-    expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
+    expect(siteUrl).toBe('https://letsilluminate.co');
     expect(logger.logInfo).not.toHaveBeenCalled();
     expect(logger.logWarn).not.toHaveBeenCalled();
   });
 
-  it('maps illuminateadmin.pages.dev origins to the temporary public Pages host', () => {
+  it('maps illuminateadmin.pages.dev origins to the canonical public site', () => {
     const logger = makeLogger();
     const siteUrl = resolvePublicSiteUrl(
       new Request('https://api.local/api/admin/bookings/123/manage-link', {
@@ -75,7 +75,7 @@ describe('public site URL resolution', () => {
       logger,
     );
 
-    expect(siteUrl).toBe('https://illuminate-tw9.pages.dev');
+    expect(siteUrl).toBe('https://letsilluminate.co');
     expect(logger.logInfo).not.toHaveBeenCalled();
     expect(logger.logWarn).not.toHaveBeenCalled();
   });
@@ -138,10 +138,10 @@ describe('public site URL resolution', () => {
     }));
   });
 
-  it('returns temporary public Pages links for admin-share manage links', async () => {
+  it('returns canonical public-site links for admin-share manage links', async () => {
     const bookingId = '00000000-0000-4000-8000-000000000111';
     const ctx = makeCtx({
-      siteUrl: 'https://illuminate-tw9.pages.dev',
+      siteUrl: 'https://letsilluminate.co',
       env: {
         SITE_URL: 'https://letsilluminate.co',
       } as any,
@@ -184,7 +184,7 @@ describe('public site URL resolution', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual(expect.objectContaining({
       booking_id: bookingId,
-      url: expect.stringContaining('https://illuminate-tw9.pages.dev/manage.html?token=m1.'),
+      url: expect.stringContaining('https://letsilluminate.co/manage.html?token=m1.'),
     }));
   });
 });
