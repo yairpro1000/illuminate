@@ -24,8 +24,17 @@ export interface BuiltEmailMessage {
 
 export const EMAIL_FROM = 'Illuminate Contact <bookings@letsilluminate.co>';
 export const EMAIL_REPLY_TO = 'hello@yairb.ch';
+export const EMAIL_AUDIT_BCC = 'bookings@letsilluminate.co';
 const DEFAULT_SITE_URL = 'https://letsilluminate.co';
 const EMAIL_HERO_IMAGE_URL = 'https://yairb.ch/img/ILLUMINATE_hero.png';
+
+function withDefaultAuditBcc(payload: EmailTransportPayload): EmailTransportPayload & { bcc: string[] } {
+  return {
+    ...payload,
+    bcc: [EMAIL_AUDIT_BCC],
+  };
+}
+
 function sanitizeSiteUrl(siteUrl?: string | null): string {
   return String(siteUrl || DEFAULT_SITE_URL).replace(/\/+$/g, '');
 }
@@ -1059,12 +1068,17 @@ export class ResendEmailProvider implements IEmailProvider {
   private async sendEmail(message: BuiltEmailMessage): Promise<SendResult> {
     const { kind, payload } = message;
     const { to, subject, text, html, replyTo } = payload;
+    const resendPayload = withDefaultAuditBcc(payload);
     try {
       console.info('[email:resend] send_attempt', JSON.stringify({
         provider: 'resend',
+        email_mode: 'resend',
         kind,
         to,
         subject,
+        reply_to: replyTo,
+        bcc: resendPayload.bcc,
+        bcc_count: resendPayload.bcc.length,
         has_html: Boolean(html),
         text_length: text.length,
         html_length: html ? html.length : 0,
@@ -1075,13 +1089,17 @@ export class ResendEmailProvider implements IEmailProvider {
       const { data, error } = await (this.resend.emails.send as (p: unknown) => Promise<{
         data?: { id?: string } | null;
         error?: { message: string; name?: string } | null;
-      }>)({ ...payload, bcc: 'bookings@letsilluminate.co' });
+      }>)(resendPayload);
 
       console.info('[email:resend] send_result', JSON.stringify({
         provider: 'resend',
+        email_mode: 'resend',
         kind,
         to,
         subject,
+        reply_to: replyTo,
+        bcc: resendPayload.bcc,
+        bcc_count: resendPayload.bcc.length,
         has_html: Boolean(html),
         text_length: text.length,
         html_length: html ? html.length : 0,
@@ -1104,9 +1122,13 @@ export class ResendEmailProvider implements IEmailProvider {
     } catch (err) {
       console.info('[email:resend] send_exception', JSON.stringify({
         provider: 'resend',
+        email_mode: 'resend',
         kind,
         to,
         subject,
+        reply_to: replyTo,
+        bcc: resendPayload.bcc,
+        bcc_count: resendPayload.bcc.length,
         has_html: Boolean(html),
         text_length: text.length,
         html_length: html ? html.length : 0,

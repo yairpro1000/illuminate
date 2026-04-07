@@ -19,6 +19,35 @@ describe('Resend payment-due email payload', () => {
     consoleInfoSpy.mockClear();
   });
 
+  it('adds the default bookings audit bcc to cancellation emails at the shared resend boundary', async () => {
+    const { EMAIL_AUDIT_BCC, ResendEmailProvider } = await import('../src/providers/email/resend.js');
+    const provider = new ResendEmailProvider('test-key');
+
+    await provider.sendBookingCancellation({
+      id: 'bk-bcc-1',
+      client_first_name: 'Maya',
+      client_last_name: 'Doe',
+      client_email: 'maya@example.com',
+      session_type_title: 'Cycle Session',
+      starts_at: '2026-03-19T10:00:00.000Z',
+      ends_at: '2026-03-19T11:00:00.000Z',
+      timezone: 'Europe/Zurich',
+      address_line: 'Via Example 1, Lugano',
+    } as any, 'https://letsilluminate.co/sessions.html');
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.bcc).toEqual([EMAIL_AUDIT_BCC]);
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[email:resend] send_attempt',
+      expect.stringContaining(`"bcc":["${EMAIL_AUDIT_BCC}"]`),
+    );
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[email:resend] send_result',
+      expect.stringContaining(`"bcc":["${EMAIL_AUDIT_BCC}"]`),
+    );
+  });
+
   it('sends visible pay-later HTML content with the original image header preserved', async () => {
     const { ResendEmailProvider } = await import('../src/providers/email/resend.js');
     const provider = new ResendEmailProvider('test-key');
