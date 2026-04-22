@@ -113,7 +113,6 @@ export function ListBrowserTable(props: {
                   const isTranslateRow = it.__listId === TRANSLATE_LIST_ID;
                   const rowStyle: React.CSSProperties = {
                     background: typeof it.color === "string" && it.color ? hexToRgba(it.color, 0.12) : undefined,
-                    opacity: isArchived ? 0.65 : undefined,
                   };
                   const isExpanded = expandedIds.has(it.id);
 
@@ -136,7 +135,7 @@ export function ListBrowserTable(props: {
 
                   return (
                     <React.Fragment key={`${it.__listId}:${it.id}`}>
-                      <tr style={rowStyle}>
+                      <tr style={rowStyle} className={isArchived ? "archivedRow" : undefined}>
                         <td style={{ width: 36 }}>
                           <input
                             type="checkbox"
@@ -181,7 +180,7 @@ export function ListBrowserTable(props: {
                           </div>
                           <div className="small muted">{it.id.slice(0, 8)}</div>
                         </td>
-                        <td style={{ width: 130 }}>
+                        <td style={{ width: 130 }} className="statusCell">
                           <StatusPicker
                             value={(it as any).status}
                             archived={Boolean(isArchived)}
