@@ -18,6 +18,12 @@ import { buildDisplayRows, buildTopics, buildVisibleRows, findItemUpdatedAt } fr
 import { useBulkActions } from "./listBrowser/useBulkActions";
 import { useTranslateFlow } from "./listBrowser/useTranslateFlow";
 import { useUndoFlow } from "./listBrowser/useUndoFlow";
+import {
+  DEFAULT_PERSISTED_LIST_VIEW_STATE,
+  loadListViewState,
+  saveListViewState,
+  shouldPersistListViewState,
+} from "./listBrowser/viewState";
 import { ListBrowserChrome } from "./listBrowser/ListBrowserChrome";
 import { ListBrowserOverlays } from "./listBrowser/ListBrowserOverlays";
 import { ListBrowserTable } from "./listBrowser/ListBrowserTable";
@@ -38,22 +44,23 @@ export function ListBrowser(props: {
   onTranslateIntentHandled?: () => void;
 }) {
   const SR = getSpeechRecognition();
-  const [filterText, setFilterText] = React.useState("");
+  const [filterText, setFilterText] = React.useState(DEFAULT_PERSISTED_LIST_VIEW_STATE.filterText);
   const [searchAllLists, setSearchAllLists] = React.useState(false);
-  const [filterPriority, setFilterPriority] = React.useState<number | "">("");
-  const [filterColor, setFilterColor] = React.useState<string | "">("");
-  const [filterTopic, setFilterTopic] = React.useState<string>("");
-  const [showArchived, setShowArchived] = React.useState(false);
+  const [filterPriority, setFilterPriority] = React.useState<number | "">(DEFAULT_PERSISTED_LIST_VIEW_STATE.filterPriority);
+  const [filterColor, setFilterColor] = React.useState<string | "">(DEFAULT_PERSISTED_LIST_VIEW_STATE.filterColor);
+  const [filterTopic, setFilterTopic] = React.useState<string>(DEFAULT_PERSISTED_LIST_VIEW_STATE.filterTopic);
+  const [showArchived, setShowArchived] = React.useState(DEFAULT_PERSISTED_LIST_VIEW_STATE.showArchived);
 
   const filterColorMenuRef = React.useRef<HTMLDetailsElement | null>(null);
   useDismissibleDetails(filterColorMenuRef);
 
-  const [sortLayers, setSortLayers] = React.useState<SortLayer[]>([{ key: "createdAt", dir: "desc" }]);
+  const [sortLayers, setSortLayers] = React.useState<SortLayer[]>(DEFAULT_PERSISTED_LIST_VIEW_STATE.sortLayers);
   const [sortModalOpen, setSortModalOpen] = React.useState(false);
   const [sortDraft, setSortDraft] = React.useState<SortLayer[]>([]);
   const [reorderPriority, setReorderPriority] = React.useState<number>(3);
   const [reorderMode, setReorderMode] = React.useState(false);
   const [reorderIds, setReorderIds] = React.useState<string[]>([]);
+  const [hydratedListId, setHydratedListId] = React.useState("");
   const reorderBackupRef = React.useRef<{
     filterText: string;
     filterPriority: number | "";
@@ -136,6 +143,44 @@ export function ListBrowser(props: {
   React.useEffect(() => {
     setErr(dataErr);
   }, [dataErr]);
+
+  React.useEffect(() => {
+    if (searchAllLists) {
+      setHydratedListId("");
+      return;
+    }
+    const nextState = loadListViewState(listId);
+    setFilterText(nextState.filterText);
+    setFilterPriority(nextState.filterPriority);
+    setFilterColor(nextState.filterColor);
+    setFilterTopic(nextState.filterTopic);
+    setShowArchived(nextState.showArchived);
+    setSortLayers(nextState.sortLayers);
+    setHydratedListId(listId);
+  }, [listId, searchAllLists]);
+
+  React.useEffect(() => {
+    if (!shouldPersistListViewState({ listId, hydratedListId, searchAllLists, reorderMode })) return;
+    saveListViewState(listId, {
+      filterText,
+      filterPriority,
+      filterColor,
+      filterTopic,
+      showArchived,
+      sortLayers,
+    });
+  }, [
+    filterColor,
+    filterPriority,
+    filterText,
+    filterTopic,
+    hydratedListId,
+    listId,
+    reorderMode,
+    searchAllLists,
+    showArchived,
+    sortLayers,
+  ]);
 
   const {
     undoMode,
