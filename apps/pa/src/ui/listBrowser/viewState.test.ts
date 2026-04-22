@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_PERSISTED_LIST_VIEW_STATE,
   clearListViewState,
+  clearSelectedListId,
   isPersistableListId,
   loadListViewState,
+  loadSelectedListId,
   normalizeListViewState,
+  resolvePreferredListId,
   saveListViewState,
+  saveSelectedListId,
   shouldPersistListViewState,
 } from "./viewState";
+import type { ListInfo } from "./types";
 
 class MemoryStorage {
   private data = new Map<string, string>();
@@ -51,6 +56,17 @@ describe("listBrowser viewState", () => {
     localStorage.clear();
     delete (globalThis as { window?: { localStorage: Storage } }).window;
   });
+
+  function makeList(id: string, title = id): ListInfo {
+    return {
+      id,
+      title,
+      description: "",
+      aliases: [],
+      fields: {},
+      meta: { revision: 1, itemsUpdatedAt: "", itemsUpdatedBy: null },
+    };
+  }
 
   it("returns normalized defaults when storage is empty", () => {
     expect(loadListViewState("list-a")).toEqual(DEFAULT_PERSISTED_LIST_VIEW_STATE);
@@ -137,6 +153,47 @@ describe("listBrowser viewState", () => {
     saveListViewState("list-a", { ...DEFAULT_PERSISTED_LIST_VIEW_STATE, filterText: "alpha" });
     clearListViewState("list-a");
     expect(loadListViewState("list-a")).toEqual(DEFAULT_PERSISTED_LIST_VIEW_STATE);
+  });
+
+  it("round-trips the selected list id", () => {
+    saveSelectedListId("list-a");
+    expect(loadSelectedListId()).toBe("list-a");
+    clearSelectedListId();
+    expect(loadSelectedListId()).toBe("");
+  });
+
+  it("does not write selected list id for an empty value", () => {
+    saveSelectedListId("");
+    saveSelectedListId("   ");
+    expect(loadSelectedListId()).toBe("");
+  });
+
+  it("keeps the current list when it still exists", () => {
+    const lists = [makeList("groceries"), makeList("work")];
+    saveSelectedListId("work");
+    expect(resolvePreferredListId(lists, "groceries")).toBe("groceries");
+  });
+
+  it("restores the persisted selected list when current is empty", () => {
+    const lists = [makeList("groceries"), makeList("work")];
+    saveSelectedListId("work");
+    expect(resolvePreferredListId(lists, "")).toBe("work");
+  });
+
+  it("falls back to groceries when persisted selection no longer exists", () => {
+    const lists = [makeList("work"), makeList("groceries"), makeList("translate", "Translate")];
+    saveSelectedListId("missing");
+    expect(resolvePreferredListId(lists, "")).toBe("groceries");
+  });
+
+  it("falls back to the first available list when groceries does not exist", () => {
+    const lists = [makeList("work"), makeList("translate", "Translate")];
+    expect(resolvePreferredListId(lists, "")).toBe("work");
+  });
+
+  it("matches groceries by title as well as id", () => {
+    const lists = [makeList("list-123", "Groceries"), makeList("work")];
+    expect(resolvePreferredListId(lists, "")).toBe("list-123");
   });
 
   it("only persists after hydration completes for the active list", () => {

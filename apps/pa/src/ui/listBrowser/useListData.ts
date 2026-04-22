@@ -2,6 +2,7 @@ import React from "react";
 import type { ListItem } from "@shared/model";
 import { api } from "../../api";
 import type { ItemRow, ListInfo } from "./types";
+import { resolvePreferredListId, saveSelectedListId } from "./viewState";
 
 function sortLists(lists: ListInfo[]) {
   const copy = [...lists];
@@ -31,13 +32,7 @@ export function useListData(props: { refreshSignal: number; searchAllLists: bool
     const data = await api<{ lists: ListInfo[] }>("/lists", { method: "GET" });
     setLists(data.lists);
     setStale(null);
-    setListId((current) => {
-      if (current) return current;
-      return data.lists.find((l) => String(l.title).toLowerCase() === "translate")?.id
-        ?? data.lists.find((l) => l.id === "app")?.id
-        ?? data.lists[0]?.id
-        ?? "";
-    });
+    setListId((current) => resolvePreferredListId(data.lists, current));
   }, []);
 
   const loadItems = React.useCallback(async (id: string) => {
@@ -88,6 +83,11 @@ export function useListData(props: { refreshSignal: number; searchAllLists: bool
 
   const sortedLists = React.useMemo(() => sortLists(lists), [lists]);
   const activeList = lists.find((l) => l.id === listId) ?? null;
+
+  React.useEffect(() => {
+    if (!activeList) return;
+    saveSelectedListId(activeList.id);
+  }, [activeList]);
 
   React.useEffect(() => {
     if (!listId || !activeList) return;

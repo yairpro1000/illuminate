@@ -1,8 +1,11 @@
 import type { PersistedListFilterPriority, PersistedListViewState, PersistedListViewStateEnvelope } from "./types";
 import type { SortLayer } from "./utils";
+import type { ListInfo } from "./types";
 
 const STORAGE_PREFIX = "pa:list-browser:view:";
+const SELECTED_LIST_STORAGE_KEY = "pa:list-browser:selected-list-id";
 const VIEW_STATE_VERSION = 1 as const;
+const DEFAULT_LIST_ID = "groceries";
 
 const DEFAULT_SORT_LAYERS: SortLayer[] = [{ key: "createdAt", dir: "desc" }];
 
@@ -124,4 +127,44 @@ export function shouldPersistListViewState(input: {
   if (input.reorderMode) return false;
   if (!isPersistableListId(input.listId)) return false;
   return input.hydratedListId === input.listId;
+}
+
+export function loadSelectedListId(): string {
+  const storage = safeStorage();
+  if (!storage) return "";
+  return normalizeText(storage.getItem(SELECTED_LIST_STORAGE_KEY));
+}
+
+export function saveSelectedListId(listId: string): void {
+  const storage = safeStorage();
+  if (!storage || !isPersistableListId(listId)) return;
+  storage.setItem(SELECTED_LIST_STORAGE_KEY, String(listId).trim());
+}
+
+export function clearSelectedListId(): void {
+  const storage = safeStorage();
+  if (!storage) return;
+  storage.removeItem(SELECTED_LIST_STORAGE_KEY);
+}
+
+function findListIdByPreference(lists: ListInfo[], value: string): string {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return "";
+  return lists.find((list) =>
+    String(list.id ?? "").trim().toLowerCase() === normalized
+    || String(list.title ?? "").trim().toLowerCase() === normalized,
+  )?.id ?? "";
+}
+
+export function resolvePreferredListId(lists: ListInfo[], currentListId: string): string {
+  const currentMatch = findListIdByPreference(lists, currentListId);
+  if (currentMatch) return currentMatch;
+
+  const persistedMatch = findListIdByPreference(lists, loadSelectedListId());
+  if (persistedMatch) return persistedMatch;
+
+  const defaultMatch = findListIdByPreference(lists, DEFAULT_LIST_ID);
+  if (defaultMatch) return defaultMatch;
+
+  return lists[0]?.id ?? "";
 }
